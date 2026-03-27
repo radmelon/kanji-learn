@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { SrsService } from '../services/srs.service.js'
 import { InterventionService } from '../services/intervention.service.js'
 import { AnalyticsService } from '../services/analytics.service.js'
+import { voiceAttempts, writingAttempts } from '@kanji-learn/db'
 
 const reviewResultSchema = z.object({
   kanjiId: z.number().int().positive(),
@@ -81,4 +82,38 @@ export async function reviewRoutes(server: FastifyInstance) {
       return reply.code(201).send({ ok: true, data: summary })
     }
   )
+
+  // POST /v1/review/voice — log a voice attempt
+  const voiceSchema = z.object({
+    kanjiId: z.number().int().positive(),
+    transcript: z.string(),
+    expected: z.string(),
+    distance: z.number().int().nonnegative(),
+    passed: z.boolean(),
+  })
+
+  server.post('/voice', { preHandler: [server.authenticate] }, async (req, reply) => {
+    const body = voiceSchema.safeParse(req.body)
+    if (!body.success) {
+      return reply.code(400).send({ ok: false, error: 'Validation error', code: 'VALIDATION_ERROR' })
+    }
+    await server.db.insert(voiceAttempts).values({ userId: req.userId!, ...body.data })
+    return reply.code(201).send({ ok: true })
+  })
+
+  // POST /v1/review/writing — log a writing attempt
+  const writingSchema = z.object({
+    kanjiId: z.number().int().positive(),
+    score: z.number().min(0).max(1),
+    strokeCount: z.number().int().nonnegative(),
+  })
+
+  server.post('/writing', { preHandler: [server.authenticate] }, async (req, reply) => {
+    const body = writingSchema.safeParse(req.body)
+    if (!body.success) {
+      return reply.code(400).send({ ok: false, error: 'Validation error', code: 'VALIDATION_ERROR' })
+    }
+    await server.db.insert(writingAttempts).values({ userId: req.userId!, ...body.data })
+    return reply.code(201).send({ ok: true })
+  })
 }
