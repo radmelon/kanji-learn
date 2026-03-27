@@ -6,7 +6,7 @@ on:
     paths:
       - 'packages/db/src/schema.ts'
       - 'packages/db/drizzle.config.ts'
-      - 'packages/db/migrations/**'
+      - 'packages/db/drizzle/**'
 
 concurrency:
   group: db-check-${{ github.ref }}
@@ -17,8 +17,6 @@ jobs:
   schema-check:
     name: Schema / Migration Check
     runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -39,5 +37,5 @@ jobs:
         working-directory: packages/db
         run: |
           pnpm db:generate
-          git diff --exit-code migrations/ || \
+          git diff --exit-code drizzle/ || \
             (echo "❌ Schema changes detected without a migration. Run pnpm db:generate and commit the result." && exit 1)
