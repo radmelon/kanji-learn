@@ -13,6 +13,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "seed:kanji": "tsx src/seeds/seed-kanji.ts",
+    "seed:kanji:fetch": "tsx src/seeds/seed-kanji-fetch.ts",
     "seed:mnemonics": "tsx src/seeds/seed-mnemonics.ts"
   },
   "dependencies": {
