@@ -1,57 +1,48 @@
-# Dependencies
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
 .pnpm-store/
 
-# Build outputs
+# ── Build outputs ─────────────────────────────────────────────────────────────
 dist/
 build/
-.expo/
+web-build/
 *.js.map
+*.tsbuildinfo
 
-# Environment files
+# ── Expo ──────────────────────────────────────────────────────────────────────
+.expo/
+expo-env.d.ts
+
+# ── Environment files (never commit secrets) ──────────────────────────────────
 .env
 .env.local
 .env.*.local
 
-# Turbo
+# ── Turbo cache ───────────────────────────────────────────────────────────────
 .turbo/
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# Editor
+# ── Editor ────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Logs
+# ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 pnpm-debug.log*
 
-# Native
+# ── Native build artifacts ────────────────────────────────────────────────────
 *.orig.*
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
-*.orig.*
-web-build/
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Testing
+# ── Testing ───────────────────────────────────────────────────────────────────
 coverage/
-
-# TypeScript
-*.tsbuildinfo
-
-# Drizzle
-drizzle/meta/
