@@ -1,0 +1,43 @@
+name: DB Schema Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/db/src/schema.ts'
+      - 'packages/db/drizzle.config.ts'
+      - 'packages/db/migrations/**'
+
+concurrency:
+  group: db-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─── Verify drizzle migrations are in sync with schema ───────────────────
+  schema-check:
+    name: Schema / Migration Check
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check for un-generated migrations
+        working-directory: packages/db
+        run: |
+          pnpm db:generate
+          git diff --exit-code migrations/ || \
+            (echo "❌ Schema changes detected without a migration. Run pnpm db:generate and commit the result." && exit 1)
