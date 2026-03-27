@@ -1,10 +1,5 @@
-// Entry — full implementation in commit 10
-import { Text, View } from 'react-native'
+import { Redirect } from 'expo-router'
 
 export default function Index() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>Kanji Learn</Text>
-    </View>
-  )
+  return <Redirect href="/(tabs)" />
 }

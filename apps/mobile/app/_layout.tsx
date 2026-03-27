@@ -1,6 +1,41 @@
-// Root layout — full implementation in commit 9
-import { Stack } from 'expo-router'
+import { useEffect } from 'react'
+import { Stack, useRouter, useSegments } from 'expo-router'
+import { StatusBar } from 'expo-status-bar'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { useAuthStore } from '../src/stores/auth.store'
+import { colors } from '../src/theme'
 
 export default function RootLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />
+  const { isInitialized, session, initialize } = useAuthStore()
+  const router = useRouter()
+  const segments = useSegments()
+
+  useEffect(() => {
+    initialize()
+  }, [])
+
+  useEffect(() => {
+    if (!isInitialized) return
+
+    const inAuthGroup = segments[0] === '(auth)'
+    if (!session && !inAuthGroup) {
+      router.replace('/(auth)/sign-in')
+    } else if (session && inAuthGroup) {
+      router.replace('/(tabs)')
+    }
+  }, [isInitialized, session, segments])
+
+  if (!isInitialized) return null
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <StatusBar style="light" />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="study" options={{ presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="kanji/[id]" />
+      </Stack>
+    </GestureHandlerRootView>
+  )
 }
