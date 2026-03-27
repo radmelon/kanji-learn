@@ -1,0 +1,197 @@
+import { useState } from 'react'
+import { View, Text, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import { colors, spacing, radius, typography } from '../../theme'
+import type { Mnemonic } from '../../hooks/useMnemonics'
+
+interface Props {
+  mnemonic: Mnemonic
+  onUpdate?: (id: string, text: string) => Promise<void>
+  onDelete?: (id: string) => Promise<void>
+  onDismissRefresh?: (id: string) => Promise<void>
+  showRefreshPrompt?: boolean
+}
+
+export function MnemonicCard({
+  mnemonic,
+  onUpdate,
+  onDelete,
+  onDismissRefresh,
+  showRefreshPrompt,
+}: Props) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState(mnemonic.storyText)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const isSystem = mnemonic.type === 'system'
+  const needsRefresh =
+    showRefreshPrompt &&
+    mnemonic.refreshPromptAt &&
+    new Date(mnemonic.refreshPromptAt) <= new Date()
+
+  const handleSave = async () => {
+    if (!editText.trim() || editText === mnemonic.storyText) {
+      setIsEditing(false)
+      return
+    }
+    setIsSaving(true)
+    try {
+      await onUpdate?.(mnemonic.id, editText.trim())
+      setIsEditing(false)
+    } catch {
+      Alert.alert('Error', 'Failed to save changes')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDelete = () => {
+    Alert.alert('Delete mnemonic?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => onDelete?.(mnemonic.id) },
+    ])
+  }
+
+  return (
+    <View style={[styles.card, needsRefresh && styles.refreshCard]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={[styles.typeBadge, isSystem ? styles.systemBadge : styles.userBadge]}>
+          <Ionicons
+            name={isSystem ? 'sparkles' : 'person'}
+            size={10}
+            color={isSystem ? colors.accent : colors.primary}
+          />
+          <Text style={[styles.typeLabel, isSystem ? styles.systemLabel : styles.userLabel]}>
+            {isSystem ? 'AI' : 'Mine'}
+          </Text>
+        </View>
+
+        {!isSystem && !isEditing && (
+          <View style={styles.actions}>
+            <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.iconBtn}>
+              <Ionicons name="pencil-outline" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleDelete} style={styles.iconBtn}>
+              <Ionicons name="trash-outline" size={16} color={colors.error} />
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* Story text */}
+      {isEditing ? (
+        <TextInput
+          style={styles.editInput}
+          value={editText}
+          onChangeText={setEditText}
+          multiline
+          autoFocus
+          placeholderTextColor={colors.textMuted}
+        />
+      ) : (
+        <Text style={styles.story}>{mnemonic.storyText}</Text>
+      )}
+
+      {/* Edit controls */}
+      {isEditing && (
+        <View style={styles.editControls}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => { setEditText(mnemonic.storyText); setIsEditing(false) }}
+          >
+            <Text style={styles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.saveBtn, isSaving && styles.disabled]}
+            onPress={handleSave}
+            disabled={isSaving}
+          >
+            <Text style={styles.saveText}>{isSaving ? 'Saving…' : 'Save'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Refresh prompt */}
+      {needsRefresh && !isEditing && (
+        <View style={styles.refreshBanner}>
+          <Ionicons name="time-outline" size={14} color={colors.warning} />
+          <Text style={styles.refreshText}>Still working for you?</Text>
+          <TouchableOpacity
+            onPress={() => onDismissRefresh?.(mnemonic.id)}
+            style={styles.refreshBtn}
+          >
+            <Text style={styles.refreshBtnText}>Yes, keep it</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  refreshCard: { borderColor: colors.warning + '55' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  typeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+  },
+  systemBadge: { backgroundColor: colors.accent + '22' },
+  userBadge: { backgroundColor: colors.primary + '22' },
+  typeLabel: { ...typography.caption, fontWeight: '700' },
+  systemLabel: { color: colors.accent },
+  userLabel: { color: colors.primary },
+  actions: { flexDirection: 'row', gap: spacing.xs },
+  iconBtn: { padding: spacing.xs },
+  story: { ...typography.body, color: colors.textPrimary, lineHeight: 24 },
+  editInput: {
+    ...typography.body,
+    color: colors.textPrimary,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: colors.primary + '55',
+  },
+  editControls: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
+  cancelBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  cancelText: { ...typography.bodySmall, color: colors.textMuted },
+  saveBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
+  },
+  saveText: { ...typography.bodySmall, color: '#fff', fontWeight: '600' },
+  disabled: { opacity: 0.5 },
+  refreshBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.warning + '11',
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+  },
+  refreshText: { ...typography.caption, color: colors.warning, flex: 1 },
+  refreshBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    backgroundColor: colors.warning + '22',
+    borderRadius: radius.full,
+  },
+  refreshBtnText: { ...typography.caption, color: colors.warning, fontWeight: '600' },
+})
