@@ -11,14 +11,17 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "seed:kanji": "tsx src/seeds/seed-kanji.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.31.0",
     "postgres": "^3.4.3"
   },
   "devDependencies": {
+    "dotenv": "^16.4.5",
     "drizzle-kit": "^0.22.0",
+    "tsx": "^4.15.0",
     "typescript": "^5.5.0"
   }
 }
