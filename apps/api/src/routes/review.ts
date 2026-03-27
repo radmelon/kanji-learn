@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { SrsService } from '../services/srs.service.js'
+import { InterventionService } from '../services/intervention.service.js'
+import { AnalyticsService } from '../services/analytics.service.js'
 
 const reviewResultSchema = z.object({
   kanjiId: z.number().int().positive(),
@@ -19,6 +21,8 @@ const submitReviewSchema = z.object({
 
 export async function reviewRoutes(server: FastifyInstance) {
   const srs = new SrsService(server.db)
+  const interventions = new InterventionService(server.db)
+  const analytics = new AnalyticsService(server.db)
 
   // GET /v1/review/queue?limit=20
   server.get<{ Querystring: { limit?: string } }>(
@@ -61,6 +65,18 @@ export async function reviewRoutes(server: FastifyInstance) {
         body.data.results,
         body.data.studyTimeMs
       )
+
+      // Upsert daily stats + run intervention checks async (don't block response)
+      const today = new Date().toISOString().slice(0, 10)
+      void analytics.upsertDailyStats(req.userId!, today, {
+        reviewed: summary.totalItems,
+        correct: summary.correctItems,
+        newLearned: summary.newLearned,
+        burned: summary.burned,
+        studyTimeMs: summary.studyTimeMs,
+      })
+      void interventions.resolveAbsenceOnActivity(req.userId!)
+      void interventions.runChecks(req.userId!)
 
       return reply.code(201).send({ ok: true, data: summary })
     }
