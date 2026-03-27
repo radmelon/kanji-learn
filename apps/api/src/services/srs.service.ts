@@ -1,5 +1,5 @@
 import { and, eq, lte, isNull, or, asc, sql } from 'drizzle-orm'
-import { userKanjiProgress, kanji, reviewSessions, reviewLogs } from '@kanji-learn/db'
+import { userKanjiProgress, kanji, reviewSessions, reviewLogs, userProfiles } from '@kanji-learn/db'
 import { calculateNextReview, createNewCard } from '@kanji-learn/shared'
 import type { Db } from '@kanji-learn/db'
 import type { ReviewResult } from '@kanji-learn/shared'
@@ -149,6 +149,12 @@ export class SrsService {
     let newLearned = 0
     let burned = 0
     let correctItems = 0
+
+    // Ensure user profile row exists (created on first review submission)
+    await this.db
+      .insert(userProfiles)
+      .values({ id: userId })
+      .onConflictDoNothing()
 
     // Create session record
     await this.db.insert(reviewSessions).values({
