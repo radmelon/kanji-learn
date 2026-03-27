@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mobile",
+      "runtimeExecutable": "expo",
+      "runtimeArgs": ["start"],
+      "port": 8081
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "tsx",
+      "runtimeArgs": ["watch", "src/index.ts"],
+      "port": 3000
+    }
+  ]
+}

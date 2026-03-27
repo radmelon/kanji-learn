@@ -25,7 +25,6 @@
     },
     "plugins": [
       "expo-router",
-      "@shopify/react-native-skia",
       [
         "expo-speech-recognition",
         {
@@ -35,6 +34,7 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "newArchEnabled": false
   }
 }
