@@ -12,9 +12,11 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "seed:kanji": "tsx src/seeds/seed-kanji.ts"
+    "seed:kanji": "tsx src/seeds/seed-kanji.ts",
+    "seed:mnemonics": "tsx src/seeds/seed-mnemonics.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "drizzle-orm": "^0.31.0",
     "postgres": "^3.4.3"
   },
