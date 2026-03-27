@@ -38,6 +38,9 @@ importers:
       '@kanji-learn/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
       drizzle-orm:
         specifier: ^0.31.0
         version: 0.31.4(@types/react@19.1.17)(postgres@3.4.8)(react@19.1.0)

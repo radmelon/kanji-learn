@@ -9,6 +9,7 @@ interface ReviewState {
   isLoading: boolean
   isComplete: boolean
   studyStartMs: number
+  error: string | null
 
   loadQueue: (limit?: number) => Promise<void>
   submitResult: (result: ReviewResult) => void
@@ -23,12 +24,17 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   isLoading: false,
   isComplete: false,
   studyStartMs: 0,
+  error: null,
 
   loadQueue: async (limit = 20) => {
-    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [] })
+    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null })
     try {
       const queue = await api.get<ReviewQueueItem[]>(`/v1/review/queue?limit=${limit}`)
       set({ queue, studyStartMs: Date.now() })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load queue'
+      console.error('[ReviewStore] loadQueue error:', message)
+      set({ error: message })
     } finally {
       set({ isLoading: false })
     }

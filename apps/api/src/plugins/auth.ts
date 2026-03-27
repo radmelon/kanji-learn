@@ -1,22 +1,42 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import fp from 'fastify-plugin'
 import jwt from '@fastify/jwt'
+import { createPublicKey } from 'node:crypto'
 
 // ─── Supabase JWT auth plugin ─────────────────────────────────────────────────
-// Validates the Bearer token issued by Supabase Auth.
-// The Supabase JWT secret is the `JWT_SECRET` env var from your Supabase project.
+// Supabase newer projects sign JWTs with ES256 (ECDSA P-256).
+// We fetch the public key from Supabase's JWKS endpoint on startup and use it
+// to verify tokens — no need to trust the JWT secret for verification.
 
 export const authPlugin = fp(async (server: FastifyInstance) => {
-  const jwtSecret = process.env.SUPABASE_JWT_SECRET
-  if (!jwtSecret) {
-    throw new Error('SUPABASE_JWT_SECRET environment variable is required')
+  const supabaseUrl = process.env.SUPABASE_URL
+  if (!supabaseUrl) {
+    throw new Error('SUPABASE_URL environment variable is required')
   }
 
+  // Fetch public keys from Supabase JWKS endpoint
+  const jwksUrl = `${supabaseUrl}/auth/v1/.well-known/jwks.json`
+  const resp = await fetch(jwksUrl)
+  if (!resp.ok) throw new Error(`Failed to fetch JWKS from ${jwksUrl}: ${resp.status}`)
+
+  const { keys } = (await resp.json()) as { keys: JsonWebKey[] }
+  if (!keys?.length) throw new Error('No keys in Supabase JWKS response')
+
+  // Convert the first JWK to PEM so @fastify/jwt can use it
+  const cryptoKey = createPublicKey({ key: keys[0], format: 'jwk' })
+  const publicKeyPem = cryptoKey.export({ type: 'spki', format: 'pem' }) as string
+
+  server.log.info({ kid: (keys[0] as { kid?: string }).kid, alg: keys[0].alg }, 'Loaded Supabase public key')
+
   await server.register(jwt, {
-    secret: jwtSecret,
+    secret: {
+      private: '',       // not needed — we only verify, never sign
+      public: publicKeyPem,
+    },
     decode: { complete: true },
     verify: {
-      algorithms: ['HS256'],
+      algorithms: ['ES256'],
+      allowedAud: 'authenticated',
     },
   })
 
@@ -24,7 +44,7 @@ export const authPlugin = fp(async (server: FastifyInstance) => {
   server.decorateRequest('userId', null)
   server.decorateRequest('userEmail', null)
 
-  // Prehandler hook — attach to authenticated routes via { preHandler: [server.authenticate] }
+  // Prehandler — attach to routes via { preHandler: [server.authenticate] }
   server.decorate(
     'authenticate',
     async function (request: FastifyRequest, reply: FastifyReply) {
@@ -38,6 +58,7 @@ export const authPlugin = fp(async (server: FastifyInstance) => {
         request.userId = decoded.sub
         request.userEmail = decoded.email
       } catch (err) {
+        server.log.warn({ err }, 'JWT verification failed')
         reply.code(401).send({ ok: false, error: 'Unauthorized', code: 'UNAUTHORIZED' })
       }
     }

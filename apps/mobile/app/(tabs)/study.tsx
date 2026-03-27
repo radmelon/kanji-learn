@@ -13,7 +13,7 @@ import { colors, spacing, radius, typography } from '../../src/theme'
 
 export default function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, loadQueue, submitResult, finishSession, reset } =
+  const { queue, currentIndex, isLoading, isComplete, error, loadQueue, submitResult, finishSession, reset } =
     useReviewStore()
 
   const [isRevealed, setIsRevealed] = useState(false)
@@ -67,7 +67,20 @@ export default function StudySession() {
         totalItems: results.length,
         correctItems: correct,
         newLearned,
-        burned: 0, // derived server-side; show 0 here
+        burned: 0,
+      })
+    } catch (err) {
+      // Even if saving fails, show the summary so the user isn't stuck on a blank screen
+      console.error('[Study] finishSession error:', err)
+      const { results } = useReviewStore.getState()
+      setSessionSummary({
+        totalItems: results.length,
+        correctItems: results.filter((r) => r.quality >= 3).length,
+        newLearned: results.filter((r) => {
+          const item = queue.find((q) => q.kanjiId === r.kanjiId)
+          return item?.status === 'unseen'
+        }).length,
+        burned: 0,
       })
     } finally {
       setIsSaving(false)
@@ -87,6 +100,19 @@ export default function StudySession() {
 
   // ── Empty queue ───────────────────────────────────────────────────────────
 
+  if (!isLoading && error) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <Ionicons name="alert-circle" size={64} color={colors.error} />
+        <Text style={styles.emptyTitle}>Something went wrong</Text>
+        <Text style={styles.emptySubtitle}>{error}</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => loadQueue(20)}>
+          <Text style={styles.backText}>Retry</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    )
+  }
+
   if (!isLoading && queue.length === 0) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -96,6 +122,17 @@ export default function StudySession() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backText}>Back to Dashboard</Text>
         </TouchableOpacity>
+      </SafeAreaView>
+    )
+  }
+
+  // ── Saving ────────────────────────────────────────────────────────────────
+
+  if (isSaving) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ActivityIndicator color={colors.primary} size="large" />
+        <Text style={styles.loadingText}>Saving session…</Text>
       </SafeAreaView>
     )
   }
@@ -112,11 +149,13 @@ export default function StudySession() {
     )
   }
 
-  if (isSaving) {
+  // ── Fallback (should not reach here) ─────────────────────────────────────
+
+  if (isComplete) {
     return (
       <SafeAreaView style={styles.safe}>
         <ActivityIndicator color={colors.primary} size="large" />
-        <Text style={styles.loadingText}>Saving session…</Text>
+        <Text style={styles.loadingText}>Finishing up…</Text>
       </SafeAreaView>
     )
   }

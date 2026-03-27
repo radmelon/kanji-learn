@@ -1,4 +1,7 @@
-import { buildServer } from './server.js'
+// Load .env before any other module reads process.env (ESM-safe: dynamic import is not hoisted)
+await import('dotenv/config')
+
+const { buildServer } = await import('./server.js')
 
 const port = Number(process.env.PORT ?? 3000)
 const host = process.env.HOST ?? '0.0.0.0'

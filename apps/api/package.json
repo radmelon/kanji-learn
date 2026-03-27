@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
+    "dotenv": "^16.4.5",
     "@kanji-learn/db": "workspace:*",
     "@kanji-learn/shared": "workspace:*",
     "drizzle-orm": "^0.31.0",
