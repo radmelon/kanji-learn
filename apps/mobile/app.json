@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Kanji Learn",
+    "slug": "kanji-learn",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "kanjilearn",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a2e"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kanjilearn.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.kanjilearn.app"
+    },
+    "plugins": [
+      "expo-router",
+      "@shopify/react-native-skia",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Kanji Learn to use the microphone for reading evaluation."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
