@@ -18,6 +18,8 @@
     "@fastify/jwt": "^8.0.0",
     "@fastify/cors": "^9.0.0",
     "@fastify/rate-limit": "^9.1.0",
+    "fastify-plugin": "^4.5.1",
+    "pino-pretty": "^11.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
