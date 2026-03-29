@@ -34,9 +34,10 @@ import { kanji, mnemonics } from '../schema'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const CONCURRENCY = 5        // parallel requests to Haiku
-const RETRY_LIMIT = 4        // max retries per kanji
-const BASE_DELAY_MS = 1_000  // 1 s base for exponential backoff
+const CONCURRENCY = 3        // parallel requests to Haiku (50 req/min limit)
+const INTER_REQUEST_MS = 1_500 // min pause between requests per worker (~36 req/min total)
+const RETRY_LIMIT = 5        // max retries per kanji
+const BASE_DELAY_MS = 2_000  // 2 s base for exponential backoff
 const REFRESH_DAYS = 30      // days before re-generation nudge
 
 // ─── Clients ──────────────────────────────────────────────────────────────────
@@ -49,7 +50,7 @@ if (!apiKey) { console.error('❌  ANTHROPIC_API_KEY is not set'); process.exit(
 
 const client = postgres(dbUrl, { max: 5 })
 const db = drizzle(client)
-const anthropic = new Anthropic({ apiKey })
+const anthropic = new Anthropic({ apiKey, timeout: 60_000 })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,26 +110,64 @@ async function generateMnemonic(k: KanjiRow): Promise<MnemonicResult> {
         messages: [{ role: 'user', content: buildPrompt(k) }],
       })
 
-      const text = response.content.find(b => b.type === 'text')?.text ?? ''
-      const parsed = JSON.parse(text.trim()) as MnemonicResult
+      const raw = response.content.find(b => b.type === 'text')?.text ?? ''
+      // Strip markdown code fences if the model wraps its response (e.g. ```json … ```)
+      const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
 
-      if (!parsed.storyText || !parsed.imagePrompt) {
-        throw new Error(`Incomplete JSON for ${k.character}: ${text}`)
+      let parsed: MnemonicResult | null = null
+
+      // 1. Try clean JSON parse first
+      try {
+        parsed = JSON.parse(text) as MnemonicResult
+      } catch {
+        // 2. Try extracting from the largest {...} block (handles surrounding text)
+        const jsonBlock = text.match(/\{[\s\S]*\}/)
+        if (jsonBlock) {
+          try { parsed = JSON.parse(jsonBlock[0]) as MnemonicResult } catch { /* fall through */ }
+        }
       }
 
+      // 3. Regex fallback — pull the two string values directly from the raw text
+      if (!parsed?.storyText || !parsed?.imagePrompt) {
+        const storyMatch = raw.match(/"storyText"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+        const imageMatch = raw.match(/"imagePrompt"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+        if (storyMatch && imageMatch) {
+          parsed = {
+            storyText: storyMatch[1].replace(/\\"/g, '"'),
+            imagePrompt: imageMatch[1].replace(/\\"/g, '"'),
+          }
+        }
+      }
+
+      if (!parsed?.storyText || !parsed?.imagePrompt) {
+        throw new Error(`Unparseable response for ${k.character}: ${text.slice(0, 120)}`)
+      }
+
+      // Pace requests: small mandatory pause after each success to stay under rate limit
+      await sleep(INTER_REQUEST_MS)
       return parsed
     } catch (err: unknown) {
       lastError = err
 
-      // Retry on rate limit or server errors
-      if (
-        err instanceof Anthropic.RateLimitError ||
-        err instanceof Anthropic.InternalServerError ||
-        (err instanceof Anthropic.APIStatusError && err.status >= 500)
-      ) {
-        // will retry
-        continue
-      }
+      // Retry on rate limit, server errors, or timeouts.
+      // Note: Use status-code / name checks instead of instanceof — ESM/CJS boundary can make
+      // Anthropic error classes resolve as non-objects, breaking instanceof at runtime.
+      const status = (err as { status?: number })?.status
+      const errName = (err as { name?: string })?.name ?? ''
+      const errMsg = (err as Error)?.message ?? ''
+      const isRetryable =
+        status === 429 ||
+        (status !== undefined && status >= 500) ||
+        errName === 'APIConnectionTimeoutError' ||
+        errName === 'APIConnectionError' ||
+        errMsg.toLowerCase().includes('timed out') ||
+        errMsg.toLowerCase().includes('timeout') ||
+        errMsg.toLowerCase().includes('econnreset') ||
+        errMsg.toLowerCase().includes('econnrefused') ||
+        errMsg.toLowerCase().includes('socket hang up') ||
+        errMsg.toLowerCase().includes('network')
+
+      if (isRetryable) continue
 
       // Non-retryable error — rethrow
       throw err

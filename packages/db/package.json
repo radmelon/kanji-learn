@@ -15,11 +15,14 @@
     "db:studio": "drizzle-kit studio",
     "seed:kanji": "tsx src/seeds/seed-kanji.ts",
     "seed:kanji:fetch": "tsx src/seeds/seed-kanji-fetch.ts",
-    "seed:mnemonics": "tsx src/seeds/seed-mnemonics.ts"
+    "seed:kanjidic2": "tsx src/seeds/import-kanjidic2.ts",
+    "seed:mnemonics": "tsx src/seeds/seed-mnemonics.ts",
+    "seed": "pnpm seed:kanji && pnpm seed:kanjidic2 && pnpm seed:mnemonics"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "drizzle-orm": "^0.31.0",
+    "fast-xml-parser": "^5.5.9",
     "postgres": "^3.4.3"
   },
   "devDependencies": {

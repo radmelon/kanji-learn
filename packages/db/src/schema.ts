@@ -2,6 +2,7 @@ import {
   pgTable,
   pgEnum,
   serial,
+  varchar,
   text,
   integer,
   smallint,
@@ -10,6 +11,7 @@ import {
   timestamp,
   uuid,
   jsonb,
+  numeric,
   index,
   uniqueIndex,
   primaryKey,
@@ -62,6 +64,16 @@ export const kanji = pgTable(
       .default([]),
     radicals: jsonb('radicals').$type<string[]>().notNull().default([]),
     svgPath: text('svg_path'), // KanjiVG stroke order SVG
+
+    // ── KANJIDIC2 reference codes ──────────────────────────────────────────
+    // Sourced from KANJIDIC2 (EDRDG, CC BY-SA 4.0). See ACKNOWLEDGEMENTS.
+    jisCode:          varchar('jis_code', { length: 8 }),          // JIS X 0208 hex e.g. '3021'
+    nelsonClassic:    integer('nelson_classic'),                    // Classic Nelson index
+    nelsonNew:        integer('nelson_new'),                        // New Nelson (Haig 1997) index
+    morohashiIndex:   integer('morohashi_index'),                   // Dai Kan-Wa Jiten entry number
+    morohashiVolume:  smallint('morohashi_volume'),                 // Volume 1–13
+    morohashiPage:    smallint('morohashi_page'),                   // Page within volume
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -273,6 +285,66 @@ export const voiceAttempts = pgTable(
   })
 )
 
+// ─── testSessions ─────────────────────────────────────────────────────────────
+// Structured test events (exit quiz, weekly review, checkpoint, surprise, audit)
+
+export const testSessions = pgTable(
+  'kl_test_sessions',
+  {
+    id:            serial('test_session_id').primaryKey(),
+    userId:        uuid('user_id')
+                     .notNull()
+                     .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    testType:      text('test_type').notNull(),
+    // 'exit_quiz' | 'weekly_set' | 'level_checkpoint' | 'surprise_check' | 'monthly_audit'
+    scopeLevel:    smallint('scope_level'),
+    scopeKanjiIds: integer('scope_kanji_ids').array(),
+    startedAt:     timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    endedAt:       timestamp('ended_at', { withTimezone: true }),
+    totalItems:    integer('total_items'),
+    correct:       integer('correct').notNull().default(0),
+    scorePct:      numeric('score_pct', { precision: 5, scale: 2 }),
+    passed:        boolean('passed'),
+    voiceEnabled:  boolean('voice_enabled').notNull().default(false),
+  },
+  (t) => ({
+    userTestIdx: index('test_session_user_idx').on(t.userId, t.startedAt),
+    typeIdx:     index('test_session_type_idx').on(t.userId, t.testType),
+  })
+)
+
+// ─── testResults ──────────────────────────────────────────────────────────────
+
+export const testResults = pgTable(
+  'kl_test_results',
+  {
+    id:              serial('result_id').primaryKey(),
+    testSessionId:   integer('test_session_id')
+                       .notNull()
+                       .references(() => testSessions.id, { onDelete: 'cascade' }),
+    userId:          uuid('user_id')
+                       .notNull()
+                       .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    kanjiId:         integer('kanji_id')
+                       .notNull()
+                       .references(() => kanji.id, { onDelete: 'cascade' }),
+    questionType:    text('question_type').notNull(),
+    // 'meaning_recall' | 'kunyomi_voice' | 'onyomi_voice' | 'onyomi_choice'
+    // | 'write_from_meaning' | 'vocab_context' | 'compound_reading'
+    correct:         boolean('correct').notNull(),
+    responseMs:      integer('response_ms'),
+    voiceTranscript: text('voice_transcript'),   // raw speech recogniser output
+    normalizedInput: text('normalized_input'),   // after wanakana normalisation
+    quality:         smallint('quality'),         // SM-2 0–5, fed back to SRS
+    createdAt:       timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    sessionResultIdx: index('test_result_session_idx').on(t.testSessionId),
+    userResultIdx:    index('test_result_user_idx').on(t.userId, t.createdAt),
+    kanjiResultIdx:   index('test_result_kanji_idx').on(t.kanjiId),
+  })
+)
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const kanjiRelations = relations(kanji, ({ many }) => ({
@@ -281,6 +353,7 @@ export const kanjiRelations = relations(kanji, ({ many }) => ({
   reviewLogs: many(reviewLogs),
   writingAttempts: many(writingAttempts),
   voiceAttempts: many(voiceAttempts),
+  testResults: many(testResults),
 }))
 
 export const userProfilesRelations = relations(userProfiles, ({ many }) => ({
@@ -292,6 +365,8 @@ export const userProfilesRelations = relations(userProfiles, ({ many }) => ({
   interventions: many(interventions),
   writingAttempts: many(writingAttempts),
   voiceAttempts: many(voiceAttempts),
+  testSessions: many(testSessions),
+  testResults: many(testResults),
 }))
 
 export const userKanjiProgressRelations = relations(userKanjiProgress, ({ one }) => ({
@@ -321,4 +396,15 @@ export const dailyStatsRelations = relations(dailyStats, ({ one }) => ({
 
 export const interventionsRelations = relations(interventions, ({ one }) => ({
   user: one(userProfiles, { fields: [interventions.userId], references: [userProfiles.id] }),
+}))
+
+export const testSessionsRelations = relations(testSessions, ({ one, many }) => ({
+  user: one(userProfiles, { fields: [testSessions.userId], references: [userProfiles.id] }),
+  results: many(testResults),
+}))
+
+export const testResultsRelations = relations(testResults, ({ one }) => ({
+  session: one(testSessions, { fields: [testResults.testSessionId], references: [testSessions.id] }),
+  user: one(userProfiles, { fields: [testResults.userId], references: [userProfiles.id] }),
+  kanji: one(kanji, { fields: [testResults.kanjiId], references: [kanji.id] }),
 }))
