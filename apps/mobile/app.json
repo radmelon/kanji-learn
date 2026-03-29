@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kanjilearn.app"
+      "bundleIdentifier": "com.rdennis.kanjilearn2"
     },
     "android": {
       "adaptiveIcon": {

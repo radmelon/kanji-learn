@@ -16,4 +16,7 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ]
 
+// pnpm uses symlinks into a content-addressable store; Metro must follow them
+config.resolver.unstable_enableSymlinks = true
+
 module.exports = config
