@@ -11,6 +11,7 @@ import { mnemonicRoutes } from './routes/mnemonics.js'
 import { analyticsRoutes } from './routes/analytics.js'
 import { userRoutes } from './routes/user.js'
 import { interventionRoutes } from './routes/interventions.js'
+import { kanjiRoutes } from './routes/kanji.js'
 
 export async function buildServer() {
   const server = Fastify({
@@ -54,6 +55,7 @@ export async function buildServer() {
   await server.register(mnemonicRoutes, { prefix: '/v1/mnemonics' })
   await server.register(analyticsRoutes, { prefix: '/v1/analytics' })
   await server.register(interventionRoutes, { prefix: '/v1' })
+  await server.register(kanjiRoutes, { prefix: '/v1/kanji' })
 
   return server
 }

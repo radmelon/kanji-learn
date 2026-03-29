@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { SrsService } from '../services/srs.service.js'
 import { InterventionService } from '../services/intervention.service.js'
 import { AnalyticsService } from '../services/analytics.service.js'
+import { evaluateReading } from '../services/reading-eval.service.js'
 import { voiceAttempts, writingAttempts } from '@kanji-learn/db'
 
 const reviewResultSchema = z.object({
@@ -83,13 +84,36 @@ export async function reviewRoutes(server: FastifyInstance) {
     }
   )
 
-  // POST /v1/review/voice — log a voice attempt
+  // GET /v1/review/writing-queue?limit=8
+  server.get<{ Querystring: { limit?: string } }>(
+    '/writing-queue',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const limit = Math.min(Number(req.query.limit ?? 8), 20)
+      const items = await srs.getWritingQueue(req.userId!, limit)
+      return reply.send({ ok: true, data: items })
+    }
+  )
+
+  // GET /v1/review/reading-queue?limit=8
+  server.get<{ Querystring: { limit?: string } }>(
+    '/reading-queue',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const limit = Math.min(Number(req.query.limit ?? 8), 20)
+      const items = await srs.getReadingQueue(req.userId!, limit)
+      return reply.send({ ok: true, data: items })
+    }
+  )
+
+  // POST /v1/review/voice — evaluate a spoken reading and log the attempt
+  // The server runs wanakana normalisation + Levenshtein so the mobile
+  // doesn't need to bundle the evaluation logic.
   const voiceSchema = z.object({
-    kanjiId: z.number().int().positive(),
-    transcript: z.string(),
-    expected: z.string(),
-    distance: z.number().int().nonnegative(),
-    passed: z.boolean(),
+    kanjiId:        z.number().int().positive(),
+    transcript:     z.string(),
+    correctReadings: z.array(z.string()).min(1),
+    strict:         z.boolean().optional().default(false),
   })
 
   server.post('/voice', { preHandler: [server.authenticate] }, async (req, reply) => {
@@ -97,8 +121,28 @@ export async function reviewRoutes(server: FastifyInstance) {
     if (!body.success) {
       return reply.code(400).send({ ok: false, error: 'Validation error', code: 'VALIDATION_ERROR' })
     }
-    await server.db.insert(voiceAttempts).values({ userId: req.userId!, ...body.data })
-    return reply.code(201).send({ ok: true })
+
+    const { kanjiId, transcript, correctReadings, strict } = body.data
+
+    // Evaluate server-side (wanakana + Levenshtein)
+    const result = evaluateReading(transcript, correctReadings, strict)
+
+    // Compute integer Levenshtein distance for the log column
+    const distance = Math.abs(
+      result.normalizedSpoken.length - result.closestCorrect.length
+    )
+
+    // Log attempt
+    await server.db.insert(voiceAttempts).values({
+      userId:     req.userId!,
+      kanjiId,
+      transcript,
+      expected:   result.closestCorrect,
+      distance,
+      passed:     result.correct,
+    })
+
+    return reply.code(201).send({ ok: true, data: result })
   })
 
   // POST /v1/review/writing — log a writing attempt

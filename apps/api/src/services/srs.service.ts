@@ -1,4 +1,4 @@
-import { and, eq, lte, isNull, or, asc, sql } from 'drizzle-orm'
+import { and, eq, lte, isNull, or, asc, desc, gt, sql } from 'drizzle-orm'
 import { userKanjiProgress, kanji, reviewSessions, reviewLogs, userProfiles } from '@kanji-learn/db'
 import { calculateNextReview, createNewCard } from '@kanji-learn/shared'
 import type { Db } from '@kanji-learn/db'
@@ -267,6 +267,64 @@ export class SrsService {
     if (newStatus === 'remembered' && current < 3) return 3
     if (newStatus === 'burned' && current < 4) return 4
     return current
+  }
+
+  // ── Get writing practice queue ─────────────────────────────────────────────
+  // Returns kanji the user has already studied (repetitions > 0), most recent first.
+
+  async getWritingQueue(userId: string, limit: number) {
+    const rows = await this.db
+      .select({
+        kanjiId: userKanjiProgress.kanjiId,
+        character: kanji.character,
+        meanings: kanji.meanings,
+        jlptLevel: kanji.jlptLevel,
+        strokeCount: kanji.strokeCount,
+        status: userKanjiProgress.status,
+        lastReviewedAt: userKanjiProgress.lastReviewedAt,
+      })
+      .from(userKanjiProgress)
+      .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
+      .where(
+        and(
+          eq(userKanjiProgress.userId, userId),
+          gt(userKanjiProgress.repetitions, 0)
+        )
+      )
+      .orderBy(desc(userKanjiProgress.lastReviewedAt))
+      .limit(limit)
+
+    return rows
+  }
+
+  // ── Get reading practice queue ──────────────────────────────────────────────
+  // Returns kanji with at least one reading, most recently reviewed first.
+
+  async getReadingQueue(userId: string, limit: number) {
+    const rows = await this.db
+      .select({
+        kanjiId: userKanjiProgress.kanjiId,
+        character: kanji.character,
+        meanings: kanji.meanings,
+        jlptLevel: kanji.jlptLevel,
+        kunReadings: kanji.kunReadings,
+        onReadings: kanji.onReadings,
+        status: userKanjiProgress.status,
+        lastReviewedAt: userKanjiProgress.lastReviewedAt,
+      })
+      .from(userKanjiProgress)
+      .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
+      .where(
+        and(
+          eq(userKanjiProgress.userId, userId),
+          gt(userKanjiProgress.repetitions, 0)
+        )
+      )
+      .orderBy(desc(userKanjiProgress.lastReviewedAt))
+      .limit(limit)
+
+    // Only include kanji that have at least one reading to practice
+    return rows.filter((r) => r.kunReadings.length > 0 || r.onReadings.length > 0)
   }
 
   // ── Get user's current status counts ───────────────────────────────────────
