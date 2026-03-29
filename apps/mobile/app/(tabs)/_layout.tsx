@@ -53,6 +53,20 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="writing"
+        options={{
+          title: 'Write',
+          tabBarIcon: ({ focused }) => <TabIcon name="pencil" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="voice"
+        options={{
+          title: 'Speak',
+          tabBarIcon: ({ focused }) => <TabIcon name="mic" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="progress"
         options={{
           title: 'Progress',

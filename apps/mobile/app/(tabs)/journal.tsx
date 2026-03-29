@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useMnemonics, useRefreshDue } from '../../src/hooks/useMnemonics'
+import { api } from '../../src/lib/api'
 import { MnemonicCard } from '../../src/components/mnemonics/MnemonicCard'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { Mnemonic } from '../../src/hooks/useMnemonics'
@@ -16,6 +17,8 @@ import type { Mnemonic } from '../../src/hooks/useMnemonics'
 export default function Journal() {
   const [selectedKanjiId, setSelectedKanjiId] = useState<number | null>(null)
   const [kanjiSearch, setKanjiSearch] = useState('')
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [composeVisible, setComposeVisible] = useState(false)
   const [composeText, setComposeText] = useState('')
   const [isComposing, setIsComposing] = useState(false)
@@ -95,17 +98,40 @@ export default function Journal() {
             placeholderTextColor={colors.textMuted}
             value={kanjiSearch}
             onChangeText={setKanjiSearch}
-            onSubmitEditing={() => {
-              const id = parseInt(kanjiSearch)
-              if (!isNaN(id)) setSelectedKanjiId(id)
+            onSubmitEditing={async () => {
+              const trimmed = kanjiSearch.trim()
+              if (!trimmed) return
+              setSearchError(null)
+
+              // Numeric ID — use directly
+              const asNumber = parseInt(trimmed)
+              if (!isNaN(asNumber)) {
+                setSelectedKanjiId(asNumber)
+                return
+              }
+
+              // Kanji character — look it up
+              setIsSearching(true)
+              try {
+                const result = await api.get<{ id: number; character: string }>(
+                  `/v1/kanji/lookup?character=${encodeURIComponent(trimmed)}`
+                )
+                setSelectedKanjiId(result.id)
+              } catch {
+                setSearchError(`"${trimmed}" not found`)
+              } finally {
+                setIsSearching(false)
+              }
             }}
             returnKeyType="search"
           />
-          {kanjiSearch.length > 0 && (
-            <TouchableOpacity onPress={() => { setKanjiSearch(''); setSelectedKanjiId(null) }}>
+          {isSearching ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : kanjiSearch.length > 0 ? (
+            <TouchableOpacity onPress={() => { setKanjiSearch(''); setSelectedKanjiId(null); setSearchError(null) }}>
               <Ionicons name="close-circle" size={16} color={colors.textMuted} />
             </TouchableOpacity>
-          )}
+          ) : null}
         </View>
 
         {selectedKanjiId && (
@@ -117,6 +143,11 @@ export default function Journal() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Search error */}
+      {searchError && (
+        <Text style={styles.searchError}>{searchError}</Text>
+      )}
 
       {/* Generate buttons (visible when kanji selected) */}
       {selectedKanjiId && (
@@ -241,6 +272,7 @@ const styles = StyleSheet.create({
   emptyTitle: { ...typography.h3, color: colors.textSecondary },
   emptySubtitle: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.xl },
   disabled: { opacity: 0.4 },
+  searchError: { ...typography.bodySmall, color: colors.error ?? '#ef4444', paddingHorizontal: spacing.md, marginTop: -spacing.xs },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: colors.bgCard, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.xl, gap: spacing.md },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

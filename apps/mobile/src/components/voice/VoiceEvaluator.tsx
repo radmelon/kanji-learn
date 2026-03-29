@@ -1,31 +1,57 @@
-import { useState, useCallback, useEffect } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
-import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition'
-import { evaluateReading } from '../../lib/levenshtein'
 import { api } from '../../lib/api'
 import { colors, spacing, radius, typography } from '../../theme'
 
+// ─── Safe native module loading ───────────────────────────────────────────────
+// expo-speech-recognition calls requireNativeModule at import time, which
+// throws in Expo Go. We use require() inside a try/catch so the rest of the
+// app keeps working, and surface a dev-build prompt instead.
+
+type SpeechMod = typeof import('expo-speech-recognition')
+
+let _mod: SpeechMod | null = null
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  _mod = require('expo-speech-recognition') as SpeechMod
+} catch {
+  _mod = null
+}
+
+const SPEECH_AVAILABLE = _mod !== null
+
+// Always-callable stubs — React rules require hooks to be called on every
+// render regardless of availability. When _mod is null these are no-ops.
+const _useSpeechRecognitionEvent: SpeechMod['useSpeechRecognitionEvent'] =
+  _mod?.useSpeechRecognitionEvent ?? (() => {}) as SpeechMod['useSpeechRecognitionEvent']
+
+const _SpeechRecognitionModule = _mod?.ExpoSpeechRecognitionModule ?? null
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Phase = 'idle' | 'listening' | 'result'
+type Phase = 'idle' | 'listening' | 'evaluating' | 'result'
 
 interface EvalResult {
-  transcript: string
-  normalizedTranscript: string
-  normalizedExpected: string
-  distance: number
-  passed: boolean
+  correct:         boolean
+  quality:         number   // SM-2 0–5
+  feedback:        string
+  normalizedSpoken: string
+  closestCorrect:  string
 }
 
 interface Props {
   kanjiId: number
   character: string
-  /** Expected reading — kun or on yomi, e.g. 'みず' or 'すい' */
-  expectedReading: string
+  /** All accepted readings in hiragana, e.g. ['みず'] or ['すい','みず'] */
+  correctReadings: string[]
+  /** Label shown in the prompt, e.g. 'kun'yomi' or 'reading' */
   readingLabel?: string
+  /** Called when server returns an evaluation result */
   onResult?: (result: EvalResult) => void
+  /** Whether to use strict mode (no near-matches) — for checkpoint tests */
+  strict?: boolean
 }
 
 // ─── Voice Evaluator ──────────────────────────────────────────────────────────
@@ -33,20 +59,23 @@ interface Props {
 export function VoiceEvaluator({
   kanjiId,
   character,
-  expectedReading,
+  correctReadings,
   readingLabel = 'reading',
   onResult,
+  strict = false,
 }: Props) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [result, setResult] = useState<EvalResult | null>(null)
   const [transcript, setTranscript] = useState('')
+  const transcriptRef = useRef('')          // always-current mirror of transcript state
   const [permissionGranted, setPermissionGranted] = useState(false)
   const [pulseAnim] = useState(new Animated.Value(1))
 
-  // ── Permissions ────────────────────────────────────────────────────────────
+  // ── Permissions (skipped when module is unavailable) ───────────────────────
 
   useEffect(() => {
-    ExpoSpeechRecognitionModule.requestPermissionsAsync().then(({ granted }) => {
+    if (!_SpeechRecognitionModule) return
+    _SpeechRecognitionModule.requestPermissionsAsync().then(({ granted }) => {
       setPermissionGranted(granted)
     })
   }, [])
@@ -67,63 +96,70 @@ export function VoiceEvaluator({
   }, [phase])
 
   // ── Speech recognition events ─────────────────────────────────────────────
+  // These hooks MUST be called unconditionally. When _mod is null they are
+  // no-ops, so they satisfy React's rules-of-hooks without crashing.
 
-  useSpeechRecognitionEvent('result', (event) => {
+  _useSpeechRecognitionEvent('result', (event) => {
     const text = event.results?.[0]?.transcript ?? ''
+    transcriptRef.current = text
     setTranscript(text)
   })
 
-  useSpeechRecognitionEvent('end', async () => {
-    if (!transcript) {
+  _useSpeechRecognitionEvent('end', async () => {
+    const currentTranscript = transcriptRef.current
+    if (!currentTranscript) {
       setPhase('idle')
       return
     }
 
-    const eval_ = evaluateReading(transcript, expectedReading)
-    setResult(eval_)
-    setPhase('result')
+    // Show spinner while server evaluates
+    setPhase('evaluating')
 
-    Haptics.notificationAsync(
-      eval_.passed
-        ? Haptics.NotificationFeedbackType.Success
-        : Haptics.NotificationFeedbackType.Error
-    )
-
-    // Log to API (non-blocking)
     try {
-      await api.post('/v1/review/voice', {
+      const eval_ = await api.post<EvalResult>('/v1/review/voice', {
         kanjiId,
-        transcript,
-        expected: expectedReading,
-        distance: eval_.distance,
-        passed: eval_.passed,
+        transcript: currentTranscript,
+        correctReadings,
+        strict,
       })
-    } catch {
-      // non-blocking
-    }
+      setResult(eval_)
+      setPhase('result')
 
-    onResult?.(eval_)
+      Haptics.notificationAsync(
+        eval_.correct
+          ? Haptics.NotificationFeedbackType.Success
+          : Haptics.NotificationFeedbackType.Error
+      )
+
+      onResult?.(eval_)
+    } catch {
+      // Network error — fall back to idle so user can retry
+      setPhase('idle')
+    }
   })
 
-  useSpeechRecognitionEvent('error', () => {
+  _useSpeechRecognitionEvent('error', () => {
     setPhase('idle')
   })
 
   // ── Start / Stop ──────────────────────────────────────────────────────────
 
   const startListening = useCallback(async () => {
+    if (!_SpeechRecognitionModule) return
+
     if (!permissionGranted) {
-      const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync()
+      const { granted } = await _SpeechRecognitionModule.requestPermissionsAsync()
       if (!granted) return
       setPermissionGranted(true)
     }
 
     setTranscript('')
+    transcriptRef.current = ''
     setResult(null)
     setPhase('listening')
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
 
-    ExpoSpeechRecognitionModule.start({
+    _SpeechRecognitionModule.start({
       lang: 'ja-JP',
       interimResults: true,
       maxAlternatives: 1,
@@ -131,7 +167,7 @@ export function VoiceEvaluator({
   }, [permissionGranted])
 
   const stopListening = useCallback(() => {
-    ExpoSpeechRecognitionModule.stop()
+    _SpeechRecognitionModule?.stop()
     setPhase('idle')
   }, [])
 
@@ -139,6 +175,29 @@ export function VoiceEvaluator({
     setResult(null)
     setPhase('idle')
   }, [])
+
+  // ── Dev-build required banner ─────────────────────────────────────────────
+
+  if (!SPEECH_AVAILABLE) {
+    return (
+      <View style={styles.unavailable}>
+        <Ionicons name="construct-outline" size={40} color={colors.textMuted} />
+        <Text style={styles.unavailableTitle}>Dev build required</Text>
+        <Text style={styles.unavailableBody}>
+          Voice evaluation uses a native speech module that isn't available in Expo Go.
+          Run{' '}
+          <Text style={styles.code}>npx expo run:ios</Text>
+          {' '}or{' '}
+          <Text style={styles.code}>npx expo run:android</Text>
+          {' '}to build a local dev client.
+        </Text>
+        <View style={styles.characterPreview}>
+          <Text style={styles.character}>{character}</Text>
+          <Text style={styles.expectedHint}>{correctReadings[0]}</Text>
+        </View>
+      </View>
+    )
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -148,11 +207,11 @@ export function VoiceEvaluator({
       <View style={styles.prompt}>
         <Text style={styles.character}>{character}</Text>
         <Text style={styles.promptLabel}>Say the {readingLabel}</Text>
-        <Text style={styles.expectedHint}>({expectedReading})</Text>
+        <Text style={styles.expectedHint}>({correctReadings[0]})</Text>
       </View>
 
-      {/* Mic button */}
-      {phase !== 'result' && (
+      {/* Mic button — hidden while evaluating or showing result */}
+      {phase !== 'result' && phase !== 'evaluating' && (
         <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
           <TouchableOpacity
             style={[styles.micBtn, phase === 'listening' && styles.micBtnActive]}
@@ -178,24 +237,31 @@ export function VoiceEvaluator({
         </View>
       )}
 
+      {/* Evaluating spinner */}
+      {phase === 'evaluating' && (
+        <View style={styles.listeningRow}>
+          <Text style={styles.listeningText}>Evaluating…</Text>
+        </View>
+      )}
+
       {/* Result */}
       {phase === 'result' && result && (
         <View style={styles.resultCard}>
           <View style={styles.resultHeader}>
             <Ionicons
-              name={result.passed ? 'checkmark-circle' : 'close-circle'}
+              name={result.correct ? 'checkmark-circle' : 'close-circle'}
               size={28}
-              color={result.passed ? colors.success : colors.error}
+              color={result.correct ? colors.success : colors.error}
             />
-            <Text style={[styles.resultTitle, { color: result.passed ? colors.success : colors.error }]}>
-              {result.passed ? 'Correct!' : 'Not quite'}
+            <Text style={[styles.resultTitle, { color: result.correct ? colors.success : colors.error }]}>
+              {result.correct ? 'Correct!' : 'Not quite'}
             </Text>
           </View>
 
           <View style={styles.comparison}>
-            <ComparisonRow label="You said" value={result.normalizedTranscript} />
-            <ComparisonRow label="Expected" value={result.normalizedExpected} isExpected />
-            <ComparisonRow label="Distance" value={`${result.distance} edit${result.distance !== 1 ? 's' : ''}`} />
+            <ComparisonRow label="You said"  value={result.normalizedSpoken} />
+            <ComparisonRow label="Expected"  value={result.closestCorrect} isExpected />
+            <ComparisonRow label="Feedback"  value={result.feedback} />
           </View>
 
           <TouchableOpacity style={styles.retryBtn} onPress={retry}>
@@ -214,7 +280,7 @@ export function VoiceEvaluator({
   )
 }
 
-// ─── Sub-component ────────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ComparisonRow({ label, value, isExpected }: { label: string; value: string; isExpected?: boolean }) {
   return (
@@ -271,4 +337,26 @@ const styles = StyleSheet.create({
   },
   retryText: { ...typography.bodySmall, color: colors.accent },
   permissionWarning: { ...typography.caption, color: colors.warning, textAlign: 'center' },
+
+  // Dev-build unavailable state
+  unavailable: {
+    alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
+  unavailableTitle: { ...typography.h3, color: colors.textPrimary },
+  unavailableBody: {
+    ...typography.bodySmall, color: colors.textSecondary,
+    textAlign: 'center', lineHeight: 20,
+  },
+  code: {
+    fontFamily: 'Courier', color: colors.accent,
+    backgroundColor: colors.bgSurface,
+  },
+  characterPreview: {
+    alignItems: 'center', gap: 4,
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    width: '100%',
+  },
 })
