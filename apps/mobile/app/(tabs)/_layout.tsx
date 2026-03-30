@@ -73,6 +73,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="bar-chart" focused={focused} />,
         }}
       />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ focused }) => <TabIcon name="person" focused={focused} />,
+        }}
+      />
     </Tabs>
   )
 }

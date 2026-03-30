@@ -40,20 +40,11 @@ export default function Dashboard() {
             <Text style={styles.greeting}>Good {getTimeOfDay()},</Text>
             <Text style={styles.name}>{displayName}</Text>
           </View>
-          <View style={styles.headerRight}>
-            <View style={styles.streakBadge}>
-              <Ionicons name="flame" size={18} color={colors.accent} />
-              <Text style={styles.streakText}>
-                {summary?.streakDays ?? 0}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.infoBtn}
-              onPress={() => router.push('/about' as never)}
-              accessibilityLabel="About"
-            >
-              <Ionicons name="information-circle-outline" size={24} color={colors.textMuted} />
-            </TouchableOpacity>
+          <View style={styles.streakBadge}>
+            <Ionicons name="flame" size={18} color={colors.accent} />
+            <Text style={styles.streakText}>
+              {summary?.streakDays ?? 0}
+            </Text>
           </View>
         </View>
 
@@ -218,10 +209,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm },
   greeting: { ...typography.bodySmall, color: colors.textSecondary },
   name: { ...typography.h2, color: colors.textPrimary },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   streakBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.bgCard, paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border },
   streakText: { ...typography.h3, color: colors.accent },
-  infoBtn: { padding: 4 },
   studyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.primary, borderRadius: radius.lg, paddingVertical: spacing.md + 2, paddingHorizontal: spacing.lg },
   studyButtonText: { ...typography.h3, color: '#fff', flex: 1, textAlign: 'center' },
   statsRow: { flexDirection: 'row', gap: spacing.sm },
