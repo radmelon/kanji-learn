@@ -12,6 +12,7 @@ interface AnalyticsSummary {
     remembered: number
     burned: number
   }
+  jlptProgress: Record<string, number>  // level → seen count
   streakDays: number
   recentStats: DailyStats[]
   totalSeen: number

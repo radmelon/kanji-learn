@@ -65,7 +65,7 @@ export default function ProgressScreen() {
             {/* Overall SRS breakdown */}
             <Section title="Kanji Breakdown">
               <SrsStatusBar counts={summary.statusCounts} />
-              <JlptGrid counts={summary.statusCounts} />
+              <JlptGrid jlptProgress={summary.jlptProgress} />
             </Section>
 
             {/* Period selector + activity chart */}
@@ -237,19 +237,20 @@ const chartStyles = StyleSheet.create({
   legend: { flexDirection: 'row', gap: spacing.md },
 })
 
-function JlptGrid({ counts }: { counts: { burned: number; remembered: number; reviewing: number; learning: number; unseen: number } }) {
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
+function JlptGrid({ jlptProgress }: { jlptProgress: Record<string, number> }) {
   return (
     <View style={jlptStyles.grid}>
       {JLPT_LEVELS.map((level) => {
         const levelTotal = JLPT_KANJI_COUNTS[level]
+        const seen = jlptProgress[level] ?? 0
+        const pct = Math.min((seen / levelTotal) * 100, 100)
         return (
           <View key={level} style={jlptStyles.row}>
             <Text style={jlptStyles.level}>{level}</Text>
             <View style={jlptStyles.track}>
-              <View style={[jlptStyles.fill, { width: `${Math.min((counts.burned / levelTotal) * 100, 100)}%` }]} />
+              <View style={[jlptStyles.fill, { width: `${pct}%` }]} />
             </View>
-            <Text style={jlptStyles.count}>{levelTotal}</Text>
+            <Text style={jlptStyles.count}>{seen}/{levelTotal}</Text>
           </View>
         )
       })}
@@ -263,7 +264,7 @@ const jlptStyles = StyleSheet.create({
   level: { ...typography.caption, color: colors.textMuted, width: 24, fontWeight: '700' },
   track: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: colors.burned, borderRadius: radius.full },
-  count: { ...typography.caption, color: colors.textMuted, width: 32, textAlign: 'right' },
+  count: { ...typography.caption, color: colors.textMuted, width: 64, textAlign: 'right' },
 })
 
 function AccuracyRow({ label, value, isCount }: { label: string; value: number; isCount?: boolean }) {

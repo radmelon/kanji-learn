@@ -1,5 +1,5 @@
 import { and, eq, gte, desc, sql, lte } from 'drizzle-orm'
-import { dailyStats, reviewLogs, userKanjiProgress } from '@kanji-learn/db'
+import { dailyStats, reviewLogs, userKanjiProgress, kanji } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import type { DailyStats, VelocityMetrics } from '@kanji-learn/shared'
 import {
@@ -116,13 +116,15 @@ export class AnalyticsService {
   // ── Full summary for dashboard ──────────────────────────────────────────────
 
   async getSummary(userId: string) {
-    const [velocity, accuracy, statusCounts, streakDays, recentStats] = await Promise.all([
-      this.getVelocityMetrics(userId),
-      this.getAccuracyRate(userId),
-      this.getStatusCounts(userId),
-      this.getStreakDays(userId),
-      this.getDailyStats(userId, 7),
-    ])
+    const [velocity, accuracy, statusCounts, streakDays, recentStats, jlptProgress] =
+      await Promise.all([
+        this.getVelocityMetrics(userId),
+        this.getAccuracyRate(userId),
+        this.getStatusCounts(userId),
+        this.getStreakDays(userId),
+        this.getDailyStats(userId, 90), // fetch 90d so chart period selector works client-side
+        this.getJlptProgress(userId),
+      ])
 
     const totalSeen = TOTAL_JOUYOU_KANJI - statusCounts.unseen
     const completionPct = Math.round((statusCounts.burned / TOTAL_JOUYOU_KANJI) * 100)
@@ -131,11 +133,28 @@ export class AnalyticsService {
       velocity,
       accuracy,
       statusCounts,
+      jlptProgress,
       streakDays,
       recentStats,
       totalSeen,
       completionPct,
     }
+  }
+
+  // ── Per-JLPT-level seen counts ─────────────────────────────────────────────
+
+  async getJlptProgress(userId: string): Promise<Record<string, number>> {
+    const rows = await this.db
+      .select({
+        jlptLevel: kanji.jlptLevel,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(userKanjiProgress)
+      .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
+      .where(eq(userKanjiProgress.userId, userId))
+      .groupBy(kanji.jlptLevel)
+
+    return Object.fromEntries(rows.map((r) => [r.jlptLevel, Number(r.count)]))
   }
 
   // ── Streak: consecutive days with at least 1 review ────────────────────────

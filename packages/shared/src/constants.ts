@@ -3,14 +3,14 @@
 export const JLPT_LEVELS = ['N5', 'N4', 'N3', 'N2', 'N1'] as const
 
 export const JLPT_KANJI_COUNTS = {
-  N5: 80,
+  N5: 79,
   N4: 166,
-  N3: 367,
-  N2: 367,
-  N1: 1136,
+  N3: 370,
+  N2: 371,
+  N1: 1308,
 } as const
 
-export const TOTAL_JOUYOU_KANJI = 2136
+export const TOTAL_JOUYOU_KANJI = 2294
 
 // ─── SRS ──────────────────────────────────────────────────────────────────────
 
