@@ -189,6 +189,7 @@ export const mnemonics = pgTable(
     type: mnemonicTypeEnum('type').notNull(), // 'system' | 'user'
     storyText: text('story_text').notNull(),
     imagePrompt: text('image_prompt'),
+    imageUrl: text('image_url'),
     refreshPromptAt: timestamp('refresh_prompt_at', { withTimezone: true }), // 30-day nudge
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

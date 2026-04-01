@@ -25,7 +25,8 @@
           "_react-native-packager._tcp"
         ],
         "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
-        "NSMicrophoneUsageDescription": "Allow Kanji Learn to use the microphone for reading evaluation."
+        "NSMicrophoneUsageDescription": "Allow Kanji Learn to use the microphone for reading evaluation.",
+        "NSPhotoLibraryUsageDescription": "Allow Kanji Learn to attach photos to your mnemonics."
       }
     },
     "android": {
@@ -53,6 +54,12 @@
           "icon": "./assets/images/icon.png",
           "color": "#6C63FF",
           "sounds": []
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Kanji Learn to attach photos to your mnemonics."
         }
       ]
     ],

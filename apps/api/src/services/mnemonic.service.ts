@@ -13,6 +13,7 @@ export interface MnemonicRecord {
   type: 'system' | 'user'
   storyText: string
   imagePrompt: string | null
+  imageUrl: string | null
   refreshPromptAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -114,11 +115,16 @@ export class MnemonicService {
   async updateUserMnemonic(
     mnemonicId: string,
     userId: string,
-    storyText: string
+    storyText?: string,
+    imageUrl?: string | null,
   ): Promise<MnemonicRecord | null> {
+    const patch: Partial<typeof mnemonics.$inferInsert> = { updatedAt: new Date() }
+    if (storyText !== undefined) { patch.storyText = storyText; patch.refreshPromptAt = null }
+    if (imageUrl !== undefined) patch.imageUrl = imageUrl
+
     const [updated] = await this.db
       .update(mnemonics)
-      .set({ storyText, updatedAt: new Date(), refreshPromptAt: null })
+      .set(patch)
       .where(and(eq(mnemonics.id, mnemonicId), eq(mnemonics.userId, userId)))
       .returning()
 
@@ -280,6 +286,7 @@ IMAGE: <image prompt here>`
       type: row.type,
       storyText: row.storyText,
       imagePrompt: row.imagePrompt,
+      imageUrl: row.imageUrl,
       refreshPromptAt: row.refreshPromptAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

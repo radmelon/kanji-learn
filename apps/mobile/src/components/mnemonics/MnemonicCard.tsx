@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { View, Text, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native'
+import { View, Text, TouchableOpacity, TextInput, StyleSheet, Alert, Image } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, typography } from '../../theme'
 import type { Mnemonic } from '../../hooks/useMnemonics'
@@ -7,6 +8,7 @@ import type { Mnemonic } from '../../hooks/useMnemonics'
 interface Props {
   mnemonic: Mnemonic
   onUpdate?: (id: string, text: string) => Promise<void>
+  onUpdatePhoto?: (id: string, imageUrl: string | null) => Promise<void>
   onDelete?: (id: string) => Promise<void>
   onDismissRefresh?: (id: string) => Promise<void>
   showRefreshPrompt?: boolean
@@ -15,6 +17,7 @@ interface Props {
 export function MnemonicCard({
   mnemonic,
   onUpdate,
+  onUpdatePhoto,
   onDelete,
   onDismissRefresh,
   showRefreshPrompt,
@@ -22,6 +25,39 @@ export function MnemonicCard({
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(mnemonic.storyText)
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+
+  const handlePickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow photo library access to attach images.')
+      return
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: true,
+    })
+    if (result.canceled || !result.assets[0].base64) return
+    setIsUploadingPhoto(true)
+    try {
+      const dataUrl = `data:image/jpeg;base64,${result.assets[0].base64}`
+      await onUpdatePhoto?.(mnemonic.id, dataUrl)
+    } catch {
+      Alert.alert('Error', 'Failed to save photo.')
+    } finally {
+      setIsUploadingPhoto(false)
+    }
+  }
+
+  const handleRemovePhoto = () => {
+    Alert.alert('Remove photo?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => onUpdatePhoto?.(mnemonic.id, null) },
+    ])
+  }
 
   const isSystem = mnemonic.type === 'system'
   const needsRefresh =
@@ -78,6 +114,29 @@ export function MnemonicCard({
           </View>
         )}
       </View>
+
+      {/* Photo */}
+      {mnemonic.imageUrl ? (
+        <View style={styles.photoContainer}>
+          <Image source={{ uri: mnemonic.imageUrl }} style={styles.photo} resizeMode="cover" />
+          {!isSystem && (
+            <TouchableOpacity style={styles.removePhotoBtn} onPress={handleRemovePhoto}>
+              <Ionicons name="close-circle" size={22} color={colors.error} />
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : !isSystem && onUpdatePhoto ? (
+        <TouchableOpacity
+          style={styles.addPhotoBtn}
+          onPress={handlePickPhoto}
+          disabled={isUploadingPhoto}
+        >
+          <Ionicons name="image-outline" size={16} color={colors.textMuted} />
+          <Text style={styles.addPhotoText}>
+            {isUploadingPhoto ? 'Saving…' : 'Add photo'}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* Story text */}
       {isEditing ? (
@@ -194,4 +253,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
   },
   refreshBtnText: { ...typography.caption, color: colors.warning, fontWeight: '600' },
+  photoContainer: { position: 'relative', borderRadius: radius.md, overflow: 'hidden' },
+  photo: { width: '100%', height: 180, borderRadius: radius.md },
+  removePhotoBtn: { position: 'absolute', top: spacing.xs, right: spacing.xs },
+  addPhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    alignSelf: 'flex-start',
+  },
+  addPhotoText: { ...typography.caption, color: colors.textMuted },
 })

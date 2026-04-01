@@ -8,6 +8,7 @@ export interface Mnemonic {
   type: 'system' | 'user'
   storyText: string
   imagePrompt: string | null
+  imageUrl: string | null
   refreshPromptAt: string | null
   createdAt: string
   updatedAt: string
@@ -52,6 +53,11 @@ export function useMnemonics(kanjiId: number) {
     setMnemonics((prev) => prev.map((m) => (m.id === mnemonicId ? data : m)))
   }, [])
 
+  const updatePhoto = useCallback(async (mnemonicId: string, imageUrl: string | null) => {
+    const data = await api.patch<Mnemonic>(`/v1/mnemonics/${mnemonicId}`, { imageUrl })
+    setMnemonics((prev) => prev.map((m) => (m.id === mnemonicId ? data : m)))
+  }, [])
+
   const remove = useCallback(async (mnemonicId: string) => {
     await api.delete(`/v1/mnemonics/${mnemonicId}`)
     setMnemonics((prev) => prev.filter((m) => m.id !== mnemonicId))
@@ -64,7 +70,7 @@ export function useMnemonics(kanjiId: number) {
     )
   }, [])
 
-  return { mnemonics, isLoading, isGenerating, load, generate, save, update, remove, dismissRefresh }
+  return { mnemonics, isLoading, isGenerating, load, generate, save, update, updatePhoto, remove, dismissRefresh }
 }
 
 export function useRefreshDue() {

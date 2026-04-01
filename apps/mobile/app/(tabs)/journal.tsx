@@ -34,6 +34,7 @@ export default function Journal() {
     generate,
     save,
     update,
+    updatePhoto,
     remove,
     dismissRefresh,
   } = useMnemonics(selectedKanjiId ?? 0)
@@ -205,6 +206,7 @@ export default function Journal() {
             mnemonic={item}
             showRefreshPrompt
             onUpdate={update}
+            onUpdatePhoto={updatePhoto}
             onDelete={remove}
             onDismissRefresh={dismissRefresh}
           />

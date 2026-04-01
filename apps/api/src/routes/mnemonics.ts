@@ -6,6 +6,11 @@ const saveSchema = z.object({
   storyText: z.string().min(10).max(2000),
 })
 
+const patchSchema = z.object({
+  storyText: z.string().min(10).max(2000).optional(),
+  imageUrl: z.string().max(2_000_000).nullable().optional(), // base64 data URL
+})
+
 const generateSchema = z.object({
   model: z.enum(['haiku', 'sonnet']).default('haiku'),
 })
@@ -64,17 +69,22 @@ export async function mnemonicRoutes(server: FastifyInstance) {
     }
   )
 
-  // PATCH /v1/mnemonics/:id — update user's mnemonic
+  // PATCH /v1/mnemonics/:id — update user's mnemonic (storyText and/or imageUrl)
   server.patch<{ Params: { id: string } }>(
     '/:id',
     { preHandler: [server.authenticate] },
     async (req, reply) => {
-      const body = saveSchema.safeParse(req.body)
+      const body = patchSchema.safeParse(req.body)
       if (!body.success) {
         return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
       }
 
-      const updated = await service.updateUserMnemonic(req.params.id, req.userId!, body.data.storyText)
+      const updated = await service.updateUserMnemonic(
+        req.params.id,
+        req.userId!,
+        body.data.storyText,
+        body.data.imageUrl,
+      )
       if (!updated) {
         return reply.code(404).send({ ok: false, error: 'Mnemonic not found', code: 'NOT_FOUND' })
       }
