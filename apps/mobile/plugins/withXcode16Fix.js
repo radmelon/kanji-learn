@@ -30,17 +30,20 @@ const PODFILE_POST_INSTALL = `
           -Wno-incompatible-pointer-types
         ].join(' ')
         config.build_settings['OTHER_CFLAGS']         = "\$(inherited) \#{cflags}"
-        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "\$(inherited) \#{cflags} -DFMT_USE_CONSTEVAL=0"
+        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "\$(inherited) \#{cflags} -DFMT_USE_CONSTEVAL=0 -DFMT_CONSTEVAL="
       end
     end
-    fmt_base = Dir.glob("\#{installer.sandbox.root}/**/fmt/base.h").first
-    if fmt_base && File.exist?(fmt_base)
-      content = File.read(fmt_base)
+    # Patch FMT_CONSTEVAL in both base.h (fmt 10+) and core.h (fmt 9)
+    %w[base.h core.h].each do |header|
+      fmt_header = Dir.glob("\#{installer.sandbox.root}/**/fmt/\#{header}").first
+      next unless fmt_header && File.exist?(fmt_header)
+      content = File.read(fmt_header)
       if content.include?('#  define FMT_CONSTEVAL consteval')
-        File.write(fmt_base, content.sub(
+        File.write(fmt_header, content.sub(
           '#  define FMT_CONSTEVAL consteval',
           '#  define FMT_CONSTEVAL constexpr  /* patched: Xcode 16 */'
         ))
+        puts "withXcode16Fix: patched FMT_CONSTEVAL in fmt/\#{header}"
       end
     end
 `
