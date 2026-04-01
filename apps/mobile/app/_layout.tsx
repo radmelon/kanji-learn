@@ -4,12 +4,15 @@ import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useAuthStore } from '../src/stores/auth.store'
+import { usePushNotifications } from '../src/hooks/usePushNotifications'
 import { colors } from '../src/theme'
 
 export default function RootLayout() {
   const { isInitialized, session, initialize } = useAuthStore()
   const router = useRouter()
   const segments = useSegments()
+
+  usePushNotifications(!!session)
 
   useEffect(() => {
     initialize()

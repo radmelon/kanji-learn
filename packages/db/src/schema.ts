@@ -89,6 +89,7 @@ export const userProfiles = pgTable('user_profiles', {
   displayName: text('display_name'),
   dailyGoal: smallint('daily_goal').notNull().default(20),
   notificationsEnabled: boolean('notifications_enabled').notNull().default(true),
+  pushToken: text('push_token'),                                    // Expo push token
   timezone: text('timezone').notNull().default('UTC'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

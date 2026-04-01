@@ -30,8 +30,20 @@
         {
           "microphonePermission": "Allow Kanji Learn to use the microphone for reading evaluation."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#6C63FF",
+          "sounds": []
+        }
       ]
     ],
+    "notification": {
+      "icon": "./assets/images/icon.png",
+      "color": "#6C63FF"
+    },
     "experiments": {
       "typedRoutes": true
     },
