@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useReviewStore } from '../../src/stores/review.store'
 import { KanjiCard } from '../../src/components/study/KanjiCard'
+import { CompoundCard } from '../../src/components/study/CompoundCard'
 import { GradeButtons } from '../../src/components/study/GradeButtons'
 import { SessionComplete } from '../../src/components/study/SessionComplete'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -184,7 +185,11 @@ export default function StudySession() {
 
       {/* Card */}
       <View style={styles.cardArea}>
-        <KanjiCard item={currentItem} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
+        {currentItem.reviewType === 'compound' ? (
+          <CompoundCard item={currentItem} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
+        ) : (
+          <KanjiCard item={currentItem} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
+        )}
       </View>
 
       {/* Grade buttons (only after reveal) */}
