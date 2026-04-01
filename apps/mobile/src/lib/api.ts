@@ -19,10 +19,11 @@ class ApiClient {
   ): Promise<T> {
     const token = this.getToken()
 
+    const hasBody = options.body !== undefined
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
