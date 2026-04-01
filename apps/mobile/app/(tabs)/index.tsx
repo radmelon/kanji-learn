@@ -21,7 +21,7 @@ export default function Dashboard() {
   const { interventions, dismiss } = useInterventions()
 
   const handleStudy = useCallback(() => {
-    router.push('/study')
+    router.push('/(tabs)/study')
   }, [router])
 
   const displayName = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'Learner'
