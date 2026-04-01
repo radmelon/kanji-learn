@@ -40,6 +40,18 @@ export async function buildServer() {
 
   await server.register(authPlugin)
 
+  // Allow DELETE/GET requests that arrive with Content-Type: application/json
+  // but no body (React Native fetch sends the header unconditionally).
+  server.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string' },
+    (req, body, done) => {
+      if (!body || (body as string).length === 0) { done(null, {}); return }
+      try { done(null, JSON.parse(body as string)) }
+      catch (err) { done(err as Error, undefined) }
+    }
+  )
+
   // ── Error handler ─────────────────────────────────────────────────────────
 
   server.setErrorHandler(errorHandler)
