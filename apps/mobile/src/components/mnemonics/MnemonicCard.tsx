@@ -84,7 +84,17 @@ export function MnemonicCard({
   const handleDelete = () => {
     Alert.alert('Delete mnemonic?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => onDelete?.(mnemonic.id) },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await onDelete?.(mnemonic.id)
+          } catch {
+            Alert.alert('Error', 'Failed to delete mnemonic.')
+          }
+        },
+      },
     ])
   }
 
