@@ -24,6 +24,7 @@
       "package": "com.kanjilearn.app"
     },
     "plugins": [
+      "./plugins/withXcode16Fix",
       "expo-router",
       [
         "expo-speech-recognition",
