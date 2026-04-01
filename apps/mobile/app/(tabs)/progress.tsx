@@ -18,7 +18,7 @@ const PERIOD_DAYS: Record<Period, number> = { '7d': 7, '30d': 30, '90d': 90 }
 
 export default function ProgressScreen() {
   const { user } = useAuthStore()
-  const { summary, isLoading, refresh } = useAnalytics()
+  const { summary, isLoading, error, refresh } = useAnalytics()
   const [period, setPeriod] = useState<Period>('30d')
 
   const displayName = user?.user_metadata?.display_name ?? 'Learner'
@@ -38,6 +38,15 @@ export default function ProgressScreen() {
 
         {isLoading && !summary ? (
           <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: spacing.xxl }} />
+        ) : error ? (
+          <View style={styles.errorBox}>
+            <Ionicons name="cloud-offline-outline" size={40} color={colors.textMuted} />
+            <Text style={styles.errorText}>Could not load progress</Text>
+            <Text style={styles.errorSub}>{error}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={refresh}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
         ) : summary ? (
           <>
             {/* Streak + completion hero */}
@@ -317,4 +326,9 @@ const styles = StyleSheet.create({
   accuracyLabel: { ...typography.caption, color: colors.textMuted },
   accuracyDetails: { flex: 1, gap: spacing.xs },
   velocityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  errorBox: { alignItems: 'center', gap: spacing.md, marginTop: spacing.xxl, padding: spacing.xl },
+  errorText: { ...typography.h3, color: colors.textPrimary },
+  errorSub: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center' },
+  retryBtn: { backgroundColor: colors.primary, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, borderRadius: radius.lg },
+  retryText: { ...typography.body, color: '#fff', fontWeight: '600' },
 })

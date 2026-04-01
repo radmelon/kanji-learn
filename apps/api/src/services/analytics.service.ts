@@ -248,19 +248,17 @@ export class AnalyticsService {
       studyTimeMs: number
     }
   ): Promise<void> {
-    await this.db
-      .insert(dailyStats)
-      .values({ userId, date, ...delta })
-      .onConflictDoUpdate({
-        target: [dailyStats.userId, dailyStats.date],
-        set: {
-          reviewed: sql`daily_stats.reviewed + ${delta.reviewed}`,
-          correct: sql`daily_stats.correct + ${delta.correct}`,
-          newLearned: sql`daily_stats.new_learned + ${delta.newLearned}`,
-          burned: sql`daily_stats.burned + ${delta.burned}`,
-          studyTimeMs: sql`daily_stats.study_time_ms + ${delta.studyTimeMs}`,
-        },
-      })
+    // Use raw SQL to reliably target the unique index on (user_id, date)
+    await this.db.execute(sql`
+      INSERT INTO daily_stats (user_id, date, reviewed, correct, new_learned, burned, study_time_ms)
+      VALUES (${userId}, ${date}, ${delta.reviewed}, ${delta.correct}, ${delta.newLearned}, ${delta.burned}, ${delta.studyTimeMs})
+      ON CONFLICT (user_id, date) DO UPDATE SET
+        reviewed    = daily_stats.reviewed    + EXCLUDED.reviewed,
+        correct     = daily_stats.correct     + EXCLUDED.correct,
+        new_learned = daily_stats.new_learned + EXCLUDED.new_learned,
+        burned      = daily_stats.burned      + EXCLUDED.burned,
+        study_time_ms = daily_stats.study_time_ms + EXCLUDED.study_time_ms
+    `)
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────

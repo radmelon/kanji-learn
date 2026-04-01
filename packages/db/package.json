@@ -17,6 +17,7 @@
     "seed:kanji:fetch": "tsx src/seeds/seed-kanji-fetch.ts",
     "seed:kanjidic2": "tsx src/seeds/import-kanjidic2.ts",
     "seed:mnemonics": "tsx src/seeds/seed-mnemonics.ts",
+    "seed:vocab": "tsx src/seeds/enrich-vocab.ts",
     "seed": "pnpm seed:kanji && pnpm seed:kanjidic2 && pnpm seed:mnemonics"
   },
   "dependencies": {

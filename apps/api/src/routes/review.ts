@@ -70,13 +70,13 @@ export async function reviewRoutes(server: FastifyInstance) {
 
       // Upsert daily stats + run intervention checks async (don't block response)
       const today = new Date().toISOString().slice(0, 10)
-      void analytics.upsertDailyStats(req.userId!, today, {
+      analytics.upsertDailyStats(req.userId!, today, {
         reviewed: summary.totalItems,
         correct: summary.correctItems,
         newLearned: summary.newLearned,
         burned: summary.burned,
         studyTimeMs: summary.studyTimeMs,
-      })
+      }).catch((err) => server.log.error({ err }, 'upsertDailyStats failed'))
       void interventions.resolveAbsenceOnActivity(req.userId!)
       void interventions.runChecks(req.userId!)
 
