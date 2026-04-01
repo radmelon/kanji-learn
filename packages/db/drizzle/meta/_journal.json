@@ -15,6 +15,13 @@
       "when": 1774787362035,
       "tag": "0001_clumsy_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775019442529,
+      "tag": "0002_tan_puck",
+      "breakpoints": true
     }
   ]
 }

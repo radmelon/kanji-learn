@@ -7,7 +7,7 @@
  *   - ENABLE_USER_SCRIPT_SANDBOXING = NO (ip.txt write blocked by sandbox)
  *   - Warning suppression flags for ObjC/C++ pods
  */
-const { withDangerousMod, withXcodeProject } = require('@expo/config-plugins')
+const { withDangerousMod, withXcodeProject } = require('expo/config-plugins')
 const fs = require('fs')
 const path = require('path')
 

@@ -14,7 +14,15 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rdennis.kanjilearn2"
+      "bundleIdentifier": "com.rdennis.kanjilearn2",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "Allow Kanji Learn to connect to a local development server.",
+        "NSBonjourServices": ["_react-native-packager._tcp"]
+      }
     },
     "android": {
       "adaptiveIcon": {
