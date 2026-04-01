@@ -21,7 +21,11 @@
           "NSAllowsLocalNetworking": true
         },
         "NSLocalNetworkUsageDescription": "Allow Kanji Learn to connect to a local development server.",
-        "NSBonjourServices": ["_react-native-packager._tcp"]
+        "NSBonjourServices": [
+          "_react-native-packager._tcp"
+        ],
+        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
+        "NSMicrophoneUsageDescription": "Allow Kanji Learn to use the microphone for reading evaluation."
       }
     },
     "android": {
@@ -29,7 +33,10 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
       },
-      "package": "com.kanjilearn.app"
+      "package": "com.kanjilearn.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "./plugins/withXcode16Fix",
@@ -56,6 +63,13 @@
     "experiments": {
       "typedRoutes": true
     },
-    "newArchEnabled": false
+    "newArchEnabled": false,
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0c1f17c5-e267-44ce-84cb-3ad467d6f9fa"
+      }
+    },
+    "owner": "radmelon"
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
+import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import { api } from '../lib/api'
 
@@ -47,9 +48,12 @@ async function registerForPushNotifications(): Promise<string | null> {
   }
 
   // Get the Expo push token
-  const tokenData = await Notifications.getExpoPushTokenAsync({
-    projectId: 'kanji-learn', // matches app.json slug
-  })
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId
+  if (!projectId) {
+    console.warn('[Push] No EAS projectId found in app.json — skipping token registration')
+    return null
+  }
+  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId })
   return tokenData.data
 }
 
