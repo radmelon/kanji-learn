@@ -4,10 +4,10 @@
  * Applied automatically on every `expo prebuild`. Handles:
  *   - fmt consteval → constexpr (Apple clang 16 enforcement)
  *   - GCC_TREAT_WARNINGS_AS_ERRORS = NO (RN 0.81 warnings)
- *   - ENABLE_USER_SCRIPT_SANDBOXING = NO (ip.txt write)
+ *   - ENABLE_USER_SCRIPT_SANDBOXING = NO (ip.txt write blocked by sandbox)
  *   - Warning suppression flags for ObjC/C++ pods
  */
-const { withDangerousMod } = require('@expo/config-plugins')
+const { withDangerousMod, withXcodeProject } = require('@expo/config-plugins')
 const fs = require('fs')
 const path = require('path')
 
@@ -43,7 +43,8 @@ const PODFILE_POST_INSTALL = `
     end
 `
 
-module.exports = function withXcode16Fix(config) {
+// Patch Podfile: inject post_install block
+function withPodfileFix(config) {
   return withDangerousMod(config, [
     'ios',
     async (config) => {
@@ -51,11 +52,8 @@ module.exports = function withXcode16Fix(config) {
       if (!fs.existsSync(podfilePath)) return config
 
       let podfile = fs.readFileSync(podfilePath, 'utf8')
-
-      // Only inject if not already present
       if (podfile.includes('Xcode 16 compatibility fixes')) return config
 
-      // Insert our block right before the closing end of post_install
       podfile = podfile.replace(
         /(\s+react_native_post_install\([^)]+\)\s*\n\s*end\s*\nend)/,
         (match) => match.replace(
@@ -68,4 +66,30 @@ module.exports = function withXcode16Fix(config) {
       return config
     },
   ])
+}
+
+// Patch main xcodeproj: set ENABLE_USER_SCRIPT_SANDBOXING = NO on app target
+function withXcprojFix(config) {
+  return withXcodeProject(config, (config) => {
+    const project = config.modResults
+    const configurations = project.pbxXCBuildConfigurationSection()
+
+    Object.values(configurations).forEach((buildConfig) => {
+      if (typeof buildConfig !== 'object' || !buildConfig.buildSettings) return
+      const settings = buildConfig.buildSettings
+      // Only patch the app target configs (they have PRODUCT_NAME = KanjiLearn)
+      if (settings.PRODUCT_NAME === 'KanjiLearn' || settings.PRODUCT_NAME === '"KanjiLearn"') {
+        settings.ENABLE_USER_SCRIPT_SANDBOXING = 'NO'
+        settings.GCC_TREAT_WARNINGS_AS_ERRORS = 'NO'
+      }
+    })
+
+    return config
+  })
+}
+
+module.exports = function withXcode16Fix(config) {
+  config = withPodfileFix(config)
+  config = withXcprojFix(config)
+  return config
 }
