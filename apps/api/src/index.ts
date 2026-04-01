@@ -1,5 +1,10 @@
-// Load .env before any other module reads process.env (ESM-safe: dynamic import is not hoisted)
-await import('dotenv/config')
+// Load .env before any other module reads process.env.
+// Use an explicit path so it works regardless of what cwd is when the process starts.
+import { config as loadEnv } from 'dotenv'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+const __dirname = dirname(fileURLToPath(import.meta.url))
+loadEnv({ path: join(__dirname, '../../.env') })
 
 const { buildServer } = await import('./server.js')
 const { scheduleDailyReminders } = await import('./cron.js')
