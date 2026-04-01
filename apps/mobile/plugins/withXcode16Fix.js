@@ -6,6 +6,8 @@
  *   - GCC_TREAT_WARNINGS_AS_ERRORS = NO (RN 0.81 warnings)
  *   - ENABLE_USER_SCRIPT_SANDBOXING = NO (ip.txt write blocked by sandbox)
  *   - Warning suppression flags for ObjC/C++ pods
+ *   - AppDelegate bundleURL() reads ip.txt directly (bypasses isPackagerRunning
+ *     check that fails before iOS grants Local Network permission)
  */
 const { withDangerousMod, withXcodeProject } = require('expo/config-plugins')
 const fs = require('fs')
@@ -68,6 +70,45 @@ function withPodfileFix(config) {
   ])
 }
 
+// Patch AppDelegate.swift: read ip.txt directly in bundleURL() to bypass the
+// isPackagerRunning() check, which blocks before iOS grants Local Network permission.
+function withAppDelegateFix(config) {
+  return withDangerousMod(config, [
+    'ios',
+    async (config) => {
+      const appName = config.modRequest.projectName
+      const appDelegatePath = path.join(
+        config.modRequest.platformProjectRoot,
+        appName,
+        'AppDelegate.swift'
+      )
+      if (!fs.existsSync(appDelegatePath)) return config
+
+      let src = fs.readFileSync(appDelegatePath, 'utf8')
+      if (src.includes('ip.txt')) return config // already patched
+
+      src = src.replace(
+        /override func bundleURL\(\) -> URL\? \{[\s\S]*?#if DEBUG[\s\S]*?return RCTBundleURLProvider\.sharedSettings\(\)\.jsBundleURL\(forBundleRoot:.*?\)[\s\S]*?#else[\s\S]*?return Bundle\.main\.url\(forResource:.*?\)[\s\S]*?#endif[\s\S]*?\}/,
+        `override func bundleURL() -> URL? {
+#if DEBUG
+    // Read ip.txt directly to bypass isPackagerRunning(), which fails on physical
+    // devices before iOS grants Local Network permission (iOS 14+).
+    let ipPath = Bundle.main.path(forResource: "ip", ofType: "txt")
+    let host = (try? String(contentsOfFile: ipPath ?? "", encoding: .utf8))?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? "localhost"
+    return URL(string: "http://\\(host):8081/.expo/.virtual-metro-entry.bundle?platform=ios&dev=true")
+#else
+    return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
+#endif
+  }`
+      )
+
+      fs.writeFileSync(appDelegatePath, src)
+      return config
+    },
+  ])
+}
+
 // Patch main xcodeproj: set ENABLE_USER_SCRIPT_SANDBOXING = NO on app target
 function withXcprojFix(config) {
   return withXcodeProject(config, (config) => {
@@ -91,5 +132,6 @@ function withXcprojFix(config) {
 module.exports = function withXcode16Fix(config) {
   config = withPodfileFix(config)
   config = withXcprojFix(config)
+  config = withAppDelegateFix(config)
   return config
 }
