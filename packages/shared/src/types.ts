@@ -110,3 +110,34 @@ export interface ApiError {
 }
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiError
+
+// ─── Test Session ─────────────────────────────────────────────────────────────
+
+export interface TestQuestion {
+  kanjiId: number
+  character: string
+  jlptLevel: string
+  primaryMeaning: string
+  options: string[]
+  correctIndex: number
+}
+
+export interface SubmitAnswer {
+  kanjiId: number
+  selectedIndex: number
+  responseMs: number
+}
+
+export interface TestSubmission {
+  testType: string
+  questions: TestQuestion[]
+  answers: SubmitAnswer[]
+}
+
+export interface TestResultSummary {
+  sessionId: number
+  correct: number
+  total: number
+  scorePct: number
+  passed: boolean
+}

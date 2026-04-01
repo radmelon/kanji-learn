@@ -12,6 +12,7 @@ import { analyticsRoutes } from './routes/analytics.js'
 import { userRoutes } from './routes/user.js'
 import { interventionRoutes } from './routes/interventions.js'
 import { kanjiRoutes } from './routes/kanji.js'
+import { testRoutes } from './routes/test.js'
 
 export async function buildServer() {
   const server = Fastify({
@@ -56,6 +57,7 @@ export async function buildServer() {
   await server.register(analyticsRoutes, { prefix: '/v1/analytics' })
   await server.register(interventionRoutes, { prefix: '/v1' })
   await server.register(kanjiRoutes, { prefix: '/v1/kanji' })
+  await server.register(testRoutes, { prefix: '/v1/tests' })
 
   return server
 }

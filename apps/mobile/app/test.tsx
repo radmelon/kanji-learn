@@ -1,0 +1,484 @@
+import { useState, useEffect, useRef } from 'react'
+import {
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useRouter } from 'expo-router'
+import { Ionicons } from '@expo/vector-icons'
+import { colors, spacing, radius, typography } from '../src/theme'
+import { api } from '../src/lib/api'
+import type { TestQuestion, SubmitAnswer, TestResultSummary } from '@kanji-learn/shared'
+
+type ScreenStatus = 'loading' | 'question' | 'feedback' | 'complete'
+
+const JLPT_COLORS: Record<string, string> = {
+  N5: colors.n5,
+  N4: colors.n4,
+  N3: colors.n3,
+  N2: colors.n2,
+  N1: colors.n1,
+}
+
+export default function TestScreen() {
+  const router = useRouter()
+
+  const [status, setStatus] = useState<ScreenStatus>('loading')
+  const [questions, setQuestions] = useState<TestQuestion[]>([])
+  const [currentIdx, setCurrentIdx] = useState(0)
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  const [answers, setAnswers] = useState<SubmitAnswer[]>([])
+  const [result, setResult] = useState<TestResultSummary | null>(null)
+  const cardStartMs = useRef(Date.now())
+
+  // ── Load questions on mount ───────────────────────────────────────────────
+
+  useEffect(() => {
+    loadQuestions()
+  }, [])
+
+  const loadQuestions = async () => {
+    setStatus('loading')
+    try {
+      const data = await api.get<TestQuestion[]>('/v1/tests/questions?limit=10')
+      setQuestions(data)
+      setCurrentIdx(0)
+      setSelectedIdx(null)
+      setAnswers([])
+      setResult(null)
+      cardStartMs.current = Date.now()
+      setStatus('question')
+    } catch (err) {
+      console.error('[TestScreen] loadQuestions error:', err)
+      // Stay on loading but show error via a fallback — reset to allow retry
+      setStatus('loading')
+    }
+  }
+
+  // ── Handle option tap ─────────────────────────────────────────────────────
+
+  const handleOptionTap = (optionIdx: number) => {
+    if (status !== 'question') return
+    const q = questions[currentIdx]
+    if (!q) return
+
+    const responseMs = Date.now() - cardStartMs.current
+    const newAnswer: SubmitAnswer = { kanjiId: q.kanjiId, selectedIndex: optionIdx, responseMs }
+
+    setSelectedIdx(optionIdx)
+    setStatus('feedback')
+
+    setTimeout(() => {
+      if (currentIdx + 1 < questions.length) {
+        setAnswers(prev => [...prev, newAnswer])
+        setCurrentIdx(i => i + 1)
+        setSelectedIdx(null)
+        cardStartMs.current = Date.now()
+        setStatus('question')
+      } else {
+        submitAnswers([...answers, newAnswer])
+      }
+    }, 1200)
+  }
+
+  // ── Submit answers ────────────────────────────────────────────────────────
+
+  const submitAnswers = async (finalAnswers: SubmitAnswer[]) => {
+    setStatus('loading')
+    try {
+      const data = await api.post<TestResultSummary>('/v1/tests/submit', {
+        testType: 'exit_quiz',
+        questions,
+        answers: finalAnswers,
+      })
+      setResult(data)
+      setStatus('complete')
+    } catch (err) {
+      console.error('[TestScreen] submitAnswers error:', err)
+      // Show a fallback result so the user isn't stuck
+      const correct = finalAnswers.filter((a, i) => questions[i] && a.selectedIndex === questions[i].correctIndex).length
+      setResult({
+        sessionId: 0,
+        correct,
+        total: finalAnswers.length,
+        scorePct: Math.round((correct / finalAnswers.length) * 100),
+        passed: correct / finalAnswers.length >= 0.7,
+      })
+      setStatus('complete')
+    }
+  }
+
+  // ── Try Again ─────────────────────────────────────────────────────────────
+
+  const handleTryAgain = () => {
+    loadQuestions()
+  }
+
+  // ── Loading state ─────────────────────────────────────────────────────────
+
+  if (status === 'loading') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ActivityIndicator color={colors.primary} size="large" />
+        <Text style={styles.loadingText}>Loading quiz…</Text>
+      </SafeAreaView>
+    )
+  }
+
+  // ── Complete state ────────────────────────────────────────────────────────
+
+  if (status === 'complete' && result) {
+    const scoreColor = result.passed ? colors.primary : colors.error
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <Ionicons name="close" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: '100%' }]} />
+          </View>
+          <Text style={styles.counter}>{result.total}/{result.total}</Text>
+        </View>
+
+        {/* Score content */}
+        <View style={styles.completeContent}>
+          <View style={styles.scoreCircle}>
+            <Text style={[styles.scorePct, { color: scoreColor }]}>{result.scorePct}%</Text>
+            <Text style={[styles.scoreLabel, { color: scoreColor }]}>
+              {result.passed ? 'Passed!' : 'Keep practicing'}
+            </Text>
+          </View>
+
+          {/* Stat row */}
+          <View style={styles.statRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{result.correct}/{result.total}</Text>
+              <Text style={styles.statLabel}>Correct</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{result.scorePct}%</Text>
+              <Text style={styles.statLabel}>Score</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <View style={[styles.passBadge, { backgroundColor: (result.passed ? colors.success : colors.error) + '22' }]}>
+                <Text style={[styles.passBadgeText, { color: result.passed ? colors.success : colors.error }]}>
+                  {result.passed ? 'Pass' : 'Fail'}
+                </Text>
+              </View>
+              <Text style={styles.statLabel}>Result</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Footer buttons */}
+        <View style={styles.completeFooter}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.replace('/(tabs)')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="home-outline" size={18} color={colors.textSecondary} />
+            <Text style={styles.secondaryButtonText}>Back to Dashboard</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={handleTryAgain}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="refresh" size={18} color="#fff" />
+            <Text style={styles.primaryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  // ── Question / Feedback state ─────────────────────────────────────────────
+
+  const q = questions[currentIdx]
+  if (!q) return null
+
+  const progress = (currentIdx) / questions.length
+  const jlptColor = JLPT_COLORS[q.jlptLevel] ?? colors.textMuted
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+          <Ionicons name="close" size={24} color={colors.textSecondary} />
+        </TouchableOpacity>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+        </View>
+        <Text style={styles.counter}>{currentIdx + 1}/{questions.length}</Text>
+      </View>
+
+      {/* Card area */}
+      <View style={styles.cardArea}>
+        <View style={styles.kanjiCard}>
+          {/* JLPT badge */}
+          <View style={[styles.jlptBadge, { backgroundColor: jlptColor + '22', borderColor: jlptColor + '55' }]}>
+            <Text style={[styles.jlptText, { color: jlptColor }]}>{q.jlptLevel}</Text>
+          </View>
+
+          {/* Kanji character */}
+          <Text style={styles.kanjiCharacter}>{q.character}</Text>
+
+          {/* Prompt */}
+          <Text style={styles.prompt}>What does this kanji mean?</Text>
+        </View>
+      </View>
+
+      {/* Options */}
+      <View style={styles.optionsArea}>
+        {q.options.map((option, idx) => {
+          const isSelected = selectedIdx === idx
+          const isCorrect = idx === q.correctIndex
+          const isFeedback = status === 'feedback'
+
+          let optionStyle = {}
+          let textStyle = {}
+          let iconName: 'checkmark-circle' | 'close-circle' | null = null
+          let iconColor: string = colors.textMuted
+
+          if (isFeedback) {
+            if (isCorrect) {
+              optionStyle = { backgroundColor: colors.success + '22', borderColor: colors.success }
+              textStyle = { color: colors.success }
+              iconName = 'checkmark-circle'
+              iconColor = colors.success
+            } else if (isSelected && !isCorrect) {
+              optionStyle = { backgroundColor: colors.error + '22', borderColor: colors.error }
+              textStyle = { color: colors.error }
+              iconName = 'close-circle'
+              iconColor = colors.error
+            } else {
+              optionStyle = { opacity: 0.4 }
+            }
+          }
+
+          return (
+            <TouchableOpacity
+              key={idx}
+              style={[styles.optionButton, optionStyle]}
+              onPress={() => handleOptionTap(idx)}
+              activeOpacity={0.8}
+              disabled={isFeedback}
+            >
+              <Text style={[styles.optionText, textStyle]}>{option}</Text>
+              {isFeedback && iconName && (
+                <Ionicons name={iconName} size={20} color={iconColor} />
+              )}
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+    </SafeAreaView>
+  )
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  closeBtn: {
+    padding: spacing.xs,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+  },
+  counter: {
+    ...typography.caption,
+    color: colors.textMuted,
+    minWidth: 36,
+    textAlign: 'right',
+  },
+
+  // Card area
+  cardArea: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    justifyContent: 'center',
+  },
+  kanjiCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.md,
+    position: 'relative',
+  },
+  jlptBadge: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  jlptText: {
+    ...typography.caption,
+    fontWeight: '700',
+  },
+  kanjiCharacter: {
+    ...typography.kanjiDisplay,
+    color: colors.textPrimary,
+    marginTop: spacing.md,
+  },
+  prompt: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+
+  // Options
+  optionsArea: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  optionButton: {
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  optionText: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+
+  // Complete state
+  completeContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.xl,
+  },
+  scoreCircle: {
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  scorePct: {
+    fontSize: 64,
+    fontWeight: '700',
+    lineHeight: 72,
+  },
+  scoreLabel: {
+    ...typography.h2,
+  },
+  statRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    gap: spacing.lg,
+    width: '100%',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  statValue: {
+    ...typography.h2,
+    color: colors.textPrimary,
+  },
+  statLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  statDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: colors.border,
+  },
+  passBadge: {
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  passBadgeText: {
+    ...typography.bodySmall,
+    fontWeight: '600',
+  },
+  completeFooter: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  primaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md + 2,
+  },
+  primaryButtonText: {
+    ...typography.h3,
+    color: '#fff',
+  },
+  secondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+  },
+  secondaryButtonText: {
+    ...typography.h3,
+    color: colors.textSecondary,
+  },
+})

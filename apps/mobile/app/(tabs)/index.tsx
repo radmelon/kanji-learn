@@ -24,6 +24,10 @@ export default function Dashboard() {
     router.push('/(tabs)/study')
   }, [router])
 
+  const handleQuiz = useCallback(() => {
+    router.push('/test')
+  }, [router])
+
   const displayName = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'Learner'
 
   return (
@@ -58,6 +62,13 @@ export default function Dashboard() {
           <Ionicons name="book" size={22} color="#fff" />
           <Text style={styles.studyButtonText}>Start Today's Reviews</Text>
           <Ionicons name="arrow-forward" size={18} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+
+        {/* Take a Quiz CTA */}
+        <TouchableOpacity style={styles.quizButton} onPress={handleQuiz} activeOpacity={0.85}>
+          <Ionicons name="help-circle" size={22} color={colors.accent} />
+          <Text style={styles.quizButtonText}>Take a Quiz</Text>
+          <Ionicons name="arrow-forward" size={18} color={colors.textMuted} />
         </TouchableOpacity>
 
         {isLoading && !summary ? (
@@ -213,6 +224,8 @@ const styles = StyleSheet.create({
   streakText: { ...typography.h3, color: colors.accent },
   studyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.primary, borderRadius: radius.lg, paddingVertical: spacing.md + 2, paddingHorizontal: spacing.lg },
   studyButtonText: { ...typography.h3, color: '#fff', flex: 1, textAlign: 'center' },
+  quizButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
+  quizButtonText: { ...typography.h3, color: colors.textPrimary, flex: 1, textAlign: 'center' },
   statsRow: { flexDirection: 'row', gap: spacing.sm },
   card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
   cardTitle: { ...typography.h3, color: colors.textPrimary },
