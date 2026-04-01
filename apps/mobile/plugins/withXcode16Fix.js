@@ -59,12 +59,12 @@ function withPodfileFix(config) {
       let podfile = fs.readFileSync(podfilePath, 'utf8')
       if (podfile.includes('Xcode 16 compatibility fixes')) return config
 
+      // Inject our fixes just before the final `  end\nend` that closes the
+      // post_install block + target block. The multiline react_native_post_install()
+      // call breaks character-class regexes, so we anchor to the file tail instead.
       podfile = podfile.replace(
-        /(\s+react_native_post_install\([^)]+\)\s*\n\s*end\s*\nend)/,
-        (match) => match.replace(
-          /(\s+end\s*\nend)$/,
-          PODFILE_POST_INSTALL + '\n  end\nend'
-        )
+        /(\n  end\nend\n?)$/,
+        '\n' + PODFILE_POST_INSTALL + '\n  end\nend\n'
       )
 
       fs.writeFileSync(podfilePath, podfile)
