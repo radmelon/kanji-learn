@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const { config: loadEnv } = await import('dotenv')
-loadEnv({ path: join(__dirname, '../../.env') })
+loadEnv({ path: join(__dirname, '../.env') })
 
 // These dynamic imports happen after env is loaded, so DATABASE_URL etc. are set.
 const { buildServer } = await import('./server.js')
