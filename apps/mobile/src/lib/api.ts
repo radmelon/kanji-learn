@@ -28,6 +28,8 @@ class ApiClient {
       },
     })
 
+    if (res.status === 204) return undefined as T
+
     const json = await res.json()
 
     if (!json.ok) {

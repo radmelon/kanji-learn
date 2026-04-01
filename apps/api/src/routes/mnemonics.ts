@@ -102,7 +102,7 @@ export async function mnemonicRoutes(server: FastifyInstance) {
       if (!deleted) {
         return reply.code(404).send({ ok: false, error: 'Mnemonic not found', code: 'NOT_FOUND' })
       }
-      return reply.code(204).send()
+      return reply.send({ ok: true })
     }
   )
 
