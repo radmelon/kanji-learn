@@ -1,16 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Pressable,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import * as SecureStore from 'expo-secure-store'
 import { useReviewStore } from '../../src/stores/review.store'
 import { KanjiCard } from '../../src/components/study/KanjiCard'
 import { CompoundCard } from '../../src/components/study/CompoundCard'
 import { GradeButtons } from '../../src/components/study/GradeButtons'
 import { SessionComplete } from '../../src/components/study/SessionComplete'
 import { colors, spacing, radius, typography } from '../../src/theme'
+
+const HELP_KEY = 'kl_has_seen_study_help'
 
 export default function StudySession() {
   const router = useRouter()
@@ -22,11 +25,23 @@ export default function StudySession() {
   const [sessionSummary, setSessionSummary] = useState<{
     totalItems: number; correctItems: number; newLearned: number; burned: number
   } | null>(null)
+  const [showOnboarding, setShowOnboarding] = useState(false)
   const cardStartMs = useRef(Date.now())
 
   useEffect(() => {
     loadQueue(20)
     return () => reset()
+  }, [])
+
+  useEffect(() => {
+    SecureStore.getItemAsync(HELP_KEY).then((val) => {
+      if (!val) setShowOnboarding(true)
+    }).catch(() => {})
+  }, [])
+
+  const dismissOnboarding = useCallback(() => {
+    setShowOnboarding(false)
+    SecureStore.setItemAsync(HELP_KEY, '1').catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -202,9 +217,79 @@ export default function StudySession() {
           </View>
         )}
       </View>
+
+      {/* First-run onboarding overlay */}
+      <Modal visible={showOnboarding} transparent animationType="fade" onRequestClose={dismissOnboarding}>
+        <Pressable style={onboardStyles.backdrop} onPress={dismissOnboarding}>
+          <Pressable style={onboardStyles.sheet} onPress={() => {}}>
+            <Text style={onboardStyles.title}>How studying works</Text>
+            <View style={onboardStyles.section}>
+              <Text style={onboardStyles.sectionTitle}>Tap the card to reveal the answer</Text>
+              <Text style={onboardStyles.sectionBody}>
+                Try to recall the meaning before revealing. Then grade yourself honestly — your rating determines when the card appears next.
+              </Text>
+            </View>
+            <View style={onboardStyles.section}>
+              <Text style={onboardStyles.sectionTitle}>Grade buttons</Text>
+              {[
+                { label: 'Again', color: colors.error, desc: 'Complete blank — resets to day 1' },
+                { label: 'Hard', color: colors.warning, desc: 'Struggled — interval grows slowly' },
+                { label: 'Good', color: colors.success, desc: 'Correct with effort — normal progression' },
+                { label: 'Easy', color: colors.accent, desc: 'Perfect recall — interval grows faster' },
+              ].map(({ label, color, desc }) => (
+                <View key={label} style={onboardStyles.gradeRow}>
+                  <View style={[onboardStyles.gradeDot, { backgroundColor: color }]} />
+                  <Text style={[onboardStyles.gradeLabel, { color }]}>{label}</Text>
+                  <Text style={onboardStyles.gradeDesc}>{desc}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={onboardStyles.section}>
+              <Text style={onboardStyles.sectionTitle}>Kanji are "Mastered" after ~6 months</Text>
+              <Text style={onboardStyles.sectionBody}>
+                Cards progress: Learning → Reviewing → Remembered → Mastered. A mastered kanji has a review interval of 180+ days. Tap ⓘ next to the grade buttons anytime to review this.
+              </Text>
+            </View>
+            <TouchableOpacity style={onboardStyles.btn} onPress={dismissOnboarding}>
+              <Text style={onboardStyles.btnText}>Got it, let's study!</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   )
 }
+
+const onboardStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: colors.bgCard,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  title: { ...typography.h2, color: colors.textPrimary },
+  section: { gap: spacing.sm },
+  sectionTitle: { ...typography.body, color: colors.textPrimary, fontWeight: '700' },
+  sectionBody: { ...typography.bodySmall, color: colors.textSecondary, lineHeight: 20 },
+  gradeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  gradeDot: { width: 8, height: 8, borderRadius: 4 },
+  gradeLabel: { ...typography.bodySmall, fontWeight: '700', width: 44 },
+  gradeDesc: { ...typography.caption, color: colors.textSecondary, flex: 1 },
+  btn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  btnText: { ...typography.h3, color: '#fff' },
+})
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
