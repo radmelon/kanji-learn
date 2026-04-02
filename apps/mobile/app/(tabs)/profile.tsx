@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Switch, ActivityIndicator, Alert, RefreshControl,
+  TextInput, Switch, ActivityIndicator, Alert, RefreshControl, Share,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { api } from '../../src/lib/api'
+import { useSocial } from '../../src/hooks/useSocial'
+import type { SearchResult } from '../../src/hooks/useSocial'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -38,6 +40,12 @@ export default function ProfileScreen() {
   const [displayName, setDisplayName] = useState('')
   const [dailyGoal, setDailyGoal] = useState(20)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
+
+  // Social
+  const { friends, pendingRequests, isSearching, loadAll, searchByEmail, sendRequest, respondToRequest, removeFriend } = useSocial()
+  const [friendSearch, setFriendSearch] = useState('')
+  const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
 
   // ── Load profile ─────────────────────────────────────────────────────────
 
@@ -96,6 +104,47 @@ export default function ProfileScreen() {
     setNotificationsEnabled(value)
     save({ notificationsEnabled: value })
   }, [save])
+
+  const handleFriendSearch = useCallback(async () => {
+    const email = friendSearch.trim()
+    if (!email) return
+    setSearchError(null)
+    setSearchResult(null)
+    try {
+      const result = await searchByEmail(email)
+      setSearchResult(result)
+      if (!result.user) setSearchError(`No user found for "${email}". You can invite them below.`)
+    } catch {
+      setSearchError('Search failed. Please try again.')
+    }
+  }, [friendSearch, searchByEmail])
+
+  const handleSendRequest = useCallback(async (addresseeId: string) => {
+    try {
+      await sendRequest(addresseeId)
+      setSearchResult(null)
+      setFriendSearch('')
+      Alert.alert('Request sent!', 'They\'ll see your invite next time they open the app.')
+    } catch {
+      Alert.alert('Error', 'Could not send request. They may already be your study mate.')
+    }
+  }, [sendRequest])
+
+  const handleInviteExternal = useCallback(async () => {
+    await Share.share({
+      message: `Hey! I'm using Kanji Learn to study Japanese kanji. Join me as a study mate! Download it and look me up by email: ${user?.email}`,
+    })
+  }, [user?.email])
+
+  const handleRemoveFriend = useCallback((friendId: string, name: string) => {
+    Alert.alert(`Remove ${name || 'study mate'}?`, 'You can always add them back later.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        try { await removeFriend(friendId) }
+        catch { Alert.alert('Error', 'Could not remove study mate.') }
+      }},
+    ])
+  }, [removeFriend])
 
   const handleSignOut = useCallback(() => {
     Alert.alert(
@@ -215,6 +264,124 @@ export default function ProfileScreen() {
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </TouchableOpacity>
+        </Section>
+
+        {/* Study Mates */}
+        <Section title="Study Mates">
+          {/* Search */}
+          <View style={styles.searchRow}>
+            <TextInput
+              style={[styles.textInput, { flex: 1 }]}
+              placeholder="Search by email address…"
+              placeholderTextColor={colors.textMuted}
+              value={friendSearch}
+              onChangeText={(t) => { setFriendSearch(t); setSearchResult(null); setSearchError(null) }}
+              onSubmitEditing={handleFriendSearch}
+              returnKeyType="search"
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <TouchableOpacity
+              style={styles.searchBtn}
+              onPress={handleFriendSearch}
+              disabled={isSearching || !friendSearch.trim()}
+            >
+              {isSearching
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="search" size={18} color="#fff" />
+              }
+            </TouchableOpacity>
+          </View>
+
+          {/* Search result */}
+          {searchResult?.user && (
+            <View style={styles.searchResultCard}>
+              <View style={styles.rowLeft}>
+                <Ionicons name="person-circle-outline" size={32} color={colors.primary} />
+                <View>
+                  <Text style={styles.rowLabel}>{searchResult.user.displayName ?? searchResult.user.email}</Text>
+                  <Text style={styles.rowSub}>{searchResult.user.email}</Text>
+                </View>
+              </View>
+              {searchResult.friendshipStatus === 'accepted' ? (
+                <Text style={[styles.rowSub, { color: colors.success }]}>Already mates</Text>
+              ) : searchResult.friendshipStatus === 'pending' ? (
+                <Text style={[styles.rowSub, { color: colors.warning }]}>Request pending</Text>
+              ) : (
+                <TouchableOpacity
+                  style={styles.addBtn}
+                  onPress={() => handleSendRequest(searchResult.user!.id)}
+                >
+                  <Ionicons name="person-add-outline" size={14} color="#fff" />
+                  <Text style={styles.addBtnText}>Invite</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Not found */}
+          {searchError && (
+            <View style={styles.searchErrorBox}>
+              <Text style={styles.rowSub}>{searchError}</Text>
+              {searchResult === null && friendSearch.trim() && (
+                <TouchableOpacity style={[styles.addBtn, { marginTop: spacing.xs }]} onPress={handleInviteExternal}>
+                  <Ionicons name="share-outline" size={14} color="#fff" />
+                  <Text style={styles.addBtnText}>Send invite</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Pending requests */}
+          {pendingRequests.length > 0 && (
+            <View style={{ marginTop: spacing.sm }}>
+              <Text style={styles.subSectionTitle}>Pending invites</Text>
+              {pendingRequests.map((r) => (
+                <View key={r.id} style={[styles.searchResultCard, { marginTop: spacing.xs }]}>
+                  <View style={styles.rowLeft}>
+                    <Ionicons name="person-circle-outline" size={28} color={colors.accent} />
+                    <View>
+                      <Text style={styles.rowLabel}>{r.requesterName ?? r.requesterEmail ?? 'Someone'}</Text>
+                      <Text style={styles.rowSub}>wants to study together</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                    <TouchableOpacity style={styles.acceptBtn} onPress={() => respondToRequest(r.id, 'accept')}>
+                      <Text style={styles.acceptBtnText}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => respondToRequest(r.id, 'decline')}>
+                      <Ionicons name="close-circle-outline" size={24} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Friends list */}
+          {friends.length > 0 ? (
+            <View style={{ marginTop: spacing.sm }}>
+              <Text style={styles.subSectionTitle}>Your mates ({friends.length})</Text>
+              {friends.map((f) => (
+                <View key={f.id} style={[styles.searchResultCard, { marginTop: spacing.xs }]}>
+                  <View style={styles.rowLeft}>
+                    <Ionicons name="person-circle-outline" size={28} color={colors.primary} />
+                    <View>
+                      <Text style={styles.rowLabel}>{f.displayName ?? f.email}</Text>
+                      {f.displayName && <Text style={styles.rowSub}>{f.email}</Text>}
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={() => handleRemoveFriend(f.id, f.displayName ?? '')}>
+                    <Ionicons name="person-remove-outline" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={[styles.rowSub, { marginTop: spacing.sm, textAlign: 'center' }]}>
+              No study mates yet — search above to add one!
+            </Text>
+          )}
         </Section>
 
         {/* Sign out */}
@@ -343,6 +510,64 @@ const styles = StyleSheet.create({
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
   rowLabel: { ...typography.body, color: colors.textPrimary },
   rowSub: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+
+  // Study Mates
+  searchRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  searchBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    padding: spacing.sm + 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 40,
+    height: 40,
+  },
+  searchResultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  subSectionTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+  searchErrorBox: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  addBtnText: { ...typography.caption, color: '#fff', fontWeight: '600' },
+  acceptBtn: {
+    backgroundColor: colors.success + '22',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: colors.success + '55',
+  },
+  acceptBtnText: { ...typography.caption, color: colors.success, fontWeight: '600' },
 
   // Sign out
   signOutBtn: {

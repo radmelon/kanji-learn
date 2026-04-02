@@ -87,6 +87,7 @@ export const kanji = pgTable(
 export const userProfiles = pgTable('user_profiles', {
   id: uuid('id').primaryKey(), // matches auth.users.id
   displayName: text('display_name'),
+  email: text('email'),                                             // from Supabase JWT, used for friend search
   dailyGoal: smallint('daily_goal').notNull().default(20),
   notificationsEnabled: boolean('notifications_enabled').notNull().default(true),
   pushToken: text('push_token'),                                    // Expo push token
@@ -349,6 +350,25 @@ export const testResults = pgTable(
   })
 )
 
+// ─── friendships ─────────────────────────────────────────────────────────────
+
+export const friendships = pgTable(
+  'friendships',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    requesterId: uuid('requester_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
+    addresseeId: uuid('addressee_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
+    status: text('status').notNull().default('pending'), // pending | accepted | declined
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniquePair: uniqueIndex('friendship_pair_idx').on(t.requesterId, t.addresseeId),
+    addresseeIdx: index('friendship_addressee_idx').on(t.addresseeId),
+    statusIdx: index('friendship_status_idx').on(t.requesterId, t.status),
+  })
+)
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const kanjiRelations = relations(kanji, ({ many }) => ({
@@ -371,6 +391,13 @@ export const userProfilesRelations = relations(userProfiles, ({ many }) => ({
   voiceAttempts: many(voiceAttempts),
   testSessions: many(testSessions),
   testResults: many(testResults),
+  sentRequests: many(friendships, { relationName: 'requester' }),
+  receivedRequests: many(friendships, { relationName: 'addressee' }),
+}))
+
+export const friendshipsRelations = relations(friendships, ({ one }) => ({
+  requester: one(userProfiles, { fields: [friendships.requesterId], references: [userProfiles.id], relationName: 'requester' }),
+  addressee: one(userProfiles, { fields: [friendships.addresseeId], references: [userProfiles.id], relationName: 'addressee' }),
 }))
 
 export const userKanjiProgressRelations = relations(userKanjiProgress, ({ one }) => ({

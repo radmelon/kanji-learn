@@ -12,7 +12,7 @@ const updateProfileSchema = z.object({
 })
 
 export async function userRoutes(server: FastifyInstance) {
-  // GET /v1/user/profile
+  // GET /v1/user/profile — also syncs email from JWT into user_profiles
   server.get('/profile', { preHandler: [server.authenticate] }, async (req, reply) => {
     const profile = await server.db.query.userProfiles.findFirst({
       where: eq(userProfiles.id, req.userId!),
@@ -22,7 +22,15 @@ export async function userRoutes(server: FastifyInstance) {
       return reply.code(404).send({ ok: false, error: 'Profile not found', code: 'NOT_FOUND' })
     }
 
-    return reply.send({ ok: true, data: profile })
+    // Keep email in sync with Supabase auth (used for friend search)
+    if (req.userEmail && profile.email !== req.userEmail) {
+      await server.db
+        .update(userProfiles)
+        .set({ email: req.userEmail, updatedAt: new Date() })
+        .where(eq(userProfiles.id, req.userId!))
+    }
+
+    return reply.send({ ok: true, data: { ...profile, email: req.userEmail ?? profile.email } })
   })
 
   // PATCH /v1/user/profile

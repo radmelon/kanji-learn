@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { useAnalytics } from '../../src/hooks/useAnalytics'
 import { useInterventions } from '../../src/hooks/useInterventions'
+import { useSocial } from '../../src/hooks/useSocial'
 import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { StatCard } from '../../src/components/ui/StatCard'
 import { InterventionBanner } from '../../src/components/ui/InterventionBanner'
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const { user } = useAuthStore()
   const { summary, isLoading, refresh } = useAnalytics()
   const { interventions, dismiss } = useInterventions()
+  const { leaderboard } = useSocial()
 
   const handleStudy = useCallback(() => {
     router.push('/(tabs)/study')
@@ -153,6 +155,38 @@ export default function Dashboard() {
             </View>
           </>
         ) : null}
+
+        {/* Leaderboard */}
+        {leaderboard.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.cardRow}>
+              <Text style={styles.cardTitle}>Leaderboard</Text>
+              <Text style={styles.lbSubtitle}>
+                {leaderboard.some((e) => !e.isMe) ? 'Study mates' : 'Global top 10'}
+              </Text>
+            </View>
+            {leaderboard.map((entry, i) => (
+              <View key={entry.userId} style={[styles.lbRow, entry.isMe && styles.lbRowMe]}>
+                <Text style={styles.lbRank}>{i + 1}</Text>
+                <View style={styles.lbInfo}>
+                  <Text style={[styles.lbName, entry.isMe && styles.lbNameMe]} numberOfLines={1}>
+                    {entry.displayName ?? entry.email ?? 'Unknown'}
+                    {entry.isMe ? ' (you)' : ''}
+                  </Text>
+                  <Text style={styles.lbStats}>
+                    {entry.totalReviewed.toLocaleString()} reviewed · {entry.totalBurned.toLocaleString()} burned
+                  </Text>
+                </View>
+                <View style={styles.lbStreak}>
+                  <Ionicons name="flame" size={14} color={entry.streak > 0 ? colors.accent : colors.textMuted} />
+                  <Text style={[styles.lbStreakText, { color: entry.streak > 0 ? colors.accent : colors.textMuted }]}>
+                    {entry.streak}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   )
@@ -238,4 +272,23 @@ const styles = StyleSheet.create({
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radius.full },
   progressLabel: { ...typography.caption, color: colors.textMuted },
   completionPct: { ...typography.bodySmall, color: colors.primary, fontWeight: '600' },
+
+  // Leaderboard
+  lbSubtitle: { ...typography.caption, color: colors.textMuted },
+  lbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  lbRowMe: { backgroundColor: colors.primary + '11', borderRadius: radius.sm, paddingHorizontal: spacing.xs },
+  lbRank: { ...typography.bodySmall, color: colors.textMuted, fontWeight: '700', width: 20, textAlign: 'center' },
+  lbInfo: { flex: 1, gap: 1 },
+  lbName: { ...typography.body, color: colors.textPrimary },
+  lbNameMe: { color: colors.primary, fontWeight: '600' },
+  lbStats: { ...typography.caption, color: colors.textMuted },
+  lbStreak: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  lbStreakText: { ...typography.bodySmall, fontWeight: '700' },
 })
