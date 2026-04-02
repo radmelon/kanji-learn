@@ -92,9 +92,9 @@ export default function Dashboard() {
                 accentColor={colors.accent}
               />
               <StatCard
-                label="Burned"
+                label="Mastered"
                 value={summary.statusCounts.burned.toLocaleString()}
-                subtitle={`of 2,136`}
+                subtitle={`of 2,294`}
                 accentColor={colors.burned}
               />
             </View>

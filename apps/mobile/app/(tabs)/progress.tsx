@@ -58,16 +58,16 @@ export default function ProgressScreen() {
                 label="Day streak"
               />
               <HeroStat
+                icon="library"
+                iconColor={colors.primary}
+                value={`${Math.round((summary.totalSeen / 2294) * 100)}%`}
+                label="Seen"
+              />
+              <HeroStat
                 icon="checkmark-circle"
                 iconColor={colors.success}
                 value={`${summary.completionPct}%`}
-                label="Complete"
-              />
-              <HeroStat
-                icon="trending-up"
-                iconColor={colors.primary}
-                value={`${summary.velocity.weeklyAverage}`}
-                label="Reviews/day"
+                label="Mastered"
               />
             </View>
 
