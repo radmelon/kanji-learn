@@ -1,0 +1,29 @@
+version: 1.0
+
+# AWS App Runner configuration
+# Docs: https://docs.aws.amazon.com/apprunner/latest/dg/config-file.html
+
+runtime: DOCKER   # tells App Runner to use the Dockerfile
+
+build:
+  build-command: "echo 'Docker build handled by App Runner'"
+
+run:
+  runtime-version: ""   # unused for Docker runtime
+  command: ""           # CMD from Dockerfile is used
+  network:
+    port: 3000
+    env: PORT
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: HOST
+      value: "0.0.0.0"
+    # Secrets are injected via App Runner environment variables in the console / CLI,
+    # NOT stored here. Required vars:
+    #   DATABASE_URL
+    #   SUPABASE_JWT_SECRET
+    #   SUPABASE_SERVICE_ROLE_KEY
+    #   ANTHROPIC_API_KEY
+    #   EXPO_ACCESS_TOKEN          (for push notifications)
+    #   ALLOWED_ORIGINS            (comma-separated, e.g. https://yourdomain.com)
