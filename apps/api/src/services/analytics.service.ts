@@ -169,16 +169,20 @@ export class AnalyticsService {
 
     if (rows.length === 0) return 0
 
-    let streak = 0
     const today = new Date().toISOString().slice(0, 10)
-    let expected = today
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
 
-    for (const row of rows) {
-      if (row.date === expected) {
+    // Streak must start from today or yesterday — otherwise it's broken
+    if (rows[0].date !== today && rows[0].date !== yesterday) return 0
+
+    let streak = 1
+    let expected = new Date(rows[0].date)
+    expected.setDate(expected.getDate() - 1)
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].date === expected.toISOString().slice(0, 10)) {
         streak++
-        const d = new Date(expected)
-        d.setDate(d.getDate() - 1)
-        expected = d.toISOString().slice(0, 10)
+        expected.setDate(expected.getDate() - 1)
       } else {
         break
       }
