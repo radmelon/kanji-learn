@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, Alert, Image } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
+import * as Location from 'expo-location'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, typography } from '../../theme'
 import type { Mnemonic } from '../../hooks/useMnemonics'
@@ -26,6 +27,18 @@ export function MnemonicCard({
   const [editText, setEditText] = useState(mnemonic.storyText)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const [locationLabel, setLocationLabel] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!mnemonic.latitude || !mnemonic.longitude) return
+    Location.reverseGeocodeAsync({ latitude: mnemonic.latitude, longitude: mnemonic.longitude })
+      .then(([place]) => {
+        if (!place) return
+        const label = place.city || place.district || place.region || place.country
+        if (label) setLocationLabel(label)
+      })
+      .catch(() => {})
+  }, [mnemonic.latitude, mnemonic.longitude])
 
   const handlePickPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
@@ -112,6 +125,13 @@ export function MnemonicCard({
             {isSystem ? 'AI' : 'Mine'}
           </Text>
         </View>
+
+        {locationLabel && (
+          <View style={styles.locationBadge}>
+            <Ionicons name="location-outline" size={10} color={colors.textMuted} />
+            <Text style={styles.locationText}>{locationLabel}</Text>
+          </View>
+        )}
 
         {!isSystem && !isEditing && (
           <View style={styles.actions}>
@@ -222,6 +242,8 @@ const styles = StyleSheet.create({
   typeLabel: { ...typography.caption, fontWeight: '700' },
   systemLabel: { color: colors.accent },
   userLabel: { color: colors.primary },
+  locationBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  locationText: { ...typography.caption, color: colors.textMuted },
   actions: { flexDirection: 'row', gap: spacing.xs },
   iconBtn: { padding: spacing.xs },
   story: { ...typography.body, color: colors.textPrimary, lineHeight: 24 },

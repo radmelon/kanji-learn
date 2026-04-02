@@ -26,7 +26,8 @@
         ],
         "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
         "NSMicrophoneUsageDescription": "Allow Kanji Learn to use the microphone for reading evaluation.",
-        "NSPhotoLibraryUsageDescription": "Allow Kanji Learn to attach photos to your mnemonics."
+        "NSPhotoLibraryUsageDescription": "Allow Kanji Learn to attach photos to your mnemonics.",
+        "NSLocationWhenInUseUsageDescription": "Allow Kanji Learn to tag mnemonics with the place where you learned them."
       }
     },
     "android": {
@@ -60,6 +61,12 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow Kanji Learn to attach photos to your mnemonics."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Kanji Learn to tag mnemonics with the place where you learned them."
         }
       ]
     ],

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import * as Location from 'expo-location'
 import { api } from '../lib/api'
 
 export interface Mnemonic {
@@ -9,9 +10,22 @@ export interface Mnemonic {
   storyText: string
   imagePrompt: string | null
   imageUrl: string | null
+  latitude: number | null
+  longitude: number | null
   refreshPromptAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+async function getCoords(): Promise<{ latitude: number; longitude: number } | undefined> {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync()
+    if (status !== 'granted') return undefined
+    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+    return { latitude: loc.coords.latitude, longitude: loc.coords.longitude }
+  } catch {
+    return undefined
+  }
 }
 
 export function useMnemonics(kanjiId: number) {
@@ -34,7 +48,8 @@ export function useMnemonics(kanjiId: number) {
   const generate = useCallback(async (model: 'haiku' | 'sonnet' = 'haiku') => {
     setIsGenerating(true)
     try {
-      const data = await api.post<Mnemonic>(`/v1/mnemonics/${kanjiId}/generate`, { model })
+      const coords = await getCoords()
+      const data = await api.post<Mnemonic>(`/v1/mnemonics/${kanjiId}/generate`, { model, ...coords })
       setMnemonics((prev) => [data, ...prev])
       return data
     } finally {
@@ -43,7 +58,8 @@ export function useMnemonics(kanjiId: number) {
   }, [kanjiId])
 
   const save = useCallback(async (storyText: string) => {
-    const data = await api.post<Mnemonic>(`/v1/mnemonics/${kanjiId}`, { storyText })
+    const coords = await getCoords()
+    const data = await api.post<Mnemonic>(`/v1/mnemonics/${kanjiId}`, { storyText, ...coords })
     setMnemonics((prev) => [data, ...prev])
     return data
   }, [kanjiId])

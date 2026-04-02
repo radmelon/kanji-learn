@@ -190,6 +190,8 @@ export const mnemonics = pgTable(
     storyText: text('story_text').notNull(),
     imagePrompt: text('image_prompt'),
     imageUrl: text('image_url'),
+    latitude: real('latitude'),
+    longitude: real('longitude'),
     refreshPromptAt: timestamp('refresh_prompt_at', { withTimezone: true }), // 30-day nudge
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

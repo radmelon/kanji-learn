@@ -14,6 +14,8 @@ export interface MnemonicRecord {
   storyText: string
   imagePrompt: string | null
   imageUrl: string | null
+  latitude: number | null
+  longitude: number | null
   refreshPromptAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -52,52 +54,32 @@ export class MnemonicService {
 
   // ── Generate mnemonic with Claude Haiku (fast, live) ──────────────────────
 
-  async generateHaiku(kanjiId: number, userId: string): Promise<MnemonicRecord> {
+  async generateHaiku(kanjiId: number, userId: string, coords?: { latitude: number; longitude: number }): Promise<MnemonicRecord> {
     const kanjiData = await this.fetchKanji(kanjiId)
-
-    const prompt = this.buildPrompt(kanjiData, 'concise')
-
-    const message = await this.anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
-      system: MNEMONIC_SYSTEM_PROMPT,
-    })
-
-    const { storyText, imagePrompt } = this.parseResponse(message.content[0])
-
-    return this.saveMnemonic({
-      kanjiId,
-      userId,
-      type: 'user',
-      storyText,
-      imagePrompt,
-    })
+    const { storyText, imagePrompt } = this.parseResponse(
+      (await this.anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: this.buildPrompt(kanjiData, 'concise') }],
+        system: MNEMONIC_SYSTEM_PROMPT,
+      })).content[0]
+    )
+    return this.saveMnemonic({ kanjiId, userId, type: 'user', storyText, imagePrompt, ...coords })
   }
 
   // ── Generate mnemonic with Claude Sonnet (rich, detailed) ─────────────────
 
-  async generateSonnet(kanjiId: number, userId: string): Promise<MnemonicRecord> {
+  async generateSonnet(kanjiId: number, userId: string, coords?: { latitude: number; longitude: number }): Promise<MnemonicRecord> {
     const kanjiData = await this.fetchKanji(kanjiId)
-
-    const prompt = this.buildPrompt(kanjiData, 'rich')
-
-    const message = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 600,
-      messages: [{ role: 'user', content: prompt }],
-      system: MNEMONIC_SYSTEM_PROMPT,
-    })
-
-    const { storyText, imagePrompt } = this.parseResponse(message.content[0])
-
-    return this.saveMnemonic({
-      kanjiId,
-      userId,
-      type: 'user',
-      storyText,
-      imagePrompt,
-    })
+    const { storyText, imagePrompt } = this.parseResponse(
+      (await this.anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: this.buildPrompt(kanjiData, 'rich') }],
+        system: MNEMONIC_SYSTEM_PROMPT,
+      })).content[0]
+    )
+    return this.saveMnemonic({ kanjiId, userId, type: 'user', storyText, imagePrompt, ...coords })
   }
 
   // ── Save user-authored mnemonic ────────────────────────────────────────────
@@ -105,9 +87,10 @@ export class MnemonicService {
   async saveUserMnemonic(
     kanjiId: number,
     userId: string,
-    storyText: string
+    storyText: string,
+    coords?: { latitude: number; longitude: number }
   ): Promise<MnemonicRecord> {
-    return this.saveMnemonic({ kanjiId, userId, type: 'user', storyText, imagePrompt: null })
+    return this.saveMnemonic({ kanjiId, userId, type: 'user', storyText, imagePrompt: null, ...coords })
   }
 
   // ── Update a user's mnemonic ───────────────────────────────────────────────
@@ -117,10 +100,14 @@ export class MnemonicService {
     userId: string,
     storyText?: string,
     imageUrl?: string | null,
+    latitude?: number | null,
+    longitude?: number | null,
   ): Promise<MnemonicRecord | null> {
     const patch: Partial<typeof mnemonics.$inferInsert> = { updatedAt: new Date() }
     if (storyText !== undefined) { patch.storyText = storyText; patch.refreshPromptAt = null }
     if (imageUrl !== undefined) patch.imageUrl = imageUrl
+    if (latitude !== undefined) patch.latitude = latitude
+    if (longitude !== undefined) patch.longitude = longitude
 
     const [updated] = await this.db
       .update(mnemonics)
@@ -263,6 +250,8 @@ IMAGE: <image prompt here>`
     type: 'system' | 'user'
     storyText: string
     imagePrompt: string | null
+    latitude?: number
+    longitude?: number
   }): Promise<MnemonicRecord> {
     const refreshPromptAt = new Date()
     refreshPromptAt.setDate(refreshPromptAt.getDate() + MNEMONIC_REFRESH_DAYS)
@@ -287,6 +276,8 @@ IMAGE: <image prompt here>`
       storyText: row.storyText,
       imagePrompt: row.imagePrompt,
       imageUrl: row.imageUrl,
+      latitude: row.latitude,
+      longitude: row.longitude,
       refreshPromptAt: row.refreshPromptAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
