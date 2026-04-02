@@ -280,6 +280,8 @@ export class SrsService {
         meanings: kanji.meanings,
         jlptLevel: kanji.jlptLevel,
         strokeCount: kanji.strokeCount,
+        kunReadings: kanji.kunReadings,
+        onReadings: kanji.onReadings,
         status: userKanjiProgress.status,
         lastReviewedAt: userKanjiProgress.lastReviewedAt,
       })

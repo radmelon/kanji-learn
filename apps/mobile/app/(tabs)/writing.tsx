@@ -17,6 +17,8 @@ interface WritingQueueItem {
   meanings: string[]
   jlptLevel: string
   strokeCount: number
+  kunReadings: string[]
+  onReadings: string[]
   status: string
 }
 
@@ -188,6 +190,8 @@ export default function WritingSession() {
           meanings={currentItem.meanings as string[]}
           jlptLevel={currentItem.jlptLevel}
           strokeCount={currentItem.strokeCount}
+          kunReadings={currentItem.kunReadings as string[]}
+          onReadings={currentItem.onReadings as string[]}
           index={currentIndex + 1}
           total={queue.length}
           isLastCard={currentIndex + 1 >= queue.length}

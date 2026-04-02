@@ -17,6 +17,8 @@ interface Props {
   meanings: string[]
   jlptLevel: string
   strokeCount: number
+  kunReadings?: string[]
+  onReadings?: string[]
   index: number
   total: number
   isLastCard?: boolean
@@ -40,8 +42,8 @@ const HOOK_PURPLE_TEXT = '#CCC8FF'
 // ─── Writing Practice ─────────────────────────────────────────────────────────
 
 export function WritingPractice({
-  kanjiId, character, meanings, jlptLevel, strokeCount, index, total,
-  isLastCard = false, onResult, onNext, onDrawingChange,
+  kanjiId, character, meanings, jlptLevel, strokeCount, kunReadings = [], onReadings = [],
+  index, total, isLastCard = false, onResult, onNext, onDrawingChange,
 }: Props) {
   const [mode, setMode] = useState<Mode>('watch')
   const [currentStrokeCount, setCurrentStrokeCount] = useState(0)
@@ -103,7 +105,7 @@ export function WritingPractice({
     <View style={styles.container}>
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>Writing practice</Text>
           <View style={styles.subRow}>
             <Text style={styles.subChar}>{character}</Text>
@@ -112,6 +114,30 @@ export function WritingPractice({
             <Text style={styles.subDot}>·</Text>
             <Text style={[styles.subJlpt, { color: jlptColor }]}>{jlptLevel}</Text>
           </View>
+          {(kunReadings.length > 0 || onReadings.length > 0) && (
+            <View style={styles.readingChips}>
+              {kunReadings.length > 0 && (
+                <View style={styles.readingGroup}>
+                  <Text style={styles.readingGroupLabel}>Kun</Text>
+                  {kunReadings.slice(0, 3).map((r) => (
+                    <View key={r} style={styles.readingChip}>
+                      <Text style={styles.readingChipText}>{r}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {onReadings.length > 0 && (
+                <View style={styles.readingGroup}>
+                  <Text style={styles.readingGroupLabel}>On</Text>
+                  {onReadings.slice(0, 3).map((r) => (
+                    <View key={r} style={[styles.readingChip, styles.readingChipOn]}>
+                      <Text style={[styles.readingChipText, styles.readingChipOnText]}>{r}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
         </View>
         <Text style={styles.counter}>{index} / {total}</Text>
       </View>
@@ -310,6 +336,13 @@ const styles = StyleSheet.create({
   subMeaning: { ...typography.caption, color: colors.textSecondary },
   subJlpt: { ...typography.caption, fontWeight: '700' },
   counter: { ...typography.bodySmall, color: colors.textMuted, paddingTop: 2 },
+  readingChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
+  readingGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  readingGroupLabel: { ...typography.caption, color: colors.textMuted, fontWeight: '700' },
+  readingChip: { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  readingChipOn: { backgroundColor: colors.bgElevated, borderColor: colors.accent + '66' },
+  readingChipText: { ...typography.caption, color: colors.textSecondary },
+  readingChipOnText: { color: colors.accent },
 
   modeRow: {
     flexDirection: 'row', gap: spacing.sm,
