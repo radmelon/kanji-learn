@@ -1,6 +1,6 @@
 # 漢字 Learn
 
-A spaced-repetition Japanese Jouyou kanji learning app — 2,136 kanji, JLPT N5→N1, with AI-generated mnemonics, stroke-order writing practice, and voice reading evaluation.
+A spaced-repetition Japanese Jouyou kanji learning app — 2,136 kanji, JLPT N5→N1, with AI-generated mnemonics, location-tagged memory aids, social study mates, leaderboards, stroke-order writing practice, and voice reading evaluation.
 
 ## Stack
 
@@ -35,7 +35,7 @@ kanji-learn/
   ```bash
   npm install -g pnpm
   ```
-- **Expo Go SDK 54** on your iOS/Android device ([App Store](https://apps.apple.com/app/expo-go/id982107779))
+- **Xcode 16+** (iOS builds) or **Android Studio** — required for the native dev build
 - **Supabase** project ([supabase.com](https://supabase.com))
 - **Anthropic API key** ([console.anthropic.com](https://console.anthropic.com))
 
@@ -123,19 +123,40 @@ pnpm --filter @kanji-learn/db seed:mnemonics
 
 ## Development
 
-Start the API and mobile bundler in separate terminal tabs:
+The app requires a **native dev build** (not plain Expo Go) because it uses `expo-location`, `@shopify/react-native-skia`, and other modules with native code.
+
+#### First time: build the native app
+
+```bash
+cd apps/mobile
+npx expo prebuild --platform ios --clean
+open ios/KanjiLearn.xcworkspace   # build with ⌘R in Xcode, then return here
+```
+
+The `withXcode16Fix` config plugin handles Xcode 16 compatibility automatically (consteval patches, Podfile flags, AppDelegate ip.txt bundle URL, `ENABLE_USER_SCRIPT_SANDBOXING = NO`).
+
+#### Physical device: tell Metro your Mac's IP
+
+The app reads `apps/mobile/ios/KanjiLearn/ip.txt` to locate Metro (phones can't reach `localhost`):
+
+```bash
+ipconfig getifaddr en0               # find your Mac's current LAN IP
+echo "192.168.x.x" > apps/mobile/ios/KanjiLearn/ip.txt
+```
+
+Rebuild in Xcode after changing `ip.txt`.
+
+#### Daily dev start
 
 ```bash
 # Terminal 1 — API (http://localhost:3000)
 pnpm --filter @kanji-learn/api dev
 
-# Terminal 2 — Expo Metro bundler
-pnpm --filter @kanji-learn/mobile dev
+# Terminal 2 — Metro bundler
+cd apps/mobile && npx expo start --dev-client
 ```
 
-Scan the QR code with **Expo Go** on your phone. Both must be on the same Wi-Fi network.
-
-> The `pnpm dev` turbo command also works but streams both logs together.
+Open the KanjiLearn app already installed on your device — it connects to Metro automatically. Both must be on the same Wi-Fi network.
 
 ## Scripts Reference
 
@@ -158,8 +179,10 @@ Scan the QR code with **Expo Go** on your phone. Both must be on the same Wi-Fi 
 ```
 kanji               — 2,136 Jouyou kanji: character, JLPT level/order, stroke count,
                       meanings, on/kun readings, radicals, example vocab, SVG path
-mnemonics           — AI-generated (system) + user-authored mnemonic stories
-user_profiles       — Supabase auth mirror + preferences (daily goal, etc.)
+mnemonics           — AI-generated (system) + user-authored mnemonic stories;
+                      user mnemonics include optional lat/lng (location at creation time)
+user_profiles       — Supabase auth mirror: display_name, email, daily_goal,
+                      notifications_enabled, timezone
 user_kanji_progress — SM-2 SRS state per user per kanji (status, ease, interval,
                       next_review_at, reading_stage)
 review_sessions     — Batched study sessions with timing and score summary
@@ -168,6 +191,8 @@ writing_attempts    — Stroke-order practice scores
 voice_attempts      — Reading pronunciation evaluation results
 daily_stats         — Per-day review counts, accuracy, streak tracking
 interventions       — Absence / plateau / mnemonic-refresh nudge records
+friendships         — Study mate relationships: requester_id, addressee_id,
+                      status (pending / accepted / declined)
 ```
 
 ## CI / CD
@@ -196,12 +221,12 @@ Go to **Settings → Secrets and variables → Actions** and add:
 - **SRS algorithm** — SM-2 with statuses: `unseen → learning → reviewing → remembered → burned`
 - **Kanji ordering** — JLPT N5 first (most frequent in daily use), N1 last
 - **New cards per session** — up to 20, fills remaining slots after due reviews, ordered N5→N1
-- **Mnemonics** — Claude Haiku system mnemonics (30-day refresh nudge) + user-authored overrides
-- **Writing practice** — `@shopify/react-native-skia` canvas; requires a **native dev build** (`expo run:ios`), not Expo Go
+- **Mnemonics** — Claude Haiku system mnemonics (30-day refresh nudge) + user-authored overrides; `expo-location` captures lat/lng at creation time; a reverse-geocoded city badge is shown on each card
+- **Social** — Friend search by email, in-app friend requests (pending/accept/decline), iOS Share sheet invite for users not yet in the system; leaderboard shows friends + self ranked by streak and review count, falls back to global top 10 if no friends yet
+- **Writing practice** — `@shopify/react-native-skia` canvas; requires a native dev build
 - **Voice evaluation** — `expo-speech-recognition` → wanakana transliteration → Levenshtein distance scoring
-- **Auth** — Supabase Auth (email + OAuth), session persisted in `expo-secure-store`
-- **New Architecture** — Expo Go SDK 54 runs Fabric/JSI (New Architecture); project is fully compatible
-- **Expo Go vs dev build** — Skia writing practice requires `expo run:ios` / EAS build; all other features work in Expo Go
+- **Auth** — Supabase Auth (email + OAuth), session persisted in `expo-secure-store`; email is synced into `user_profiles` on each profile fetch so friend search works without a service-role key
+- **Native dev build required** — the app uses `expo-location`, Skia, and speech recognition which all require native modules; plain Expo Go is not supported
 
 ## Troubleshooting
 
@@ -216,3 +241,9 @@ Go to **Settings → Secrets and variables → Actions** and add:
 **"All caught up!" with empty queue** — Either the `kanji` table is empty (run `seed:kanji:fetch`) or the API isn't reachable (check `EXPO_PUBLIC_API_URL` uses your Mac's LAN IP, not `localhost`).
 
 **API throws `Cannot find package 'drizzle-orm'`** — Run `pnpm install` from the monorepo root to ensure all workspace deps are linked.
+
+**Location permission dialog never appears** — Rebuild the native app after adding `expo-location` to `app.json`. The `NSLocationWhenInUseUsageDescription` key must be present in the compiled `Info.plist`.
+
+**Friend search returns no results** — Email is synced into `user_profiles` on first profile GET after login. The target user must have opened the app at least once so their email is stored.
+
+**Metro not connecting on device after IP change** — Update `apps/mobile/ios/KanjiLearn/ip.txt` with the new LAN IP and rebuild in Xcode.

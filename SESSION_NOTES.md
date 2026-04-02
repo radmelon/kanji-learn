@@ -128,9 +128,24 @@ kanji-learn/
 
 | # | Feature | Notes |
 |---|---------|-------|
-| 7 | **Location hooks** | Attach lat/lng to mnemonic at creation time; store in `mnemonics` table |
-| 12 | **Social features** | Friend list, leaderboard by review streak/count |
+| 7 | **Location hooks** | ✅ Done |
+| 12 | **Social features** | ✅ Done |
 | 19–20 | **README + final cleanup** | Document setup, environment variables, architecture |
+| — | **Production setup** | See checklist below |
+
+### Production Setup Checklist
+
+- [ ] **CORS** — set `CORS_ORIGIN` env var to the production API domain (currently `'*'`)
+- [ ] **Rate limiting** — tune `max` / `timeWindow` in `server.ts`; back with Redis (`@fastify/rate-limit` supports it) instead of in-memory
+- [ ] **Email search privacy** — currently any authenticated user can look up any email in `user_profiles`; add an opt-out flag or hash emails before storing
+- [ ] **Friendship email sync** — email is synced into `user_profiles` on profile GET; ensure it stays up to date if a user changes their Supabase email
+- [ ] **Leaderboard at scale** — global top 10 query scans all of `user_kanji_progress`; add a materialised view or scheduled summary table
+- [ ] **Streak timezone** — `computeStreak` uses server UTC; consider storing user timezone and offsetting the day boundary
+- [ ] **Location permissions** — review App Store privacy nutrition label; `NSLocationWhenInUseUsageDescription` is set but location data is stored in plain DB columns
+- [ ] **Push notification keys** — rotate EAS / APNs credentials before App Store submission
+- [ ] **Secrets audit** — `apps/api/.env` holds `ANTHROPIC_API_KEY`, `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`; move to a secrets manager (Doppler, AWS SSM, etc.)
+- [ ] **DB connection pooling** — switch `DATABASE_URL` to a PgBouncer / Supabase pooler URL for production load
+- [ ] **Migration strategy** — `migrate_*.ts` scripts are dev-time only; wire Drizzle migrations into the CI/CD deploy pipeline
 
 ### Location hooks (next up)
 - Add `latitude` + `longitude` columns to `mnemonics` table (migration 0004)
