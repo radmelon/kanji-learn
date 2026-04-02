@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, typography } from '../src/theme'
 import { api } from '../src/lib/api'
-import type { TestQuestion, SubmitAnswer, TestResultSummary } from '@kanji-learn/shared'
+import type { TestQuestion, SubmitAnswer, TestResultSummary, QuestionType } from '@kanji-learn/shared'
 
 type ScreenStatus = 'loading' | 'question' | 'feedback' | 'complete'
 
@@ -19,6 +19,32 @@ const JLPT_COLORS: Record<string, string> = {
   N1: colors.n1,
 }
 
+const QUIZ_MODES: { key: QuestionType[]; label: string; icon: string }[] = [
+  { key: ['meaning_recall'], label: 'Meaning', icon: 'book-outline' },
+  { key: ['reading_recall'], label: 'Reading', icon: 'text-outline' },
+  { key: ['kanji_from_meaning'], label: 'Kanji', icon: 'pencil-outline' },
+  { key: ['vocab_reading', 'vocab_from_definition'], label: 'Vocab', icon: 'library-outline' },
+  { key: ['meaning_recall', 'kanji_from_meaning', 'reading_recall', 'vocab_reading', 'vocab_from_definition'], label: 'Mixed', icon: 'shuffle-outline' },
+]
+
+const PROMPT_LABELS: Record<QuestionType, string> = {
+  meaning_recall: 'What does this kanji mean?',
+  kanji_from_meaning: 'Which kanji matches this meaning?',
+  reading_recall: 'How do you read this kanji?',
+  vocab_reading: 'How do you read this word?',
+  vocab_from_definition: 'Which word means this?',
+}
+
+// Whether the prompt is a kanji character (large display) vs text
+function isCharacterPrompt(qt: QuestionType) {
+  return qt === 'meaning_recall' || qt === 'reading_recall'
+}
+
+// Whether the options are kanji characters (large display)
+function isCharacterOptions(qt: QuestionType) {
+  return qt === 'kanji_from_meaning'
+}
+
 export default function TestScreen() {
   const router = useRouter()
 
@@ -28,6 +54,7 @@ export default function TestScreen() {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [answers, setAnswers] = useState<SubmitAnswer[]>([])
   const [result, setResult] = useState<TestResultSummary | null>(null)
+  const [quizModeIdx, setQuizModeIdx] = useState(0)
   const cardStartMs = useRef(Date.now())
 
   // ── Load questions on mount ───────────────────────────────────────────────
@@ -36,10 +63,12 @@ export default function TestScreen() {
     loadQuestions()
   }, [])
 
-  const loadQuestions = async () => {
+  const loadQuestions = async (modeIdx = quizModeIdx) => {
     setStatus('loading')
+    const types = QUIZ_MODES[modeIdx]?.key ?? ['meaning_recall']
+    const typesParam = types.join(',')
     try {
-      const data = await api.get<TestQuestion[]>('/v1/tests/questions?limit=10')
+      const data = await api.get<TestQuestion[]>(`/v1/tests/questions?limit=10&types=${typesParam}`)
       setQuestions(data)
       setCurrentIdx(0)
       setSelectedIdx(null)
@@ -110,7 +139,12 @@ export default function TestScreen() {
   // ── Try Again ─────────────────────────────────────────────────────────────
 
   const handleTryAgain = () => {
-    loadQuestions()
+    loadQuestions(quizModeIdx)
+  }
+
+  const handleModeChange = (idx: number) => {
+    setQuizModeIdx(idx)
+    loadQuestions(idx)
   }
 
   // ── Loading state ─────────────────────────────────────────────────────────
@@ -175,6 +209,19 @@ export default function TestScreen() {
 
         {/* Footer buttons */}
         <View style={styles.completeFooter}>
+          {/* Quiz mode selector */}
+          <View style={styles.modeRow}>
+            {QUIZ_MODES.map((m, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.modeBtn, quizModeIdx === i && styles.modeBtnActive]}
+                onPress={() => handleModeChange(i)}
+              >
+                <Ionicons name={m.icon as any} size={14} color={quizModeIdx === i ? '#fff' : colors.textMuted} />
+                <Text style={[styles.modeBtnText, quizModeIdx === i && styles.modeBtnTextActive]}>{m.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <TouchableOpacity
             style={styles.secondaryButton}
             onPress={() => router.replace('/(tabs)')}
@@ -225,11 +272,15 @@ export default function TestScreen() {
             <Text style={[styles.jlptText, { color: jlptColor }]}>{q.jlptLevel}</Text>
           </View>
 
-          {/* Kanji character */}
-          <Text style={styles.kanjiCharacter}>{q.character}</Text>
+          {/* Prompt — large character or text depending on type */}
+          {isCharacterPrompt(q.questionType) ? (
+            <Text style={styles.kanjiCharacter}>{q.prompt}</Text>
+          ) : (
+            <Text style={styles.textPrompt}>{q.prompt}</Text>
+          )}
 
-          {/* Prompt */}
-          <Text style={styles.prompt}>What does this kanji mean?</Text>
+          {/* Sub-label */}
+          <Text style={styles.prompt}>{PROMPT_LABELS[q.questionType]}</Text>
         </View>
       </View>
 
@@ -239,6 +290,7 @@ export default function TestScreen() {
           const isSelected = selectedIdx === idx
           const isCorrect = idx === q.correctIndex
           const isFeedback = status === 'feedback'
+          const charOpts = isCharacterOptions(q.questionType)
 
           let optionStyle = {}
           let textStyle = {}
@@ -264,13 +316,13 @@ export default function TestScreen() {
           return (
             <TouchableOpacity
               key={idx}
-              style={[styles.optionButton, optionStyle]}
+              style={[styles.optionButton, charOpts && styles.optionButtonChar, optionStyle]}
               onPress={() => handleOptionTap(idx)}
               activeOpacity={0.8}
               disabled={isFeedback}
             >
-              <Text style={[styles.optionText, textStyle]}>{option}</Text>
-              {isFeedback && iconName && (
+              <Text style={[charOpts ? styles.optionCharText : styles.optionText, textStyle]}>{option}</Text>
+              {isFeedback && iconName && !charOpts && (
                 <Ionicons name={iconName} size={20} color={iconColor} />
               )}
             </TouchableOpacity>
@@ -361,6 +413,13 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginTop: spacing.md,
   },
+  textPrompt: {
+    ...typography.h2,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
   prompt: {
     ...typography.bodySmall,
     color: colors.textMuted,
@@ -383,11 +442,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  optionButtonChar: {
+    justifyContent: 'center',
+    paddingVertical: spacing.lg,
+  },
   optionText: {
     ...typography.body,
     color: colors.textPrimary,
     flex: 1,
   },
+  optionCharText: {
+    fontSize: 32,
+    lineHeight: 40,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    paddingBottom: spacing.xs,
+  },
+  modeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgSurface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modeBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  modeBtnText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  modeBtnTextActive: { color: '#fff' },
 
   // Complete state
   completeContent: {

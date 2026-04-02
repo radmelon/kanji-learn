@@ -5,6 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import * as SecureStore from 'expo-secure-store'
 import { VoiceEvaluator } from '../../src/components/voice/VoiceEvaluator'
 import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -25,6 +26,19 @@ interface Result {
   kanjiId: number
   passed: boolean
 }
+
+// ─── Difficulty ───────────────────────────────────────────────────────────────
+
+type Difficulty = 1 | 2 | 3 | 4
+
+const DIFFICULTY_LABELS: Record<Difficulty, string> = {
+  1: 'Guided',
+  2: 'Prompted',
+  3: 'Recall',
+  4: 'Challenge',
+}
+
+const DIFFICULTY_KEY = 'kl_voice_difficulty'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,9 +65,21 @@ export default function VoiceSession() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [evaluated, setEvaluated] = useState(false)
+  const [difficulty, setDifficulty] = useState<Difficulty>(1)
+  const [showDifficultyPicker, setShowDifficultyPicker] = useState(false)
 
   useEffect(() => {
     loadQueue()
+    SecureStore.getItemAsync(DIFFICULTY_KEY).then((val) => {
+      const parsed = parseInt(val ?? '1', 10)
+      if (parsed >= 1 && parsed <= 4) setDifficulty(parsed as Difficulty)
+    }).catch(() => {})
+  }, [])
+
+  const changeDifficulty = useCallback((d: Difficulty) => {
+    setDifficulty(d)
+    setShowDifficultyPicker(false)
+    SecureStore.setItemAsync(DIFFICULTY_KEY, String(d)).catch(() => {})
   }, [])
 
   const loadQueue = useCallback(async () => {
@@ -181,7 +207,32 @@ export default function VoiceSession() {
           <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
         <Text style={styles.progressCount}>{currentIndex + 1} / {queue.length}</Text>
+        <TouchableOpacity
+          style={styles.diffBadge}
+          onPress={() => setShowDifficultyPicker((v) => !v)}
+          hitSlop={8}
+        >
+          <Text style={styles.diffBadgeText}>{DIFFICULTY_LABELS[difficulty]}</Text>
+          <Ionicons name={showDifficultyPicker ? 'chevron-up' : 'chevron-down'} size={12} color={colors.textMuted} />
+        </TouchableOpacity>
       </View>
+
+      {/* Difficulty picker */}
+      {showDifficultyPicker && (
+        <View style={styles.diffPicker}>
+          {([1, 2, 3, 4] as Difficulty[]).map((d) => (
+            <TouchableOpacity
+              key={d}
+              style={[styles.diffOption, difficulty === d && styles.diffOptionActive]}
+              onPress={() => changeDifficulty(d)}
+            >
+              <Text style={[styles.diffOptionText, difficulty === d && styles.diffOptionTextActive]}>
+                {DIFFICULTY_LABELS[d]}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       <ScrollView
         style={styles.scroll}
@@ -194,32 +245,56 @@ export default function VoiceSession() {
           <View style={styles.levelBadge}>
             <Text style={styles.levelText}>{currentItem.jlptLevel}</Text>
           </View>
-          <Text style={styles.meaningText}>{currentItem.meanings.slice(0, 3).join(', ')}</Text>
+          {difficulty < 4 && (
+            <Text style={styles.meaningText}>{currentItem.meanings.slice(0, 3).join(', ')}</Text>
+          )}
         </View>
 
-        {/* Reading alternatives */}
-        <View style={styles.readingChips}>
-          {currentItem.kunReadings.length > 0 && (
-            <View style={styles.readingGroup}>
-              <Text style={styles.readingGroupLabel}>Kun</Text>
-              {currentItem.kunReadings.slice(0, 3).map((r) => (
-                <View key={r} style={styles.readingChip}>
-                  <Text style={styles.readingChipText}>{r}</Text>
+        {/* Reading chips — shown for level 1 upfront, always shown after evaluation */}
+        {(difficulty === 1 || evaluated) ? (
+          <View style={styles.readingChips}>
+            {currentItem.kunReadings.length > 0 && (
+              <View style={styles.readingGroup}>
+                <Text style={styles.readingGroupLabel}>Kun</Text>
+                {currentItem.kunReadings.slice(0, 3).map((r) => (
+                  <View key={r} style={styles.readingChip}>
+                    <Text style={styles.readingChipText}>{r}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {currentItem.onReadings.length > 0 && (
+              <View style={styles.readingGroup}>
+                <Text style={styles.readingGroupLabel}>On</Text>
+                {currentItem.onReadings.slice(0, 3).map((r) => (
+                  <View key={r} style={[styles.readingChip, styles.readingChipOn]}>
+                    <Text style={[styles.readingChipText, styles.readingChipOnText]}>{r}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : difficulty === 2 ? (
+          /* Level 2 — show group labels only, not kana */
+          <View style={styles.readingChips}>
+            {currentItem.kunReadings.length > 0 && (
+              <View style={styles.readingGroup}>
+                <Text style={styles.readingGroupLabel}>Kun</Text>
+                <View style={[styles.readingChip, styles.readingChipHidden]}>
+                  <Text style={styles.readingChipHiddenText}>???</Text>
                 </View>
-              ))}
-            </View>
-          )}
-          {currentItem.onReadings.length > 0 && (
-            <View style={styles.readingGroup}>
-              <Text style={styles.readingGroupLabel}>On</Text>
-              {currentItem.onReadings.slice(0, 3).map((r) => (
-                <View key={r} style={[styles.readingChip, styles.readingChipOn]}>
-                  <Text style={[styles.readingChipText, styles.readingChipOnText]}>{r}</Text>
+              </View>
+            )}
+            {currentItem.onReadings.length > 0 && (
+              <View style={styles.readingGroup}>
+                <Text style={styles.readingGroupLabel}>On</Text>
+                <View style={[styles.readingChip, styles.readingChipOn, styles.readingChipHidden]}>
+                  <Text style={styles.readingChipHiddenText}>???</Text>
                 </View>
-              ))}
-            </View>
-          )}
-        </View>
+              </View>
+            )}
+          </View>
+        ) : null}
 
         {/* Voice evaluator */}
         <View style={styles.evaluatorWrapper}>
@@ -233,6 +308,7 @@ export default function VoiceSession() {
               ...currentItem.onReadings,
             ].filter(Boolean)}
             readingLabel={label}
+            hideHint={difficulty > 1}
             onResult={handleResult}
           />
         </View>
@@ -322,6 +398,40 @@ const styles = StyleSheet.create({
   readingChipOn: { backgroundColor: colors.bgElevated, borderColor: colors.accent + '66' },
   readingChipText: { ...typography.reading, color: colors.textSecondary },
   readingChipOnText: { color: colors.accent },
+
+  diffBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  diffBadgeText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  diffPicker: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  diffOption: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgSurface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  diffOptionActive: {
+    backgroundColor: colors.primary + '22',
+    borderColor: colors.primary + '66',
+  },
+  diffOptionText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  diffOptionTextActive: { color: colors.primary },
+  readingChipHidden: { opacity: 0.35 },
+  readingChipHiddenText: { ...typography.reading, color: colors.textMuted },
 
   evaluatorWrapper: {
     backgroundColor: colors.bgCard,

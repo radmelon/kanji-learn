@@ -1,6 +1,15 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { TestService } from '../services/test.service.js'
+import type { QuestionType } from '../services/test.service.js'
+
+const VALID_QUESTION_TYPES: QuestionType[] = [
+  'meaning_recall',
+  'kanji_from_meaning',
+  'reading_recall',
+  'vocab_reading',
+  'vocab_from_definition',
+]
 
 const submitAnswerSchema = z.object({
   kanjiId: z.number().int().positive(),
@@ -15,6 +24,8 @@ const testQuestionSchema = z.object({
   primaryMeaning: z.string(),
   options: z.array(z.string()).length(4),
   correctIndex: z.number().int().min(0).max(3),
+  questionType: z.string(),
+  prompt: z.string(),
 })
 
 const submitTestSchema = z.object({
@@ -26,14 +37,28 @@ const submitTestSchema = z.object({
 export async function testRoutes(server: FastifyInstance) {
   const testService = new TestService(server.db)
 
-  // GET /v1/tests/questions?limit=10
-  server.get<{ Querystring: { limit?: string } }>(
+  // GET /v1/tests/questions?limit=10&types=meaning_recall,reading_recall
+  server.get<{ Querystring: { limit?: string; types?: string } }>(
     '/questions',
     { preHandler: [server.authenticate] },
     async (req, reply) => {
       const limit = Math.min(Number(req.query.limit ?? 10), 50)
-      const questions = await testService.generateQuestions(req.userId!, limit)
+      const requestedTypes = req.query.types
+        ? (req.query.types.split(',').filter((t) => VALID_QUESTION_TYPES.includes(t as QuestionType)) as QuestionType[])
+        : ['meaning_recall' as const]
+      const types = requestedTypes.length > 0 ? requestedTypes : ['meaning_recall' as const]
+      const questions = await testService.generateQuestions(req.userId!, limit, types)
       return reply.send({ ok: true, data: questions })
+    }
+  )
+
+  // GET /v1/tests/analytics
+  server.get(
+    '/analytics',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const data = await testService.getQuizAnalytics(req.userId!)
+      return reply.send({ ok: true, data })
     }
   )
 

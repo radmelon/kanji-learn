@@ -1,18 +1,35 @@
 import '../src/polyfills'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useAuthStore } from '../src/stores/auth.store'
 import { usePushNotifications } from '../src/hooks/usePushNotifications'
+import { useNetworkStatus } from '../src/hooks/useNetworkStatus'
+import { useReviewStore } from '../src/stores/review.store'
 import { colors } from '../src/theme'
 
 export default function RootLayout() {
   const { isInitialized, session, initialize } = useAuthStore()
   const router = useRouter()
   const segments = useSegments()
+  const { isOnline } = useNetworkStatus()
+  const wasOfflineRef = useRef(false)
 
   usePushNotifications(!!session)
+
+  // Drain pending sessions whenever we come back online
+  useEffect(() => {
+    if (!session) return
+    if (!isOnline) {
+      wasOfflineRef.current = true
+      return
+    }
+    if (wasOfflineRef.current) {
+      wasOfflineRef.current = false
+      useReviewStore.getState().syncPendingSessions()
+    }
+  }, [isOnline, session])
 
   useEffect(() => {
     initialize()

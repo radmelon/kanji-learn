@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { useAnalytics } from '../../src/hooks/useAnalytics'
+import { useQuizAnalytics } from '../../src/hooks/useQuizAnalytics'
 import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { DailyStats } from '@kanji-learn/shared'
@@ -19,6 +20,7 @@ const PERIOD_DAYS: Record<Period, number> = { '7d': 7, '30d': 30, '90d': 90 }
 export default function ProgressScreen() {
   const { user } = useAuthStore()
   const { summary, isLoading, error, refresh } = useAnalytics()
+  const { data: quizData } = useQuizAnalytics()
   const [period, setPeriod] = useState<Period>('30d')
 
   const displayName = user?.user_metadata?.display_name ?? 'Learner'
@@ -131,6 +133,100 @@ export default function ProgressScreen() {
                 />
               </View>
             </Section>
+
+            {/* Quiz Performance */}
+            {quizData && quizData.totalSessions > 0 && (
+              <>
+                <Section title="Quiz Performance">
+                  <View style={styles.velocityGrid}>
+                    <VelocityItem label="Sessions" value={quizData.totalSessions.toLocaleString()} isText />
+                    <VelocityItem label="Avg score" value={`${quizData.avgScore}%`} isText color={quizData.avgScore >= 70 ? colors.success : colors.warning} />
+                    <VelocityItem label="Pass rate" value={`${quizData.passRate}%`} isText color={quizData.passRate >= 70 ? colors.success : colors.warning} />
+                  </View>
+                  {quizData.recentSessions.length > 0 && (
+                    <View style={styles.quizHistory}>
+                      <Text style={styles.worstKanjiTitle}>Recent sessions</Text>
+                      <View style={styles.quizBars}>
+                        {quizData.recentSessions.slice(0, 10).reverse().map((s) => (
+                          <View key={s.id} style={styles.quizBarWrapper}>
+                            <View style={styles.quizBarTrack}>
+                              <View style={[styles.quizBarFill, { height: `${Math.max(s.scorePct, 4)}%`, backgroundColor: s.passed ? colors.success : colors.error }]} />
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                      <View style={styles.quizBarLegend}>
+                        <LegendDot color={colors.success} label="Pass" />
+                        <LegendDot color={colors.error} label="Fail" />
+                      </View>
+                    </View>
+                  )}
+                </Section>
+                {quizData.weakestKanji.length > 0 && (
+                  <Section title="Quiz Weak Spots">
+                    <Text style={styles.sectionNote}>Kanji you most often miss in quizzes (min 3 attempts)</Text>
+                    {quizData.weakestKanji.map((k) => (
+                      <View key={k.kanjiId} style={styles.worstKanjiRow}>
+                        <Text style={styles.worstKanjiChar}>{k.character}</Text>
+                        <View style={styles.worstKanjiBar}>
+                          <View style={[styles.worstKanjiBarFill, { width: `${k.missRate}%`, backgroundColor: k.missRate >= 50 ? colors.error : colors.warning }]} />
+                        </View>
+                        <Text style={styles.worstKanjiPct}>{k.missRate}%</Text>
+                      </View>
+                    ))}
+                  </Section>
+                )}
+              </>
+            )}
+
+            {/* Writing Practice */}
+            {summary.writing.totalAttempts > 0 ? (
+              <Section title="Writing Practice">
+                <View style={styles.velocityGrid}>
+                  <VelocityItem label="Attempts" value={summary.writing.totalAttempts.toLocaleString()} isText />
+                  <VelocityItem label="Avg accuracy" value={`${summary.writing.avgScore}%`} isText color={summary.writing.avgScore >= 70 ? colors.success : colors.warning} />
+                  <VelocityItem label="Pass rate" value={`${summary.writing.passRate}%`} isText color={summary.writing.passRate >= 70 ? colors.success : colors.warning} />
+                </View>
+                {summary.writing.worstKanji.length > 0 && (
+                  <View style={styles.worstKanjiList}>
+                    <Text style={styles.worstKanjiTitle}>Needs most work</Text>
+                    {summary.writing.worstKanji.map((k) => (
+                      <View key={k.kanjiId} style={styles.worstKanjiRow}>
+                        <Text style={styles.worstKanjiChar}>{k.character}</Text>
+                        <View style={styles.worstKanjiBar}>
+                          <View style={[styles.worstKanjiBarFill, { width: `${k.avgScore ?? 0}%`, backgroundColor: (k.avgScore ?? 0) >= 70 ? colors.success : colors.warning }]} />
+                        </View>
+                        <Text style={styles.worstKanjiPct}>{k.avgScore}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </Section>
+            ) : null}
+
+            {/* Speaking Practice */}
+            {summary.voice.totalAttempts > 0 ? (
+              <Section title="Speaking Practice">
+                <View style={styles.velocityGrid}>
+                  <VelocityItem label="Attempts" value={summary.voice.totalAttempts.toLocaleString()} isText />
+                  <VelocityItem label="Accuracy" value={`${summary.voice.correctPct}%`} isText color={summary.voice.correctPct >= 70 ? colors.success : colors.warning} />
+                </View>
+                {summary.voice.worstKanji.length > 0 && (
+                  <View style={styles.worstKanjiList}>
+                    <Text style={styles.worstKanjiTitle}>Needs most work</Text>
+                    {summary.voice.worstKanji.map((k) => (
+                      <View key={k.kanjiId} style={styles.worstKanjiRow}>
+                        <Text style={styles.worstKanjiChar}>{k.character}</Text>
+                        <View style={styles.worstKanjiBar}>
+                          <View style={[styles.worstKanjiBarFill, { width: `${k.correctPct ?? 0}%`, backgroundColor: (k.correctPct ?? 0) >= 70 ? colors.success : colors.warning }]} />
+                        </View>
+                        <Text style={styles.worstKanjiPct}>{k.correctPct}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </Section>
+            ) : null}
           </>
         ) : null}
       </ScrollView>
@@ -326,6 +422,20 @@ const styles = StyleSheet.create({
   accuracyLabel: { ...typography.caption, color: colors.textMuted },
   accuracyDetails: { flex: 1, gap: spacing.xs },
   velocityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  sectionNote: { ...typography.caption, color: colors.textMuted },
+  quizHistory: { gap: spacing.sm },
+  quizBars: { flexDirection: 'row', height: 80, gap: 3, alignItems: 'flex-end' },
+  quizBarWrapper: { flex: 1, height: '100%', justifyContent: 'flex-end' },
+  quizBarTrack: { width: '100%', height: '100%', justifyContent: 'flex-end', backgroundColor: colors.bgSurface, borderRadius: 3, overflow: 'hidden' },
+  quizBarFill: { position: 'absolute', bottom: 0, width: '100%', borderRadius: 3 },
+  quizBarLegend: { flexDirection: 'row', gap: spacing.md },
+  worstKanjiList: { gap: spacing.sm, paddingTop: spacing.xs },
+  worstKanjiTitle: { ...typography.caption, color: colors.textMuted, fontWeight: '700', textTransform: 'uppercase' },
+  worstKanjiRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  worstKanjiChar: { ...typography.h3, color: colors.textPrimary, width: 32, textAlign: 'center' },
+  worstKanjiBar: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
+  worstKanjiBarFill: { height: '100%', borderRadius: radius.full },
+  worstKanjiPct: { ...typography.caption, color: colors.textMuted, width: 36, textAlign: 'right' },
   errorBox: { alignItems: 'center', gap: spacing.md, marginTop: spacing.xxl, padding: spacing.xl },
   errorText: { ...typography.h3, color: colors.textPrimary },
   errorSub: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center' },

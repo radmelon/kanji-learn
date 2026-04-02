@@ -8,8 +8,13 @@ import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { api } from '../../src/lib/api'
+import { storage } from '../../src/lib/storage'
+import { useNetworkStatus } from '../../src/hooks/useNetworkStatus'
+import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { useSocial } from '../../src/hooks/useSocial'
 import type { SearchResult } from '../../src/hooks/useSocial'
+
+const PROFILE_CACHE_KEY = 'kl:profile_cache'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,6 +40,8 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isOffline, setIsOffline] = useState(false)
+  const { isOnline } = useNetworkStatus()
 
   // Editable fields — local state, saved on blur / toggle
   const [displayName, setDisplayName] = useState('')
@@ -49,22 +56,37 @@ export default function ProfileScreen() {
 
   // ── Load profile ─────────────────────────────────────────────────────────
 
+  const applyProfile = useCallback((data: UserProfile) => {
+    setProfile(data)
+    setDisplayName(data.displayName ?? '')
+    setDailyGoal(data.dailyGoal)
+    setNotificationsEnabled(data.notificationsEnabled)
+  }, [])
+
   const loadProfile = useCallback(async () => {
     setIsLoading(true)
+    setIsOffline(false)
+
+    // Show cache immediately
+    const cached = await storage.getItem<{ data: UserProfile }>(PROFILE_CACHE_KEY)
+    if (cached?.data) applyProfile(cached.data)
+
     try {
       const data = await api.get<UserProfile>('/v1/user/profile')
-      setProfile(data)
-      setDisplayName(data.displayName ?? '')
-      setDailyGoal(data.dailyGoal)
-      setNotificationsEnabled(data.notificationsEnabled)
+      applyProfile(data)
+      await storage.setItem(PROFILE_CACHE_KEY, { data })
     } catch {
-      // Profile may not exist yet for brand-new users — use auth metadata
-      const name = user?.user_metadata?.display_name ?? ''
-      setDisplayName(name)
+      if (cached?.data) {
+        setIsOffline(true)
+      } else {
+        // Profile may not exist yet for brand-new users — use auth metadata
+        const name = user?.user_metadata?.display_name ?? ''
+        setDisplayName(name)
+      }
     } finally {
       setIsLoading(false)
     }
-  }, [user])
+  }, [user, applyProfile])
 
   useEffect(() => {
     loadProfile()
@@ -191,6 +213,10 @@ export default function ProfileScreen() {
           <Text style={styles.screenTitle}>Profile</Text>
           {isSaving && <ActivityIndicator size="small" color={colors.textMuted} />}
         </View>
+
+        {(isOffline || !isOnline) && (
+          <OfflineBanner message="Showing cached profile" staleLabel="Read-only while offline" />
+        )}
 
         {/* Avatar + identity */}
         <View style={styles.avatarSection}>
@@ -323,7 +349,7 @@ export default function ProfileScreen() {
           {searchError && (
             <View style={styles.searchErrorBox}>
               <Text style={styles.rowSub}>{searchError}</Text>
-              {searchResult === null && friendSearch.trim() && (
+              {!searchResult?.user && friendSearch.trim() && (
                 <TouchableOpacity style={[styles.addBtn, { marginTop: spacing.xs }]} onPress={handleInviteExternal}>
                   <Ionicons name="share-outline" size={14} color="#fff" />
                   <Text style={styles.addBtnText}>Send invite</Text>

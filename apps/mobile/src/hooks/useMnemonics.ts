@@ -1,6 +1,21 @@
 import { useState, useCallback } from 'react'
 import * as Location from 'expo-location'
 import { api } from '../lib/api'
+import { storage } from '../lib/storage'
+
+const CACHE_KEY = 'kl:mnemonics_cache'
+
+type MnemonicsCache = Record<number, { cachedAt: number; mnemonics: Mnemonic[] }>
+
+async function readCache(kanjiId: number): Promise<Mnemonic[] | null> {
+  const cache = await storage.getItem<MnemonicsCache>(CACHE_KEY)
+  return cache?.[kanjiId]?.mnemonics ?? null
+}
+
+async function writeCache(kanjiId: number, mnemonics: Mnemonic[]): Promise<void> {
+  const cache = (await storage.getItem<MnemonicsCache>(CACHE_KEY)) ?? {}
+  await storage.setItem(CACHE_KEY, { ...cache, [kanjiId]: { cachedAt: Date.now(), mnemonics } })
+}
 
 export interface Mnemonic {
   id: string
@@ -35,11 +50,17 @@ export function useMnemonics(kanjiId: number) {
 
   const load = useCallback(async () => {
     setIsLoading(true)
+
+    // Show cache immediately
+    const cached = await readCache(kanjiId)
+    if (cached) setMnemonics(cached)
+
     try {
       const data = await api.get<Mnemonic[]>(`/v1/mnemonics/${kanjiId}`)
       setMnemonics(data)
+      await writeCache(kanjiId, data)
     } catch {
-      // silently fail
+      // Already showing cache if available — silently fail
     } finally {
       setIsLoading(false)
     }
@@ -50,7 +71,11 @@ export function useMnemonics(kanjiId: number) {
     try {
       const coords = await getCoords()
       const data = await api.post<Mnemonic>(`/v1/mnemonics/${kanjiId}/generate`, { model, ...coords })
-      setMnemonics((prev) => [data, ...prev])
+      setMnemonics((prev) => {
+        const updated = [data, ...prev]
+        writeCache(kanjiId, updated)
+        return updated
+      })
       return data
     } finally {
       setIsGenerating(false)
@@ -60,7 +85,11 @@ export function useMnemonics(kanjiId: number) {
   const save = useCallback(async (storyText: string) => {
     const coords = await getCoords()
     const data = await api.post<Mnemonic>(`/v1/mnemonics/${kanjiId}`, { storyText, ...coords })
-    setMnemonics((prev) => [data, ...prev])
+    setMnemonics((prev) => {
+      const updated = [data, ...prev]
+      writeCache(kanjiId, updated)
+      return updated
+    })
     return data
   }, [kanjiId])
 

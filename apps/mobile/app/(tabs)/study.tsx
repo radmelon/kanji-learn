@@ -7,17 +7,19 @@ import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as SecureStore from 'expo-secure-store'
 import { useReviewStore } from '../../src/stores/review.store'
+import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { KanjiCard } from '../../src/components/study/KanjiCard'
 import { CompoundCard } from '../../src/components/study/CompoundCard'
 import { GradeButtons } from '../../src/components/study/GradeButtons'
 import { SessionComplete } from '../../src/components/study/SessionComplete'
+import { MnemonicNudgeSheet } from '../../src/components/study/MnemonicNudgeSheet'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 const HELP_KEY = 'kl_has_seen_study_help'
 
 export default function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, error, loadQueue, submitResult, finishSession, reset } =
+  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, loadQueue, submitResult, finishSession, syncPendingSessions, reset } =
     useReviewStore()
 
   const [isRevealed, setIsRevealed] = useState(false)
@@ -26,9 +28,11 @@ export default function StudySession() {
     totalItems: number; correctItems: number; newLearned: number; burned: number
   } | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [nudgeItem, setNudgeItem] = useState<{ kanjiId: number; character: string; meaning: string } | null>(null)
   const cardStartMs = useRef(Date.now())
 
   useEffect(() => {
+    syncPendingSessions()
     loadQueue(20)
     return () => reset()
   }, [])
@@ -65,6 +69,9 @@ export default function StudySession() {
         responseTimeMs: Date.now() - cardStartMs.current,
         reviewType: item.reviewType,
       })
+      if ((quality === 1 || quality === 3) && item.reviewType !== 'compound') {
+        setNudgeItem({ kanjiId: item.kanjiId, character: item.character, meaning: item.meaning })
+      }
     },
     [queue, currentIndex, submitResult]
   )
@@ -134,7 +141,11 @@ export default function StudySession() {
       <SafeAreaView style={styles.safe}>
         <Ionicons name="checkmark-circle" size={64} color={colors.success} />
         <Text style={styles.emptyTitle}>All caught up!</Text>
-        <Text style={styles.emptySubtitle}>No reviews due right now. Come back later.</Text>
+        <Text style={styles.emptySubtitle}>
+          {error?.includes('offline')
+            ? 'You\'re offline. Connect to load new cards.'
+            : 'No reviews due right now. Come back later.'}
+        </Text>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backText}>Back to Dashboard</Text>
         </TouchableOpacity>
@@ -197,6 +208,11 @@ export default function StudySession() {
           {currentIndex + 1}/{queue.length}
         </Text>
       </View>
+      {isOfflineQueue && (
+        <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.xs }}>
+          <OfflineBanner message="Offline — showing cached cards" />
+        </View>
+      )}
 
       {/* Card */}
       <View style={styles.cardArea}>
@@ -217,6 +233,15 @@ export default function StudySession() {
           </View>
         )}
       </View>
+
+      {/* Mnemonic nudge sheet (Again / Hard) */}
+      <MnemonicNudgeSheet
+        visible={!!nudgeItem}
+        kanjiId={nudgeItem?.kanjiId ?? 0}
+        character={nudgeItem?.character ?? ''}
+        meaning={nudgeItem?.meaning ?? ''}
+        onDismiss={() => setNudgeItem(null)}
+      />
 
       {/* First-run onboarding overlay */}
       <Modal visible={showOnboarding} transparent animationType="fade" onRequestClose={dismissOnboarding}>

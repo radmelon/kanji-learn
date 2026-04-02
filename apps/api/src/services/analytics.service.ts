@@ -1,5 +1,5 @@
 import { and, eq, gte, desc, sql, lte } from 'drizzle-orm'
-import { dailyStats, reviewLogs, userKanjiProgress, kanji } from '@kanji-learn/db'
+import { dailyStats, reviewLogs, userKanjiProgress, kanji, writingAttempts, voiceAttempts } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import type { DailyStats, VelocityMetrics } from '@kanji-learn/shared'
 import {
@@ -116,7 +116,7 @@ export class AnalyticsService {
   // ── Full summary for dashboard ──────────────────────────────────────────────
 
   async getSummary(userId: string) {
-    const [velocity, accuracy, statusCounts, streakDays, recentStats, jlptProgress] =
+    const [velocity, accuracy, statusCounts, streakDays, recentStats, jlptProgress, writing, voice] =
       await Promise.all([
         this.getVelocityMetrics(userId),
         this.getAccuracyRate(userId),
@@ -124,6 +124,8 @@ export class AnalyticsService {
         this.getStreakDays(userId),
         this.getDailyStats(userId, 90), // fetch 90d so chart period selector works client-side
         this.getJlptProgress(userId),
+        this.getWritingStats(userId),
+        this.getVoiceStats(userId),
       ])
 
     const totalSeen = TOTAL_JOUYOU_KANJI - statusCounts.unseen
@@ -138,6 +140,81 @@ export class AnalyticsService {
       recentStats,
       totalSeen,
       completionPct,
+      writing,
+      voice,
+    }
+  }
+
+  // ── Writing practice stats ─────────────────────────────────────────────────
+
+  async getWritingStats(userId: string) {
+    const [agg] = await this.db
+      .select({
+        total: sql<number>`count(*)::int`,
+        avgScore: sql<number>`ROUND(AVG(score)::numeric * 100, 1)`,
+        passed: sql<number>`count(*) filter (where score >= 0.7)::int`,
+      })
+      .from(writingAttempts)
+      .where(eq(writingAttempts.userId, userId))
+
+    const total = Number(agg?.total ?? 0)
+    const avgScore = Number(agg?.avgScore ?? 0)
+    const passRate = total > 0 ? Math.round((Number(agg?.passed ?? 0) / total) * 100) : 0
+
+    const worstRows = await this.db
+      .select({
+        kanjiId: writingAttempts.kanjiId,
+        character: kanji.character,
+        avgScore: sql<number>`ROUND(AVG(${writingAttempts.score})::numeric * 100, 1)`,
+      })
+      .from(writingAttempts)
+      .innerJoin(kanji, eq(writingAttempts.kanjiId, kanji.id))
+      .where(eq(writingAttempts.userId, userId))
+      .groupBy(writingAttempts.kanjiId, kanji.character)
+      .having(sql`count(*) >= 2`)
+      .orderBy(sql`AVG(${writingAttempts.score})`)
+      .limit(5)
+
+    return {
+      totalAttempts: total,
+      avgScore,
+      passRate,
+      worstKanji: worstRows.map((r) => ({ kanjiId: r.kanjiId, character: r.character, avgScore: Number(r.avgScore) })),
+    }
+  }
+
+  // ── Voice practice stats ───────────────────────────────────────────────────
+
+  async getVoiceStats(userId: string) {
+    const [agg] = await this.db
+      .select({
+        total: sql<number>`count(*)::int`,
+        correct: sql<number>`count(*) filter (where passed = true)::int`,
+      })
+      .from(voiceAttempts)
+      .where(eq(voiceAttempts.userId, userId))
+
+    const total = Number(agg?.total ?? 0)
+    const correctPct = total > 0 ? Math.round((Number(agg?.correct ?? 0) / total) * 100) : 0
+
+    const worstRows = await this.db
+      .select({
+        kanjiId: voiceAttempts.kanjiId,
+        character: kanji.character,
+        correctPct: sql<number>`ROUND(count(*) filter (where passed = true)::numeric / count(*) * 100, 1)`,
+      })
+      .from(voiceAttempts)
+      .innerJoin(kanji, eq(voiceAttempts.kanjiId, kanji.id))
+      .where(eq(voiceAttempts.userId, userId))
+      .groupBy(voiceAttempts.kanjiId, kanji.character)
+      .having(sql`count(*) >= 2`)
+      .orderBy(sql`count(*) filter (where passed = true)::numeric / count(*)`)
+      .limit(5)
+
+    return {
+      totalAttempts: total,
+      correctPct,
+      worstKanji: worstRows.map((r) => ({ kanjiId: r.kanjiId, character: r.character, correctPct: Number(r.correctPct) })),
     }
   }
 

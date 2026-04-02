@@ -8,17 +8,20 @@ import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { useAnalytics } from '../../src/hooks/useAnalytics'
+import { useQuizAnalytics } from '../../src/hooks/useQuizAnalytics'
 import { useInterventions } from '../../src/hooks/useInterventions'
 import { useSocial } from '../../src/hooks/useSocial'
 import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { StatCard } from '../../src/components/ui/StatCard'
 import { InterventionBanner } from '../../src/components/ui/InterventionBanner'
+import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 export default function Dashboard() {
   const router = useRouter()
   const { user } = useAuthStore()
-  const { summary, isLoading, refresh } = useAnalytics()
+  const { summary, isLoading, isStale, refresh } = useAnalytics()
+  const { data: quizData } = useQuizAnalytics()
   const { interventions, dismiss } = useInterventions()
   const { leaderboard } = useSocial()
 
@@ -58,6 +61,9 @@ export default function Dashboard() {
         {interventions.map((i) => (
           <InterventionBanner key={i.id} intervention={i} onDismiss={() => dismiss(i.id)} />
         ))}
+
+        {/* Offline / stale data banner */}
+        {isStale && <OfflineBanner message="Showing cached data" staleLabel="Offline" />}
 
         {/* Start study CTA */}
         <TouchableOpacity style={styles.studyButton} onPress={handleStudy} activeOpacity={0.85}>
@@ -153,6 +159,38 @@ export default function Dashboard() {
                 {summary.totalSeen.toLocaleString()} seen · {summary.statusCounts.burned.toLocaleString()} mastered · {summary.statusCounts.unseen.toLocaleString()} remaining
               </Text>
             </View>
+
+            {/* Quiz stats */}
+            {quizData && quizData.totalSessions > 0 && (
+              <TouchableOpacity style={styles.card} onPress={handleQuiz} activeOpacity={0.8}>
+                <View style={styles.cardRow}>
+                  <Text style={styles.cardTitle}>Quiz</Text>
+                  <View style={[styles.passBadge, { backgroundColor: (quizData.recentSessions[0]?.passed ? colors.success : colors.error) + '22' }]}>
+                    <Text style={[styles.passBadgeText, { color: quizData.recentSessions[0]?.passed ? colors.success : colors.error }]}>
+                      Last: {quizData.recentSessions[0]?.passed ? 'Pass' : 'Fail'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.quizStatRow}>
+                  <View style={styles.quizStatItem}>
+                    <Text style={styles.quizStatValue}>{quizData.recentSessions[0]?.scorePct ?? 0}%</Text>
+                    <Text style={styles.quizStatLabel}>Last score</Text>
+                  </View>
+                  <View style={styles.quizStatItem}>
+                    <Text style={styles.quizStatValue}>{quizData.avgScore}%</Text>
+                    <Text style={styles.quizStatLabel}>Avg score</Text>
+                  </View>
+                  <View style={styles.quizStatItem}>
+                    <Text style={styles.quizStatValue}>{quizData.passRate}%</Text>
+                    <Text style={styles.quizStatLabel}>Pass rate</Text>
+                  </View>
+                  <View style={styles.quizStatItem}>
+                    <Text style={styles.quizStatValue}>{quizData.totalSessions}</Text>
+                    <Text style={styles.quizStatLabel}>Sessions</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            )}
           </>
         ) : null}
 
@@ -272,6 +310,14 @@ const styles = StyleSheet.create({
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radius.full },
   progressLabel: { ...typography.caption, color: colors.textMuted },
   completionPct: { ...typography.bodySmall, color: colors.primary, fontWeight: '600' },
+
+  // Quiz card
+  passBadge: { borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  passBadgeText: { ...typography.caption, fontWeight: '700' },
+  quizStatRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  quizStatItem: { alignItems: 'center', gap: 2 },
+  quizStatValue: { ...typography.h3, color: colors.textPrimary },
+  quizStatLabel: { ...typography.caption, color: colors.textMuted },
 
   // Leaderboard
   lbSubtitle: { ...typography.caption, color: colors.textMuted },

@@ -52,6 +52,8 @@ interface Props {
   onResult?: (result: EvalResult) => void
   /** Whether to use strict mode (no near-matches) — for checkpoint tests */
   strict?: boolean
+  /** Hide the expected reading hint below the prompt (for Prompted/Recall/Challenge difficulty) */
+  hideHint?: boolean
 }
 
 // ─── Voice Evaluator ──────────────────────────────────────────────────────────
@@ -63,6 +65,7 @@ export function VoiceEvaluator({
   readingLabel = 'reading',
   onResult,
   strict = false,
+  hideHint = false,
 }: Props) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [result, setResult] = useState<EvalResult | null>(null)
@@ -207,7 +210,7 @@ export function VoiceEvaluator({
       <View style={styles.prompt}>
         <Text style={styles.character}>{character}</Text>
         <Text style={styles.promptLabel}>Say the {readingLabel}</Text>
-        <Text style={styles.expectedHint}>({correctReadings[0]})</Text>
+        {!hideHint && <Text style={styles.expectedHint}>({correctReadings[0]})</Text>}
       </View>
 
       {/* Mic button — hidden while evaluating or showing result */}

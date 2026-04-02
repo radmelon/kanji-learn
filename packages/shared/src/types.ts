@@ -113,6 +113,13 @@ export type ApiResponse<T> = ApiSuccess<T> | ApiError
 
 // ─── Test Session ─────────────────────────────────────────────────────────────
 
+export type QuestionType =
+  | 'meaning_recall'
+  | 'kanji_from_meaning'
+  | 'reading_recall'
+  | 'vocab_reading'
+  | 'vocab_from_definition'
+
 export interface TestQuestion {
   kanjiId: number
   character: string
@@ -120,6 +127,9 @@ export interface TestQuestion {
   primaryMeaning: string
   options: string[]
   correctIndex: number
+  questionType: QuestionType
+  /** The text/character shown as the question prompt */
+  prompt: string
 }
 
 export interface SubmitAnswer {
