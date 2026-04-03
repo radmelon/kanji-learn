@@ -10,6 +10,8 @@
  *     check that fails before iOS grants Local Network permission)
  *   - CLANG_CXX_LANGUAGE_STANDARD = c++20 + -std=c++20 flag (pins C++ standard
  *     to avoid std::expected / folly::Expected collision under Xcode 26)
+ *   - DateComponentsSerializer.swift: strips iOS 26-only isRepeatedDay usage
+ *     (expo-notifications uses it; Xcode 16.x SDK doesn't have the symbol)
  *   - HermesExecutorFactory.cpp source patches:
  *       - adds missing #include <thread> (std::thread::id used without it)
  *       - replaces std::make_shared<DecoratedRuntime> with shared_ptr(new ...)
@@ -67,6 +69,20 @@ const PODFILE_POST_INSTALL = `
         puts "withXcode16Fix: patched make_shared<DecoratedRuntime> in HermesExecutorFactory.cpp"
       end
       File.write(hermes_path, content) if patched
+    end
+    # ── Patch DateComponentsSerializer.swift: remove iOS 26-only isRepeatedDay ──
+    #    The property exists only in the iOS 26 SDK; Xcode 16.x cannot compile it
+    #    even inside an #available(iOS 26.0, *) guard because the symbol must be
+    #    resolvable at compile time.
+    notification_files = Dir.glob("\#{installer.sandbox.root}/../../../../node_modules/.pnpm/expo-notifications@*/node_modules/expo-notifications/ios/ExpoNotifications/Notifications/DateComponentsSerializer.swift")
+    notification_files.each do |file_path|
+      next unless File.exist?(file_path)
+      content = File.read(file_path)
+      if content.include?('isRepeatedDay')
+        content = content.gsub(/\s*if #available\(iOS 26\.0, \*\) \{[^}]*isRepeatedDay[^}]*\}/, '')
+        File.write(file_path, content)
+        puts "withXcode16Fix: removed isRepeatedDay block from DateComponentsSerializer.swift"
+      end
     end
     # Patch FMT_CONSTEVAL in both base.h (fmt 10+) and core.h (fmt 9)
     %w[base.h core.h].each do |header|
