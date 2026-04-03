@@ -14,6 +14,7 @@ import { interventionRoutes } from './routes/interventions.js'
 import { kanjiRoutes } from './routes/kanji.js'
 import { testRoutes } from './routes/test.js'
 import { socialRoutes } from './routes/social.js'
+import { internalRoutes } from './routes/internal.js'
 
 export async function buildServer() {
   const server = Fastify({
@@ -72,6 +73,7 @@ export async function buildServer() {
   await server.register(kanjiRoutes, { prefix: '/v1/kanji' })
   await server.register(testRoutes, { prefix: '/v1/tests' })
   await server.register(socialRoutes, { prefix: '/v1/social' })
+  await server.register(internalRoutes, { prefix: '/internal' })
 
   return server
 }
