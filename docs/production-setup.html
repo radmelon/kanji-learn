@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kanji Learn — Production Setup Guide</title>
+  <style>
+    :root {
+      --bg:        #0f0f1a;
+      --surface:   #1a1a2e;
+      --card:      #1e1e35;
+      --border:    #2e2e4a;
+      --primary:   #6c63ff;
+      --accent:    #f5a623;
+      --success:   #4caf7d;
+      --warning:   #f5a623;
+      --error:     #e05c5c;
+      --text:      #e8e8f0;
+      --muted:     #888899;
+      --code-bg:   #13131f;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 2rem 1rem 6rem;
+    }
+
+    .page { max-width: 860px; margin: 0 auto; }
+
+    /* ── Header ── */
+    .hero {
+      background: linear-gradient(135deg, #1a1a35 0%, #2a1a4e 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem 2.5rem 2rem;
+      margin-bottom: 2.5rem;
+    }
+    .hero-tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--primary);
+      background: rgba(108,99,255,0.12);
+      border: 1px solid rgba(108,99,255,0.3);
+      border-radius: 99px;
+      padding: 3px 12px;
+      margin-bottom: 1rem;
+    }
+    .hero h1 { font-size: 2rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem; }
+    .hero p  { color: var(--muted); font-size: 1rem; }
+    .hero-meta {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .hero-meta span {
+      font-size: 0.82rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hero-meta b { color: var(--text); }
+
+    /* ── TOC ── */
+    .toc {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem 2rem;
+      margin-bottom: 2.5rem;
+    }
+    .toc h3 { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 1rem; }
+    .toc ol  { padding-left: 1.4rem; }
+    .toc li  { margin: 0.35rem 0; }
+    .toc a   { color: var(--primary); text-decoration: none; font-size: 0.9rem; }
+    .toc a:hover { text-decoration: underline; }
+
+    /* ── Sections ── */
+    .section { margin-bottom: 3rem; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-number {
+      width: 32px; height: 32px;
+      background: var(--primary);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.85rem; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+    .section h2 { font-size: 1.2rem; font-weight: 700; color: #fff; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .card h4 { font-size: 0.9rem; font-weight: 700; color: var(--text); margin-bottom: 0.6rem; }
+    .card p, .card li { font-size: 0.9rem; color: var(--muted); }
+    .card ul, .card ol { padding-left: 1.3rem; }
+    .card li { margin: 0.25rem 0; }
+
+    /* ── Steps ── */
+    .steps { display: flex; flex-direction: column; gap: 1rem; }
+    .step {
+      display: flex;
+      gap: 1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+    }
+    .step-num {
+      min-width: 28px; height: 28px;
+      background: rgba(108,99,255,0.15);
+      border: 1px solid rgba(108,99,255,0.3);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.78rem; font-weight: 700; color: var(--primary);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .step-body h4 { font-size: 0.92rem; font-weight: 700; color: var(--text); margin-bottom: 0.4rem; }
+    .step-body p  { font-size: 0.875rem; color: var(--muted); margin-bottom: 0.5rem; }
+    .step-body p:last-child { margin-bottom: 0; }
+    .step-body ul  { padding-left: 1.2rem; }
+    .step-body li  { font-size: 0.875rem; color: var(--muted); margin: 0.2rem 0; }
+
+    /* ── Code ── */
+    pre, code {
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.82rem;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      margin: 0.75rem 0;
+      line-height: 1.6;
+    }
+    code {
+      background: rgba(108,99,255,0.12);
+      border: 1px solid rgba(108,99,255,0.2);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 0.8rem;
+      color: #b0aaff;
+    }
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #c8c8e8;
+      font-size: inherit;
+    }
+    .comment { color: #555577; }
+    .kw  { color: #9d87f5; }
+    .str { color: #7ec8a0; }
+    .val { color: #f5a623; }
+
+    /* ── Env table ── */
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+    th {
+      font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--muted);
+      text-align: left; padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      font-size: 0.85rem; padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid rgba(46,46,74,0.5);
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    td:first-child code { white-space: nowrap; }
+    .req  { color: var(--error);   font-size: 0.72rem; font-weight: 700; }
+    .opt  { color: var(--muted);   font-size: 0.72rem; font-weight: 700; }
+
+    /* ── Checklist ── */
+    .checklist { display: flex; flex-direction: column; gap: 0.5rem; }
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem 1.1rem;
+    }
+    .check-box {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .check-text h5 { font-size: 0.88rem; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+    .check-text p  { font-size: 0.82rem; color: var(--muted); }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 99px;
+    }
+    .badge-warn { background: rgba(245,166,35,0.15); color: var(--warning); border: 1px solid rgba(245,166,35,0.3); }
+    .badge-ok   { background: rgba(76,175,125,0.15); color: var(--success); border: 1px solid rgba(76,175,125,0.3); }
+    .badge-info { background: rgba(108,99,255,0.15); color: var(--primary); border: 1px solid rgba(108,99,255,0.3); }
+
+    /* ── Alert boxes ── */
+    .alert {
+      display: flex; gap: 0.75rem; align-items: flex-start;
+      border-radius: 8px; padding: 0.85rem 1.1rem; margin: 0.75rem 0;
+      font-size: 0.875rem;
+    }
+    .alert-warn { background: rgba(245,166,35,0.08); border: 1px solid rgba(245,166,35,0.25); color: #d4a030; }
+    .alert-info { background: rgba(108,99,255,0.08); border: 1px solid rgba(108,99,255,0.25); color: #9d87f5; }
+    .alert-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+
+    /* ── Arch diagram ── */
+    .arch {
+      display: flex;
+      gap: 0; align-items: center; justify-content: center;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+    }
+    .arch-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem 1.25rem;
+      text-align: center;
+      min-width: 110px;
+    }
+    .arch-box .icon { font-size: 1.4rem; display: block; margin-bottom: 4px; }
+    .arch-box .label { font-size: 0.78rem; font-weight: 700; color: var(--text); }
+    .arch-box .sub   { font-size: 0.7rem; color: var(--muted); }
+    .arch-arrow { color: var(--muted); font-size: 1.1rem; padding: 0 0.5rem; }
+
+    /* ── Footer ── */
+    .footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+  <div class="hero">
+    <div class="hero-tag">Internal Runbook</div>
+    <h1>Production Setup Guide</h1>
+    <p>Step-by-step instructions for deploying Kanji Learn to AWS and shipping the mobile app.</p>
+    <div class="hero-meta">
+      <span>📦 <b>API</b> AWS App Runner + ECR</span>
+      <span>🗄️ <b>Database</b> Supabase PostgreSQL</span>
+      <span>📱 <b>Mobile</b> Expo EAS Build</span>
+      <span>🔑 <b>Auth</b> Supabase Auth</span>
+    </div>
+  </div>
+
+  <!-- ── TOC ──────────────────────────────────────────────────────────────── -->
+  <div class="toc">
+    <h3>Contents</h3>
+    <ol>
+      <li><a href="#architecture">Architecture Overview</a></li>
+      <li><a href="#prerequisites">Prerequisites</a></li>
+      <li><a href="#supabase">Supabase — Database &amp; Auth</a></li>
+      <li><a href="#api">API Server — AWS App Runner</a></li>
+      <li><a href="#env">Environment Variables</a></li>
+      <li><a href="#migration">Database Migration</a></li>
+      <li><a href="#mobile">Mobile App — EAS Build &amp; Submit</a></li>
+      <li><a href="#deploy">Ongoing Deployments</a></li>
+      <li><a href="#hardening">Production Hardening Checklist</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+    </ol>
+  </div>
+
+  <!-- ── 1. Architecture ──────────────────────────────────────────────────── -->
+  <div class="section" id="architecture">
+    <div class="section-header">
+      <div class="section-number">1</div>
+      <h2>Architecture Overview</h2>
+    </div>
+    <div class="card">
+      <div class="arch">
+        <div class="arch-box">
+          <span class="icon">📱</span>
+          <div class="label">Mobile App</div>
+          <div class="sub">React Native / Expo</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-box">
+          <span class="icon">⚡</span>
+          <div class="label">API Server</div>
+          <div class="sub">Fastify · App Runner</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-box">
+          <span class="icon">🗄️</span>
+          <div class="label">PostgreSQL</div>
+          <div class="sub">Supabase</div>
+        </div>
+      </div>
+      <div class="arch" style="margin-top:0.5rem">
+        <div class="arch-box">
+          <span class="icon">🔑</span>
+          <div class="label">Auth</div>
+          <div class="sub">Supabase Auth</div>
+        </div>
+        <div class="arch-arrow">+</div>
+        <div class="arch-box">
+          <span class="icon">🤖</span>
+          <div class="label">AI Mnemonics</div>
+          <div class="sub">Anthropic Claude</div>
+        </div>
+        <div class="arch-arrow">+</div>
+        <div class="arch-box">
+          <span class="icon">🔔</span>
+          <div class="label">Push Notifications</div>
+          <div class="sub">Expo EAS</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h4>What lives where</h4>
+      <ul>
+        <li><b>Supabase</b> — hosts the PostgreSQL database and all auth. No separate DB to provision.</li>
+        <li><b>AWS App Runner</b> — runs the Fastify API inside a Docker container pulled from ECR.</li>
+        <li><b>ECR (Elastic Container Registry)</b> — stores the API Docker images.</li>
+        <li><b>Expo EAS</b> — builds and submits the iOS/Android app binaries.</li>
+        <li><b>Anthropic</b> — called by the API for AI mnemonic generation.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── 2. Prerequisites ─────────────────────────────────────────────────── -->
+  <div class="section" id="prerequisites">
+    <div class="section-header">
+      <div class="section-number">2</div>
+      <h2>Prerequisites</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">①</div>
+        <div class="step-body">
+          <h4>AWS CLI</h4>
+          <p>Install and configure with your account credentials.</p>
+          <pre>brew install awscli
+aws configure
+<span class="comment"># Enter: Access Key ID, Secret Key, region (e.g. us-east-1), output format (json)</span></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">②</div>
+        <div class="step-body">
+          <h4>Docker Desktop</h4>
+          <p>Required to build and push the API image. Download from <b>docker.com</b>. Ensure it's running before deploying.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">③</div>
+        <div class="step-body">
+          <h4>EAS CLI</h4>
+          <p>Required to build and submit the mobile app.</p>
+          <pre>npm install -g eas-cli
+eas login   <span class="comment"># log in with your expo.dev account (owner: radmelon)</span></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">④</div>
+        <div class="step-body">
+          <h4>pnpm</h4>
+          <pre>npm install -g pnpm@9</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 3. Supabase ──────────────────────────────────────────────────────── -->
+  <div class="section" id="supabase">
+    <div class="section-header">
+      <div class="section-number">3</div>
+      <h2>Supabase — Database &amp; Auth</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">①</div>
+        <div class="step-body">
+          <h4>Create a new Supabase project</h4>
+          <p>Go to <b>supabase.com</b> → New Project. Choose a region close to your App Runner region (e.g. <code>us-east-1</code> → choose AWS East US).</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">②</div>
+        <div class="step-body">
+          <h4>Collect credentials</h4>
+          <p>From <b>Project Settings → API</b>:</p>
+          <ul>
+            <li><b>Project URL</b> — used in the mobile app as <code>EXPO_PUBLIC_SUPABASE_URL</code></li>
+            <li><b>anon public key</b> — used in the mobile app as <code>EXPO_PUBLIC_SUPABASE_ANON_KEY</code></li>
+            <li><b>service_role key</b> — used in the API as <code>SUPABASE_SERVICE_ROLE_KEY</code> (keep secret)</li>
+            <li><b>JWT Secret</b> — from Settings → API → JWT Settings → <code>SUPABASE_JWT_SECRET</code></li>
+          </ul>
+          <p>From <b>Project Settings → Database → Connection string → URI</b>:</p>
+          <ul>
+            <li>Use the <b>pooler</b> connection string (port 6543) for production → <code>DATABASE_URL</code></li>
+          </ul>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">③</div>
+        <div class="step-body">
+          <h4>Run Drizzle migrations</h4>
+          <p>This creates all tables from the schema.</p>
+          <pre>cd /path/to/kanji-learn
+DATABASE_URL="postgresql://..." pnpm --filter @kanji-learn/db db:migrate</pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">④</div>
+        <div class="step-body">
+          <h4>Enable email auth</h4>
+          <p>In Supabase dashboard → <b>Authentication → Providers → Email</b> → ensure enabled. Optionally disable email confirmations for easier onboarding initially.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4. API Server ────────────────────────────────────────────────────── -->
+  <div class="section" id="api">
+    <div class="section-header">
+      <div class="section-number">4</div>
+      <h2>API Server — AWS App Runner</h2>
+    </div>
+
+    <div class="alert alert-info">
+      <span class="alert-icon">ℹ️</span>
+      <span>All commands below run from the <b>monorepo root</b> (<code>kanji-learn/</code>). The Docker build context must be the root because the Dockerfile copies from <code>packages/</code>.</span>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">①</div>
+        <div class="step-body">
+          <h4>Set the App Runner service ARN</h4>
+          <p>Open <code>scripts/deploy-api.sh</code> and fill in the <code>APPRUNNER_SERVICE_ARN</code> variable after you create the service in step ④. Leave it blank for the first run.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">②</div>
+        <div class="step-body">
+          <h4>First push — create the ECR repo and push the image</h4>
+          <p>The deploy script creates the ECR repo automatically if it doesn't exist.</p>
+          <pre>export AWS_REGION=us-east-1
+./scripts/deploy-api.sh</pre>
+          <p>This will log in to ECR, create the <code>kanji-learn-api</code> repo, build the image for <code>linux/amd64</code>, and push it. The App Runner trigger is skipped on first run since the service doesn't exist yet.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">③</div>
+        <div class="step-body">
+          <h4>Create the App Runner service (AWS Console)</h4>
+          <ul>
+            <li>Go to <b>AWS Console → App Runner → Create service</b></li>
+            <li>Source: <b>Container registry → Amazon ECR</b></li>
+            <li>Image URI: <code>&lt;account&gt;.dkr.ecr.us-east-1.amazonaws.com/kanji-learn-api:latest</code></li>
+            <li>ECR access role: create new (App Runner needs pull access)</li>
+            <li>Deployment trigger: <b>Manual</b> (the deploy script handles this)</li>
+            <li>Port: <code>3000</code></li>
+            <li>Instance: <b>0.25 vCPU / 0.5 GB</b> to start (~$15/mo)</li>
+            <li>Health check path: <code>/health</code></li>
+            <li>Add all environment variables from Section 5</li>
+          </ul>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">④</div>
+        <div class="step-body">
+          <h4>Copy the service ARN and update the deploy script</h4>
+          <p>After the service is created, copy its ARN from the console (format: <code>arn:aws:apprunner:us-east-1:123456789:service/kanji-learn-api/abc123</code>) and paste it into <code>scripts/deploy-api.sh</code> as <code>APPRUNNER_SERVICE_ARN</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">⑤</div>
+        <div class="step-body">
+          <h4>Verify the service is healthy</h4>
+          <pre><span class="comment"># App Runner provides a URL like: https://abc123.us-east-1.awsapprunner.com</span>
+curl https://&lt;your-apprunner-url&gt;.awsapprunner.com/health
+<span class="comment"># Expected: {"ok":true}</span></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">⑥</div>
+        <div class="step-body">
+          <h4>Custom domain (optional)</h4>
+          <p>In App Runner console → your service → <b>Custom domains</b> → associate your domain. App Runner provisions and auto-renews the TLS certificate.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 5. Environment Variables ─────────────────────────────────────────── -->
+  <div class="section" id="env">
+    <div class="section-header">
+      <div class="section-number">5</div>
+      <h2>Environment Variables</h2>
+    </div>
+
+    <div class="card">
+      <h4>API Server — set in App Runner console under "Environment variables"</h4>
+      <table>
+        <thead>
+          <tr><th>Variable</th><th></th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>DATABASE_URL</code></td>
+            <td><span class="req">REQUIRED</span></td>
+            <td>Supabase pooler connection string<br><small style="color:var(--muted)">postgresql://postgres.[ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/postgres</small></td>
+          </tr>
+          <tr>
+            <td><code>SUPABASE_JWT_SECRET</code></td>
+            <td><span class="req">REQUIRED</span></td>
+            <td>From Supabase → Settings → API → JWT Secret. Used to verify auth tokens.</td>
+          </tr>
+          <tr>
+            <td><code>SUPABASE_SERVICE_ROLE_KEY</code></td>
+            <td><span class="req">REQUIRED</span></td>
+            <td>From Supabase → Settings → API. Used for admin operations. Keep secret.</td>
+          </tr>
+          <tr>
+            <td><code>ANTHROPIC_API_KEY</code></td>
+            <td><span class="req">REQUIRED</span></td>
+            <td>From console.anthropic.com. Used for AI mnemonic generation.</td>
+          </tr>
+          <tr>
+            <td><code>EXPO_ACCESS_TOKEN</code></td>
+            <td><span class="req">REQUIRED</span></td>
+            <td>From expo.dev → Account Settings → Access Tokens. Used to send push notifications.</td>
+          </tr>
+          <tr>
+            <td><code>CORS_ORIGIN</code></td>
+            <td><span class="opt">OPTIONAL</span></td>
+            <td>Comma-separated allowed origins. Defaults to <code>*</code>. Set to your App Runner URL for production.</td>
+          </tr>
+          <tr>
+            <td><code>INTERNAL_SECRET</code></td>
+            <td><span class="req">REQUIRED</span></td>
+            <td>Shared secret for the <code>POST /internal/daily-reminders</code> endpoint. Must match the value configured in the EventBridge Lambda function. Generate with: <code>openssl rand -hex 32</code></td>
+          </tr>
+          <tr>
+            <td><code>LOG_LEVEL</code></td>
+            <td><span class="opt">OPTIONAL</span></td>
+            <td>Pino log level. Default: <code>info</code>. Use <code>warn</code> in production to reduce noise.</td>
+          </tr>
+          <tr>
+            <td><code>NODE_ENV</code></td>
+            <td><span class="opt">SET BY DOCKER</span></td>
+            <td>Already set to <code>production</code> in the Dockerfile.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+      <h4>Mobile App — set in <code>apps/mobile/.env.local</code> (dev) or EAS Secrets (prod)</h4>
+      <table>
+        <thead>
+          <tr><th>Variable</th><th></th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>EXPO_PUBLIC_API_URL</code></td>
+            <td><span class="req">REQUIRED</span></td>
+            <td>Your App Runner URL, e.g. <code>https://abc.us-east-1.awsapprunner.com</code></td>
+          </tr>
+          <tr>
+            <td><code>EXPO_PUBLIC_SUPABASE_URL</code></td>
+            <td><span class="req">REQUIRED</span></td>
+            <td>From Supabase → Settings → API → Project URL</td>
+          </tr>
+          <tr>
+            <td><code>EXPO_PUBLIC_SUPABASE_ANON_KEY</code></td>
+            <td><span class="req">REQUIRED</span></td>
+            <td>From Supabase → Settings → API → anon public key</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="alert alert-warn" style="margin-top:0.75rem">
+        <span class="alert-icon">⚠️</span>
+        <span><code>EXPO_PUBLIC_*</code> variables are baked into the app binary at build time. To update them you must rebuild and resubmit the app.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 6. Database Migration ─────────────────────────────────────────────── -->
+  <div class="section" id="migration">
+    <div class="section-header">
+      <div class="section-number">6</div>
+      <h2>Database Migration</h2>
+    </div>
+
+    <div class="alert alert-warn">
+      <span class="alert-icon">⚠️</span>
+      <span>Run migrations <b>before</b> the API server starts for the first time, and before each deploy that includes schema changes.</span>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">①</div>
+        <div class="step-body">
+          <h4>Run Drizzle migrations (creates all tables)</h4>
+          <pre>DATABASE_URL="postgresql://..." pnpm --filter @kanji-learn/db db:migrate</pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">②</div>
+        <div class="step-body">
+          <h4>Run the social features migration (one-time)</h4>
+          <p>Adds the <code>friendships</code> table and <code>email</code> column to <code>user_profiles</code>. Safe to re-run — all statements use <code>IF NOT EXISTS</code>.</p>
+          <pre>DATABASE_URL="postgresql://..." npx tsx apps/api/migrate_social.ts
+<span class="comment"># Expected output: Social migration applied</span></pre>
+          <p>After confirming success this script can be deleted.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">③</div>
+        <div class="step-body">
+          <h4>Seed kanji data (one-time)</h4>
+          <p>Required — the app has no content without it.</p>
+          <pre>DATABASE_URL="postgresql://..." pnpm --filter @kanji-learn/db seed</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 7. Mobile App ─────────────────────────────────────────────────────── -->
+  <div class="section" id="mobile">
+    <div class="section-header">
+      <div class="section-number">7</div>
+      <h2>Mobile App — EAS Build &amp; Submit</h2>
+    </div>
+
+    <div class="card">
+      <h4>Key identifiers</h4>
+      <table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>EAS Project ID</td><td><code>0c1f17c5-e267-44ce-84cb-3ad467d6f9fa</code></td></tr>
+          <tr><td>Expo owner</td><td><code>radmelon</code></td></tr>
+          <tr><td>iOS Bundle ID</td><td><code>com.rdennis.kanjilearn2</code></td></tr>
+          <tr><td>Android Package</td><td><code>com.kanjilearn.app</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="steps" style="margin-top:1rem">
+      <div class="step">
+        <div class="step-num">①</div>
+        <div class="step-body">
+          <h4>Set production env vars in EAS Secrets</h4>
+          <pre>cd apps/mobile
+eas secret:create --scope project --name EXPO_PUBLIC_API_URL \
+  --value "https://&lt;your-apprunner-url&gt;.awsapprunner.com"
+eas secret:create --scope project --name EXPO_PUBLIC_SUPABASE_URL \
+  --value "https://&lt;ref&gt;.supabase.co"
+eas secret:create --scope project --name EXPO_PUBLIC_SUPABASE_ANON_KEY \
+  --value "eyJ..."</pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">②</div>
+        <div class="step-body">
+          <h4>Build for iOS (production)</h4>
+          <pre>cd apps/mobile
+eas build --platform ios --profile production</pre>
+          <p>EAS will prompt to create/use an Apple Distribution certificate and provisioning profile. Have your Apple Developer account credentials ready.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">③</div>
+        <div class="step-body">
+          <h4>Build for Android (optional)</h4>
+          <pre>eas build --platform android --profile production</pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">④</div>
+        <div class="step-body">
+          <h4>Submit to App Store</h4>
+          <pre>eas submit --platform ios --latest</pre>
+          <p>EAS submits the latest build to App Store Connect. You'll still need to complete the App Store listing (screenshots, description, privacy details) in App Store Connect before the app can go live.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 8. Ongoing Deployments ───────────────────────────────────────────── -->
+  <div class="section" id="deploy">
+    <div class="section-header">
+      <div class="section-number">8</div>
+      <h2>Ongoing Deployments</h2>
+    </div>
+
+    <div class="card">
+      <h4>Deploy a new API version</h4>
+      <p style="margin-bottom:0.75rem">After setting <code>APPRUNNER_SERVICE_ARN</code> in the deploy script, every future API deploy is a single command run from the monorepo root:</p>
+      <pre>./scripts/deploy-api.sh</pre>
+      <p>This rebuilds the Docker image, pushes to ECR, and triggers a zero-downtime rolling redeployment on App Runner. Typically completes in 2–4 minutes.</p>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+      <h4>Deploy a new mobile app version</h4>
+      <ul>
+        <li><b>JS-only change</b> — use an OTA update (no App Store review required):</li>
+      </ul>
+      <pre>cd apps/mobile
+eas update --branch production --message "describe the change"</pre>
+      <ul style="margin-top:0.5rem">
+        <li><b>Native change</b> (new plugin, new permission, dependency with native code) — requires a full EAS build and App Store resubmission.</li>
+      </ul>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+      <h4>Schema changes</h4>
+      <p>Run migrations <em>before</em> deploying the API version that depends on them:</p>
+      <pre><span class="comment"># 1. Apply migration to production DB</span>
+DATABASE_URL="postgresql://..." pnpm --filter @kanji-learn/db db:migrate
+
+<span class="comment"># 2. Then deploy the API</span>
+./scripts/deploy-api.sh</pre>
+    </div>
+  </div>
+
+  <!-- ── 9. Daily Reminders — EventBridge Scheduler ───────────────────────── -->
+  <div class="section" id="eventbridge">
+    <div class="section-header">
+      <div class="section-number">9</div>
+      <h2>Daily Reminders — EventBridge Scheduler</h2>
+    </div>
+
+    <div class="card">
+      <p style="margin-bottom:0.75rem">Push notification reminders are no longer tied to the API process. A standalone Lambda function fires at <strong>20:00 UTC daily</strong> via EventBridge Scheduler and calls the API's protected <code>POST /internal/daily-reminders</code> endpoint.</p>
+      <div class="alert alert-info" style="margin-bottom:0.75rem">
+        <span class="alert-icon">ℹ️</span>
+        <span>The Lambda contains no database credentials and no workspace packages — it's a single <code>index.mjs</code> file that makes one HTTP call. Deploying it takes under 5 minutes.</span>
+      </div>
+    </div>
+
+    <div class="steps" style="margin-top:1rem">
+      <div class="step">
+        <div class="step-num">①</div>
+        <div class="step-body">
+          <h4>Generate a shared secret</h4>
+          <pre>openssl rand -hex 32</pre>
+          <p>Save the output — you'll need it in two places: the App Runner env var <code>INTERNAL_SECRET</code> and the Lambda env var <code>INTERNAL_SECRET</code>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">②</div>
+        <div class="step-body">
+          <h4>Set INTERNAL_SECRET on App Runner</h4>
+          <p>In the App Runner console → your service → Configuration → Environment variables, add:</p>
+          <pre>INTERNAL_SECRET = &lt;your-secret&gt;</pre>
+          <p>Then redeploy the API so the new env var takes effect:</p>
+          <pre>./scripts/deploy-api.sh</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">③</div>
+        <div class="step-body">
+          <h4>Create the Lambda IAM role (first time only)</h4>
+          <pre>aws iam create-role \
+  --role-name lambda-basic-execution \
+  --assume-role-policy-document '{
+    "Version":"2012-10-17",
+    "Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},
+    "Action":"sts:AssumeRole"}]
+  }'
+
+aws iam attach-role-policy \
+  --role-name lambda-basic-execution \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">④</div>
+        <div class="step-body">
+          <h4>Package and deploy the Lambda</h4>
+          <pre><span class="comment"># From monorepo root</span>
+cd apps/lambda/daily-reminders
+zip daily-reminders.zip index.mjs
+
+aws lambda create-function \
+  --function-name kanji-learn-daily-reminders \
+  --runtime nodejs20.x \
+  --handler index.handler \
+  --zip-file fileb://daily-reminders.zip \
+  --role arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/lambda-basic-execution \
+  --timeout 60 \
+  --environment 'Variables={
+    API_BASE_URL=https://YOUR-APP-RUNNER-URL,
+    INTERNAL_SECRET=YOUR-SECRET
+  }'</pre>
+          <p style="margin-top:0.5rem">For subsequent updates use <code>update-function-code</code>:</p>
+          <pre>zip daily-reminders.zip index.mjs
+aws lambda update-function-code \
+  --function-name kanji-learn-daily-reminders \
+  --zip-file fileb://daily-reminders.zip</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">⑤</div>
+        <div class="step-body">
+          <h4>Create the EventBridge Scheduler rule</h4>
+          <pre><span class="comment"># Get the Lambda ARN</span>
+LAMBDA_ARN=$(aws lambda get-function \
+  --function-name kanji-learn-daily-reminders \
+  --query 'Configuration.FunctionArn' --output text)
+
+<span class="comment"># Create the schedule (20:00 UTC daily)</span>
+aws scheduler create-schedule \
+  --name kanji-learn-daily-reminders \
+  --schedule-expression "cron(0 20 * * ? *)" \
+  --flexible-time-window '{"Mode":"OFF"}' \
+  --target "{
+    \"Arn\": \"$LAMBDA_ARN\",
+    \"RoleArn\": \"arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/AmazonEventBridgeSchedulerRole\"
+  }"</pre>
+          <div class="alert alert-warn" style="margin-top:0.75rem">
+            <span class="alert-icon">⚠️</span>
+            <span>EventBridge Scheduler needs its own IAM role to invoke Lambda. Create it in the console (Scheduler → Create schedule → IAM role → Create new) or use the AWS-managed role if available.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">⑥</div>
+        <div class="step-body">
+          <h4>Test the end-to-end flow</h4>
+          <pre><span class="comment"># Invoke the Lambda manually to verify it reaches the API</span>
+aws lambda invoke \
+  --function-name kanji-learn-daily-reminders \
+  --log-type Tail \
+  --query 'LogResult' \
+  --output text \
+  /dev/null | base64 -d</pre>
+          <p>You should see <code>[daily-reminders] Success</code> in the tail output. Check App Runner logs to confirm the internal route was called.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 10. Hardening Checklist ───────────────────────────────────────────── -->
+  <div class="section" id="hardening">
+    <div class="section-header">
+      <div class="section-number">10</div>
+      <h2>Production Hardening Checklist</h2>
+    </div>
+    <div class="checklist">
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>CORS origin lockdown</h5>
+          <p>Set <code>CORS_ORIGIN</code> env var to your App Runner URL. Currently defaults to <code>*</code> which allows all origins.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>Rate limiting — use Redis backend</h5>
+          <p>Current in-memory rate limit resets on every container restart. Replace with Redis using <code>@fastify/rate-limit</code>'s Redis store. Elasticache Serverless (~$0.008/GB-hr) is the easiest option.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>DB connection pooling</h5>
+          <p>Use the Supabase <b>pooler</b> connection string (port 6543, Transaction mode) as <code>DATABASE_URL</code>. Supabase's built-in PgBouncer handles connection limits for you.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>Secrets management</h5>
+          <p>Move <code>ANTHROPIC_API_KEY</code>, <code>SUPABASE_SERVICE_ROLE_KEY</code>, and <code>DATABASE_URL</code> to AWS SSM Parameter Store (SecureString) or AWS Secrets Manager. Reference them in App Runner rather than storing as plain env vars.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>Email privacy for friend search</h5>
+          <p>Any authenticated user can look up any email in <code>user_profiles</code>. Add an opt-out flag (<code>allow_friend_search boolean</code>) or hash emails before storing, and filter in the search query.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>Leaderboard query performance at scale</h5>
+          <p>The global top-10 query scans all of <code>user_kanji_progress</code>. Add a materialised view or a scheduled summary table refreshed nightly before user count grows large.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>Streak timezone</h5>
+          <p><code>computeStreak</code> uses server UTC. Store a user timezone field and offset the day boundary so streaks don't break for users in UTC- timezones who study at night.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>Rotate push notification credentials</h5>
+          <p>Rotate EAS and APNs credentials before App Store submission. APNs keys expire and invalid keys cause silent push failures.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>Wire Drizzle migrations into CI/CD</h5>
+          <p>Currently migrations are run manually. Add a migration step to the deploy pipeline so schema changes are never accidentally deployed without the accompanying migration.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">
+          <h5>App Store privacy nutrition label</h5>
+          <p><code>NSLocationWhenInUseUsageDescription</code> is set. Ensure the App Store Connect privacy questionnaire reflects that location data is collected and stored (linked to user identity).</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 11. Troubleshooting ──────────────────────────────────────────────── -->
+  <div class="section" id="troubleshooting">
+    <div class="section-header">
+      <div class="section-number">11</div>
+      <h2>Troubleshooting</h2>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Docker build fails: <code>cannot find module '@kanji-learn/db'</code></td>
+            <td>Build context must be monorepo root, not <code>apps/api/</code>. Run: <code>docker build -f apps/api/Dockerfile .</code></td>
+          </tr>
+          <tr>
+            <td>App Runner shows unhealthy</td>
+            <td>Check that all required env vars are set. App Runner logs → look for <code>DATABASE_URL required</code> or missing keys.</td>
+          </tr>
+          <tr>
+            <td><code>aws ecr get-login-password</code> fails</td>
+            <td>Run <code>aws sts get-caller-identity</code> to verify CLI credentials are valid.</td>
+          </tr>
+          <tr>
+            <td>Mobile app can't reach API</td>
+            <td>Verify <code>EXPO_PUBLIC_API_URL</code> has no trailing slash and uses <code>https://</code>. Rebuild the app if the env var was changed.</td>
+          </tr>
+          <tr>
+            <td>Push notifications not arriving</td>
+            <td>Verify <code>EXPO_ACCESS_TOKEN</code> is set on the API server. Check Expo push receipt logs.</td>
+          </tr>
+          <tr>
+            <td>Auth tokens rejected (401)</td>
+            <td>Verify <code>SUPABASE_JWT_SECRET</code> matches the value in Supabase → Settings → API → JWT Secret exactly.</td>
+          </tr>
+          <tr>
+            <td>Social migration error: column already exists</td>
+            <td>The script is idempotent — <code>IF NOT EXISTS</code> guards all statements. Re-run safely.</td>
+          </tr>
+          <tr>
+            <td>App Runner cold start slow</td>
+            <td>Upgrade to <code>0.5 vCPU / 1 GB</code> or enable "Always on" mode in App Runner health check settings.</td>
+          </tr>
+          <tr>
+            <td>Daily reminders Lambda returns 401</td>
+            <td>Verify <code>INTERNAL_SECRET</code> matches exactly in both the App Runner env vars and the Lambda env vars. Redeploy the API after changing App Runner env vars.</td>
+          </tr>
+          <tr>
+            <td>EventBridge schedule isn't triggering</td>
+            <td>Check the schedule state in EventBridge → Schedules (must be <em>Enabled</em>). Verify the Scheduler IAM role has <code>lambda:InvokeFunction</code> permission on the function ARN.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">
+    Kanji Learn · Internal runbook · Updated 2026-04-02
+  </div>
+
+</div>
+</body>
+</html>
