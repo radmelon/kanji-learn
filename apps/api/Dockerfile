@@ -23,10 +23,9 @@ RUN corepack enable pnpm
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Copy installed node_modules from deps stage (root virtual store + workspace bin links)
-COPY --from=deps /repo/node_modules                 ./node_modules
-COPY --from=deps /repo/apps/api/node_modules        ./apps/api/node_modules
-COPY --from=deps /repo/packages/db/node_modules     ./packages/db/node_modules
-COPY --from=deps /repo/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=deps /repo/node_modules              ./node_modules
+COPY --from=deps /repo/apps/api/node_modules     ./apps/api/node_modules
+COPY --from=deps /repo/packages/db/node_modules  ./packages/db/node_modules
 
 # Copy source — workspace packages need their full src trees
 COPY apps/api/src        ./apps/api/src
