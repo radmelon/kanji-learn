@@ -129,7 +129,7 @@ function withXcprojFix(config) {
       if (settings.PRODUCT_NAME === 'KanjiLearn' || settings.PRODUCT_NAME === '"KanjiLearn"') {
         settings.ENABLE_USER_SCRIPT_SANDBOXING = 'NO'
         settings.GCC_TREAT_WARNINGS_AS_ERRORS = 'NO'
-        settings.CLANG_CXX_LANGUAGE_STANDARD = 'c++20'
+        settings.CLANG_CXX_LANGUAGE_STANDARD = '"c++20"'
       }
     })
 
