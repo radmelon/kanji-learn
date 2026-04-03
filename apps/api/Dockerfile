@@ -33,11 +33,12 @@ COPY packages/db/package.json ./packages/db/package.json
 COPY packages/shared/src ./packages/shared/src
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY package.json        ./package.json
+COPY pnpm-lock.yaml      ./pnpm-lock.yaml
 COPY pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY tsconfig.json       ./tsconfig.json
 
-# Re-link workspace packages so Node resolves them correctly
-RUN pnpm install --frozen-lockfile --prod --offline 2>/dev/null || true
+# Re-link workspace packages and bins using the virtual store copied from deps
+RUN pnpm install --prod --offline
 
 WORKDIR /repo/apps/api
 
