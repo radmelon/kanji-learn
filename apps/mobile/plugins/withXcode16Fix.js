@@ -8,9 +8,8 @@
  *   - Warning suppression flags for ObjC/C++ pods
  *   - AppDelegate bundleURL() reads ip.txt directly (bypasses isPackagerRunning
  *     check that fails before iOS grants Local Network permission)
- *   - CLANG_CXX_LANGUAGE_STANDARD = c++20 (Xcode 26 defaults to C++23 which
- *     causes std::expected / folly::Expected collision and std::thread errors)
- *   - FOLLY_NO_CONFIG=1 (disables Folly's C++23 feature auto-detection)
+ *   - CLANG_CXX_LANGUAGE_STANDARD = c++20 + -std=c++20 flag (pins C++ standard
+ *     to avoid std::expected / folly::Expected collision under Xcode 26)
  *   - HermesExecutorFactory.cpp source patches:
  *       - adds missing #include <thread> (std::thread::id used without it)
  *       - replaces std::make_shared<DecoratedRuntime> with shared_ptr(new ...)
@@ -38,7 +37,7 @@ const PODFILE_POST_INSTALL = `
         ].join(' ')
         config.build_settings['OTHER_CFLAGS']         = "\$(inherited) \#{cflags}"
         config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
-        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "\$(inherited) \#{cflags} -std=c++20 -DFMT_USE_CONSTEVAL=0 -DFMT_CONSTEVAL= -DFOLLY_NO_CONFIG=1 -DFOLLY_CFG_NO_COROUTINES=1"
+        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "\$(inherited) \#{cflags} -std=c++20 -DFMT_USE_CONSTEVAL=0 -DFMT_CONSTEVAL="
       end
     end
     # ── Patch HermesExecutorFactory.cpp for Apple libc++ ABI compatibility ──────
