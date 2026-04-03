@@ -22,7 +22,6 @@
         },
         "NSLocalNetworkUsageDescription": "Allow Kanji Learn to connect to a local development server.",
         "NSBonjourServices": [
-          "_react-native-packager._tcp",
           "_react-native-packager._tcp"
         ],
         "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
