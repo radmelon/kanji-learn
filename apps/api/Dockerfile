@@ -22,8 +22,11 @@ RUN corepack enable pnpm
 # Non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Copy installed node_modules from deps stage
-COPY --from=deps /repo/node_modules       ./node_modules
+# Copy installed node_modules from deps stage (root virtual store + workspace bin links)
+COPY --from=deps /repo/node_modules                 ./node_modules
+COPY --from=deps /repo/apps/api/node_modules        ./apps/api/node_modules
+COPY --from=deps /repo/packages/db/node_modules     ./packages/db/node_modules
+COPY --from=deps /repo/packages/shared/node_modules ./packages/shared/node_modules
 
 # Copy source — workspace packages need their full src trees
 COPY apps/api/src        ./apps/api/src
@@ -33,12 +36,8 @@ COPY packages/db/package.json ./packages/db/package.json
 COPY packages/shared/src ./packages/shared/src
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY package.json        ./package.json
-COPY pnpm-lock.yaml      ./pnpm-lock.yaml
 COPY pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY tsconfig.json       ./tsconfig.json
-
-# Re-link workspace packages and bins using the virtual store copied from deps
-RUN pnpm install --prod --offline
 
 WORKDIR /repo/apps/api
 
@@ -53,4 +52,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/health || exit 1
 
-CMD ["/repo/node_modules/.bin/tsx", "src/index.ts"]
+CMD ["/repo/apps/api/node_modules/.bin/tsx", "src/index.ts"]
