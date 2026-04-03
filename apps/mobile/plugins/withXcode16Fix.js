@@ -74,14 +74,20 @@ const PODFILE_POST_INSTALL = `
     #    The property exists only in the iOS 26 SDK; Xcode 16.x cannot compile it
     #    even inside an #available(iOS 26.0, *) guard because the symbol must be
     #    resolvable at compile time.
-    notification_files = Dir.glob("\#{installer.sandbox.root}/../../../../node_modules/.pnpm/expo-notifications@*/node_modules/expo-notifications/ios/ExpoNotifications/Notifications/DateComponentsSerializer.swift")
+    notification_patterns = [
+      "\#{installer.sandbox.root}/../../../../node_modules/.pnpm/expo-notifications@*/node_modules/expo-notifications/ios/ExpoNotifications/Notifications/DateComponentsSerializer.swift",
+      "\#{installer.sandbox.root}/../../../../**/expo-notifications/ios/ExpoNotifications/Notifications/DateComponentsSerializer.swift"
+    ]
+    notification_files = notification_patterns.flat_map { |p| Dir.glob(p) }.uniq
+    puts "withXcode16Fix: found \#{notification_files.length} DateComponentsSerializer.swift file(s)"
     notification_files.each do |file_path|
       next unless File.exist?(file_path)
       content = File.read(file_path)
       if content.include?('isRepeatedDay')
-        content = content.gsub(/\s*if #available\(iOS 26\.0, \*\) \{[^}]*isRepeatedDay[^}]*\}/, '')
-        File.write(file_path, content)
-        puts "withXcode16Fix: removed isRepeatedDay block from DateComponentsSerializer.swift"
+        # Remove any line containing isRepeatedDay (leaves empty #available block which is valid Swift)
+        patched = content.lines.reject { |l| l.include?('isRepeatedDay') }.join
+        File.write(file_path, patched)
+        puts "withXcode16Fix: removed isRepeatedDay line from \#{file_path}"
       end
     end
     # Patch FMT_CONSTEVAL in both base.h (fmt 10+) and core.h (fmt 9)
