@@ -22,13 +22,16 @@
         },
         "NSLocalNetworkUsageDescription": "Allow Kanji Learn to connect to a local development server.",
         "NSBonjourServices": [
+          "_react-native-packager._tcp",
           "_react-native-packager._tcp"
         ],
         "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
         "NSMicrophoneUsageDescription": "Allow Kanji Learn to use the microphone for reading evaluation.",
         "NSPhotoLibraryUsageDescription": "Allow Kanji Learn to attach photos to your mnemonics.",
-        "NSLocationWhenInUseUsageDescription": "Allow Kanji Learn to tag mnemonics with the place where you learned them."
-      }
+        "NSLocationWhenInUseUsageDescription": "Allow Kanji Learn to tag mnemonics with the place where you learned them.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "buildNumber": "3"
     },
     "android": {
       "adaptiveIcon": {
@@ -37,7 +40,9 @@
       },
       "package": "com.kanjilearn.app",
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "plugins": [

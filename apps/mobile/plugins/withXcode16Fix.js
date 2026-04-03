@@ -1,5 +1,5 @@
 /**
- * Expo config plugin: Xcode 16 build compatibility fixes.
+ * Expo config plugin: Xcode 16/26 build compatibility fixes.
  *
  * Applied automatically on every `expo prebuild`. Handles:
  *   - fmt consteval → constexpr (Apple clang 16 enforcement)
@@ -8,6 +8,9 @@
  *   - Warning suppression flags for ObjC/C++ pods
  *   - AppDelegate bundleURL() reads ip.txt directly (bypasses isPackagerRunning
  *     check that fails before iOS grants Local Network permission)
+ *   - CLANG_CXX_LANGUAGE_STANDARD = c++20 (Xcode 26 defaults to C++23 which
+ *     causes std::expected / folly::Expected collision and std::thread errors)
+ *   - FOLLY_NO_CONFIG=1 (disables Folly's C++23 feature auto-detection)
  */
 const { withDangerousMod, withXcodeProject } = require('expo/config-plugins')
 const fs = require('fs')
@@ -30,7 +33,8 @@ const PODFILE_POST_INSTALL = `
           -Wno-incompatible-pointer-types
         ].join(' ')
         config.build_settings['OTHER_CFLAGS']         = "\$(inherited) \#{cflags}"
-        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "\$(inherited) \#{cflags} -DFMT_USE_CONSTEVAL=0 -DFMT_CONSTEVAL="
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
+        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "\$(inherited) \#{cflags} -std=c++20 -DFMT_USE_CONSTEVAL=0 -DFMT_CONSTEVAL= -DFOLLY_NO_CONFIG=1"
       end
     end
     # Patch FMT_CONSTEVAL in both base.h (fmt 10+) and core.h (fmt 9)
@@ -125,6 +129,7 @@ function withXcprojFix(config) {
       if (settings.PRODUCT_NAME === 'KanjiLearn' || settings.PRODUCT_NAME === '"KanjiLearn"') {
         settings.ENABLE_USER_SCRIPT_SANDBOXING = 'NO'
         settings.GCC_TREAT_WARNINGS_AS_ERRORS = 'NO'
+        settings.CLANG_CXX_LANGUAGE_STANDARD = 'c++20'
       }
     })
 
