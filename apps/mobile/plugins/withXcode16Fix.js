@@ -34,7 +34,7 @@ const PODFILE_POST_INSTALL = `
         ].join(' ')
         config.build_settings['OTHER_CFLAGS']         = "\$(inherited) \#{cflags}"
         config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
-        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "\$(inherited) \#{cflags} -std=c++20 -DFMT_USE_CONSTEVAL=0 -DFMT_CONSTEVAL= -DFOLLY_NO_CONFIG=1"
+        config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "\$(inherited) \#{cflags} -std=c++20 -DFMT_USE_CONSTEVAL=0 -DFMT_CONSTEVAL= -DFOLLY_NO_CONFIG=1 -DFOLLY_CFG_NO_COROUTINES=1"
       end
     end
     # Patch FMT_CONSTEVAL in both base.h (fmt 10+) and core.h (fmt 9)
