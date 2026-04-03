@@ -20,9 +20,8 @@ AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 ECR_REPO="kanji-learn-api"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 
-# Paste the App Runner service ARN here after first deploy:
-# e.g. arn:aws:apprunner:us-east-1:123456789012:service/kanji-learn-api/abc123
-APPRUNNER_SERVICE_ARN="${APPRUNNER_SERVICE_ARN:-}"
+# App Runner service ARN
+APPRUNNER_SERVICE_ARN="${APPRUNNER_SERVICE_ARN:-arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654}"
 
 # ── Derived values ────────────────────────────────────────────────────────────
 
