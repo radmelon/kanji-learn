@@ -24,7 +24,6 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Copy installed node_modules from deps stage
 COPY --from=deps /repo/node_modules       ./node_modules
-COPY --from=deps /repo/apps/api/node_modules  ./apps/api/node_modules 2>/dev/null || true
 
 # Copy source — workspace packages need their full src trees
 COPY apps/api/src        ./apps/api/src
