@@ -11,6 +11,10 @@
  *   - CLANG_CXX_LANGUAGE_STANDARD = c++20 (Xcode 26 defaults to C++23 which
  *     causes std::expected / folly::Expected collision and std::thread errors)
  *   - FOLLY_NO_CONFIG=1 (disables Folly's C++23 feature auto-detection)
+ *   - HermesExecutorFactory.cpp source patches:
+ *       - adds missing #include <thread> (std::thread::id used without it)
+ *       - replaces std::make_shared<DecoratedRuntime> with shared_ptr(new ...)
+ *         to avoid Apple libc++ __shared_ptr_emplace ABI break in Xcode 16+
  */
 const { withDangerousMod, withXcodeProject } = require('expo/config-plugins')
 const fs = require('fs')
@@ -36,6 +40,34 @@ const PODFILE_POST_INSTALL = `
         config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
         config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "\$(inherited) \#{cflags} -std=c++20 -DFMT_USE_CONSTEVAL=0 -DFMT_CONSTEVAL= -DFOLLY_NO_CONFIG=1 -DFOLLY_CFG_NO_COROUTINES=1"
       end
+    end
+    # ── Patch HermesExecutorFactory.cpp for Apple libc++ ABI compatibility ──────
+    hermes_files = Dir.glob("\#{installer.sandbox.root}/../../../../node_modules/.pnpm/react-native@*/node_modules/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp")
+    hermes_files.each do |hermes_path|
+      next unless File.exist?(hermes_path)
+      content = File.read(hermes_path)
+      patched = false
+      # 1. Add missing <thread> include — std::thread::id used without it
+      if !content.include?('#include <thread>') && content.include?('#include "HermesExecutorFactory.h"')
+        content = content.sub(
+          '#include "HermesExecutorFactory.h"',
+          "#include \\"HermesExecutorFactory.h\\"\\n#include <thread>"
+        )
+        patched = true
+        puts "withXcode16Fix: added #include <thread> to HermesExecutorFactory.cpp"
+      end
+      # 2. Replace make_shared<DecoratedRuntime> with shared_ptr(new ...) to avoid
+      #    the __shared_ptr_emplace static_cast ABI break in Apple libc++ (Xcode 16+)
+      if content.include?('std::make_shared<DecoratedRuntime>(') && !content.include?('shared_ptr<DecoratedRuntime>(new')
+        content = content
+          .sub('std::make_shared<DecoratedRuntime>(',
+               'std::shared_ptr<DecoratedRuntime>(new DecoratedRuntime(')
+          .sub("      debuggerName_);\\n",
+               "      debuggerName_));\\n")
+        patched = true
+        puts "withXcode16Fix: patched make_shared<DecoratedRuntime> in HermesExecutorFactory.cpp"
+      end
+      File.write(hermes_path, content) if patched
     end
     # Patch FMT_CONSTEVAL in both base.h (fmt 10+) and core.h (fmt 9)
     %w[base.h core.h].each do |header|
