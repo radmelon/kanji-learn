@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native'
+import { useCallback } from 'react'
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import * as Haptics from 'expo-haptics'
+import { toRomaji } from 'wanakana'
 import { colors, spacing, radius, typography } from '../../theme'
 import type { ReviewQueueItem } from '@kanji-learn/shared'
 
@@ -8,16 +9,24 @@ interface Props {
   item: ReviewQueueItem
   onReveal: () => void
   isRevealed: boolean
+  /** Whether to show romaji transliterations below each reading (session-level toggle) */
+  showRomaji: boolean
+  onToggleRomaji: () => void
 }
 
-export function KanjiCard({ item, onReveal, isRevealed }: Props) {
-  const meanings = (item.meanings as string[]).slice(0, 3).join(', ')
+export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRomaji }: Props) {
+  const meanings = (item.meanings as string[]).join(', ')
   const jlptColor = JLPT_COLORS[item.jlptLevel as keyof typeof JLPT_COLORS] ?? colors.textMuted
 
   const handleReveal = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     onReveal()
   }, [onReveal])
+
+  const hasReadings =
+    item.reviewType === 'reading' || item.reviewType === 'compound'
+  const kunReadings = item.kunReadings as string[]
+  const onReadings = item.onReadings as string[]
 
   return (
     <View style={styles.card}>
@@ -30,7 +39,7 @@ export function KanjiCard({ item, onReveal, isRevealed }: Props) {
       <Text style={styles.kanji}>{item.character}</Text>
 
       {/* Review type label */}
-      <Text style={styles.prompt}>{PROMPT_LABELS[item.reviewType]}</Text>
+      <Text style={styles.prompt}>{PROMPT_LABELS[item.reviewType as keyof typeof PROMPT_LABELS]}</Text>
 
       {!isRevealed ? (
         <TouchableOpacity style={styles.revealButton} onPress={handleReveal} activeOpacity={0.8}>
@@ -38,31 +47,67 @@ export function KanjiCard({ item, onReveal, isRevealed }: Props) {
         </TouchableOpacity>
       ) : (
         <View style={styles.answer}>
-          {item.reviewType === 'meaning' || item.reviewType === 'compound' ? (
-            <Text style={styles.meaningText}>{meanings}</Text>
-          ) : null}
 
-          {item.reviewType === 'reading' || item.reviewType === 'compound' ? (
-            <View style={styles.readings}>
-              {(item.kunReadings as string[]).length > 0 && (
+          {/* Meanings (all, not capped) */}
+          {(item.reviewType === 'meaning' || item.reviewType === 'compound') && (
+            <Text style={styles.meaningText}>{meanings}</Text>
+          )}
+
+          {/* Readings */}
+          {hasReadings && (
+            <View style={styles.readingsBlock}>
+              {/* Toggle row */}
+              <View style={styles.readingsHeader}>
+                <Text style={styles.readingsSectionLabel}>Readings</Text>
+                <TouchableOpacity
+                  onPress={onToggleRomaji}
+                  style={[styles.romajiToggle, showRomaji && styles.romajiToggleActive]}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.romajiToggleText, showRomaji && styles.romajiToggleTextActive]}>
+                    Rōmaji
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Kun readings */}
+              {kunReadings.length > 0 && (
                 <View style={styles.readingRow}>
                   <Text style={styles.readingLabel}>kun</Text>
-                  <Text style={styles.readingValue}>
-                    {(item.kunReadings as string[]).slice(0, 3).join('　')}
-                  </Text>
+                  <View style={styles.readingGroup}>
+                    <Text style={styles.readingKana}>
+                      {kunReadings.join('　')}
+                    </Text>
+                    {showRomaji && (
+                      <Text style={styles.readingRomaji}>
+                        {kunReadings.map((r) => toRomaji(r.replace('.', ''))).join('　')}
+                      </Text>
+                    )}
+                  </View>
                 </View>
               )}
-              {(item.onReadings as string[]).length > 0 && (
+
+              {/* On readings */}
+              {onReadings.length > 0 && (
                 <View style={styles.readingRow}>
                   <Text style={styles.readingLabel}>on</Text>
-                  <Text style={styles.readingValue}>
-                    {(item.onReadings as string[]).slice(0, 3).join('　')}
-                  </Text>
+                  <View style={styles.readingGroup}>
+                    <Text style={styles.readingKana}>
+                      {onReadings.join('　')}
+                    </Text>
+                    {showRomaji && (
+                      <Text style={styles.readingRomaji}>
+                        {onReadings.map((r) => toRomaji(r)).join('　')}
+                      </Text>
+                    )}
+                  </View>
                 </View>
               )}
             </View>
-          ) : null}
+          )}
 
+          {/* Example vocab */}
           {(item.exampleVocab as any[]).length > 0 && (
             <View style={styles.vocab}>
               {(item.exampleVocab as { word: string; reading: string; meaning: string }[])
@@ -80,6 +125,8 @@ export function KanjiCard({ item, onReveal, isRevealed }: Props) {
   )
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const JLPT_COLORS = {
   N5: colors.n5,
   N4: colors.n4,
@@ -94,6 +141,8 @@ const PROMPT_LABELS = {
   writing: 'Write this kanji',
   compound: 'Meaning + all readings',
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   card: {
@@ -131,10 +180,47 @@ const styles = StyleSheet.create({
   revealText: { ...typography.h3, color: colors.textSecondary },
   answer: { alignItems: 'center', gap: spacing.md, width: '100%' },
   meaningText: { ...typography.h2, color: colors.textPrimary, textAlign: 'center' },
-  readings: { gap: spacing.sm, width: '100%' },
-  readingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  readingLabel: { ...typography.caption, color: colors.textMuted, width: 24, textAlign: 'right' },
-  readingValue: { ...typography.reading, color: colors.textPrimary, flex: 1 },
+
+  // Readings block
+  readingsBlock: { width: '100%', gap: spacing.xs },
+  readingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  readingsSectionLabel: { ...typography.caption, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  // Rōmaji toggle pill
+  romajiToggle: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgSurface,
+  },
+  romajiToggleActive: {
+    borderColor: colors.info,
+    backgroundColor: colors.info + '22',
+  },
+  romajiToggleText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  romajiToggleTextActive: { color: colors.info },
+
+  // Per-type reading rows
+  readingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  readingLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    width: 24,
+    textAlign: 'right',
+    paddingTop: 2, // align with first line of kana
+  },
+  readingGroup: { flex: 1, gap: 2 },
+  readingKana: { ...typography.reading, color: colors.textPrimary, flexWrap: 'wrap' },
+  readingRomaji: { ...typography.caption, color: colors.textSecondary, flexWrap: 'wrap' },
+
+  // Vocab examples
   vocab: { gap: 4, width: '100%' },
   vocabItem: { ...typography.bodySmall, color: colors.textSecondary, textAlign: 'center' },
 })

@@ -24,6 +24,9 @@ export default function StudySession() {
 
   const [isRevealed, setIsRevealed] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  // Romaji toggle persists for the whole session — user sets it once and it sticks across cards
+  const [showRomaji, setShowRomaji] = useState(false)
+  const toggleRomaji = useCallback(() => setShowRomaji((v) => !v), [])
   const [sessionSummary, setSessionSummary] = useState<{
     totalItems: number; correctItems: number; newLearned: number; burned: number
   } | null>(null)
@@ -219,7 +222,13 @@ export default function StudySession() {
         {currentItem.reviewType === 'compound' ? (
           <CompoundCard item={currentItem} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
         ) : (
-          <KanjiCard item={currentItem} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
+          <KanjiCard
+            item={currentItem}
+            isRevealed={isRevealed}
+            onReveal={() => setIsRevealed(true)}
+            showRomaji={showRomaji}
+            onToggleRomaji={toggleRomaji}
+          />
         )}
       </View>
 
