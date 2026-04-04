@@ -245,31 +245,33 @@ function ReferencesPanel({ item }: { item: ReviewQueueItem }) {
   const [open, setOpen] = useState(false)
 
   const radicals = (item.radicals as string[] | undefined) ?? []
-  const strokes = item.strokeCount as number | undefined
+  const strokes = item.strokeCount as number | null | undefined
   const nelsonC = item.nelsonClassic as number | null | undefined
   const nelsonN = item.nelsonNew as number | null | undefined
   const morIndex = item.morohashiIndex as number | null | undefined
   const morVol = item.morohashiVolume as number | null | undefined
   const morPage = item.morohashiPage as number | null | undefined
 
-  // Build morohashi label
   const morohashi = morIndex != null
     ? morVol != null && morPage != null
       ? `${morIndex} (vol. ${morVol}, p. ${morPage})`
       : `${morIndex}`
     : null
 
-  const hasAnyRef = strokes != null || radicals.length > 0 || nelsonC != null || nelsonN != null || morohashi != null
-  if (!hasAnyRef) return null
+  // Whether the API has sent us enriched data (fresh session, not cached)
+  const hasData = strokes != null || radicals.length > 0 || nelsonC != null || nelsonN != null || morohashi != null
 
+  // Always render the toggle — never return null so the panel is always discoverable.
+  // (On cached sessions the fields will be undefined; the expanded body explains this.)
   return (
     <View style={refStyles.container}>
       <TouchableOpacity
         style={refStyles.toggle}
         onPress={() => setOpen((v) => !v)}
         activeOpacity={0.7}
-        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
+        <Ionicons name="book-outline" size={13} color={colors.textMuted} />
         <Text style={refStyles.toggleLabel}>References</Text>
         <Ionicons
           name={open ? 'chevron-up' : 'chevron-down'}
@@ -280,27 +282,34 @@ function ReferencesPanel({ item }: { item: ReviewQueueItem }) {
 
       {open && (
         <View style={refStyles.body}>
-          {strokes != null && (
-            <RefRow icon="pencil-outline" label="Strokes" value={String(strokes)} />
+          {!hasData ? (
+            <Text style={refStyles.noData}>
+              Reference data (stroke count, radicals, Nelson IDs) loads on your next fresh session.
+            </Text>
+          ) : (
+            <>
+              {strokes != null && (
+                <RefRow icon="pencil-outline" label="Strokes" value={String(strokes)} />
+              )}
+              {radicals.length > 0 && (
+                <RefRow icon="grid-outline" label="Radicals" value={radicals.join('　')} />
+              )}
+              {nelsonC != null && (
+                <RefRow icon="book-outline" label="Nelson Classic" value={`#${nelsonC}`} />
+              )}
+              {nelsonN != null && (
+                <RefRow icon="book-outline" label="New Nelson" value={`#${nelsonN}`} />
+              )}
+              {morohashi != null && (
+                <RefRow icon="library-outline" label="Morohashi" value={morohashi} />
+              )}
+              <Text style={refStyles.credit}>
+                Nelson: Andrew Nelson, "The Modern Reader's Japanese-English Character
+                Dictionary" (Classic 1962); Jack Halpern ed. (New Nelson, 1997).{'\n'}
+                Morohashi: Tetsuji Morohashi, "Dai Kan-Wa Jiten" (大漢和辞典), 1955–1960.
+              </Text>
+            </>
           )}
-          {radicals.length > 0 && (
-            <RefRow icon="grid-outline" label="Radicals" value={radicals.join('　')} />
-          )}
-          {nelsonC != null && (
-            <RefRow icon="book-outline" label="Nelson Classic" value={`#${nelsonC}`} />
-          )}
-          {nelsonN != null && (
-            <RefRow icon="book-outline" label="New Nelson" value={`#${nelsonN}`} />
-          )}
-          {morohashi != null && (
-            <RefRow icon="library-outline" label="Morohashi" value={morohashi} />
-          )}
-
-          <Text style={refStyles.credit}>
-            Nelson indices: Andrew Nelson, "The Modern Reader's Japanese-English Character
-            Dictionary" (Classic, 1962) and Jack Halpern ed. (New Nelson, 1997).{'\n'}
-            Morohashi: Tetsuji Morohashi, "Dai Kan-Wa Jiten" (大漢和辞典), 1955–1960.
-          </Text>
         </View>
       )}
     </View>
@@ -339,6 +348,7 @@ const refStyles = StyleSheet.create({
   rowIcon: { width: 16 },
   rowLabel: { ...typography.caption, color: colors.textMuted, width: 96 },
   rowValue: { ...typography.caption, color: colors.textSecondary, flex: 1 },
+  noData: { ...typography.caption, color: colors.textMuted, fontStyle: 'italic', lineHeight: 18 },
   credit: {
     ...typography.caption,
     color: colors.textMuted,

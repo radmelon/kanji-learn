@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type FC } from 'react'
+import type { ReviewResult } from '@kanji-learn/shared'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Pressable,
 } from 'react-native'
@@ -27,6 +28,10 @@ export default function StudySession() {
   // Romaji toggle persists for the whole session — user sets it once and it sticks across cards
   const [showRomaji, setShowRomaji] = useState(false)
   const toggleRomaji = useCallback(() => setShowRomaji((v) => !v), [])
+  // Holds the grade result when we need to show the mnemonic nudge first.
+  // submitResult (which advances the card) is deferred until nudge is dismissed,
+  // so the correct kanji stays visible behind the sheet.
+  const [pendingResult, setPendingResult] = useState<ReviewResult | null>(null)
   const [sessionSummary, setSessionSummary] = useState<{
     totalItems: number; correctItems: number; newLearned: number; burned: number
   } | null>(null)
@@ -66,18 +71,35 @@ export default function StudySession() {
     (quality: 0 | 1 | 2 | 3 | 4 | 5) => {
       const item = queue[currentIndex]
       if (!item) return
-      submitResult({
+      const result: ReviewResult = {
         kanjiId: item.kanjiId,
         quality,
         responseTimeMs: Date.now() - cardStartMs.current,
         reviewType: item.reviewType,
-      })
+      }
       if ((quality === 1 || quality === 3) && item.reviewType !== 'compound') {
-        setNudgeItem({ kanjiId: item.kanjiId, character: item.character, meaning: item.meaning })
+        // Show mnemonic nudge — defer submitResult so the card doesn't advance
+        // until the user dismisses the sheet (fixes "wrong kanji underneath" bug)
+        setPendingResult(result)
+        setNudgeItem({
+          kanjiId: item.kanjiId,
+          character: item.character,
+          meaning: (item.meanings as string[])?.[0] ?? '',
+        })
+      } else {
+        submitResult(result)
       }
     },
     [queue, currentIndex, submitResult]
   )
+
+  const handleNudgeDismiss = useCallback(() => {
+    if (pendingResult) {
+      submitResult(pendingResult)
+      setPendingResult(null)
+    }
+    setNudgeItem(null)
+  }, [pendingResult, submitResult])
 
   const handleFinish = useCallback(async () => {
     setIsSaving(true)
@@ -249,7 +271,7 @@ export default function StudySession() {
         kanjiId={nudgeItem?.kanjiId ?? 0}
         character={nudgeItem?.character ?? ''}
         meaning={nudgeItem?.meaning ?? ''}
-        onDismiss={() => setNudgeItem(null)}
+        onDismiss={handleNudgeDismiss}
       />
 
       {/* First-run onboarding overlay */}
