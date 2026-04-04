@@ -15,23 +15,58 @@ class ApiClient {
 
   private async request<T>(
     path: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    attempt = 1,
   ): Promise<T> {
     const token = this.getToken()
 
     const hasBody = options.body !== undefined
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      ...options,
-      headers: {
-        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
-      },
-    })
+    let res: Response
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        ...options,
+        headers: {
+          ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...options.headers,
+        },
+      })
+    } catch (networkErr) {
+      // Transient network failure — retry once for GET requests
+      if (attempt === 1 && (!options.method || options.method === 'GET')) {
+        await new Promise((r) => setTimeout(r, 800))
+        return this.request<T>(path, options, 2)
+      }
+      throw new ApiError('Network request failed', 'NETWORK_ERROR', 0)
+    }
 
     if (res.status === 204) return undefined as T
 
-    const json = await res.json()
+    // Read as text first so a non-JSON body gives a useful error message
+    // instead of an opaque "JSON Parse error: unexpected character"
+    let text: string
+    try {
+      text = await res.text()
+    } catch {
+      throw new ApiError(`Failed to read response (${res.status})`, 'READ_ERROR', res.status)
+    }
+
+    // Transient proxy errors (503 "upstream connect error...") — retry GET once
+    if (res.status === 503 && attempt === 1 && (!options.method || options.method === 'GET')) {
+      await new Promise((r) => setTimeout(r, 800))
+      return this.request<T>(path, options, 2)
+    }
+
+    let json: any
+    try {
+      json = JSON.parse(text)
+    } catch {
+      throw new ApiError(
+        `Unexpected response (${res.status}): ${text.slice(0, 120)}`,
+        'PARSE_ERROR',
+        res.status,
+      )
+    }
 
     if (!json.ok) {
       throw new ApiError(json.error ?? 'Unknown error', json.code ?? 'UNKNOWN', res.status)
