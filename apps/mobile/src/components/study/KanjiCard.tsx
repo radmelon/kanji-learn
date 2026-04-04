@@ -30,10 +30,24 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
 
   return (
     <View style={styles.card}>
-      {/* JLPT badge */}
+      {/* JLPT badge — top right */}
       <View style={[styles.jlptBadge, { backgroundColor: jlptColor + '22', borderColor: jlptColor + '44' }]}>
         <Text style={[styles.jlptText, { color: jlptColor }]}>{item.jlptLevel}</Text>
       </View>
+
+      {/* Rōmaji toggle — top left, only on reading/compound cards */}
+      {hasReadings && (
+        <TouchableOpacity
+          onPress={onToggleRomaji}
+          style={[styles.romajiToggle, showRomaji && styles.romajiToggleActive]}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={[styles.romajiToggleText, showRomaji && styles.romajiToggleTextActive]}>
+            Rōmaji
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* Kanji character */}
       <Text style={styles.kanji}>{item.character}</Text>
@@ -56,29 +70,12 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
           {/* Readings */}
           {hasReadings && (
             <View style={styles.readingsBlock}>
-              {/* Toggle row */}
-              <View style={styles.readingsHeader}>
-                <Text style={styles.readingsSectionLabel}>Readings</Text>
-                <TouchableOpacity
-                  onPress={onToggleRomaji}
-                  style={[styles.romajiToggle, showRomaji && styles.romajiToggleActive]}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={[styles.romajiToggleText, showRomaji && styles.romajiToggleTextActive]}>
-                    Rōmaji
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
               {/* Kun readings */}
               {kunReadings.length > 0 && (
                 <View style={styles.readingRow}>
                   <Text style={styles.readingLabel}>kun</Text>
                   <View style={styles.readingGroup}>
-                    <Text style={styles.readingKana}>
-                      {kunReadings.join('　')}
-                    </Text>
+                    <Text style={styles.readingKana}>{kunReadings.join('　')}</Text>
                     {showRomaji && (
                       <Text style={styles.readingRomaji}>
                         {kunReadings.map((r) => toRomaji(r.replace('.', ''))).join('　')}
@@ -93,9 +90,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
                 <View style={styles.readingRow}>
                   <Text style={styles.readingLabel}>on</Text>
                   <View style={styles.readingGroup}>
-                    <Text style={styles.readingKana}>
-                      {onReadings.join('　')}
-                    </Text>
+                    <Text style={styles.readingKana}>{onReadings.join('　')}</Text>
                     {showRomaji && (
                       <Text style={styles.readingRomaji}>
                         {onReadings.map((r) => toRomaji(r)).join('　')}
@@ -167,6 +162,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   jlptText: { ...typography.caption, fontWeight: '700' },
+
+  // Rōmaji toggle — top-left corner, always visible on reading cards
+  romajiToggle: {
+    position: 'absolute',
+    top: spacing.md,
+    left: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgSurface,
+  },
+  romajiToggleActive: {
+    borderColor: colors.info,
+    backgroundColor: colors.info + '22',
+  },
+  romajiToggleText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  romajiToggleTextActive: { color: colors.info },
   kanji: { ...typography.kanjiDisplay, color: colors.textPrimary },
   prompt: { ...typography.body, color: colors.textSecondary },
   revealButton: {
@@ -183,29 +197,6 @@ const styles = StyleSheet.create({
 
   // Readings block
   readingsBlock: { width: '100%', gap: spacing.xs },
-  readingsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  readingsSectionLabel: { ...typography.caption, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
-
-  // Rōmaji toggle pill
-  romajiToggle: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgSurface,
-  },
-  romajiToggleActive: {
-    borderColor: colors.info,
-    backgroundColor: colors.info + '22',
-  },
-  romajiToggleText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
-  romajiToggleTextActive: { color: colors.info },
 
   // Per-type reading rows
   readingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
