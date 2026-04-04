@@ -1,6 +1,8 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import * as Haptics from 'expo-haptics'
+import * as Speech from 'expo-speech'
+import { Ionicons } from '@expo/vector-icons'
 import { toRomaji } from 'wanakana'
 import { colors, spacing, radius, typography } from '../../theme'
 import type { ReviewQueueItem } from '@kanji-learn/shared'
@@ -14,19 +16,73 @@ interface Props {
   onToggleRomaji: () => void
 }
 
+// Japanese TTS options — slightly slower rate aids learning
+const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.85 }
+
 export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRomaji }: Props) {
   const meanings = (item.meanings as string[]).join(', ')
   const jlptColor = JLPT_COLORS[item.jlptLevel as keyof typeof JLPT_COLORS] ?? colors.textMuted
+
+  // Which group is currently being spoken: null | 'kun' | 'on' | vocab index
+  const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
+
+  const hasReadings =
+    item.reviewType === 'reading' || item.reviewType === 'compound'
+  const kunReadings = item.kunReadings as string[]
+  const onReadings = item.onReadings as string[]
+  const exampleVocab = item.exampleVocab as { word: string; reading: string; meaning: string }[]
 
   const handleReveal = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     onReveal()
   }, [onReveal])
 
-  const hasReadings =
-    item.reviewType === 'reading' || item.reviewType === 'compound'
-  const kunReadings = item.kunReadings as string[]
-  const onReadings = item.onReadings as string[]
+  /** Speak a list of kana in sequence, updating speakingGroup for visual feedback. */
+  const speakSequence = useCallback((
+    words: string[],
+    groupKey: string,
+    stripDot = false,
+  ) => {
+    // Stop any current speech if this group is already active
+    if (speakingGroup === groupKey) {
+      Speech.stop()
+      setSpeakingGroup(null)
+      return
+    }
+    Speech.stop()
+    setSpeakingGroup(groupKey)
+
+    const cleaned = words.map((w) => (stripDot ? w.replace('.', '') : w))
+
+    const speakAt = (idx: number) => {
+      if (idx >= cleaned.length) {
+        setSpeakingGroup(null)
+        return
+      }
+      Speech.speak(cleaned[idx], {
+        ...SPEECH_OPTS,
+        onDone: () => speakAt(idx + 1),
+        onError: () => { setSpeakingGroup(null) },
+      })
+    }
+    speakAt(0)
+  }, [speakingGroup])
+
+  /** Speak a single vocab word by its reading. */
+  const speakVocab = useCallback((reading: string, key: string) => {
+    if (speakingGroup === key) {
+      Speech.stop()
+      setSpeakingGroup(null)
+      return
+    }
+    Speech.stop()
+    setSpeakingGroup(key)
+    Speech.speak(reading, {
+      ...SPEECH_OPTS,
+      onDone: () => setSpeakingGroup(null),
+      onError: () => setSpeakingGroup(null),
+    })
+  }, [speakingGroup])
 
   return (
     <View style={styles.card}>
@@ -67,9 +123,10 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
             <Text style={styles.meaningText}>{meanings}</Text>
           )}
 
-          {/* Readings */}
+          {/* Readings with speaker buttons */}
           {hasReadings && (
             <View style={styles.readingsBlock}>
+
               {/* Kun readings */}
               {kunReadings.length > 0 && (
                 <View style={styles.readingRow}>
@@ -82,6 +139,11 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
                       </Text>
                     )}
                   </View>
+                  <SpeakButton
+                    groupKey="kun"
+                    speakingGroup={speakingGroup}
+                    onPress={() => speakSequence(kunReadings, 'kun', true)}
+                  />
                 </View>
               )}
 
@@ -97,26 +159,74 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
                       </Text>
                     )}
                   </View>
+                  <SpeakButton
+                    groupKey="on"
+                    speakingGroup={speakingGroup}
+                    onPress={() => speakSequence(onReadings, 'on')}
+                  />
                 </View>
               )}
             </View>
           )}
 
-          {/* Example vocab */}
-          {(item.exampleVocab as any[]).length > 0 && (
+          {/* Example vocab — tappable to hear pronunciation */}
+          {exampleVocab.length > 0 && (
             <View style={styles.vocab}>
-              {(item.exampleVocab as { word: string; reading: string; meaning: string }[])
-                .slice(0, 2)
-                .map((v, i) => (
-                  <Text key={i} style={styles.vocabItem}>
-                    {v.word}【{v.reading}】{v.meaning}
-                  </Text>
-                ))}
+              {exampleVocab.slice(0, 2).map((v, i) => {
+                const key = `vocab-${i}`
+                const isActive = speakingGroup === key
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    style={[styles.vocabRow, isActive && styles.vocabRowActive]}
+                    onPress={() => speakVocab(v.reading, key)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={isActive ? 'volume-high' : 'volume-medium-outline'}
+                      size={13}
+                      color={isActive ? colors.accent : colors.textMuted}
+                      style={{ marginTop: 1 }}
+                    />
+                    <Text style={styles.vocabItem}>
+                      {v.word}【{v.reading}】{v.meaning}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
             </View>
           )}
         </View>
       )}
     </View>
+  )
+}
+
+// ─── SpeakButton ──────────────────────────────────────────────────────────────
+
+function SpeakButton({
+  groupKey,
+  speakingGroup,
+  onPress,
+}: {
+  groupKey: string
+  speakingGroup: string | null
+  onPress: () => void
+}) {
+  const isActive = speakingGroup === groupKey
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      activeOpacity={0.7}
+      style={[styles.speakBtn, isActive && styles.speakBtnActive]}
+    >
+      <Ionicons
+        name={isActive ? 'volume-high' : 'volume-medium-outline'}
+        size={16}
+        color={isActive ? colors.accent : colors.textMuted}
+      />
+    </TouchableOpacity>
   )
 }
 
@@ -163,7 +273,7 @@ const styles = StyleSheet.create({
   },
   jlptText: { ...typography.caption, fontWeight: '700' },
 
-  // Rōmaji toggle — top-left corner, always visible on reading cards
+  // Rōmaji toggle — top-left corner
   romajiToggle: {
     position: 'absolute',
     top: spacing.md,
@@ -181,6 +291,7 @@ const styles = StyleSheet.create({
   },
   romajiToggleText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
   romajiToggleTextActive: { color: colors.info },
+
   kanji: { ...typography.kanjiDisplay, color: colors.textPrimary },
   prompt: { ...typography.body, color: colors.textSecondary },
   revealButton: {
@@ -197,21 +308,39 @@ const styles = StyleSheet.create({
 
   // Readings block
   readingsBlock: { width: '100%', gap: spacing.xs },
-
-  // Per-type reading rows
   readingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   readingLabel: {
     ...typography.caption,
     color: colors.textMuted,
     width: 24,
     textAlign: 'right',
-    paddingTop: 2, // align with first line of kana
+    paddingTop: 2,
   },
   readingGroup: { flex: 1, gap: 2 },
   readingKana: { ...typography.reading, color: colors.textPrimary, flexWrap: 'wrap' },
   readingRomaji: { ...typography.caption, color: colors.textSecondary, flexWrap: 'wrap' },
 
+  // Speaker button
+  speakBtn: {
+    padding: 4,
+    borderRadius: radius.full,
+  },
+  speakBtnActive: {
+    backgroundColor: colors.accent + '22',
+  },
+
   // Vocab examples
-  vocab: { gap: 4, width: '100%' },
-  vocabItem: { ...typography.bodySmall, color: colors.textSecondary, textAlign: 'center' },
+  vocab: { gap: 6, width: '100%' },
+  vocabRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    paddingVertical: 3,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.sm,
+  },
+  vocabRowActive: {
+    backgroundColor: colors.accent + '11',
+  },
+  vocabItem: { ...typography.bodySmall, color: colors.textSecondary, flex: 1 },
 })
