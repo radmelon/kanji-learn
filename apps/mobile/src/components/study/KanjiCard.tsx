@@ -196,6 +196,9 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
               })}
             </View>
           )}
+
+          {/* References panel */}
+          <ReferencesPanel item={item} />
         </View>
       )}
     </View>
@@ -229,6 +232,118 @@ function SpeakButton({
     </TouchableOpacity>
   )
 }
+
+// ─── ReferencesPanel ─────────────────────────────────────────────────────────
+
+function ReferencesPanel({ item }: { item: ReviewQueueItem }) {
+  const [open, setOpen] = useState(false)
+
+  const radicals = (item.radicals as string[] | undefined) ?? []
+  const strokes = item.strokeCount as number | undefined
+  const nelsonC = item.nelsonClassic as number | null | undefined
+  const nelsonN = item.nelsonNew as number | null | undefined
+  const morIndex = item.morohashiIndex as number | null | undefined
+  const morVol = item.morohashiVolume as number | null | undefined
+  const morPage = item.morohashiPage as number | null | undefined
+
+  // Build morohashi label
+  const morohashi = morIndex != null
+    ? morVol != null && morPage != null
+      ? `${morIndex} (vol. ${morVol}, p. ${morPage})`
+      : `${morIndex}`
+    : null
+
+  const hasAnyRef = strokes != null || radicals.length > 0 || nelsonC != null || nelsonN != null || morohashi != null
+  if (!hasAnyRef) return null
+
+  return (
+    <View style={refStyles.container}>
+      <TouchableOpacity
+        style={refStyles.toggle}
+        onPress={() => setOpen((v) => !v)}
+        activeOpacity={0.7}
+        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      >
+        <Text style={refStyles.toggleLabel}>References</Text>
+        <Ionicons
+          name={open ? 'chevron-up' : 'chevron-down'}
+          size={13}
+          color={colors.textMuted}
+        />
+      </TouchableOpacity>
+
+      {open && (
+        <View style={refStyles.body}>
+          {strokes != null && (
+            <RefRow icon="pencil-outline" label="Strokes" value={String(strokes)} />
+          )}
+          {radicals.length > 0 && (
+            <RefRow icon="grid-outline" label="Radicals" value={radicals.join('　')} />
+          )}
+          {nelsonC != null && (
+            <RefRow icon="book-outline" label="Nelson Classic" value={`#${nelsonC}`} />
+          )}
+          {nelsonN != null && (
+            <RefRow icon="book-outline" label="New Nelson" value={`#${nelsonN}`} />
+          )}
+          {morohashi != null && (
+            <RefRow icon="library-outline" label="Morohashi" value={morohashi} />
+          )}
+
+          <Text style={refStyles.credit}>
+            Nelson indices: Andrew Nelson, "The Modern Reader's Japanese-English Character
+            Dictionary" (Classic, 1962) and Jack Halpern ed. (New Nelson, 1997).{'\n'}
+            Morohashi: Tetsuji Morohashi, "Dai Kan-Wa Jiten" (大漢和辞典), 1955–1960.
+          </Text>
+        </View>
+      )}
+    </View>
+  )
+}
+
+function RefRow({ icon, label, value }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; value: string }) {
+  return (
+    <View style={refStyles.row}>
+      <Ionicons name={icon} size={12} color={colors.textMuted} style={refStyles.rowIcon} />
+      <Text style={refStyles.rowLabel}>{label}</Text>
+      <Text style={refStyles.rowValue}>{value}</Text>
+    </View>
+  )
+}
+
+const refStyles = StyleSheet.create({
+  container: { width: '100%', marginTop: spacing.xs },
+  toggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: spacing.xs,
+  },
+  toggleLabel: { ...typography.caption, color: colors.textMuted },
+  body: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    gap: 6,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  rowIcon: { width: 16 },
+  rowLabel: { ...typography.caption, color: colors.textMuted, width: 96 },
+  rowValue: { ...typography.caption, color: colors.textSecondary, flex: 1 },
+  credit: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    lineHeight: 16,
+    marginTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    paddingTop: spacing.xs,
+  },
+})
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

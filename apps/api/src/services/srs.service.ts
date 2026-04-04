@@ -18,6 +18,14 @@ export interface ReviewQueueItem {
   status: string
   readingStage: number
   reviewType: 'meaning' | 'reading' | 'writing' | 'compound'
+  // Reference / cross-index fields
+  strokeCount: number
+  radicals: string[]
+  nelsonClassic: number | null
+  nelsonNew: number | null
+  morohashiIndex: number | null
+  morohashiVolume: number | null
+  morohashiPage: number | null
 }
 
 export interface SessionSummary {
@@ -51,6 +59,13 @@ export class SrsService {
         kunReadings: kanji.kunReadings,
         onReadings: kanji.onReadings,
         exampleVocab: kanji.exampleVocab,
+        strokeCount: kanji.strokeCount,
+        radicals: kanji.radicals,
+        nelsonClassic: kanji.nelsonClassic,
+        nelsonNew: kanji.nelsonNew,
+        morohashiIndex: kanji.morohashiIndex,
+        morohashiVolume: kanji.morohashiVolume,
+        morohashiPage: kanji.morohashiPage,
       })
       .from(userKanjiProgress)
       .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
@@ -81,6 +96,13 @@ export class SrsService {
               kunReadings: kanji.kunReadings,
               onReadings: kanji.onReadings,
               exampleVocab: kanji.exampleVocab,
+              strokeCount: kanji.strokeCount,
+              radicals: kanji.radicals,
+              nelsonClassic: kanji.nelsonClassic,
+              nelsonNew: kanji.nelsonNew,
+              morohashiIndex: kanji.morohashiIndex,
+              morohashiVolume: kanji.morohashiVolume,
+              morohashiPage: kanji.morohashiPage,
             })
             .from(kanji)
             .where(
@@ -105,6 +127,13 @@ export class SrsService {
         kunReadings: kanji.kunReadings,
         onReadings: kanji.onReadings,
         exampleVocab: kanji.exampleVocab,
+        strokeCount: kanji.strokeCount,
+        radicals: kanji.radicals,
+        nelsonClassic: kanji.nelsonClassic,
+        nelsonNew: kanji.nelsonNew,
+        morohashiIndex: kanji.morohashiIndex,
+        morohashiVolume: kanji.morohashiVolume,
+        morohashiPage: kanji.morohashiPage,
       })
       .from(userKanjiProgress)
       .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
