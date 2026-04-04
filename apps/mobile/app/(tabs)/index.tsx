@@ -26,7 +26,7 @@ interface InfoSection {
 
 const INFO_VELOCITY: InfoSection[] = [
   {
-    body: 'Velocity tracks how actively and effectively you\'re learning kanji over time — not just how many cards you tap through, but how deeply you\'re building lasting memory.',
+    body: 'Velocity tracks how actively and effectively you\'re learning kanji over time — not just how many cards you tap through, but how deeply you\'re building lasting memory. It is powered by a Spaced Repetition System (SRS), a scheduling method that times each review for the exact moment your brain is about to forget the character.',
   },
   {
     title: 'Reviews / day',
@@ -38,11 +38,11 @@ const INFO_VELOCITY: InfoSection[] = [
   },
   {
     title: 'What does "burning" a kanji mean? 🔥',
-    body: 'When you answer a card correctly enough times that its review interval grows to roughly 6 months, that kanji is marked as burned. Burned means you\'ve demonstrated genuine long-term recall — not just short-term familiarity from recent study. The character moves out of active rotation and surfaces only as an occasional surprise check to confirm you haven\'t forgotten it.',
+    body: 'Every time you answer a card correctly, the SRS stretches its next review further into the future (1 day → 4 days → 2 weeks → 2 months…). When the interval grows to roughly 6 months, the kanji is marked as burned. Burned means you\'ve demonstrated genuine long-term recall — not just short-term familiarity. The character moves out of active rotation and surfaces only as an occasional surprise check to confirm you haven\'t forgotten it.',
   },
   {
     title: 'Burn rate',
-    body: 'How many new kanji you burned per day on average over the last 30 days. This is the most meaningful long-term metric: it measures deep learning, not activity. Burn 1 kanji/day and you\'ll master all 2,294 Jouyou kanji in about 6 years. Burn 5/day and it takes roughly 15 months.',
+    body: 'How many new kanji you burned per day on average over the last 30 days. This is the most meaningful long-term metric: it measures deep learning, not raw activity. Burn 1 kanji/day and you\'ll master all 2,294 Jouyou kanji in about 6 years. Burn 5/day and it takes roughly 15 months.',
   },
   {
     title: 'Projected completion dates',
@@ -52,15 +52,19 @@ const INFO_VELOCITY: InfoSection[] = [
 
 const INFO_ACTIVITY: InfoSection[] = [
   {
-    body: 'Each bar shows how many SRS cards you reviewed on that day. A full bar equals 50 reviews — a solid daily session. Shorter bars mean fewer reviews; no bar means the day was skipped.',
+    body: 'Each bar shows how many Spaced Repetition System (SRS) cards you reviewed on that day. A full bar equals 50 reviews — a solid daily session. Shorter bars mean fewer reviews; no bar means the day was skipped.',
+  },
+  {
+    title: 'What is Spaced Repetition?',
+    body: 'Spaced Repetition is a learning technique that exploits the way human memory works: we forget things on a predictable curve, but a well-timed review resets and strengthens the memory. By scheduling reviews at the last possible moment before forgetting, the system forces your brain to work just hard enough to rebuild the memory — making it stick longer each time.\n\nThe underlying science goes back to psychologist Hermann Ebbinghaus, who mapped the "Forgetting Curve" in 1885. The modern algorithmic form — using an ease factor and expanding intervals — was pioneered by Piotr Woźniak in his SuperMemo software (1987). His SM-2 algorithm remains the foundation of most SRS apps today, and is the basis for this app\'s scheduling engine.',
   },
   {
     title: 'Why consistency beats volume',
     body: 'The SRS engine schedules each card at the exact moment your brain is about to forget it. Skipping a day doesn\'t erase those cards — they pile up. Reviewing even 10–20 cards daily prevents backlog from growing and keeps each session short and manageable.',
   },
   {
-    title: 'How the SRS works',
-    body: 'Every time you answer a card correctly, its interval roughly doubles (e.g. 1 day → 2 days → 4 days → 10 days…). A wrong answer resets the interval back to 1 day. Over time, cards you know well drift to monthly or biannual reviews, while cards you struggle with stay in heavy rotation.',
+    title: 'How intervals expand',
+    body: 'Every time you answer a card correctly, its next review interval roughly doubles (e.g. 1 day → 4 days → 10 days → 3 weeks…). A wrong answer resets the interval back to 1 day. Over time, characters you know well drift to monthly or biannual reviews, while characters you struggle with stay in heavy daily rotation.',
   },
 ]
 
@@ -70,11 +74,11 @@ const INFO_JOURNEY: InfoSection[] = [
   },
   {
     title: 'Seen',
-    body: 'Kanji you\'ve been introduced to in at least one study session (any SRS status other than Unseen). These characters are now part of your active review queue.',
+    body: 'Kanji you\'ve been introduced to in at least one study session. These characters have an active Spaced Repetition System (SRS) interval and will appear in future reviews.',
   },
   {
     title: 'Mastered',
-    body: 'Kanji you\'ve burned — answered correctly enough times that the review interval reached ~6 months. Mastered kanji represent genuine long-term retention, not just recent familiarity.',
+    body: 'Kanji you\'ve burned — answered correctly enough times that the SRS interval reached ~6 months. Mastered kanji represent genuine long-term retention: the SRS has confirmed your brain can recall them without recent reinforcement.',
   },
   {
     title: 'Remaining',
@@ -88,7 +92,7 @@ const INFO_JOURNEY: InfoSection[] = [
 
 const INFO_QUIZ: InfoSection[] = [
   {
-    body: 'Quizzes test your recall in exam-style, multiple-choice conditions. Unlike daily SRS reviews, quiz results do not affect your card intervals or SRS progress — they\'re purely for self-assessment.',
+    body: 'Quizzes test your recall in exam-style, multiple-choice conditions. Unlike daily Spaced Repetition System (SRS) reviews — where answering a card changes when you\'ll see it next — quiz results have no effect on your card intervals or learning progress. They\'re purely for self-assessment.',
   },
   {
     title: 'When to use quizzes',
@@ -110,15 +114,15 @@ const INFO_LEADERBOARD: InfoSection[] = [
   },
   {
     title: 'Reviewed',
-    body: 'Total SRS review answers submitted. A high review count reflects sustained, long-term study effort — though it\'s possible to inflate this number by grinding easy cards.',
+    body: 'Total Spaced Repetition System (SRS) review answers submitted. Each answer is a flashcard graded during a daily review session. A high review count reflects sustained, long-term study effort — though it\'s possible to inflate this number by grinding easy cards.',
   },
   {
     title: 'Burned 🔥',
-    body: 'Total kanji burned (mastered). This is the highest-quality signal on the leaderboard — it measures deep, durable learning that can\'t be faked. Burning kanji takes repeated correct answers over months.',
+    body: 'Total kanji burned (mastered). A kanji is burned when the SRS interval reaches ~6 months — meaning your brain has proven it can recall the character from genuine long-term memory, not just recent study. This is the highest-quality signal on the leaderboard and can\'t be faked; it takes months of correct answers.',
   },
   {
     title: 'Streak 🔥',
-    body: 'Consecutive days with at least one review completed. Long streaks signal habit formation — the strongest single predictor of reaching fluency in a foreign language.',
+    body: 'Consecutive days with at least one SRS review session completed. Long streaks signal habit formation — the strongest single predictor of reaching fluency in a foreign language.',
   },
   {
     title: 'A note on competition',
