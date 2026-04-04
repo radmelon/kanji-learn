@@ -117,13 +117,52 @@ export default function Dashboard() {
                 <Text style={styles.cardTitle}>Velocity</Text>
                 <TrendBadge trend={summary.velocity.trend} />
               </View>
-              <Text style={styles.velocityValue}>
-                {summary.velocity.weeklyAverage}
-                <Text style={styles.velocityUnit}> reviews/day this week</Text>
-              </Text>
+
+              {/* Reviews + burn rate */}
+              <View style={styles.velocityRow}>
+                <Text style={styles.velocityValue}>
+                  {summary.velocity.weeklyAverage}
+                  <Text style={styles.velocityUnit}> reviews/day</Text>
+                </Text>
+                {summary.velocity.burnedPerDay > 0 && (
+                  <View style={styles.burnedBadge}>
+                    <Text style={styles.burnedBadgeText}>
+                      🔥 {summary.velocity.burnedPerDay}/day burned
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Next JLPT milestone */}
+              {summary.velocity.nextMilestone && (
+                <View style={styles.milestoneRow}>
+                  <View style={styles.milestoneLevelBadge}>
+                    <Text style={styles.milestoneLevelText}>
+                      {summary.velocity.nextMilestone.level}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.milestoneTitle}>
+                      {summary.velocity.nextMilestone.burned} / {summary.velocity.nextMilestone.total} kanji mastered
+                    </Text>
+                    {summary.velocity.nextMilestone.projectedDate ? (
+                      <Text style={styles.milestoneDate}>
+                        Complete by{' '}
+                        {new Date(summary.velocity.nextMilestone.projectedDate).toLocaleDateString('en', {
+                          year: 'numeric', month: 'short',
+                        })}
+                      </Text>
+                    ) : (
+                      <Text style={styles.milestoneDate}>Start burning kanji to see a projection</Text>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* All-kanji long-term projection */}
               {summary.velocity.projectedCompletion && (
                 <Text style={styles.projection}>
-                  At this pace: complete by{' '}
+                  All 2,294 Jouyou kanji:{' '}
                   {new Date(summary.velocity.projectedCompletion).toLocaleDateString('en', {
                     year: 'numeric', month: 'short',
                   })}
@@ -302,8 +341,16 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
   cardTitle: { ...typography.h3, color: colors.textPrimary },
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  velocityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
   velocityValue: { ...typography.h2, color: colors.textPrimary },
   velocityUnit: { ...typography.body, color: colors.textSecondary, fontWeight: '400' },
+  burnedBadge: { backgroundColor: colors.accent + '22', borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 3 },
+  burnedBadgeText: { ...typography.caption, color: colors.accent, fontWeight: '600' },
+  milestoneRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.bgSurface, borderRadius: radius.md, padding: spacing.sm },
+  milestoneLevelBadge: { backgroundColor: colors.primary + '22', borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  milestoneLevelText: { ...typography.h3, color: colors.primary },
+  milestoneTitle: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
+  milestoneDate: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   projection: { ...typography.caption, color: colors.textMuted },
   activityBars: { flexDirection: 'row', height: 80, gap: spacing.xs, alignItems: 'flex-end' },
   progressTrack: { height: 8, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },

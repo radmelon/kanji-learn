@@ -89,11 +89,22 @@ export interface DailyStats {
   studyTimeMs: number
 }
 
+export interface JlptLevelProjection {
+  level: string
+  total: number       // total kanji in this level
+  burned: number      // how many user has burned
+  remaining: number   // left to burn
+  projectedDate: Date | null  // null if burnedPerDay is 0
+}
+
 export interface VelocityMetrics {
-  dailyAverage: number
-  weeklyAverage: number
+  dailyAverage: number       // avg reviews/day, last 30 days
+  weeklyAverage: number      // avg reviews/day, last 7 days
+  burnedPerDay: number       // avg kanji burned/day, last 30 days
   trend: 'up' | 'down' | 'stable'
-  projectedCompletion: Date | null
+  projectedCompletion: Date | null        // all 2,294 Jouyou kanji
+  levelProjections: JlptLevelProjection[] // per-JLPT-level breakdown
+  nextMilestone: JlptLevelProjection | null // first incomplete level
 }
 
 // ─── API Response ─────────────────────────────────────────────────────────────

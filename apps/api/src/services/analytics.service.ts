@@ -1,11 +1,13 @@
 import { and, eq, gte, desc, sql, lte } from 'drizzle-orm'
 import { dailyStats, reviewLogs, userKanjiProgress, kanji, writingAttempts, voiceAttempts } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
-import type { DailyStats, VelocityMetrics } from '@kanji-learn/shared'
+import type { DailyStats, VelocityMetrics, JlptLevelProjection } from '@kanji-learn/shared'
 import {
   VELOCITY_DROP_THRESHOLD,
   PLATEAU_DAYS_THRESHOLD,
   TOTAL_JOUYOU_KANJI,
+  JLPT_LEVELS,
+  JLPT_KANJI_COUNTS,
 } from '@kanji-learn/shared'
 
 // ─── Analytics Service ────────────────────────────────────────────────────────
@@ -64,6 +66,14 @@ export class AnalyticsService {
     const weeklyAverage = Number(weekRow?.avg ?? 0)
     const dailyAverage = Number(monthRow?.avg ?? 0)
 
+    // Burned per day (30-day avg from daily_stats.burned)
+    const [burnedRow] = await this.db
+      .select({ avg: sql<number>`ROUND(AVG(burned)::numeric, 2)` })
+      .from(dailyStats)
+      .where(and(eq(dailyStats.userId, userId), gte(dailyStats.date, monthStr)))
+
+    const burnedPerDay = Number(burnedRow?.avg ?? 0)
+
     // Trend: compare this week vs previous week
     const prevWeek = new Date(week)
     prevWeek.setDate(prevWeek.getDate() - 7)
@@ -83,14 +93,48 @@ export class AnalyticsService {
     const prevWeekAvg = Number(prevWeekRow?.avg ?? 0)
     const trend = this.calculateTrend(weeklyAverage, prevWeekAvg)
 
-    // Projected completion
-    const remainingKanji = await this.getRemainingKanjiCount(userId)
+    // Per-JLPT burned counts
+    const levelBurnedRows = await this.db
+      .select({
+        jlptLevel: kanji.jlptLevel,
+        burned: sql<number>`count(*)::int`,
+      })
+      .from(userKanjiProgress)
+      .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
+      .where(
+        and(
+          eq(userKanjiProgress.userId, userId),
+          eq(userKanjiProgress.status, 'burned')
+        )
+      )
+      .groupBy(kanji.jlptLevel)
+
+    const burnedByLevel = Object.fromEntries(
+      levelBurnedRows.map((r) => [r.jlptLevel, Number(r.burned)])
+    )
+
+    // Build per-level projections (N5 → N1)
+    const levelProjections: JlptLevelProjection[] = JLPT_LEVELS.map((level) => {
+      const total = JLPT_KANJI_COUNTS[level]
+      const burned = burnedByLevel[level] ?? 0
+      const remaining = Math.max(0, total - burned)
+      const projectedDate =
+        burnedPerDay > 0 && remaining > 0
+          ? new Date(now.getTime() + (remaining / burnedPerDay) * 24 * 60 * 60 * 1000)
+          : null
+      return { level, total, burned, remaining, projectedDate }
+    })
+
+    const nextMilestone = levelProjections.find((lp) => lp.remaining > 0) ?? null
+
+    // Total projected completion using burnedPerDay
+    const totalRemaining = levelProjections.reduce((sum, lp) => sum + lp.remaining, 0)
     const projectedCompletion =
-      dailyAverage > 0
-        ? new Date(now.getTime() + (remainingKanji / dailyAverage) * 24 * 60 * 60 * 1000)
+      burnedPerDay > 0 && totalRemaining > 0
+        ? new Date(now.getTime() + (totalRemaining / burnedPerDay) * 24 * 60 * 60 * 1000)
         : null
 
-    return { dailyAverage, weeklyAverage, trend, projectedCompletion }
+    return { dailyAverage, weeklyAverage, burnedPerDay, trend, projectedCompletion, levelProjections, nextMilestone }
   }
 
   // ── Accuracy rate over last N days ─────────────────────────────────────────
