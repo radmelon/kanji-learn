@@ -78,6 +78,24 @@ export function SrsStatusBar({ counts }: Props) {
       {/* Expandable descriptions */}
       {expanded && (
         <View style={styles.descriptions}>
+          {/* SRS intro + credit */}
+          <View style={styles.introRow}>
+            <Text style={styles.introText}>
+              Each stage reflects a band of review intervals managed by a{' '}
+              <Text style={styles.introEmphasis}>Spaced Repetition System (SRS)</Text>
+              {' '}— a scheduling method that times each review for the exact moment your brain
+              is about to forget the character. The longer you answer correctly, the further
+              the next review is pushed into the future.
+            </Text>
+            <Text style={[styles.introText, styles.introCredit]}>
+              Based on the Forgetting Curve described by Hermann Ebbinghaus (1885) and the
+              SM-2 algorithm developed by Piotr Woźniak in SuperMemo (1987).
+            </Text>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Per-stage descriptions */}
           {SEGMENTS.map(({ key, color, label }) => (
             <View key={key} style={styles.descRow}>
               <View style={[styles.descDot, { backgroundColor: color }]} />
@@ -124,6 +142,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
   },
+  introRow: { gap: spacing.xs },
+  introText: { ...typography.caption, color: colors.textSecondary, lineHeight: 18 },
+  introEmphasis: { fontWeight: '700', color: colors.textPrimary },
+  introCredit: { color: colors.textMuted, fontStyle: 'italic', marginTop: 4 },
+  divider: { height: 1, backgroundColor: colors.border },
   descRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
   descDot: { width: 10, height: 10, borderRadius: 5, marginTop: 3 },
   descTextCol: { flex: 1, gap: 2 },
