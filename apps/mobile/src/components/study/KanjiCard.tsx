@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
 import { Ionicons } from '@expo/vector-icons'
@@ -105,18 +105,24 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
         </TouchableOpacity>
       )}
 
-      {/* Kanji character */}
-      <Text style={styles.kanji}>{item.character}</Text>
-
-      {/* Review type label */}
-      <Text style={styles.prompt}>{PROMPT_LABELS[item.reviewType as keyof typeof PROMPT_LABELS]}</Text>
+      {/* Kanji character — always visible, centred in upper half */}
+      <View style={styles.kanjiArea}>
+        <Text style={styles.kanji}>{item.character}</Text>
+        <Text style={styles.prompt}>{PROMPT_LABELS[item.reviewType as keyof typeof PROMPT_LABELS]}</Text>
+      </View>
 
       {!isRevealed ? (
         <TouchableOpacity style={styles.revealButton} onPress={handleReveal} activeOpacity={0.8}>
           <Text style={styles.revealText}>Reveal answer</Text>
         </TouchableOpacity>
       ) : (
-        <View style={styles.answer}>
+        /* Scrollable answer area so long content (readings + vocab + references) never gets clipped */
+        <ScrollView
+          style={styles.answerScroll}
+          contentContainerStyle={styles.answer}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
 
           {/* Meanings (all, not capped) */}
           {(item.reviewType === 'meaning' || item.reviewType === 'compound') && (
@@ -199,7 +205,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
 
           {/* References panel */}
           <ReferencesPanel item={item} />
-        </View>
+        </ScrollView>
       )}
     </View>
   )
@@ -369,13 +375,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
-    padding: spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border,
     marginHorizontal: spacing.md,
+    overflow: 'hidden',
+    // No padding here — handled by inner sections
+  },
+  // Upper section: kanji + prompt, vertically centred
+  kanjiArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+    minHeight: 180,
   },
   jlptBadge: {
     position: 'absolute',
@@ -416,9 +430,19 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.xl,
   },
   revealText: { ...typography.h3, color: colors.textSecondary },
-  answer: { alignItems: 'center', gap: spacing.md, width: '100%' },
+  // Scrollable container for the full answer (readings, vocab, references)
+  answerScroll: { flex: 1 },
+  answer: {
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
+  },
   meaningText: { ...typography.h2, color: colors.textPrimary, textAlign: 'center' },
 
   // Readings block
