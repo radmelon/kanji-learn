@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, RefreshControl, ActivityIndicator,
@@ -17,6 +17,117 @@ import { InterventionBanner } from '../../src/components/ui/InterventionBanner'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
+// ─── Info panel content ───────────────────────────────────────────────────────
+
+interface InfoSection {
+  title?: string
+  body: string
+}
+
+const INFO_VELOCITY: InfoSection[] = [
+  {
+    body: 'Velocity tracks how actively and effectively you\'re learning kanji over time — not just how many cards you tap through, but how deeply you\'re building lasting memory.',
+  },
+  {
+    title: 'Reviews / day',
+    body: 'The number of SRS flashcard answers you submit per day, averaged over the last 7 days. Consistency matters more than volume — even 15–20 reviews a day compounds dramatically over months.',
+  },
+  {
+    title: 'Trend ↑ / ↓ / —',
+    body: 'Compares your last 7-day review average to your 30-day average. ↑ Up means you\'ve been studying more actively lately; ↓ Down means you\'ve eased off. Neither is good or bad — it\'s context.',
+  },
+  {
+    title: 'What does "burning" a kanji mean? 🔥',
+    body: 'When you answer a card correctly enough times that its review interval grows to roughly 6 months, that kanji is marked as burned. Burned means you\'ve demonstrated genuine long-term recall — not just short-term familiarity from recent study. The character moves out of active rotation and surfaces only as an occasional surprise check to confirm you haven\'t forgotten it.',
+  },
+  {
+    title: 'Burn rate',
+    body: 'How many new kanji you burned per day on average over the last 30 days. This is the most meaningful long-term metric: it measures deep learning, not activity. Burn 1 kanji/day and you\'ll master all 2,294 Jouyou kanji in about 6 years. Burn 5/day and it takes roughly 15 months.',
+  },
+  {
+    title: 'Projected completion dates',
+    body: 'Estimated dates are calculated by dividing remaining unburned kanji by your current burn rate. Your next JLPT milestone shows when you\'ll burn every kanji at that level. Projections update automatically as your pace changes — study more and the dates move closer.',
+  },
+]
+
+const INFO_ACTIVITY: InfoSection[] = [
+  {
+    body: 'Each bar shows how many SRS cards you reviewed on that day. A full bar equals 50 reviews — a solid daily session. Shorter bars mean fewer reviews; no bar means the day was skipped.',
+  },
+  {
+    title: 'Why consistency beats volume',
+    body: 'The SRS engine schedules each card at the exact moment your brain is about to forget it. Skipping a day doesn\'t erase those cards — they pile up. Reviewing even 10–20 cards daily prevents backlog from growing and keeps each session short and manageable.',
+  },
+  {
+    title: 'How the SRS works',
+    body: 'Every time you answer a card correctly, its interval roughly doubles (e.g. 1 day → 2 days → 4 days → 10 days…). A wrong answer resets the interval back to 1 day. Over time, cards you know well drift to monthly or biannual reviews, while cards you struggle with stay in heavy rotation.',
+  },
+]
+
+const INFO_JOURNEY: InfoSection[] = [
+  {
+    body: 'Your overall progress toward mastering all 2,294 Jouyou kanji — the characters designated for daily use in modern Japanese and tested across all JLPT levels.',
+  },
+  {
+    title: 'Seen',
+    body: 'Kanji you\'ve been introduced to in at least one study session (any SRS status other than Unseen). These characters are now part of your active review queue.',
+  },
+  {
+    title: 'Mastered',
+    body: 'Kanji you\'ve burned — answered correctly enough times that the review interval reached ~6 months. Mastered kanji represent genuine long-term retention, not just recent familiarity.',
+  },
+  {
+    title: 'Remaining',
+    body: 'Kanji not yet introduced. New characters are added gradually so your daily review queue grows at a pace you can handle without becoming overwhelmed.',
+  },
+  {
+    title: 'JLPT levels at a glance',
+    body: 'N5 (79 kanji) is the entry level and covers basic survival vocabulary. N4 adds 166 more. N3 (370 kanji) marks basic reading ability. N2 (371 kanji) is required for most Japanese universities and many jobs. N1 (1,308 kanji) represents advanced mastery and is the target for fluent readers.',
+  },
+]
+
+const INFO_QUIZ: InfoSection[] = [
+  {
+    body: 'Quizzes test your recall in exam-style, multiple-choice conditions. Unlike daily SRS reviews, quiz results do not affect your card intervals or SRS progress — they\'re purely for self-assessment.',
+  },
+  {
+    title: 'When to use quizzes',
+    body: 'Before a JLPT exam to benchmark your readiness. After completing a level to consolidate what you\'ve learned. Any time you want a scored snapshot of your knowledge without touching your review schedule.',
+  },
+  {
+    title: 'Pass threshold',
+    body: 'A session is marked as passed when you score 70% or above. This mirrors the approximate passing threshold for real JLPT exams, so a consistent pass rate here is a meaningful readiness signal.',
+  },
+  {
+    title: 'Avg score & pass rate',
+    body: 'Averages across all your sessions to date. A rising average score is a stronger signal of real improvement than any single result — look for an upward trend over 5–10 sessions.',
+  },
+]
+
+const INFO_LEADERBOARD: InfoSection[] = [
+  {
+    body: 'Rankings compare study activity across all users of the app, or within your study group if you\'ve connected with friends. Position is determined by total kanji reviewed and burned since account creation.',
+  },
+  {
+    title: 'Reviewed',
+    body: 'Total SRS review answers submitted. A high review count reflects sustained, long-term study effort — though it\'s possible to inflate this number by grinding easy cards.',
+  },
+  {
+    title: 'Burned 🔥',
+    body: 'Total kanji burned (mastered). This is the highest-quality signal on the leaderboard — it measures deep, durable learning that can\'t be faked. Burning kanji takes repeated correct answers over months.',
+  },
+  {
+    title: 'Streak 🔥',
+    body: 'Consecutive days with at least one review completed. Long streaks signal habit formation — the strongest single predictor of reaching fluency in a foreign language.',
+  },
+  {
+    title: 'A note on competition',
+    body: 'Leaderboards are meant for friendly motivation, not pressure. Everyone learns at a different pace. Your SRS intervals, study history, and personal progress are always private and belong to you.',
+  },
+]
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
 export default function Dashboard() {
   const router = useRouter()
   const { user } = useAuthStore()
@@ -24,6 +135,12 @@ export default function Dashboard() {
   const { data: quizData } = useQuizAnalytics()
   const { interventions, dismiss } = useInterventions()
   const { leaderboard } = useSocial()
+
+  // Tracks which panel's info section is currently open (null = all closed)
+  const [activeInfo, setActiveInfo] = useState<string | null>(null)
+  const toggleInfo = useCallback((id: string) => {
+    setActiveInfo((prev) => (prev === id ? null : id))
+  }, [])
 
   const handleStudy = useCallback(() => {
     router.push('/(tabs)/study')
@@ -105,18 +222,24 @@ export default function Dashboard() {
               />
             </View>
 
-            {/* SRS breakdown */}
+            {/* ── Kanji Status ── */}
+            {/* (info button is built into SrsStatusBar itself) */}
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Kanji Status</Text>
               <SrsStatusBar counts={summary.statusCounts} />
             </View>
 
-            {/* Velocity trend */}
+            {/* ── Velocity ── */}
             <View style={styles.card}>
               <View style={styles.cardRow}>
                 <Text style={styles.cardTitle}>Velocity</Text>
-                <TrendBadge trend={summary.velocity.trend} />
+                <View style={styles.cardRowRight}>
+                  <TrendBadge trend={summary.velocity.trend} />
+                  <InfoButton id="velocity" activeInfo={activeInfo} onToggle={toggleInfo} />
+                </View>
               </View>
+
+              {activeInfo === 'velocity' && <InfoPanel sections={INFO_VELOCITY} />}
 
               {/* Reviews + burn rate */}
               <View style={styles.velocityRow}>
@@ -170,9 +293,15 @@ export default function Dashboard() {
               )}
             </View>
 
-            {/* Recent activity */}
+            {/* ── Last 7 Days ── */}
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Last 7 Days</Text>
+              <View style={styles.cardRow}>
+                <Text style={styles.cardTitle}>Last 7 Days</Text>
+                <InfoButton id="activity" activeInfo={activeInfo} onToggle={toggleInfo} />
+              </View>
+
+              {activeInfo === 'activity' && <InfoPanel sections={INFO_ACTIVITY} />}
+
               <View style={styles.activityBars}>
                 {summary.recentStats.slice(0, 7).reverse().map((day) => (
                   <ActivityBar key={day.date} day={day} />
@@ -180,12 +309,18 @@ export default function Dashboard() {
               </View>
             </View>
 
-            {/* Completion */}
+            {/* ── Journey ── */}
             <View style={styles.card}>
               <View style={styles.cardRow}>
                 <Text style={styles.cardTitle}>Journey</Text>
-                <Text style={styles.completionPct}>{summary.completionPct}% complete</Text>
+                <View style={styles.cardRowRight}>
+                  <Text style={styles.completionPct}>{summary.completionPct}% complete</Text>
+                  <InfoButton id="journey" activeInfo={activeInfo} onToggle={toggleInfo} />
+                </View>
               </View>
+
+              {activeInfo === 'journey' && <InfoPanel sections={INFO_JOURNEY} />}
+
               <View style={styles.progressTrack}>
                 <View
                   style={[
@@ -199,17 +334,23 @@ export default function Dashboard() {
               </Text>
             </View>
 
-            {/* Quiz stats */}
+            {/* ── Quiz ── */}
             {quizData && quizData.totalSessions > 0 && (
               <TouchableOpacity style={styles.card} onPress={handleQuiz} activeOpacity={0.8}>
                 <View style={styles.cardRow}>
                   <Text style={styles.cardTitle}>Quiz</Text>
-                  <View style={[styles.passBadge, { backgroundColor: (quizData.recentSessions[0]?.passed ? colors.success : colors.error) + '22' }]}>
-                    <Text style={[styles.passBadgeText, { color: quizData.recentSessions[0]?.passed ? colors.success : colors.error }]}>
-                      Last: {quizData.recentSessions[0]?.passed ? 'Pass' : 'Fail'}
-                    </Text>
+                  <View style={styles.cardRowRight}>
+                    <View style={[styles.passBadge, { backgroundColor: (quizData.recentSessions[0]?.passed ? colors.success : colors.error) + '22' }]}>
+                      <Text style={[styles.passBadgeText, { color: quizData.recentSessions[0]?.passed ? colors.success : colors.error }]}>
+                        Last: {quizData.recentSessions[0]?.passed ? 'Pass' : 'Fail'}
+                      </Text>
+                    </View>
+                    <InfoButton id="quiz" activeInfo={activeInfo} onToggle={toggleInfo} />
                   </View>
                 </View>
+
+                {activeInfo === 'quiz' && <InfoPanel sections={INFO_QUIZ} />}
+
                 <View style={styles.quizStatRow}>
                   <View style={styles.quizStatItem}>
                     <Text style={styles.quizStatValue}>{quizData.recentSessions[0]?.scorePct ?? 0}%</Text>
@@ -233,15 +374,21 @@ export default function Dashboard() {
           </>
         ) : null}
 
-        {/* Leaderboard */}
+        {/* ── Leaderboard ── */}
         {leaderboard.length > 0 && (
           <View style={styles.card}>
             <View style={styles.cardRow}>
               <Text style={styles.cardTitle}>Leaderboard</Text>
-              <Text style={styles.lbSubtitle}>
-                {leaderboard.some((e) => !e.isMe) ? 'Study mates' : 'Global top 10'}
-              </Text>
+              <View style={styles.cardRowRight}>
+                <Text style={styles.lbSubtitle}>
+                  {leaderboard.some((e) => !e.isMe) ? 'Study mates' : 'Global top 10'}
+                </Text>
+                <InfoButton id="leaderboard" activeInfo={activeInfo} onToggle={toggleInfo} />
+              </View>
             </View>
+
+            {activeInfo === 'leaderboard' && <InfoPanel sections={INFO_LEADERBOARD} />}
+
             {leaderboard.map((entry, i) => (
               <View key={entry.userId} style={[styles.lbRow, entry.isMe && styles.lbRowMe]}>
                 <Text style={styles.lbRank}>{i + 1}</Text>
@@ -269,7 +416,74 @@ export default function Dashboard() {
   )
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── InfoButton ───────────────────────────────────────────────────────────────
+
+const INFO_HIT_SLOP = { top: 10, right: 10, bottom: 10, left: 10 }
+
+function InfoButton({
+  id,
+  activeInfo,
+  onToggle,
+}: {
+  id: string
+  activeInfo: string | null
+  onToggle: (id: string) => void
+}) {
+  const isOpen = activeInfo === id
+  return (
+    <TouchableOpacity onPress={() => onToggle(id)} hitSlop={INFO_HIT_SLOP} activeOpacity={0.7}>
+      <Ionicons
+        name={isOpen ? 'chevron-up-circle-outline' : 'information-circle-outline'}
+        size={18}
+        color={isOpen ? colors.info : colors.textMuted}
+      />
+    </TouchableOpacity>
+  )
+}
+
+// ─── InfoPanel ────────────────────────────────────────────────────────────────
+
+function InfoPanel({ sections }: { sections: InfoSection[] }) {
+  return (
+    <View style={infoStyles.panel}>
+      {sections.map((s, i) => (
+        <View key={i} style={[infoStyles.section, i > 0 && infoStyles.sectionSpaced]}>
+          {s.title !== undefined && (
+            <Text style={infoStyles.sectionTitle}>{s.title}</Text>
+          )}
+          <Text style={infoStyles.sectionBody}>{s.body}</Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+const infoStyles = StyleSheet.create({
+  panel: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.info + '44',
+    padding: spacing.md,
+  },
+  section: {},
+  sectionSpaced: { marginTop: spacing.sm },
+  sectionTitle: {
+    ...typography.caption,
+    color: colors.info,
+    fontWeight: '700',
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sectionBody: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+})
+
+// ─── TrendBadge ───────────────────────────────────────────────────────────────
 
 function TrendBadge({ trend }: { trend: 'up' | 'down' | 'stable' }) {
   const config = {
@@ -290,6 +504,8 @@ const trendStyles = StyleSheet.create({
   badge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.full },
   label: { ...typography.caption, fontWeight: '600' },
 })
+
+// ─── ActivityBar ──────────────────────────────────────────────────────────────
 
 function ActivityBar({ day }: { day: { date: string; reviewed: number } }) {
   const MAX = 50
@@ -341,6 +557,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
   cardTitle: { ...typography.h3, color: colors.textPrimary },
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardRowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   velocityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
   velocityValue: { ...typography.h2, color: colors.textPrimary },
   velocityUnit: { ...typography.body, color: colors.textSecondary, fontWeight: '400' },
