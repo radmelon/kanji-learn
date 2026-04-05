@@ -108,6 +108,24 @@ const INFO_QUIZ: InfoSection[] = [
   },
 ]
 
+const INFO_JLPT_PROGRESS: InfoSection[] = [
+  {
+    body: 'How far you\'ve progressed through each JLPT level. A kanji counts as mastered once your Spaced Repetition System (SRS) interval reaches ~6 months — meaning your brain has proven it can recall the character from genuine long-term memory.',
+  },
+  {
+    title: 'N5 → N1',
+    body: 'N5 (103 kanji) is the entry level. N4 adds 181 more for everyday conversation. N3 (276) marks functional reading ability. N2 (367) is required for most Japanese universities and white-collar jobs. N1 (1,367) represents near-native mastery.',
+  },
+  {
+    title: 'Projected completion dates',
+    body: 'Dates are estimated by dividing remaining kanji at that level by your current burn rate. They update automatically as your study pace changes — study more consistently and the dates move closer.',
+  },
+  {
+    title: 'Why levels matter',
+    body: 'Each JLPT level unlocks a qualitatively new tier of Japanese media, conversation, and reading. Completing N5 lets you handle tourist situations; N4 covers daily life; N3 opens manga and casual social media; N2 covers news and literature; N1 means you can read virtually anything.',
+  },
+]
+
 const INFO_LEADERBOARD: InfoSection[] = [
   {
     body: 'Rankings compare study activity across all users of the app, or within your study group if you\'ve connected with friends. Position is determined by total kanji reviewed and burned since account creation.',
@@ -337,6 +355,54 @@ export default function Dashboard() {
                 {summary.totalSeen.toLocaleString()} seen · {summary.statusCounts.burned.toLocaleString()} mastered · {summary.statusCounts.unseen.toLocaleString()} remaining
               </Text>
             </View>
+
+            {/* ── JLPT Progress ── */}
+            {summary.velocity.levelProjections.length > 0 && (
+              <View style={styles.card}>
+                <View style={styles.cardRow}>
+                  <Text style={styles.cardTitle}>JLPT Progress</Text>
+                  <InfoButton id="jlpt" activeInfo={activeInfo} onToggle={toggleInfo} />
+                </View>
+
+                {activeInfo === 'jlpt' && <InfoPanel sections={INFO_JLPT_PROGRESS} />}
+
+                <View style={styles.jlptRows}>
+                  {summary.velocity.levelProjections.map((proj) => {
+                    const levelKey = proj.level.toLowerCase() as keyof typeof colors
+                    const levelColor = colors[levelKey] ?? colors.textMuted
+                    const pct = proj.total > 0 ? Math.round((proj.burned / proj.total) * 100) : 0
+                    return (
+                      <View key={proj.level} style={styles.jlptRow}>
+                        {/* Level badge */}
+                        <View style={[styles.jlptBadge, { backgroundColor: levelColor + '22', borderColor: levelColor + '66' }]}>
+                          <Text style={[styles.jlptBadgeText, { color: levelColor }]}>{proj.level}</Text>
+                        </View>
+
+                        {/* Progress bar + numbers */}
+                        <View style={styles.jlptBarCol}>
+                          <View style={styles.jlptBarTrack}>
+                            <View style={[styles.jlptBarFill, { width: `${pct}%`, backgroundColor: levelColor }]} />
+                          </View>
+                          <View style={styles.jlptBarLabels}>
+                            <Text style={styles.jlptCount}>
+                              {proj.burned}/{proj.total}
+                              <Text style={styles.jlptPct}> · {pct}%</Text>
+                            </Text>
+                            {proj.projectedDate ? (
+                              <Text style={styles.jlptDate}>
+                                {new Date(proj.projectedDate).toLocaleDateString('en', { year: 'numeric', month: 'short' })}
+                              </Text>
+                            ) : pct === 100 ? (
+                              <Text style={[styles.jlptDate, { color: colors.success }]}>Complete ✓</Text>
+                            ) : null}
+                          </View>
+                        </View>
+                      </View>
+                    )
+                  })}
+                </View>
+              </View>
+            )}
 
             {/* ── Quiz ── */}
             {quizData && quizData.totalSessions > 0 && (
@@ -586,6 +652,30 @@ const styles = StyleSheet.create({
   quizStatItem: { alignItems: 'center', gap: 2 },
   quizStatValue: { ...typography.h3, color: colors.textPrimary },
   quizStatLabel: { ...typography.caption, color: colors.textMuted },
+
+  // JLPT Progress
+  jlptRows: { gap: spacing.sm, marginTop: spacing.xs },
+  jlptRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  jlptBadge: {
+    width: 36, height: 24,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  jlptBadgeText: { ...typography.caption, fontWeight: '800', letterSpacing: 0.5 },
+  jlptBarCol: { flex: 1, gap: 3 },
+  jlptBarTrack: {
+    height: 6,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+  },
+  jlptBarFill: { height: '100%', borderRadius: radius.full },
+  jlptBarLabels: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  jlptCount: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
+  jlptPct: { ...typography.caption, color: colors.textMuted, fontWeight: '400' },
+  jlptDate: { ...typography.caption, color: colors.textMuted },
 
   // Leaderboard
   lbSubtitle: { ...typography.caption, color: colors.textMuted },
