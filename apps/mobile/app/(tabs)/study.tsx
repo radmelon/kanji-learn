@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback, type FC } from 'react'
 import type { ReviewResult } from '@kanji-learn/shared'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Pressable,
+  PanResponder, Animated,
 } from 'react-native'
+import * as Haptics from 'expo-haptics'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -39,6 +41,63 @@ export default function StudySession() {
   const [nudgeItem, setNudgeItem] = useState<{ kanjiId: number; character: string; meaning: string } | null>(null)
   const cardStartMs = useRef(Date.now())
 
+  // ── Swipe-to-grade ─────────────────────────────────────────────────────────
+  const SWIPE_THRESHOLD = 80
+  const swipeX = useRef(new Animated.Value(0)).current
+  // Refs so PanResponder (created once) can read current values without stale closure
+  const isRevealedRef = useRef(false)
+  const handleGradeRef = useRef<(q: 0 | 1 | 2 | 3 | 4 | 5) => void>(() => {})
+  const didFireHapticRef = useRef(false)
+
+  useEffect(() => { isRevealedRef.current = isRevealed }, [isRevealed])
+
+  const panResponder = useRef(
+    PanResponder.create({
+      // Only steal the gesture when it's clearly horizontal and the answer is revealed
+      onMoveShouldSetPanResponder: (_, gs) =>
+        isRevealedRef.current &&
+        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 &&
+        Math.abs(gs.dx) > 8,
+      onPanResponderGrant: () => {
+        didFireHapticRef.current = false
+      },
+      onPanResponderMove: (_, gs) => {
+        swipeX.setValue(gs.dx)
+        // Single haptic "click" when crossing the commit threshold
+        if (!didFireHapticRef.current && Math.abs(gs.dx) >= SWIPE_THRESHOLD) {
+          didFireHapticRef.current = true
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+        }
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx > SWIPE_THRESHOLD) {
+          // Fly off right → Easy
+          Animated.timing(swipeX, { toValue: 600, duration: 220, useNativeDriver: true }).start(() => {
+            swipeX.setValue(0)
+            handleGradeRef.current(5)
+          })
+        } else if (gs.dx < -SWIPE_THRESHOLD) {
+          // Fly off left → Again
+          Animated.timing(swipeX, { toValue: -600, duration: 220, useNativeDriver: true }).start(() => {
+            swipeX.setValue(0)
+            handleGradeRef.current(1)
+          })
+        } else {
+          // Snap back
+          Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }).start()
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }).start()
+      },
+    })
+  ).current
+
+  // Derived animated values
+  const cardRotate = swipeX.interpolate({ inputRange: [-200, 0, 200], outputRange: ['-6deg', '0deg', '6deg'] })
+  const easyOpacity = swipeX.interpolate({ inputRange: [0, SWIPE_THRESHOLD * 0.4, SWIPE_THRESHOLD], outputRange: [0, 0.6, 1], extrapolate: 'clamp' })
+  const againOpacity = swipeX.interpolate({ inputRange: [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD * 0.4, 0], outputRange: [1, 0.6, 0], extrapolate: 'clamp' })
+
   useEffect(() => {
     syncPendingSessions()
     loadQueue(20)
@@ -59,6 +118,7 @@ export default function StudySession() {
   useEffect(() => {
     setIsRevealed(false)
     cardStartMs.current = Date.now()
+    swipeX.setValue(0)
   }, [currentIndex])
 
   useEffect(() => {
@@ -92,6 +152,9 @@ export default function StudySession() {
     },
     [queue, currentIndex, submitResult]
   )
+
+  // Keep the ref in sync so the PanResponder closure is never stale
+  useEffect(() => { handleGradeRef.current = handleGrade }, [handleGrade])
 
   const handleNudgeDismiss = useCallback(() => {
     if (pendingResult) {
@@ -239,8 +302,23 @@ export default function StudySession() {
         </View>
       )}
 
-      {/* Card */}
-      <View style={styles.cardArea}>
+      {/* Card — wrapped in animated view for swipe-to-grade */}
+      <Animated.View
+        style={[styles.cardArea, { transform: [{ translateX: swipeX }, { rotate: cardRotate }] }]}
+        {...panResponder.panHandlers}
+      >
+        {/* "EASY" badge — appears on right pull */}
+        <Animated.View style={[styles.swipeBadge, styles.swipeBadgeRight, { opacity: easyOpacity }]}
+          pointerEvents="none">
+          <Text style={styles.swipeBadgeText}>EASY ✓</Text>
+        </Animated.View>
+
+        {/* "AGAIN" badge — appears on left pull */}
+        <Animated.View style={[styles.swipeBadge, styles.swipeBadgeLeft, { opacity: againOpacity }]}
+          pointerEvents="none">
+          <Text style={styles.swipeBadgeText}>AGAIN ✗</Text>
+        </Animated.View>
+
         {currentItem.reviewType === 'compound' ? (
           <CompoundCard item={currentItem} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
         ) : (
@@ -252,12 +330,15 @@ export default function StudySession() {
             onToggleRomaji={toggleRomaji}
           />
         )}
-      </View>
+      </Animated.View>
 
       {/* Grade buttons (only after reveal) */}
       <View style={styles.footer}>
         {isRevealed ? (
-          <GradeButtons onGrade={handleGrade} />
+          <>
+            <GradeButtons onGrade={handleGrade} />
+            <Text style={styles.swipeHint}>← swipe Again · Easy swipe →</Text>
+          </>
         ) : (
           <View style={styles.revealHint}>
             <Text style={styles.hintText}>Tap the card to reveal the answer</Text>
@@ -283,6 +364,12 @@ export default function StudySession() {
               <Text style={onboardStyles.sectionTitle}>Tap the card to reveal the answer</Text>
               <Text style={onboardStyles.sectionBody}>
                 Try to recall the meaning before revealing. Then grade yourself honestly — your rating determines when the card appears next.
+              </Text>
+            </View>
+            <View style={onboardStyles.section}>
+              <Text style={onboardStyles.sectionTitle}>Swipe to grade quickly</Text>
+              <Text style={onboardStyles.sectionBody}>
+                After revealing, swipe <Text style={{ fontWeight: '700', color: colors.accent }}>right for Easy</Text> or <Text style={{ fontWeight: '700', color: colors.error }}>left for Again</Text>. Or tap the grade buttons below for all four options.
               </Text>
             </View>
             <View style={onboardStyles.section}>
@@ -358,6 +445,36 @@ const styles = StyleSheet.create({
   footer: { width: '100%', paddingBottom: spacing.lg, minHeight: 90, justifyContent: 'center' },
   revealHint: { alignItems: 'center', paddingVertical: spacing.md },
   hintText: { ...typography.bodySmall, color: colors.textMuted },
+  swipeHint: { ...typography.caption, color: colors.textMuted, textAlign: 'center', marginTop: spacing.xs, opacity: 0.6 },
+
+  // Swipe overlay badges
+  swipeBadge: {
+    position: 'absolute',
+    top: '40%',
+    zIndex: 10,
+    borderWidth: 3,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  swipeBadgeRight: {
+    right: spacing.xl,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent + '22',
+    transform: [{ rotate: '-8deg' }],
+  },
+  swipeBadgeLeft: {
+    left: spacing.xl,
+    borderColor: colors.error,
+    backgroundColor: colors.error + '22',
+    transform: [{ rotate: '8deg' }],
+  },
+  swipeBadgeText: {
+    ...typography.h3,
+    fontWeight: '900',
+    letterSpacing: 1,
+    color: colors.textPrimary,
+  },
   loadingText: { ...typography.body, color: colors.textSecondary, marginTop: spacing.md },
   emptyTitle: { ...typography.h2, color: colors.textPrimary },
   emptySubtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: spacing.xl },
