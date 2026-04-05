@@ -9,7 +9,7 @@ import { colors, spacing, radius, typography } from '../src/theme'
 import { api } from '../src/lib/api'
 import type { TestQuestion, SubmitAnswer, TestResultSummary, QuestionType } from '@kanji-learn/shared'
 
-type ScreenStatus = 'loading' | 'question' | 'feedback' | 'complete'
+type ScreenStatus = 'loading' | 'question' | 'feedback' | 'complete' | 'error'
 
 const JLPT_COLORS: Record<string, string> = {
   N5: colors.n5,
@@ -78,8 +78,7 @@ export default function TestScreen() {
       setStatus('question')
     } catch (err) {
       console.error('[TestScreen] loadQuestions error:', err)
-      // Stay on loading but show error via a fallback — reset to allow retry
-      setStatus('loading')
+      setStatus('error')
     }
   }
 
@@ -147,13 +146,35 @@ export default function TestScreen() {
     loadQuestions(idx)
   }
 
+  // ── Error state ───────────────────────────────────────────────────────────
+
+  if (status === 'error') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centeredFull}>
+          <Ionicons name="alert-circle-outline" size={64} color={colors.error} />
+          <Text style={styles.loadingText}>Couldn't load quiz questions.{'\n'}Check your connection and try again.</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadQuestions(quizModeIdx)}>
+            <Ionicons name="refresh" size={16} color="#fff" />
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
+            <Text style={styles.closeButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
   // ── Loading state ─────────────────────────────────────────────────────────
 
   if (status === 'loading') {
     return (
       <SafeAreaView style={styles.safe}>
-        <ActivityIndicator color={colors.primary} size="large" />
-        <Text style={styles.loadingText}>Loading quiz…</Text>
+        <View style={styles.centeredFull}>
+          <ActivityIndicator color={colors.primary} size="large" />
+          <Text style={styles.loadingText}>Loading quiz…</Text>
+        </View>
       </SafeAreaView>
     )
   }
@@ -339,6 +360,12 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  centeredFull: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
   },
   loadingText: {
     ...typography.body,
@@ -569,6 +596,29 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     ...typography.h3,
+    color: colors.textSecondary,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    marginTop: spacing.xl,
+  },
+  retryButtonText: {
+    ...typography.h3,
+    color: '#fff',
+  },
+  closeButton: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+  },
+  closeButtonText: {
+    ...typography.body,
     color: colors.textSecondary,
   },
 })
