@@ -5,9 +5,11 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { useAnalytics } from '../../src/hooks/useAnalytics'
 import { useQuizAnalytics } from '../../src/hooks/useQuizAnalytics'
+import { useSessionHistory } from '../../src/hooks/useSessionHistory'
 import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { DailyStats } from '@kanji-learn/shared'
@@ -18,9 +20,11 @@ type Period = '7d' | '30d' | '90d'
 const PERIOD_DAYS: Record<Period, number> = { '7d': 7, '30d': 30, '90d': 90 }
 
 export default function ProgressScreen() {
+  const router = useRouter()
   const { user } = useAuthStore()
   const { summary, isLoading, error, refresh } = useAnalytics()
   const { data: quizData } = useQuizAnalytics()
+  const { sessions } = useSessionHistory(30)
   const [period, setPeriod] = useState<Period>('30d')
 
   const displayName = user?.user_metadata?.display_name ?? 'Learner'
@@ -34,8 +38,14 @@ export default function ProgressScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Progress</Text>
-          <Text style={styles.subtitle}>{displayName}'s journey</Text>
+          <View style={{ gap: 2 }}>
+            <Text style={styles.title}>Progress</Text>
+            <Text style={styles.subtitle}>{displayName}'s journey</Text>
+          </View>
+          <TouchableOpacity style={styles.browseBtn} onPress={() => router.push('/browse')}>
+            <Ionicons name="search" size={14} color={colors.primary} />
+            <Text style={styles.browseBtnText}>Browse</Text>
+          </TouchableOpacity>
         </View>
 
         {isLoading && !summary ? (
@@ -203,6 +213,34 @@ export default function ProgressScreen() {
                 )}
               </Section>
             ) : null}
+
+            {/* Session History */}
+            {sessions.length > 0 && (
+              <Section title="Session History">
+                {sessions.map((s) => {
+                  const date = new Date(s.startedAt)
+                  const dateStr = date.toLocaleDateString('en', { month: 'short', day: 'numeric' })
+                  const timeStr = date.toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' })
+                  const mins = Math.round(s.studyTimeMs / 60000)
+                  const accColor = s.accuracyPct >= 80 ? colors.success : s.accuracyPct >= 60 ? colors.warning : colors.error
+                  return (
+                    <View key={s.id} style={styles.sessionRow}>
+                      <View style={styles.sessionDate}>
+                        <Text style={styles.sessionDateMain}>{dateStr}</Text>
+                        <Text style={styles.sessionDateTime}>{timeStr}</Text>
+                      </View>
+                      <View style={styles.sessionMeta}>
+                        <Text style={styles.sessionItems}>{s.totalItems} cards</Text>
+                        {mins > 0 && <Text style={styles.sessionTime}>{mins}m</Text>}
+                      </View>
+                      <View style={[styles.sessionAccBadge, { backgroundColor: accColor + '22' }]}>
+                        <Text style={[styles.sessionAccText, { color: accColor }]}>{s.accuracyPct}%</Text>
+                      </View>
+                    </View>
+                  )
+                })}
+              </Section>
+            )}
 
             {/* Speaking Practice */}
             {summary.voice.totalAttempts > 0 ? (
@@ -408,9 +446,15 @@ const velStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.md, gap: spacing.lg, paddingBottom: spacing.xxl },
-  header: { gap: 2 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   title: { ...typography.h1, color: colors.textPrimary },
   subtitle: { ...typography.body, color: colors.textSecondary },
+  browseBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: colors.primary + '66',
+    borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 6,
+  },
+  browseBtnText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
   heroRow: { flexDirection: 'row', gap: spacing.sm },
   accuracyRow: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
   accuracyCircle: {
@@ -436,6 +480,17 @@ const styles = StyleSheet.create({
   worstKanjiBar: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
   worstKanjiBarFill: { height: '100%', borderRadius: radius.full },
   worstKanjiPct: { ...typography.caption, color: colors.textMuted, width: 36, textAlign: 'right' },
+  // Session History
+  sessionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
+  sessionDate: { width: 72 },
+  sessionDateMain: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
+  sessionDateTime: { ...typography.caption, color: colors.textMuted },
+  sessionMeta: { flex: 1, flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  sessionItems: { ...typography.bodySmall, color: colors.textSecondary },
+  sessionTime: { ...typography.caption, color: colors.textMuted },
+  sessionAccBadge: { borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  sessionAccText: { ...typography.caption, fontWeight: '700' },
+
   errorBox: { alignItems: 'center', gap: spacing.md, marginTop: spacing.xxl, padding: spacing.xl },
   errorText: { ...typography.h3, color: colors.textPrimary },
   errorSub: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center' },

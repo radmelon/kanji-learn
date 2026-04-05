@@ -84,6 +84,18 @@ export async function reviewRoutes(server: FastifyInstance) {
     }
   )
 
+  // GET /v1/review/weak-queue?limit=20&threshold=65
+  server.get<{ Querystring: { limit?: string; threshold?: string } }>(
+    '/weak-queue',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const limit = Math.min(Number(req.query.limit ?? 20), 50)
+      const threshold = Math.min(Math.max(Number(req.query.threshold ?? 65), 10), 90)
+      const items = await srs.getWeakKanjiQueue(req.userId!, limit, threshold)
+      return reply.send({ ok: true, data: items })
+    }
+  )
+
   // GET /v1/review/writing-queue?limit=8
   server.get<{ Querystring: { limit?: string } }>(
     '/writing-queue',

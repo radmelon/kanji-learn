@@ -1,5 +1,5 @@
 import { and, eq, gte, desc, sql, lte } from 'drizzle-orm'
-import { dailyStats, reviewLogs, userKanjiProgress, kanji, writingAttempts, voiceAttempts } from '@kanji-learn/db'
+import { dailyStats, reviewLogs, reviewSessions, userKanjiProgress, kanji, writingAttempts, voiceAttempts } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import type { DailyStats, VelocityMetrics, JlptLevelProjection } from '@kanji-learn/shared'
 import {
@@ -137,6 +137,31 @@ export class AnalyticsService {
     return { dailyAverage, weeklyAverage, burnedPerDay, trend, projectedCompletion, levelProjections, nextMilestone }
   }
 
+  // ── Accuracy breakdown by review type ─────────────────────────────────────
+
+  async getAccuracyByType(userId: string, days = 30): Promise<Record<string, { total: number; correct: number; pct: number }>> {
+    const since = new Date()
+    since.setDate(since.getDate() - days)
+
+    const rows = await this.db
+      .select({
+        reviewType: reviewLogs.reviewType,
+        total: sql<number>`count(*)::int`,
+        correct: sql<number>`count(*) filter (where ${reviewLogs.quality} >= 3)::int`,
+      })
+      .from(reviewLogs)
+      .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, since)))
+      .groupBy(reviewLogs.reviewType)
+
+    const result: Record<string, { total: number; correct: number; pct: number }> = {}
+    for (const row of rows) {
+      const total = Number(row.total)
+      const correct = Number(row.correct)
+      result[row.reviewType] = { total, correct, pct: total > 0 ? Math.round((correct / total) * 100) : 0 }
+    }
+    return result
+  }
+
   // ── Accuracy rate over last N days ─────────────────────────────────────────
 
   async getAccuracyRate(userId: string, days = 30): Promise<number> {
@@ -160,10 +185,11 @@ export class AnalyticsService {
   // ── Full summary for dashboard ──────────────────────────────────────────────
 
   async getSummary(userId: string) {
-    const [velocity, accuracy, statusCounts, streakDays, recentStats, jlptProgress, writing, voice] =
+    const [velocity, accuracy, accuracyByType, statusCounts, streakDays, recentStats, jlptProgress, writing, voice] =
       await Promise.all([
         this.getVelocityMetrics(userId),
         this.getAccuracyRate(userId),
+        this.getAccuracyByType(userId),
         this.getStatusCounts(userId),
         this.getStreakDays(userId),
         this.getDailyStats(userId, 90), // fetch 90d so chart period selector works client-side
@@ -178,6 +204,7 @@ export class AnalyticsService {
     return {
       velocity,
       accuracy,
+      accuracyByType,
       statusCounts,
       jlptProgress,
       streakDays,
@@ -358,6 +385,36 @@ export class AnalyticsService {
       )
 
     return Number(row?.count ?? 0) === 0
+  }
+
+  // ── Session history ────────────────────────────────────────────────────────
+
+  async getSessionHistory(userId: string, limit = 30) {
+    const rows = await this.db
+      .select({
+        id: reviewSessions.id,
+        startedAt: reviewSessions.startedAt,
+        completedAt: reviewSessions.completedAt,
+        totalItems: reviewSessions.totalItems,
+        correctItems: reviewSessions.correctItems,
+        studyTimeMs: reviewSessions.studyTimeMs,
+        sessionType: reviewSessions.sessionType,
+      })
+      .from(reviewSessions)
+      .where(and(eq(reviewSessions.userId, userId), sql`${reviewSessions.completedAt} is not null`))
+      .orderBy(desc(reviewSessions.startedAt))
+      .limit(limit)
+
+    return rows.map((r) => ({
+      id: r.id,
+      startedAt: r.startedAt,
+      completedAt: r.completedAt,
+      totalItems: r.totalItems,
+      correctItems: r.correctItems,
+      accuracyPct: r.totalItems > 0 ? Math.round((r.correctItems / r.totalItems) * 100) : 0,
+      studyTimeMs: r.studyTimeMs,
+      sessionType: r.sessionType,
+    }))
   }
 
   // ── Upsert daily stats after a session ────────────────────────────────────

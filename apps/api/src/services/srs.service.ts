@@ -1,4 +1,4 @@
-import { and, eq, lte, isNull, or, asc, desc, gt, sql } from 'drizzle-orm'
+import { and, eq, lte, gte, isNull, or, asc, desc, gt, sql } from 'drizzle-orm'
 import { userKanjiProgress, kanji, reviewSessions, reviewLogs, userProfiles } from '@kanji-learn/db'
 import { calculateNextReview, createNewCard } from '@kanji-learn/shared'
 import type { Db } from '@kanji-learn/db'
@@ -356,6 +356,78 @@ export class SrsService {
 
     // Only include kanji that have at least one reading to practice
     return rows.filter((r) => r.kunReadings.length > 0 || r.onReadings.length > 0)
+  }
+
+  // ── Weak kanji drill queue ─────────────────────────────────────────────────
+  // Returns kanji where recent accuracy is below the threshold, worst first.
+
+  async getWeakKanjiQueue(userId: string, limit = 20, threshold = 65, minAttempts = 3): Promise<ReviewQueueItem[]> {
+    const since = new Date()
+    since.setDate(since.getDate() - 30)
+
+    // Find kanji IDs with low accuracy in the last 30 days
+    const weakRows = await this.db
+      .select({
+        kanjiId: reviewLogs.kanjiId,
+        accuracyPct: sql<number>`ROUND(
+          COUNT(*) FILTER (WHERE ${reviewLogs.quality} >= 3)::numeric / COUNT(*) * 100
+        )::int`,
+      })
+      .from(reviewLogs)
+      .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, since)))
+      .groupBy(reviewLogs.kanjiId)
+      .having(
+        and(
+          gte(sql<number>`COUNT(*)`, minAttempts),
+          sql`ROUND(COUNT(*) FILTER (WHERE ${reviewLogs.quality} >= 3)::numeric / COUNT(*) * 100) < ${threshold}`
+        )
+      )
+      .orderBy(sql`ROUND(COUNT(*) FILTER (WHERE ${reviewLogs.quality} >= 3)::numeric / COUNT(*) * 100) ASC`)
+      .limit(limit)
+
+    if (weakRows.length === 0) return []
+
+    const kanjiIds = weakRows.map((r) => r.kanjiId)
+
+    const rows = await this.db
+      .select({
+        kanjiId: userKanjiProgress.kanjiId,
+        status: userKanjiProgress.status,
+        readingStage: userKanjiProgress.readingStage,
+        character: kanji.character,
+        jlptLevel: kanji.jlptLevel,
+        meanings: kanji.meanings,
+        kunReadings: kanji.kunReadings,
+        onReadings: kanji.onReadings,
+        exampleVocab: kanji.exampleVocab,
+        strokeCount: kanji.strokeCount,
+        radicals: kanji.radicals,
+        nelsonClassic: kanji.nelsonClassic,
+        nelsonNew: kanji.nelsonNew,
+        morohashiIndex: kanji.morohashiIndex,
+        morohashiVolume: kanji.morohashiVolume,
+        morohashiPage: kanji.morohashiPage,
+      })
+      .from(userKanjiProgress)
+      .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
+      .where(
+        and(
+          eq(userKanjiProgress.userId, userId),
+          sql`${userKanjiProgress.kanjiId} = ANY(ARRAY[${sql.join(kanjiIds.map((id) => sql`${id}`), sql`, `)}]::int[])`
+        )
+      )
+
+    // Sort by accuracy ascending (worst first) matching weakRows order
+    const accuracyMap = new Map(weakRows.map((r) => [r.kanjiId, r.accuracyPct]))
+    rows.sort((a, b) => (accuracyMap.get(a.kanjiId) ?? 0) - (accuracyMap.get(b.kanjiId) ?? 0))
+
+    return rows.map((c) => ({
+      ...c,
+      status: c.status ?? 'learning',
+      readingStage: c.readingStage ?? 0,
+      reviewType: this.pickReviewType(c.readingStage ?? 0, c.status ?? 'learning'),
+      exampleVocab: c.exampleVocab ?? [],
+    }))
   }
 
   // ── Get user's current status counts ───────────────────────────────────────

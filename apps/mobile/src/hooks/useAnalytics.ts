@@ -12,9 +12,16 @@ interface KanjiMissRow {
   correctPct?: number
 }
 
+interface AccuracyTypeStat {
+  total: number
+  correct: number
+  pct: number
+}
+
 interface AnalyticsSummary {
   velocity: VelocityMetrics
   accuracy: number
+  accuracyByType: Record<string, AccuracyTypeStat>
   statusCounts: {
     unseen: number
     learning: number

@@ -35,7 +35,7 @@ export default function StudySession() {
   // so the correct kanji stays visible behind the sheet.
   const [pendingResult, setPendingResult] = useState<ReviewResult | null>(null)
   const [sessionSummary, setSessionSummary] = useState<{
-    totalItems: number; correctItems: number; newLearned: number; burned: number
+    totalItems: number; correctItems: number; newLearned: number; burned: number; studyTimeMs: number
   } | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [nudgeItem, setNudgeItem] = useState<{ kanjiId: number; character: string; meaning: string } | null>(null)
@@ -166,32 +166,32 @@ export default function StudySession() {
 
   const handleFinish = useCallback(async () => {
     setIsSaving(true)
+    const { results } = useReviewStore.getState()
+    const correct = results.filter((r) => r.quality >= 3).length
+    const newLearned = results.filter((r) => {
+      const item = queue.find((q) => q.kanjiId === r.kanjiId)
+      return item?.status === 'unseen'
+    }).length
+    const clientStudyMs = Date.now() - useReviewStore.getState().studyStartMs
+
     try {
-      const { results } = useReviewStore.getState()
-      const correct = results.filter((r) => r.quality >= 3).length
-      const newLearned = results.filter((r) => {
-        const item = queue.find((q) => q.kanjiId === r.kanjiId)
-        return item?.status === 'unseen'
-      }).length
-      await finishSession()
+      const serverData = await finishSession()
+      setSessionSummary({
+        totalItems: results.length,
+        correctItems: correct,
+        newLearned,
+        burned: serverData?.burned ?? 0,
+        studyTimeMs: serverData?.studyTimeMs ?? clientStudyMs,
+      })
+    } catch (err) {
+      // Even if saving fails, show the summary so the user isn't stuck on a blank screen
+      console.error('[Study] finishSession error:', err)
       setSessionSummary({
         totalItems: results.length,
         correctItems: correct,
         newLearned,
         burned: 0,
-      })
-    } catch (err) {
-      // Even if saving fails, show the summary so the user isn't stuck on a blank screen
-      console.error('[Study] finishSession error:', err)
-      const { results } = useReviewStore.getState()
-      setSessionSummary({
-        totalItems: results.length,
-        correctItems: results.filter((r) => r.quality >= 3).length,
-        newLearned: results.filter((r) => {
-          const item = queue.find((q) => q.kanjiId === r.kanjiId)
-          return item?.status === 'unseen'
-        }).length,
-        burned: 0,
+        studyTimeMs: clientStudyMs,
       })
     } finally {
       setIsSaving(false)

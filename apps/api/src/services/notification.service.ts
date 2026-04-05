@@ -1,6 +1,6 @@
 import { Expo, type ExpoPushMessage } from 'expo-server-sdk'
 import { and, eq, gte, isNotNull, sql } from 'drizzle-orm'
-import { userProfiles, dailyStats } from '@kanji-learn/db'
+import { userProfiles, dailyStats, type InferSelectModel } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 
 const expo = new Expo()
@@ -58,15 +58,18 @@ export class NotificationService {
     await this.sendMessages([{ to: profile.pushToken, title, body, sound: 'default' }])
   }
 
-  // Daily reminder cron — called once per day
+  // Daily reminder cron — called every hour; only sends to users whose reminderHour matches now in their timezone
   async sendDailyReminders(): Promise<void> {
-    const today = new Date().toISOString().slice(0, 10)
+    const nowUtc = new Date()
+    const today = nowUtc.toISOString().slice(0, 10)
 
     // Find users with push tokens who haven't reviewed today
     const users = await this.db
       .select({
         id: userProfiles.id,
         pushToken: userProfiles.pushToken,
+        timezone: userProfiles.timezone,
+        reminderHour: userProfiles.reminderHour,
       })
       .from(userProfiles)
       .where(
@@ -80,11 +83,23 @@ export class NotificationService {
         )
       )
 
-    if (users.length === 0) return
+    // Filter to only users whose local hour matches their reminderHour
+    const utcHour = nowUtc.getUTCHours()
+    const eligibleUsers = users.filter((u) => {
+      try {
+        const localHour = new Date(nowUtc.toLocaleString('en-US', { timeZone: u.timezone ?? 'UTC' })).getHours()
+        return localHour === (u.reminderHour ?? 20)
+      } catch {
+        // Invalid timezone — fall back to UTC hour
+        return utcHour === (u.reminderHour ?? 20)
+      }
+    })
+
+    if (eligibleUsers.length === 0) return
 
     const messages: ExpoPushMessage[] = []
 
-    for (const user of users) {
+    for (const user of eligibleUsers) {
       if (!user.pushToken || !Expo.isExpoPushToken(user.pushToken)) continue
 
       const streak = await this.getUserStreak(user.id)
@@ -96,7 +111,7 @@ export class NotificationService {
 
     if (messages.length > 0) {
       await this.sendMessages(messages)
-      console.log(`[Notifications] Sent ${messages.length} daily reminders`)
+      console.log(`[Notifications] Sent ${messages.length} daily reminders (UTC ${utcHour}:00)`)
     }
   }
 

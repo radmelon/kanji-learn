@@ -92,6 +92,7 @@ export const userProfiles = pgTable('user_profiles', {
   notificationsEnabled: boolean('notifications_enabled').notNull().default(true),
   pushToken: text('push_token'),                                    // Expo push token
   timezone: text('timezone').notNull().default('UTC'),
+  reminderHour: smallint('reminder_hour').notNull().default(20),   // 0-23, in user's timezone
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })

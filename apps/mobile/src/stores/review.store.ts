@@ -51,7 +51,8 @@ interface ReviewState {
 
   loadQueue: (limit?: number) => Promise<void>
   submitResult: (result: ReviewResult) => void
-  finishSession: () => Promise<void>
+  loadWeakQueue: (limit?: number) => Promise<void>
+  finishSession: () => Promise<{ burned: number; studyTimeMs: number } | null>
   syncPendingSessions: () => Promise<void>
   reset: () => void
 }
@@ -119,6 +120,23 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     }
   },
 
+  loadWeakQueue: async (limit = 20) => {
+    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false })
+    try {
+      const queue = await api.get<ReviewQueueItem[]>(`/v1/review/weak-queue?limit=${limit}`)
+      const now = Date.now()
+      if (queue.length === 0) {
+        set({ queue: [], error: 'No weak kanji found — your accuracy is looking great!' })
+        return
+      }
+      set({ queue, studyStartMs: now, currentIndex: 0, results: [] })
+    } catch {
+      set({ error: 'Could not load weak kanji queue. Check your connection.' })
+    } finally {
+      set({ isLoading: false })
+    }
+  },
+
   submitResult: (result) => {
     const { results, currentIndex, queue, studyStartMs } = get()
     const newResults = [...results, result]
@@ -136,12 +154,15 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   finishSession: async () => {
     const { results, studyStartMs } = get()
-    if (results.length === 0) return
+    if (results.length === 0) return null
     const studyTimeMs = Date.now() - studyStartMs
 
     try {
-      await api.post('/v1/review/submit', { results, studyTimeMs })
+      const res = await api.post<{ sessionId: string; totalItems: number; correctItems: number; studyTimeMs: number; newLearned: number; burned: number }>(
+        '/v1/review/submit', { results, studyTimeMs }
+      )
       await storage.removeItem(KEY_PROGRESS)
+      return { burned: res.burned, studyTimeMs: res.studyTimeMs }
     } catch {
       // Queue for later submission
       const pending = (await storage.getItem<PendingSession[]>(KEY_PENDING)) ?? []

@@ -9,6 +9,7 @@ const updateProfileSchema = z.object({
   notificationsEnabled: z.boolean().optional(),
   pushToken: z.string().max(200).nullable().optional(),
   timezone: z.string().optional(),
+  reminderHour: z.number().int().min(0).max(23).optional(),
 })
 
 export async function userRoutes(server: FastifyInstance) {

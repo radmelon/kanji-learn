@@ -25,6 +25,7 @@ interface UserProfile {
   dailyGoal: number
   notificationsEnabled: boolean
   timezone: string
+  reminderHour: number
 }
 
 // ─── Daily goal options ───────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ export default function ProfileScreen() {
   const [displayName, setDisplayName] = useState('')
   const [dailyGoal, setDailyGoal] = useState(20)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
+  const [reminderHour, setReminderHour] = useState(20)
 
   // Social
   const { friends, pendingRequests, isSearching, loadAll, searchByEmail, sendRequest, respondToRequest, removeFriend } = useSocial()
@@ -61,6 +63,7 @@ export default function ProfileScreen() {
     setDisplayName(data.displayName ?? '')
     setDailyGoal(data.dailyGoal)
     setNotificationsEnabled(data.notificationsEnabled)
+    setReminderHour(data.reminderHour ?? 20)
   }, [])
 
   const loadProfile = useCallback(async () => {
@@ -98,6 +101,7 @@ export default function ProfileScreen() {
     displayName: string
     dailyGoal: number
     notificationsEnabled: boolean
+    reminderHour: number
   }>) => {
     setIsSaving(true)
     try {
@@ -125,6 +129,11 @@ export default function ProfileScreen() {
   const handleNotificationsToggle = useCallback((value: boolean) => {
     setNotificationsEnabled(value)
     save({ notificationsEnabled: value })
+  }, [save])
+
+  const handleReminderHour = useCallback((hour: number) => {
+    setReminderHour(hour)
+    save({ reminderHour: hour })
   }, [save])
 
   const handleFriendSearch = useCallback(async () => {
@@ -275,6 +284,27 @@ export default function ProfileScreen() {
               thumbColor="#fff"
             />
           </View>
+          {notificationsEnabled && (
+            <View style={styles.reminderTimeRow}>
+              <Ionicons name="time-outline" size={18} color={colors.textMuted} />
+              <Text style={styles.reminderTimeLabel}>Remind me at</Text>
+              <View style={styles.reminderHourPills}>
+                {[17, 18, 19, 20, 21, 22].map((h) => {
+                  const label = h >= 12 ? `${h === 12 ? 12 : h - 12}pm` : `${h}am`
+                  const active = reminderHour === h
+                  return (
+                    <TouchableOpacity
+                      key={h}
+                      style={[styles.reminderPill, active && styles.reminderPillActive]}
+                      onPress={() => handleReminderHour(h)}
+                    >
+                      <Text style={[styles.reminderPillText, active && styles.reminderPillTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+            </View>
+          )}
         </Section>
 
         {/* App links */}
@@ -536,6 +566,30 @@ const styles = StyleSheet.create({
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
   rowLabel: { ...typography.body, color: colors.textPrimary },
   rowSub: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+
+  // Reminder time picker
+  reminderTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    flexWrap: 'wrap',
+  },
+  reminderTimeLabel: { ...typography.bodySmall, color: colors.textSecondary },
+  reminderHourPills: { flexDirection: 'row', gap: spacing.xs, flex: 1, flexWrap: 'wrap' },
+  reminderPill: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  reminderPillActive: { backgroundColor: colors.primary + '22', borderColor: colors.primary },
+  reminderPillText: { ...typography.caption, color: colors.textMuted },
+  reminderPillTextActive: { color: colors.primary, fontWeight: '700' },
 
   // Study Mates
   searchRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },

@@ -32,4 +32,15 @@ export async function analyticsRoutes(server: FastifyInstance) {
     const streakDays = await analytics.getStreakDays(req.userId!)
     return reply.send({ ok: true, data: { streakDays } })
   })
+
+  // GET /v1/analytics/sessions?limit=30
+  server.get<{ Querystring: { limit?: string } }>(
+    '/sessions',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const limit = Math.min(Number(req.query.limit ?? 30), 100)
+      const sessions = await analytics.getSessionHistory(req.userId!, limit)
+      return reply.send({ ok: true, data: sessions })
+    }
+  )
 }

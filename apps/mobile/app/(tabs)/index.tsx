@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../../src/stores/auth.store'
+import { useReviewStore } from '../../src/stores/review.store'
 import { useAnalytics } from '../../src/hooks/useAnalytics'
 import { useQuizAnalytics } from '../../src/hooks/useQuizAnalytics'
 import { useInterventions } from '../../src/hooks/useInterventions'
@@ -126,6 +127,28 @@ const INFO_JLPT_PROGRESS: InfoSection[] = [
   },
 ]
 
+const INFO_ACCURACY_BY_TYPE: InfoSection[] = [
+  {
+    body: 'Accuracy broken down by the four SRS card types over the last 30 days. Each type tests a different dimension of kanji knowledge — weakness in one area is a clear signal of where to focus.',
+  },
+  {
+    title: 'Meaning',
+    body: 'You see the kanji and must recall its English meaning. Tests visual recognition — the most common starting point and usually the highest-accuracy type.',
+  },
+  {
+    title: 'Reading',
+    body: 'You see the kanji and must produce its On\'yomi or Kun\'yomi reading. Reading recall is typically the hardest type — a low score here is normal and means you\'re working on the most challenging skill.',
+  },
+  {
+    title: 'Writing',
+    body: 'You are prompted for the kanji and must draw it stroke by stroke. Stroke order and accuracy are both evaluated. Improves spatial memory and prevents confusing similar-looking characters.',
+  },
+  {
+    title: 'Compound',
+    body: 'You see a multi-kanji word and must identify meaning or reading. Compounds test real-world vocabulary and contextual understanding — high compound accuracy indicates practical reading ability.',
+  },
+]
+
 const INFO_LEADERBOARD: InfoSection[] = [
   {
     body: 'Rankings compare study activity across all users of the app, or within your study group if you\'ve connected with friends. Position is determined by total kanji reviewed and burned since account creation.',
@@ -164,6 +187,8 @@ export default function Dashboard() {
     setActiveInfo((prev) => (prev === id ? null : id))
   }, [])
 
+  const { loadWeakQueue } = useReviewStore()
+
   const handleStudy = useCallback(() => {
     router.push('/(tabs)/study')
   }, [router])
@@ -171,6 +196,11 @@ export default function Dashboard() {
   const handleQuiz = useCallback(() => {
     router.push('/test')
   }, [router])
+
+  const handleDrillWeak = useCallback(async () => {
+    await loadWeakQueue(20)
+    router.push('/(tabs)/study')
+  }, [loadWeakQueue, router])
 
   const displayName = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'Learner'
 
@@ -215,6 +245,13 @@ export default function Dashboard() {
         <TouchableOpacity style={styles.quizButton} onPress={handleQuiz} activeOpacity={0.85}>
           <Ionicons name="help-circle" size={22} color={colors.accent} />
           <Text style={styles.quizButtonText}>Take a Quiz</Text>
+          <Ionicons name="arrow-forward" size={18} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        {/* Drill Weak Spots CTA */}
+        <TouchableOpacity style={styles.drillButton} onPress={handleDrillWeak} activeOpacity={0.85}>
+          <Ionicons name="fitness" size={22} color={colors.error} />
+          <Text style={styles.drillButtonText}>Drill Weak Spots</Text>
           <Ionicons name="arrow-forward" size={18} color={colors.textMuted} />
         </TouchableOpacity>
 
@@ -397,6 +434,40 @@ export default function Dashboard() {
                             ) : null}
                           </View>
                         </View>
+                      </View>
+                    )
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* ── Review Accuracy by Type ── */}
+            {summary.accuracyByType && Object.keys(summary.accuracyByType).length > 0 && (
+              <View style={styles.card}>
+                <View style={styles.cardRow}>
+                  <Text style={styles.cardTitle}>Review Accuracy</Text>
+                  <InfoButton id="accuracyByType" activeInfo={activeInfo} onToggle={toggleInfo} />
+                </View>
+
+                {activeInfo === 'accuracyByType' && <InfoPanel sections={INFO_ACCURACY_BY_TYPE} />}
+
+                <View style={styles.accTypeRows}>
+                  {(['meaning', 'reading', 'writing', 'compound'] as const).map((type) => {
+                    const stat = summary.accuracyByType[type]
+                    if (!stat || stat.total === 0) return null
+                    const label = type.charAt(0).toUpperCase() + type.slice(1)
+                    const pct = stat.pct
+                    const barColor = pct >= 80 ? colors.success : pct >= 60 ? colors.warning : colors.error
+                    return (
+                      <View key={type} style={styles.accTypeRow}>
+                        <Text style={styles.accTypeLabel}>{label}</Text>
+                        <View style={styles.accTypeBarWrap}>
+                          <View style={styles.accTypeTrack}>
+                            <View style={[styles.accTypeFill, { width: `${pct}%`, backgroundColor: barColor }]} />
+                          </View>
+                          <Text style={[styles.accTypePct, { color: barColor }]}>{pct}%</Text>
+                        </View>
+                        <Text style={styles.accTypeCount}>{stat.correct}/{stat.total}</Text>
                       </View>
                     )
                   })}
@@ -623,6 +694,8 @@ const styles = StyleSheet.create({
   studyButtonText: { ...typography.h3, color: '#fff', flex: 1, textAlign: 'center' },
   quizButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   quizButtonText: { ...typography.h3, color: colors.textPrimary, flex: 1, textAlign: 'center' },
+  drillButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.error + '44', paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
+  drillButtonText: { ...typography.h3, color: colors.error, flex: 1, textAlign: 'center' },
   statsRow: { flexDirection: 'row', gap: spacing.sm },
   card: { backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
   cardTitle: { ...typography.h3, color: colors.textPrimary },
@@ -676,6 +749,22 @@ const styles = StyleSheet.create({
   jlptCount: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
   jlptPct: { ...typography.caption, color: colors.textMuted, fontWeight: '400' },
   jlptDate: { ...typography.caption, color: colors.textMuted },
+
+  // Accuracy by Type
+  accTypeRows: { gap: spacing.sm, marginTop: spacing.xs },
+  accTypeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  accTypeLabel: { ...typography.bodySmall, color: colors.textSecondary, width: 68, fontWeight: '600' },
+  accTypeBarWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  accTypeTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+  },
+  accTypeFill: { height: '100%', borderRadius: radius.full },
+  accTypePct: { ...typography.caption, fontWeight: '700', width: 32, textAlign: 'right' },
+  accTypeCount: { ...typography.caption, color: colors.textMuted, width: 44, textAlign: 'right' },
 
   // Leaderboard
   lbSubtitle: { ...typography.caption, color: colors.textMuted },

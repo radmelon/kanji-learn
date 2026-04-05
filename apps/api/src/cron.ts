@@ -4,15 +4,15 @@ import type { Db } from '@kanji-learn/db'
 
 /**
  * Schedules the daily push notification reminder.
- * Fires at 8:00 PM local server time every day.
- * Users who haven't studied yet get a streak-aware nudge.
+ * Runs every hour and sends to users whose reminderHour (in their timezone) matches the current UTC hour.
+ * Users who have already studied today are skipped.
  */
 export function scheduleDailyReminders(db: Db): void {
   const notifications = new NotificationService(db)
 
-  // Run at 20:00 every day
-  cron.schedule('0 20 * * *', async () => {
-    console.log('[Cron] Running daily reminder job…')
+  // Run at the top of every hour
+  cron.schedule('0 * * * *', async () => {
+    console.log('[Cron] Running hourly reminder check…')
     try {
       await notifications.sendDailyReminders()
     } catch (err) {
@@ -20,5 +20,5 @@ export function scheduleDailyReminders(db: Db): void {
     }
   })
 
-  console.log('[Cron] Daily reminder scheduled for 20:00')
+  console.log('[Cron] Hourly reminder scheduler started')
 }
