@@ -7,10 +7,16 @@ import { colors, spacing, radius, typography } from '../../theme'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DASH_LENGTH = 400      // larger than any single KanjiVG stroke path
-const STROKE_DURATION = 550  // ms per stroke draw
-const STROKE_GAP = 100       // ms pause between strokes
+const DASH_LENGTH = 400   // larger than any single KanjiVG stroke path
 const KVGBOX = '0 0 109 109'
+
+type SpeedLevel = 'slow' | 'normal' | 'fast'
+
+const SPEED_PRESETS: Record<SpeedLevel, { duration: number; gap: number; label: string }> = {
+  slow:   { duration: 1200, gap: 300,  label: 'Slow'   },
+  normal: { duration: 550,  gap: 100,  label: 'Normal' },
+  fast:   { duration: 250,  gap: 60,   label: 'Fast'   },
+}
 
 const COLOR_GUIDE  = colors.textMuted   // dim guide behind unplayed strokes
 const COLOR_DONE   = colors.textSecondary
@@ -77,6 +83,7 @@ export function StrokeOrderAnimation({ character, width = 335, height = 260, onD
   const [currentStroke, setCurrentStroke] = useState(-1)  // -1 = not started
   const [isPlaying, setIsPlaying] = useState(false)
   const [isDone, setIsDone] = useState(false)
+  const [speedLevel, setSpeedLevel] = useState<SpeedLevel>('normal')
   const animValues = useRef<Animated.Value[]>([])
   const animationRef = useRef<Animated.CompositeAnimation | null>(null)
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -102,8 +109,9 @@ export function StrokeOrderAnimation({ character, width = 335, height = 260, onD
     }
   }, [])
 
-  const playFrom = useCallback((startIndex: number) => {
+  const playFrom = useCallback((startIndex: number, speed: SpeedLevel = speedLevel) => {
     if (strokes.length === 0) return
+    const { duration, gap } = SPEED_PRESETS[speed]
 
     // Stop any running animation
     animationRef.current?.stop()
@@ -125,17 +133,17 @@ export function StrokeOrderAnimation({ character, width = 335, height = 260, onD
       const absIdx = startIndex + i
       const t = setTimeout(() => setCurrentStroke(absIdx), delay)
       timeoutRefs.current.push(t)
-      delay += STROKE_DURATION + STROKE_GAP
+      delay += duration + gap
     })
 
     // Build animation sequence
     const sequence = strokes.slice(startIndex).flatMap((_, i) => [
       Animated.timing(animValues.current[startIndex + i], {
         toValue: 1,
-        duration: STROKE_DURATION,
+        duration,
         useNativeDriver: false,
       }),
-      Animated.delay(STROKE_GAP),
+      Animated.delay(gap),
     ])
 
     animationRef.current = Animated.sequence(sequence)
@@ -147,7 +155,7 @@ export function StrokeOrderAnimation({ character, width = 335, height = 260, onD
         onDone?.()
       }
     })
-  }, [strokes, onDone])
+  }, [strokes, onDone, speedLevel])
 
   const handlePlayPause = useCallback(() => {
     if (isPlaying) {
@@ -164,6 +172,16 @@ export function StrokeOrderAnimation({ character, width = 335, height = 260, onD
     animValues.current.forEach((v) => v.setValue(0))
     playFrom(0)
   }, [playFrom])
+
+  const handleSpeedChange = useCallback((level: SpeedLevel) => {
+    setSpeedLevel(level)
+    // If currently playing, restart from beginning at the new speed
+    if (isPlaying || isDone) {
+      animValues.current.forEach((v) => v.setValue(0))
+      setIsDone(false)
+      playFrom(0, level)
+    }
+  }, [isPlaying, isDone, playFrom])
 
   // ── Loading / error ────────────────────────────────────────────────────────
 
@@ -241,6 +259,21 @@ export function StrokeOrderAnimation({ character, width = 335, height = 260, onD
         })}
       </View>
 
+      {/* Speed picker */}
+      <View style={styles.speedRow}>
+        {(Object.keys(SPEED_PRESETS) as SpeedLevel[]).map((level) => (
+          <TouchableOpacity
+            key={level}
+            style={[styles.speedBtn, speedLevel === level && styles.speedBtnActive]}
+            onPress={() => handleSpeedChange(level)}
+          >
+            <Text style={[styles.speedBtnText, speedLevel === level && styles.speedBtnTextActive]}>
+              {SPEED_PRESETS[level].label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* Controls */}
       <View style={styles.controls}>
         <TouchableOpacity style={styles.sideBtn} onPress={handleReplay}>
@@ -315,4 +348,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary, borderRadius: radius.md,
   },
   playBtnText: { ...typography.bodySmall, color: '#fff', fontWeight: '600' },
+
+  speedRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    alignSelf: 'center',
+  },
+  speedBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  speedBtnActive: {
+    backgroundColor: colors.primary + '22',
+    borderColor: colors.primary,
+  },
+  speedBtnText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  speedBtnTextActive: {
+    color: colors.primary,
+  },
 })
