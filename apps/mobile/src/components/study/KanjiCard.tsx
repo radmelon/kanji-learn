@@ -26,8 +26,9 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   // Which group is currently being spoken: null | 'kun' | 'on' | vocab index
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
 
-  const hasReadings =
-    item.reviewType === 'reading' || item.reviewType === 'compound'
+  // Show readings on ALL card types after reveal — even meaning cards benefit
+  // from seeing the on/kun alongside the meaning
+  const hasReadings = true
   const kunReadings = item.kunReadings as string[]
   const onReadings = item.onReadings as string[]
   const exampleVocab = item.exampleVocab as { word: string; reading: string; meaning: string }[]
