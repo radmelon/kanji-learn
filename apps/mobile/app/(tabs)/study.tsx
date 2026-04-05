@@ -22,7 +22,7 @@ const HELP_KEY = 'kl_has_seen_study_help'
 
 export default function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, loadQueue, submitResult, finishSession, syncPendingSessions, reset } =
+  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, loadQueue, loadMissedQueue, submitResult, finishSession, syncPendingSessions, reset } =
     useReviewStore()
 
   const [isRevealed, setIsRevealed] = useState(false)
@@ -259,7 +259,15 @@ export default function StudySession() {
       <SessionComplete
         {...sessionSummary}
         onDone={() => router.replace('/(tabs)')}
-        onReview={() => { reset(); loadQueue(20) }}
+        onReview={() => {
+          const ok = loadMissedQueue()
+          if (ok) {
+            setSessionSummary(null)
+            setIsRevealed(false)
+            isRevealedRef.current = false
+            swipeX.setValue(0)
+          }
+        }}
       />
     )
   }

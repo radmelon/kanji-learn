@@ -51,9 +51,10 @@ interface ReviewState {
 
   loadQueue: (limit?: number) => Promise<void>
   submitResult: (result: ReviewResult) => void
-  loadWeakQueue: (limit?: number) => Promise<void>
+  loadWeakQueue: (limit?: number) => Promise<boolean>
   finishSession: () => Promise<{ burned: number; studyTimeMs: number } | null>
   syncPendingSessions: () => Promise<void>
+  loadMissedQueue: () => boolean
   reset: () => void
 }
 
@@ -126,12 +127,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       const queue = await api.get<ReviewQueueItem[]>(`/v1/review/weak-queue?limit=${limit}`)
       const now = Date.now()
       if (queue.length === 0) {
-        set({ queue: [], error: 'No weak kanji found — your accuracy is looking great!' })
-        return
+        set({ isLoading: false })
+        return false
       }
       set({ queue, studyStartMs: now, currentIndex: 0, results: [] })
-    } catch {
-      set({ error: 'Could not load weak kanji queue. Check your connection.' })
+      return true
+    } catch (err: any) {
+      set({ error: err?.message ?? 'Could not load weak kanji queue.' })
+      return false
     } finally {
       set({ isLoading: false })
     }
@@ -213,6 +216,18 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       await storage.setItem(KEY_PENDING, remaining)
       set({ hasPendingSessions: remaining.length > 0 })
     }
+  },
+
+  loadMissedQueue: () => {
+    const { results, queue } = get()
+    const missedIds = new Set(results.filter((r) => r.quality < 3).map((r) => r.kanjiId))
+    const missedCards = queue
+      .filter((card) => missedIds.has(card.kanjiId))
+      .map((card) => ({ ...card, reviewType: 'meaning' as const })) // reset to meaning for the re-drill
+    if (missedCards.length === 0) return false
+    storage.removeItem(KEY_PROGRESS)
+    set({ queue: missedCards, currentIndex: 0, results: [], isComplete: false, studyStartMs: Date.now(), error: null })
+    return true
   },
 
   reset: () => {

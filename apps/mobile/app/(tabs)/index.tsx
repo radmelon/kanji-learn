@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, RefreshControl, ActivityIndicator,
+  StyleSheet, RefreshControl, ActivityIndicator, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -197,9 +197,26 @@ export default function Dashboard() {
     router.push('/test')
   }, [router])
 
+  const [isDrillLoading, setIsDrillLoading] = useState(false)
+
   const handleDrillWeak = useCallback(async () => {
-    await loadWeakQueue(20)
-    router.push('/(tabs)/study')
+    setIsDrillLoading(true)
+    try {
+      const ok = await loadWeakQueue(20)
+      if (ok) {
+        router.push('/(tabs)/study')
+      } else {
+        Alert.alert(
+          'No weak spots found',
+          'Great news — your accuracy is above 65% on all recently reviewed kanji. Keep it up!',
+          [{ text: 'OK' }]
+        )
+      }
+    } catch {
+      Alert.alert('Error', 'Could not load weak kanji. Check your connection.')
+    } finally {
+      setIsDrillLoading(false)
+    }
   }, [loadWeakQueue, router])
 
   const displayName = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'Learner'
@@ -249,10 +266,13 @@ export default function Dashboard() {
         </TouchableOpacity>
 
         {/* Drill Weak Spots CTA */}
-        <TouchableOpacity style={styles.drillButton} onPress={handleDrillWeak} activeOpacity={0.85}>
-          <Ionicons name="fitness" size={22} color={colors.error} />
+        <TouchableOpacity style={styles.drillButton} onPress={handleDrillWeak} activeOpacity={0.85} disabled={isDrillLoading}>
+          {isDrillLoading
+            ? <ActivityIndicator size="small" color={colors.error} />
+            : <Ionicons name="fitness" size={22} color={colors.error} />
+          }
           <Text style={styles.drillButtonText}>Drill Weak Spots</Text>
-          <Ionicons name="arrow-forward" size={18} color={colors.textMuted} />
+          {!isDrillLoading && <Ionicons name="arrow-forward" size={18} color={colors.textMuted} />}
         </TouchableOpacity>
 
         {isLoading && !summary ? (
