@@ -108,8 +108,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Example Sentences API Integration** — Integrate a sentence corpus (Tatoeba CC-BY or a curated JLPT sentence dataset) into the backend. Index sentences by vocabulary and expose a `/sentences?vocab=xxx` endpoint for the card UI to call. Consider pre-caching at the kanji/vocab level to avoid latency during review.
   `[Effort: L]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
-- [ ] **Bulk Import of Known Kanji (Onboarding Self-Assessment)** — Let new users mark kanji they already know during onboarding (e.g., via a quick JLPT-level self-assessment quiz or a manual selection grid). Bootstraps their SRS with realistic starting intervals rather than treating everything as new.
-  `[Effort: L]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
+- [ ] **Placement Test (Adaptive Kanji Self-Assessment)** — An adaptive ~50-question test surfaced during sign-up and in Settings that identifies which kanji a user already knows. Starts at N3, shifts up/down based on a 5-question performance window (≥70% pass → level up, ≤30% → level down). Each kanji is tested in two phases: meaning MCQ first, then reading MCQ (hiragana) only if meaning is correct. Kanji that pass both phases are written to `user_kanji_progress` as `remembered` (21-day interval) so the SRS queue skips them. Correctly-remembered/burned kanji are never downgraded. Architecture: adaptive engine in `packages/shared`, two API endpoints (`GET /v1/placement/kanji-ids`, `POST /v1/placement/questions`, `POST /v1/placement/complete`), Zustand store, and a dedicated `(auth)/placement.tsx` screen. Full design spec at `~/.claude/plans/fluffy-gliding-thunder.md`.
+  `[Effort: L]` `[Impact: High]` `[Backend: Yes]` `[Status: 📋 Spec Ready]`
 
 - [ ] **Data Export (CSV / JSON)** — Allow users to export their full study history — card grades, timestamps, SRS intervals — as a CSV or JSON file. Builds trust with users who worry about data lock-in and satisfies power users who want to run their own analysis.
   `[Effort: M]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator,
@@ -19,6 +19,173 @@ type Period = '7d' | '30d' | '90d'
 
 const PERIOD_DAYS: Record<Period, number> = { '7d': 7, '30d': 30, '90d': 90 }
 
+// ─── Info panel content ───────────────────────────────────────────────────────
+
+interface InfoSection {
+  title?: string
+  body: string
+}
+
+const INFO_BREAKDOWN: InfoSection[] = [
+  {
+    body: 'Your kanji are sorted into five SRS stages. Each stage reflects how deeply the character is embedded in your long-term memory based on your review history.',
+  },
+  {
+    title: 'Unseen',
+    body: 'Kanji not yet introduced. They have no SRS interval and won\'t appear in reviews until the app gradually introduces them.',
+  },
+  {
+    title: 'Learning',
+    body: 'Newly introduced kanji with a short interval (1–3 days). These are in intensive rotation — you\'ll see them frequently until you prove you can recall them reliably.',
+  },
+  {
+    title: 'Reviewing',
+    body: 'Kanji you\'ve seen several times. Intervals are expanding (1–4 weeks). Your brain is moving from short-term familiarity to medium-term retention.',
+  },
+  {
+    title: 'Remembered',
+    body: 'Strong recall — intervals of 1–3 months. You\'ve demonstrated reliable memory over multiple sessions. One or two more correct reviews will push these to burned.',
+  },
+  {
+    title: 'Burned 🔥',
+    body: 'Mastered. The SRS interval has reached ~6 months, meaning your brain has proven genuine long-term recall — not just recent practice. Burned kanji leave the daily queue and only resurface as occasional surprise checks.',
+  },
+]
+
+const INFO_ACTIVITY: InfoSection[] = [
+  {
+    body: 'Each bar shows the number of SRS flashcard reviews completed that day. The green portion represents correct answers; the full bar height represents total reviews.',
+  },
+  {
+    title: 'What is Spaced Repetition?',
+    body: 'A scheduling technique that times each review at the exact moment your brain is about to forget the material. A correct answer pushes the next review further out (e.g. 1 day → 4 days → 2 weeks…). A wrong answer resets the interval back to 1 day. Over time, kanji you know well drift to monthly reviews while difficult ones stay in daily rotation.',
+  },
+  {
+    title: 'Why consistency beats volume',
+    body: 'The SRS schedules cards for specific future dates. Skipping a day doesn\'t erase those cards — they accumulate. Reviewing 20 cards daily is far more effective than 140 cards once a week, because you\'re reviewing at the optimal memory-strengthening moment.',
+  },
+  {
+    title: 'Period selector',
+    body: 'Switch between 7-day, 30-day, and 90-day windows. The 7-day view shows your recent streak; the 90-day view reveals longer-term patterns in your study habits.',
+  },
+]
+
+const INFO_ACCURACY: InfoSection[] = [
+  {
+    body: 'Your overall SRS review accuracy over the last 30 days — the percentage of flashcard answers graded 3 or above (Okay, Good, or Easy) out of all answers submitted.',
+  },
+  {
+    title: 'How accuracy is graded',
+    body: 'After revealing a card you grade yourself: Again (0), Hard (1–2), Okay (3), Good (4), or Easy (5). Grades 3 and above count as correct. Grades below 3 count as incorrect and reset the card\'s interval.',
+  },
+  {
+    title: 'What is a good accuracy?',
+    body: 'Aim for 70–85%. Below 70% suggests cards are advancing too fast or you need more time with new material. Above 90% may mean your daily goal is too conservative — you could handle a faster pace.',
+  },
+  {
+    title: 'Accuracy vs retention',
+    body: 'A high accuracy today doesn\'t mean permanent retention. The SRS confirms retention by making you recall a kanji again at 1 month, 3 months, 6 months. Only correct answers across all those intervals earns a burn.',
+  },
+]
+
+const INFO_VELOCITY: InfoSection[] = [
+  {
+    body: 'Velocity measures how actively and deeply you\'re building kanji memory over time — not just raw review counts, but the rate at which new characters reach long-term retention.',
+  },
+  {
+    title: 'Daily avg (30d)',
+    body: 'Average SRS reviews per day over the last 30 days. Consistency matters more than volume — 20 reviews/day every day beats 200 reviews on weekends.',
+  },
+  {
+    title: 'Weekly avg',
+    body: 'Average reviews per day over the last 7 days. Comparing this to your 30-day average shows whether you\'re currently accelerating, coasting, or falling behind.',
+  },
+  {
+    title: 'Trend ↑ / ↓ / →',
+    body: 'Compares your last 7-day average to the previous 7-day average. ↑ Up means you\'re studying more than usual; ↓ Down means you\'ve eased off. Neither is inherently good or bad — context matters.',
+  },
+  {
+    title: 'Burn rate & projected completion',
+    body: 'Kanji burned per day (30-day average). Divide the remaining unburned kanji by your burn rate to estimate completion. Study more consistently and the date moves closer; slow down and it moves further out.',
+  },
+]
+
+const INFO_QUIZ_PERF: InfoSection[] = [
+  {
+    body: 'Quiz performance tracks your results in multiple-choice exam-style sessions. Unlike SRS reviews, quiz answers have no effect on your card intervals or scheduling — they are purely for self-assessment.',
+  },
+  {
+    title: 'Pass threshold',
+    body: 'Sessions scored 70% or above are marked as passed. This mirrors the approximate passing bar for real JLPT exams, so a consistent pass rate is a meaningful readiness signal.',
+  },
+  {
+    title: 'Recent sessions bar chart',
+    body: 'Each bar represents one quiz session. Bar height = score percentage. Green = passed (≥70%), red = failed. Look for a rising trend over time.',
+  },
+  {
+    title: 'Quiz vs SRS',
+    body: 'Use SRS daily to build memory. Use quizzes to benchmark readiness before an exam, or to consolidate a level after completing it. They test the same knowledge, but serve different purposes.',
+  },
+]
+
+const INFO_QUIZ_WEAK: InfoSection[] = [
+  {
+    body: 'Kanji you most frequently get wrong in quizzes, requiring a minimum of 3 quiz attempts to appear. Miss rate = wrong answers ÷ total quiz attempts for that character.',
+  },
+  {
+    title: 'What to do with this',
+    body: 'These characters need deliberate attention. Look them up in the Kanji Browser, review their stroke order and readings, and pay close attention when they appear in SRS reviews. Repeated quiz misses are a strong signal the SRS alone isn\'t enough — try writing the character by hand a few times.',
+  },
+]
+
+const INFO_WRITING: InfoSection[] = [
+  {
+    body: 'Writing practice tracks your stroke-by-stroke accuracy when drawing kanji by hand. Unlike SRS flashcards, writing practice isolates motor memory and spatial recall — knowing a kanji visually is very different from being able to produce it from scratch.',
+  },
+  {
+    title: 'Avg accuracy',
+    body: 'The average stroke accuracy score across all your writing attempts, expressed as a percentage. 70% is the pass threshold — the same used for JLPT writing sections.',
+  },
+  {
+    title: 'Pass rate',
+    body: 'The percentage of writing attempts that scored 70% or above. A rising pass rate means your motor memory for stroke order and proportion is improving.',
+  },
+  {
+    title: 'Needs most work',
+    body: 'The 5 kanji with the lowest average writing score, requiring a minimum of 2 attempts. Use these as a targeted practice list — writing a character correctly 3–5 times in a row typically locks in the stroke order.',
+  },
+]
+
+const INFO_SPEAKING: InfoSection[] = [
+  {
+    body: 'Speaking practice tests whether you can produce the correct On\'yomi or Kun\'yomi reading aloud. Your spoken answer is evaluated using phonetic normalization and fuzzy matching to handle natural variation in pronunciation.',
+  },
+  {
+    title: 'How evaluation works',
+    body: 'Your spoken input is transcribed and normalised to romaji. A fuzzy string comparison (Levenshtein distance) checks how close it is to any accepted reading. Passing requires the transcription to closely match at least one correct reading — minor accent variation is tolerated, but incorrect readings fail.',
+  },
+  {
+    title: 'Needs most work',
+    body: 'Kanji with the lowest correct-answer rate after at least 2 attempts. Reading aloud is often the last skill to solidify — these characters need extra listening practice with native audio.',
+  },
+]
+
+const INFO_SESSION_HISTORY: InfoSection[] = [
+  {
+    body: 'A log of your last 30 completed SRS review sessions. Each row shows when the session occurred, how many cards you reviewed, how long it took, and your accuracy for that session.',
+  },
+  {
+    title: 'Accuracy colour coding',
+    body: 'Green = 80% or above (strong session). Amber = 60–79% (solid but room to improve). Red = below 60% (tough session — the cards you missed will reappear soon for reinforcement).',
+  },
+  {
+    title: 'Why short sessions are fine',
+    body: 'The SRS schedules the right cards regardless of session length. A 5-minute session that clears your due queue is just as effective as a 30-minute marathon — what matters is showing up consistently, not how long each session lasts.',
+  },
+]
+
+const INFO_HIT_SLOP = { top: 10, right: 10, bottom: 10, left: 10 }
+
 export default function ProgressScreen() {
   const router = useRouter()
   const { user } = useAuthStore()
@@ -26,6 +193,10 @@ export default function ProgressScreen() {
   const { data: quizData } = useQuizAnalytics()
   const { sessions } = useSessionHistory(30)
   const [period, setPeriod] = useState<Period>('30d')
+  const [activeInfo, setActiveInfo] = useState<string | null>(null)
+  const toggleInfo = useCallback((id: string) => {
+    setActiveInfo((prev) => (prev === id ? null : id))
+  }, [])
 
   const displayName = user?.user_metadata?.display_name ?? 'Learner'
 
@@ -84,7 +255,11 @@ export default function ProgressScreen() {
             </View>
 
             {/* Overall SRS breakdown */}
-            <Section title="Kanji Breakdown">
+            <Section
+              title="Kanji Breakdown"
+              right={<InfoButton id="breakdown" activeInfo={activeInfo} onToggle={toggleInfo} />}
+            >
+              {activeInfo === 'breakdown' && <InfoPanel sections={INFO_BREAKDOWN} />}
               <SrsStatusBar counts={summary.statusCounts} />
               <JlptGrid jlptProgress={summary.jlptProgress} />
             </Section>
@@ -93,9 +268,13 @@ export default function ProgressScreen() {
             <Section
               title="Activity"
               right={
-                <PeriodSelector value={period} onChange={setPeriod} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                  <PeriodSelector value={period} onChange={setPeriod} />
+                  <InfoButton id="activity" activeInfo={activeInfo} onToggle={toggleInfo} />
+                </View>
               }
             >
+              {activeInfo === 'activity' && <InfoPanel sections={INFO_ACTIVITY} />}
               <ActivityChart
                 stats={summary.recentStats}
                 days={PERIOD_DAYS[period]}
@@ -103,7 +282,11 @@ export default function ProgressScreen() {
             </Section>
 
             {/* Accuracy card */}
-            <Section title="Accuracy">
+            <Section
+              title="Accuracy"
+              right={<InfoButton id="accuracy" activeInfo={activeInfo} onToggle={toggleInfo} />}
+            >
+              {activeInfo === 'accuracy' && <InfoPanel sections={INFO_ACCURACY} />}
               <View style={styles.accuracyRow}>
                 <View style={styles.accuracyCircle}>
                   <Text style={styles.accuracyPct}>{summary.accuracy}%</Text>
@@ -118,7 +301,11 @@ export default function ProgressScreen() {
             </Section>
 
             {/* Velocity card */}
-            <Section title="Velocity">
+            <Section
+              title="Velocity"
+              right={<InfoButton id="velocity" activeInfo={activeInfo} onToggle={toggleInfo} />}
+            >
+              {activeInfo === 'velocity' && <InfoPanel sections={INFO_VELOCITY} />}
               <View style={styles.velocityGrid}>
                 <VelocityItem label="Daily avg (30d)" value={summary.velocity.dailyAverage} unit="reviews" />
                 <VelocityItem label="Weekly avg" value={summary.velocity.weeklyAverage} unit="reviews/day" />
@@ -147,7 +334,11 @@ export default function ProgressScreen() {
             {/* Quiz Performance */}
             {quizData && quizData.totalSessions > 0 && (
               <>
-                <Section title="Quiz Performance">
+                <Section
+                  title="Quiz Performance"
+                  right={<InfoButton id="quizPerf" activeInfo={activeInfo} onToggle={toggleInfo} />}
+                >
+                  {activeInfo === 'quizPerf' && <InfoPanel sections={INFO_QUIZ_PERF} />}
                   <View style={styles.velocityGrid}>
                     <VelocityItem label="Sessions" value={quizData.totalSessions.toLocaleString()} isText />
                     <VelocityItem label="Avg score" value={`${quizData.avgScore}%`} isText color={quizData.avgScore >= 70 ? colors.success : colors.warning} />
@@ -173,7 +364,11 @@ export default function ProgressScreen() {
                   )}
                 </Section>
                 {quizData.weakestKanji.length > 0 && (
-                  <Section title="Quiz Weak Spots">
+                  <Section
+                    title="Quiz Weak Spots"
+                    right={<InfoButton id="quizWeak" activeInfo={activeInfo} onToggle={toggleInfo} />}
+                  >
+                    {activeInfo === 'quizWeak' && <InfoPanel sections={INFO_QUIZ_WEAK} />}
                     <Text style={styles.sectionNote}>Kanji you most often miss in quizzes (min 3 attempts)</Text>
                     {quizData.weakestKanji.map((k) => (
                       <View key={k.kanjiId} style={styles.worstKanjiRow}>
@@ -191,7 +386,11 @@ export default function ProgressScreen() {
 
             {/* Writing Practice */}
             {summary.writing.totalAttempts > 0 ? (
-              <Section title="Writing Practice">
+              <Section
+                title="Writing Practice"
+                right={<InfoButton id="writing" activeInfo={activeInfo} onToggle={toggleInfo} />}
+              >
+                {activeInfo === 'writing' && <InfoPanel sections={INFO_WRITING} />}
                 <View style={styles.velocityGrid}>
                   <VelocityItem label="Attempts" value={summary.writing.totalAttempts.toLocaleString()} isText />
                   <VelocityItem label="Avg accuracy" value={`${summary.writing.avgScore}%`} isText color={summary.writing.avgScore >= 70 ? colors.success : colors.warning} />
@@ -216,7 +415,11 @@ export default function ProgressScreen() {
 
             {/* Session History */}
             {sessions.length > 0 && (
-              <Section title="Session History">
+              <Section
+                title="Session History"
+                right={<InfoButton id="sessionHistory" activeInfo={activeInfo} onToggle={toggleInfo} />}
+              >
+                {activeInfo === 'sessionHistory' && <InfoPanel sections={INFO_SESSION_HISTORY} />}
                 {sessions.map((s) => {
                   const date = new Date(s.startedAt)
                   const dateStr = date.toLocaleDateString('en', { month: 'short', day: 'numeric' })
@@ -244,7 +447,11 @@ export default function ProgressScreen() {
 
             {/* Speaking Practice */}
             {summary.voice.totalAttempts > 0 ? (
-              <Section title="Speaking Practice">
+              <Section
+                title="Speaking Practice"
+                right={<InfoButton id="speaking" activeInfo={activeInfo} onToggle={toggleInfo} />}
+              >
+                {activeInfo === 'speaking' && <InfoPanel sections={INFO_SPEAKING} />}
                 <View style={styles.velocityGrid}>
                   <VelocityItem label="Attempts" value={summary.voice.totalAttempts.toLocaleString()} isText />
                   <VelocityItem label="Accuracy" value={`${summary.voice.correctPct}%`} isText color={summary.voice.correctPct >= 70 ? colors.success : colors.warning} />
@@ -441,6 +648,71 @@ const velStyles = StyleSheet.create({
   label: { ...typography.caption, color: colors.textMuted },
   value: { ...typography.h3, color: colors.textPrimary },
   unit: { ...typography.caption, color: colors.textMuted, fontWeight: '400' },
+})
+
+// ─── InfoButton ───────────────────────────────────────────────────────────────
+
+function InfoButton({
+  id,
+  activeInfo,
+  onToggle,
+}: {
+  id: string
+  activeInfo: string | null
+  onToggle: (id: string) => void
+}) {
+  const isOpen = activeInfo === id
+  return (
+    <TouchableOpacity onPress={() => onToggle(id)} hitSlop={INFO_HIT_SLOP} activeOpacity={0.7}>
+      <Ionicons
+        name={isOpen ? 'chevron-up-circle-outline' : 'information-circle-outline'}
+        size={18}
+        color={isOpen ? colors.info : colors.textMuted}
+      />
+    </TouchableOpacity>
+  )
+}
+
+// ─── InfoPanel ────────────────────────────────────────────────────────────────
+
+function InfoPanel({ sections }: { sections: InfoSection[] }) {
+  return (
+    <View style={infoStyles.panel}>
+      {sections.map((s, i) => (
+        <View key={i} style={[infoStyles.section, i > 0 && infoStyles.sectionSpaced]}>
+          {s.title !== undefined && (
+            <Text style={infoStyles.sectionTitle}>{s.title}</Text>
+          )}
+          <Text style={infoStyles.sectionBody}>{s.body}</Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+const infoStyles = StyleSheet.create({
+  panel: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.info + '44',
+    padding: spacing.md,
+  },
+  section: {},
+  sectionSpaced: { marginTop: spacing.sm },
+  sectionTitle: {
+    ...typography.caption,
+    color: colors.info,
+    fontWeight: '700',
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sectionBody: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
 })
 
 const styles = StyleSheet.create({
