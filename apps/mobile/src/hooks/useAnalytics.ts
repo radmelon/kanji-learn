@@ -29,7 +29,7 @@ interface AnalyticsSummary {
     remembered: number
     burned: number
   }
-  jlptProgress: Record<string, number>  // level → seen count
+  jlptProgress: Record<string, { learning: number; reviewing: number; remembered: number; burned: number }>
   streakDays: number
   recentStats: DailyStats[]
   totalSeen: number

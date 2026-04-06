@@ -39,6 +39,12 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 📊 Analytics & Progress
 
+- [ ] **Fix: JLPT Progress Bars Show as Blank** — The JLPT progress bars on the dashboard are empty for most users because the bar width is calculated as `burned / total`. Burning a kanji requires months of correct reviews, so new and early-stage users see no fill at all. Fix: switch to a stacked bar showing all meaningful SRS stages — **seen** (learning + reviewing + remembered) in a muted fill, **burned** in a solid highlight — so the bar reflects real study progress from day one. This also makes the bar a richer signal (e.g. N5: 60% seen / 5% burned vs N1: 2% seen / 0% burned). Backend change: `levelProjections` in `GET /v1/analytics/summary` needs to return `seen` count in addition to `burned`; currently only `burned` is exposed.
+  `[Effort: S]` `[Impact: High]` `[Backend: Yes]` `[Status: 🐛 Bug]`
+
+- [ ] **Fix: Journey Progress Bar Shows as Blank** — The Journey progress bar on the dashboard uses `completionPct = totalSeen / 2294 * 100`. For a user who has studied 50 kanji this renders as ~2% — a barely visible sliver that feels discouraging. Two fixes needed: (1) show a **dual-fill bar** — pale fill for seen/in-progress, solid fill for burned — so early progress is visually meaningful; (2) consider a log-scale or milestone-anchored axis so the first 100 kanji (N5 complete) feels like a genuine achievement rather than 4% of the whole. No API change needed; purely a UI rework in `index.tsx`.
+  `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: 🐛 Bug]`
+
 - [ ] **Heatmap Calendar View** — A GitHub-style contribution heatmap showing daily study activity over the past year. Color intensity represents cards reviewed that day. Gives users a satisfying visual record of consistency and motivates streak maintenance.
   `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
 
@@ -119,6 +125,9 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 - [ ] **Webhook / Zapier Integration for Study Events** — Emit events (streak milestone reached, level completed, daily goal hit) to a configurable webhook URL. Enables power users to build their own integrations (e.g., log to Notion, trigger a Discord message, update a spreadsheet).
   `[Effort: M]` `[Impact: Low]` `[Backend: Yes]` `[Status: 💡 Idea]`
+
+- [ ] **Backend Scaling: Analytics Cache + Supabase Pro Upgrade** — The `/v1/analytics/summary` endpoint runs 8–10 complex SQL aggregations per request and is the primary DB bottleneck at scale (observed 400–1200ms per call). Full scaling plan in `docs/SCALING.md`. Phase 1 (pre-launch): add a per-user `user_stats_cache` table updated after each review session; dashboard reads cache row instead of running live aggregations. Phase 2 (500+ users): upgrade Supabase to Pro tier for dedicated compute and higher pooler limits. Phase 3 (2K+ users): read replica for analytics, App Runner min-instance configuration. The current transaction-mode PgBouncer fix (5 conn/instance) supports ~300–500 concurrent active users before Phase 1 is needed.
+  `[Effort: M]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
 ---
 

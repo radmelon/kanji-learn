@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator,
@@ -6,9 +6,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import * as Speech from 'expo-speech'
 import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { SrsStatus } from '@kanji-learn/shared'
+import { getRadicalName } from '../../src/constants/radicals'
+
+const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.9 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -92,6 +96,31 @@ export default function KanjiDetail() {
   const [kanji, setKanji] = useState<KanjiDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
+  const speakingGroupRef = useRef<string | null>(null)
+
+  // Play a list of readings sequentially; tap again to stop
+  const speakReadings = useCallback((readings: string[], groupKey: string, stripDot = false) => {
+    if (speakingGroupRef.current === groupKey) {
+      Speech.stop()
+      speakingGroupRef.current = null
+      setSpeakingGroup(null)
+      return
+    }
+    Speech.stop()
+    speakingGroupRef.current = groupKey
+    setSpeakingGroup(groupKey)
+    const cleaned = readings.map((r) => stripDot ? r.replace(/\./g, '') : r)
+    const speakAt = (idx: number) => {
+      if (idx >= cleaned.length || speakingGroupRef.current !== groupKey) {
+        speakingGroupRef.current = null
+        setSpeakingGroup(null)
+        return
+      }
+      Speech.speak(cleaned[idx], { ...SPEECH_OPTS, onDone: () => speakAt(idx + 1), onError: () => { speakingGroupRef.current = null; setSpeakingGroup(null) } })
+    }
+    speakAt(0)
+  }, [])
 
   const load = () => {
     setIsLoading(true)
@@ -197,7 +226,20 @@ export default function KanjiDetail() {
             <Card title="Readings">
               {kanji.onReadings.length > 0 && (
                 <View style={styles.readingGroup}>
-                  <Text style={styles.readingGroupLabel}>On'yomi (Chinese)</Text>
+                  <View style={styles.readingGroupHeader}>
+                    <Text style={styles.readingGroupLabel}>On'yomi (Chinese)</Text>
+                    <TouchableOpacity
+                      onPress={() => speakReadings(kanji.onReadings, 'on')}
+                      hitSlop={8}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={speakingGroup === 'on' ? 'volume-high' : 'volume-medium-outline'}
+                        size={16}
+                        color={speakingGroup === 'on' ? colors.accent : colors.textMuted}
+                      />
+                    </TouchableOpacity>
+                  </View>
                   <View style={styles.readingPills}>
                     {kanji.onReadings.map((r, i) => (
                       <View key={i} style={styles.readingPill}>
@@ -209,7 +251,20 @@ export default function KanjiDetail() {
               )}
               {kanji.kunReadings.length > 0 && (
                 <View style={styles.readingGroup}>
-                  <Text style={styles.readingGroupLabel}>Kun'yomi (Japanese)</Text>
+                  <View style={styles.readingGroupHeader}>
+                    <Text style={styles.readingGroupLabel}>Kun'yomi (Japanese)</Text>
+                    <TouchableOpacity
+                      onPress={() => speakReadings(kanji.kunReadings, 'kun', true)}
+                      hitSlop={8}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={speakingGroup === 'kun' ? 'volume-high' : 'volume-medium-outline'}
+                        size={16}
+                        color={speakingGroup === 'kun' ? colors.info : colors.textMuted}
+                      />
+                    </TouchableOpacity>
+                  </View>
                   <View style={styles.readingPills}>
                     {kanji.kunReadings.map((r, i) => (
                       <View key={i} style={[styles.readingPill, styles.readingPillKun]}>
@@ -238,14 +293,18 @@ export default function KanjiDetail() {
           )}
 
           {/* Radicals */}
-          {kanji.radicals.length > 0 && (
+          {(kanji.radicals ?? []).length > 0 && (
             <Card title="Radicals">
               <View style={styles.radicalPills}>
-                {kanji.radicals.map((r, i) => (
-                  <View key={i} style={styles.radicalPill}>
-                    <Text style={styles.radicalText}>{r}</Text>
-                  </View>
-                ))}
+                {(kanji.radicals ?? []).map((r, i) => {
+                  const name = getRadicalName(r)
+                  return (
+                    <View key={i} style={styles.radicalPill}>
+                      <Text style={styles.radicalText}>{r}</Text>
+                      {name ? <Text style={styles.radicalName}>{name}</Text> : null}
+                    </View>
+                  )
+                })}
               </View>
             </Card>
           )}
@@ -379,6 +438,7 @@ const styles = StyleSheet.create({
 
   // Readings
   readingGroup: { gap: spacing.xs },
+  readingGroupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   readingGroupLabel: {
     ...typography.caption, color: colors.textMuted,
     fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5,
@@ -407,12 +467,16 @@ const styles = StyleSheet.create({
   // Radicals
   radicalPills: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   radicalPill: {
-    width: 44, height: 44,
+    minWidth: 52,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: colors.bgSurface, borderRadius: radius.md,
     borderWidth: 1, borderColor: colors.border,
+    gap: 2,
   },
   radicalText: { ...typography.h3, color: colors.textPrimary },
+  radicalName: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
 
   // References
   refCredit: {

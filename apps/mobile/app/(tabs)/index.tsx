@@ -401,12 +401,26 @@ export default function Dashboard() {
               {activeInfo === 'journey' && <InfoPanel sections={INFO_JOURNEY} />}
 
               <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${Math.max(summary.completionPct, 1)}%` },
-                  ]}
-                />
+                {summary.totalSeen > 0 && (
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        position: 'absolute', top: 0, left: 0, bottom: 0,
+                        width: `${Math.round((summary.totalSeen / (summary.totalSeen + summary.statusCounts.unseen)) * 100)}%`,
+                        backgroundColor: colors.primary + '33',
+                      },
+                    ]}
+                  />
+                )}
+                {summary.statusCounts.burned > 0 && (
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.max(summary.completionPct, 1)}%` },
+                    ]}
+                  />
+                )}
               </View>
               <Text style={styles.progressLabel}>
                 {summary.totalSeen.toLocaleString()} seen · {summary.statusCounts.burned.toLocaleString()} mastered · {summary.statusCounts.unseen.toLocaleString()} remaining
@@ -438,11 +452,20 @@ export default function Dashboard() {
                         {/* Progress bar + numbers */}
                         <View style={styles.jlptBarCol}>
                           <View style={styles.jlptBarTrack}>
-                            <View style={[styles.jlptBarFill, { width: `${pct}%`, backgroundColor: levelColor }]} />
+                            {proj.seen > 0 && (
+                              <View style={[styles.jlptBarFill, {
+                                position: 'absolute', top: 0, left: 0, bottom: 0,
+                                width: `${Math.round((proj.seen / proj.total) * 100)}%`,
+                                backgroundColor: levelColor + '44',
+                              }]} />
+                            )}
+                            {proj.burned > 0 && (
+                              <View style={[styles.jlptBarFill, { width: `${pct}%`, backgroundColor: levelColor }]} />
+                            )}
                           </View>
                           <View style={styles.jlptBarLabels}>
                             <Text style={styles.jlptCount}>
-                              {proj.burned}/{proj.total}
+                              {proj.seen}/{proj.total}
                               <Text style={styles.jlptPct}> · {pct}%</Text>
                             </Text>
                             {proj.projectedDate ? (

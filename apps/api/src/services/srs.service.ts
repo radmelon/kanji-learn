@@ -207,7 +207,8 @@ export class SrsService {
       const prevStatus = prevCard.status
       const srsResult = calculateNextReview(prevCard, result.quality)
 
-      if (result.quality >= 3) correctItems++
+      // quality 4 (Good) and 5 (Easy) = confident recall; quality 3 (Hard) = remembered but with difficulty (not counted as "correct" for accuracy display)
+      if (result.quality >= 4) correctItems++
       if (prevStatus === 'unseen' || prevStatus === undefined) newLearned++
       if (srsResult.status === 'burned' && prevStatus !== 'burned') burned++
 

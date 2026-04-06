@@ -3,11 +3,25 @@ import { useEffect, useRef } from 'react'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { Audio } from 'expo-av'
 import { useAuthStore } from '../src/stores/auth.store'
 import { usePushNotifications } from '../src/hooks/usePushNotifications'
 import { useNetworkStatus } from '../src/hooks/useNetworkStatus'
 import { useReviewStore } from '../src/stores/review.store'
 import { colors } from '../src/theme'
+
+// Configure audio session once at startup so TTS plays through silent mode (iOS)
+// and respects Android audio focus. Done here rather than per-button-press to
+// avoid race conditions between setAudioModeAsync and Speech.speak().
+Audio.setAudioModeAsync({
+  allowsRecordingIOS: false,
+  playsInSilentModeIOS: true,
+  staysActiveInBackground: false,
+  shouldDuckAndroid: true,
+  playThroughEarpieceAndroid: false,
+}).catch(() => {
+  // Non-fatal — device will use default audio mode
+})
 
 export default function RootLayout() {
   const { isInitialized, session, initialize } = useAuthStore()

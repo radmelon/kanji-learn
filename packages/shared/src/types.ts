@@ -92,6 +92,7 @@ export interface DailyStats {
 export interface JlptLevelProjection {
   level: string
   total: number       // total kanji in this level
+  seen: number        // learning + reviewing + remembered + burned
   burned: number      // how many user has burned
   remaining: number   // left to burn
   projectedDate: Date | null  // null if burnedPerDay is 0

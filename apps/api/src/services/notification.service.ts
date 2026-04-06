@@ -70,6 +70,7 @@ export class NotificationService {
         pushToken: userProfiles.pushToken,
         timezone: userProfiles.timezone,
         reminderHour: userProfiles.reminderHour,
+        restDay: userProfiles.restDay,
       })
       .from(userProfiles)
       .where(
@@ -83,14 +84,17 @@ export class NotificationService {
         )
       )
 
-    // Filter to only users whose local hour matches their reminderHour
+    // Filter to only users whose local hour matches their reminderHour, skipping rest days
     const utcHour = nowUtc.getUTCHours()
     const eligibleUsers = users.filter((u) => {
       try {
-        const localHour = new Date(nowUtc.toLocaleString('en-US', { timeZone: u.timezone ?? 'UTC' })).getHours()
-        return localHour === (u.reminderHour ?? 20)
+        const localDate = new Date(nowUtc.toLocaleString('en-US', { timeZone: u.timezone ?? 'UTC' }))
+        // Skip if today is the user's designated rest day (0=Sun … 6=Sat)
+        if (u.restDay != null && localDate.getDay() === u.restDay) return false
+        return localDate.getHours() === (u.reminderHour ?? 20)
       } catch {
-        // Invalid timezone — fall back to UTC hour
+        // Invalid timezone — fall back to UTC
+        if (u.restDay != null && nowUtc.getUTCDay() === u.restDay) return false
         return utcHour === (u.reminderHour ?? 20)
       }
     })

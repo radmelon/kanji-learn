@@ -72,15 +72,11 @@ const INFO_ACTIVITY: InfoSection[] = [
 
 const INFO_ACCURACY: InfoSection[] = [
   {
-    body: 'Your overall SRS review accuracy over the last 30 days — the percentage of flashcard answers graded Hard, Good, or Easy out of all answers submitted.',
+    body: 'Your overall SRS review accuracy over the last 30 days — the percentage of flashcard answers graded Good or Easy out of all answers submitted.',
   },
   {
     title: 'How accuracy is graded',
-    body: 'After revealing a card you self-grade using 4 buttons:\n\n• Again — you forgot it; resets the card\'s interval (counts as incorrect)\n• Hard — you remembered with difficulty (counts as correct)\n• Good — solid recall (counts as correct)\n• Easy — effortless recall; boosts the next interval (counts as correct)\n\nOnly pressing Again counts against your accuracy.',
-  },
-  {
-    title: 'Why might accuracy be 100%?',
-    body: 'If you haven\'t pressed Again during your sessions, your accuracy will be 100% — that\'s correct! Hard still counts as a successful recall. Press Again only when you genuinely couldn\'t remember the answer.',
+    body: 'After revealing a card you self-grade using 4 buttons:\n\n• Again — you forgot it; resets the card\'s interval (incorrect)\n• Hard — you remembered with difficulty (incorrect for accuracy; interval still advances)\n• Good — solid recall (correct)\n• Easy — effortless recall; boosts the next interval (correct)\n\nAgain and Hard both count against your accuracy score.',
   },
   {
     title: 'What is a good accuracy?',
@@ -88,7 +84,7 @@ const INFO_ACCURACY: InfoSection[] = [
   },
   {
     title: 'Accuracy vs retention',
-    body: 'A high accuracy today doesn\'t mean permanent retention. The SRS confirms retention by making you recall a kanji again at 1 month, 3 months, 6 months. Only correct answers across all those intervals earns a burn.',
+    body: 'A high accuracy today doesn\'t mean permanent retention. The SRS confirms retention by making you recall a kanji again at 1 month, 3 months, 6 months. Only confident recall (Good/Easy) across all those intervals earns a burn.',
   },
 ]
 
@@ -195,7 +191,7 @@ export default function ProgressScreen() {
   const { user } = useAuthStore()
   const { summary, isLoading, error, refresh } = useAnalytics()
   const { data: quizData } = useQuizAnalytics()
-  const { sessions } = useSessionHistory(30)
+  const { sessions, isLoadingMore, hasMore, loadMore } = useSessionHistory()
   const [period, setPeriod] = useState<Period>('30d')
   const [activeInfo, setActiveInfo] = useState<string | null>(null)
   const toggleInfo = useCallback((id: string) => {
@@ -446,6 +442,23 @@ export default function ProgressScreen() {
                     </View>
                   )
                 })}
+                {hasMore && (
+                  <TouchableOpacity
+                    style={styles.showMoreBtn}
+                    onPress={loadMore}
+                    activeOpacity={0.7}
+                    disabled={isLoadingMore}
+                  >
+                    {isLoadingMore ? (
+                      <ActivityIndicator size="small" color={colors.textMuted} />
+                    ) : (
+                      <>
+                        <Text style={styles.showMoreText}>Load more</Text>
+                        <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
               </Section>
             )}
 
@@ -784,6 +797,12 @@ const styles = StyleSheet.create({
   sessionTime: { ...typography.caption, color: colors.textMuted },
   sessionAccBadge: { borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   sessionAccText: { ...typography.caption, fontWeight: '700' },
+  showMoreBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.xs, paddingVertical: spacing.sm,
+    borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.xs,
+  },
+  showMoreText: { ...typography.caption, color: colors.textMuted },
 
   errorBox: { alignItems: 'center', gap: spacing.md, marginTop: spacing.xxl, padding: spacing.xl },
   errorText: { ...typography.h3, color: colors.textPrimary },

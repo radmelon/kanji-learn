@@ -68,6 +68,7 @@ export default function BrowseScreen() {
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const offsetRef = useRef(0)
   const hasMoreRef = useRef(true)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -82,7 +83,7 @@ export default function BrowseScreen() {
 
   const loadPage = useCallback(async (offset: number, q: string, lvl: JlptLevel | null, st: SrsStatus | null, append: boolean) => {
     if (append) setIsLoadingMore(true)
-    else setIsLoading(true)
+    else { setIsLoading(true); setError(null) }
 
     try {
       const data = await api.get<BrowsePage>(buildUrl(offset, q, lvl, st))
@@ -90,6 +91,8 @@ export default function BrowseScreen() {
       setItems((prev) => append ? [...prev, ...data.items] : data.items)
       offsetRef.current = offset + data.items.length
       hasMoreRef.current = offset + data.items.length < data.total
+    } catch (err: any) {
+      if (!append) setError(err?.message ?? 'Failed to load kanji')
     } finally {
       if (append) setIsLoadingMore(false)
       else setIsLoading(false)
@@ -197,6 +200,17 @@ export default function BrowseScreen() {
       {/* List */}
       {isLoading ? (
         <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: spacing.xxl }} />
+      ) : error ? (
+        <View style={styles.empty}>
+          <Ionicons name="cloud-offline-outline" size={40} color={colors.textMuted} />
+          <Text style={[styles.emptyText, { marginTop: spacing.sm }]}>{error}</Text>
+          <TouchableOpacity
+            style={{ marginTop: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.primary, borderRadius: radius.md }}
+            onPress={() => reload(search, level, status)}
+          >
+            <Text style={{ color: '#fff', fontWeight: '600' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           data={items}

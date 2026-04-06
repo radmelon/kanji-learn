@@ -93,36 +93,40 @@ export class AnalyticsService {
     const prevWeekAvg = Number(prevWeekRow?.avg ?? 0)
     const trend = this.calculateTrend(weeklyAverage, prevWeekAvg)
 
-    // Per-JLPT burned counts
-    const levelBurnedRows = await this.db
+    // Per-JLPT seen counts (all non-unseen statuses), grouped by level
+    const levelSeenRows = await this.db
       .select({
         jlptLevel: kanji.jlptLevel,
-        burned: sql<number>`count(*)::int`,
+        status: userKanjiProgress.status,
+        count: sql<number>`count(*)::int`,
       })
       .from(userKanjiProgress)
       .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
       .where(
         and(
           eq(userKanjiProgress.userId, userId),
-          eq(userKanjiProgress.status, 'burned')
+          sql`${userKanjiProgress.status} != 'unseen'`
         )
       )
-      .groupBy(kanji.jlptLevel)
+      .groupBy(kanji.jlptLevel, userKanjiProgress.status)
 
-    const burnedByLevel = Object.fromEntries(
-      levelBurnedRows.map((r) => [r.jlptLevel, Number(r.burned)])
-    )
+    const seenByLevel: Record<string, { seen: number; burned: number }> = {}
+    for (const row of levelSeenRows) {
+      if (!seenByLevel[row.jlptLevel]) seenByLevel[row.jlptLevel] = { seen: 0, burned: 0 }
+      seenByLevel[row.jlptLevel].seen += Number(row.count)
+      if (row.status === 'burned') seenByLevel[row.jlptLevel].burned += Number(row.count)
+    }
 
     // Build per-level projections (N5 → N1)
     const levelProjections: JlptLevelProjection[] = JLPT_LEVELS.map((level) => {
       const total = JLPT_KANJI_COUNTS[level]
-      const burned = burnedByLevel[level] ?? 0
+      const { seen = 0, burned = 0 } = seenByLevel[level] ?? {}
       const remaining = Math.max(0, total - burned)
       const projectedDate =
         burnedPerDay > 0 && remaining > 0
           ? new Date(now.getTime() + (remaining / burnedPerDay) * 24 * 60 * 60 * 1000)
           : null
-      return { level, total, burned, remaining, projectedDate }
+      return { level, total, seen, burned, remaining, projectedDate }
     })
 
     const nextMilestone = levelProjections.find((lp) => lp.remaining > 0) ?? null
@@ -147,7 +151,8 @@ export class AnalyticsService {
       .select({
         reviewType: reviewLogs.reviewType,
         total: sql<number>`count(*)::int`,
-        correct: sql<number>`count(*) filter (where ${reviewLogs.quality} >= 3)::int`,
+        // quality >= 4 (Good/Easy) = confident recall; Hard (3) counts as reviewed but not "correct"
+        correct: sql<number>`count(*) filter (where ${reviewLogs.quality} >= 4)::int`,
       })
       .from(reviewLogs)
       .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, since)))
@@ -405,7 +410,7 @@ export class AnalyticsService {
 
   // ── Session history ────────────────────────────────────────────────────────
 
-  async getSessionHistory(userId: string, limit = 30) {
+  async getSessionHistory(userId: string, limit = 20, offset = 0) {
     const rows = await this.db
       .select({
         id: reviewSessions.id,
@@ -420,6 +425,7 @@ export class AnalyticsService {
       .where(and(eq(reviewSessions.userId, userId), sql`${reviewSessions.completedAt} is not null`))
       .orderBy(desc(reviewSessions.startedAt))
       .limit(limit)
+      .offset(offset)
 
     return rows.map((r) => ({
       id: r.id,

@@ -26,6 +26,7 @@ interface UserProfile {
   notificationsEnabled: boolean
   timezone: string
   reminderHour: number
+  restDay: number | null  // 0=Sun … 6=Sat, null=no rest day
 }
 
 // ─── Daily goal options ───────────────────────────────────────────────────────
@@ -42,13 +43,14 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
-  const { isOnline } = useNetworkStatus()
+  const { isOnline, check: checkNetwork } = useNetworkStatus()
 
   // Editable fields — local state, saved on blur / toggle
   const [displayName, setDisplayName] = useState('')
   const [dailyGoal, setDailyGoal] = useState(20)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [reminderHour, setReminderHour] = useState(20)
+  const [restDay, setRestDay] = useState<number | null>(null)
 
   // Social
   const { friends, pendingRequests, isSearching, loadAll, searchByEmail, sendRequest, respondToRequest, removeFriend } = useSocial()
@@ -64,6 +66,7 @@ export default function ProfileScreen() {
     setDailyGoal(data.dailyGoal)
     setNotificationsEnabled(data.notificationsEnabled)
     setReminderHour(data.reminderHour ?? 20)
+    setRestDay(data.restDay ?? null)
   }, [])
 
   const loadProfile = useCallback(async () => {
@@ -73,6 +76,9 @@ export default function ProfileScreen() {
     // Show cache immediately
     const cached = await storage.getItem<{ data: UserProfile }>(PROFILE_CACHE_KEY)
     if (cached?.data) applyProfile(cached.data)
+
+    // Re-probe network status so pull-to-refresh clears a stale offline banner
+    checkNetwork()
 
     try {
       const data = await api.get<UserProfile>('/v1/user/profile')
@@ -89,7 +95,7 @@ export default function ProfileScreen() {
     } finally {
       setIsLoading(false)
     }
-  }, [user, applyProfile])
+  }, [user, applyProfile, checkNetwork])
 
   useEffect(() => {
     loadProfile()
@@ -102,6 +108,7 @@ export default function ProfileScreen() {
     dailyGoal: number
     notificationsEnabled: boolean
     reminderHour: number
+    restDay: number | null
   }>) => {
     setIsSaving(true)
     try {
@@ -134,6 +141,11 @@ export default function ProfileScreen() {
   const handleReminderHour = useCallback((hour: number) => {
     setReminderHour(hour)
     save({ reminderHour: hour })
+  }, [save])
+
+  const handleRestDay = useCallback((day: number | null) => {
+    setRestDay(day)
+    save({ restDay: day })
   }, [save])
 
   const handleFriendSearch = useCallback(async () => {
@@ -285,25 +297,47 @@ export default function ProfileScreen() {
             />
           </View>
           {notificationsEnabled && (
-            <View style={styles.reminderTimeRow}>
-              <Ionicons name="time-outline" size={18} color={colors.textMuted} />
-              <Text style={styles.reminderTimeLabel}>Remind me at</Text>
-              <View style={styles.reminderHourPills}>
-                {[17, 18, 19, 20, 21, 22].map((h) => {
-                  const label = h >= 12 ? `${h === 12 ? 12 : h - 12}pm` : `${h}am`
-                  const active = reminderHour === h
-                  return (
-                    <TouchableOpacity
-                      key={h}
-                      style={[styles.reminderPill, active && styles.reminderPillActive]}
-                      onPress={() => handleReminderHour(h)}
-                    >
-                      <Text style={[styles.reminderPillText, active && styles.reminderPillTextActive]}>{label}</Text>
-                    </TouchableOpacity>
-                  )
-                })}
+            <>
+              <View style={styles.reminderTimeRow}>
+                <Ionicons name="time-outline" size={18} color={colors.textMuted} />
+                <Text style={styles.reminderTimeLabel}>Remind me at</Text>
+                <View style={styles.reminderHourPills}>
+                  {[6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22].map((h) => {
+                    const isPm = h >= 12
+                    const display = h === 12 ? '12pm' : h === 0 ? '12am' : isPm ? `${h - 12}pm` : `${h}am`
+                    const active = reminderHour === h
+                    return (
+                      <TouchableOpacity
+                        key={h}
+                        style={[styles.reminderPill, active && styles.reminderPillActive]}
+                        onPress={() => handleReminderHour(h)}
+                      >
+                        <Text style={[styles.reminderPillText, active && styles.reminderPillTextActive]}>{display}</Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
               </View>
-            </View>
+              <View style={styles.reminderTimeRow}>
+                <Ionicons name="cafe-outline" size={18} color={colors.textMuted} />
+                <Text style={styles.reminderTimeLabel}>Rest day</Text>
+                <View style={styles.reminderHourPills}>
+                  {([null, 0, 1, 2, 3, 4, 5, 6] as (number | null)[]).map((d) => {
+                    const label = d == null ? 'None' : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]
+                    const active = restDay === d
+                    return (
+                      <TouchableOpacity
+                        key={d == null ? 'none' : d}
+                        style={[styles.reminderPill, active && styles.reminderPillActive]}
+                        onPress={() => handleRestDay(d)}
+                      >
+                        <Text style={[styles.reminderPillText, active && styles.reminderPillTextActive]}>{label}</Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              </View>
+            </>
           )}
         </Section>
 
