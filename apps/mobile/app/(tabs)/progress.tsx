@@ -72,11 +72,15 @@ const INFO_ACTIVITY: InfoSection[] = [
 
 const INFO_ACCURACY: InfoSection[] = [
   {
-    body: 'Your overall SRS review accuracy over the last 30 days — the percentage of flashcard answers graded 3 or above (Okay, Good, or Easy) out of all answers submitted.',
+    body: 'Your overall SRS review accuracy over the last 30 days — the percentage of flashcard answers graded Hard, Good, or Easy out of all answers submitted.',
   },
   {
     title: 'How accuracy is graded',
-    body: 'After revealing a card you grade yourself: Again (0), Hard (1–2), Okay (3), Good (4), or Easy (5). Grades 3 and above count as correct. Grades below 3 count as incorrect and reset the card\'s interval.',
+    body: 'After revealing a card you self-grade using 4 buttons:\n\n• Again — you forgot it; resets the card\'s interval (counts as incorrect)\n• Hard — you remembered with difficulty (counts as correct)\n• Good — solid recall (counts as correct)\n• Easy — effortless recall; boosts the next interval (counts as correct)\n\nOnly pressing Again counts against your accuracy.',
+  },
+  {
+    title: 'Why might accuracy be 100%?',
+    body: 'If you haven\'t pressed Again during your sessions, your accuracy will be 100% — that\'s correct! Hard still counts as a successful recall. Press Again only when you genuinely couldn\'t remember the answer.',
   },
   {
     title: 'What is a good accuracy?',
