@@ -40,6 +40,11 @@ export default function StudySession() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [nudgeItem, setNudgeItem] = useState<{ kanjiId: number; character: string; meaning: string } | null>(null)
   const cardStartMs = useRef(Date.now())
+  // Guard: ensure handleFinish is only called once per isComplete=true cycle.
+  // Without this, a React-Native batching edge case can cause handleFinish to
+  // fire a second time when setSessionSummary(null) renders before Zustand's
+  // isComplete:false update lands (the "Drill missed" button re-triggers finish).
+  const finishCalledRef = useRef(false)
 
   // ── Swipe-to-grade ─────────────────────────────────────────────────────────
   const SWIPE_THRESHOLD = 80
@@ -122,7 +127,13 @@ export default function StudySession() {
   }, [currentIndex])
 
   useEffect(() => {
-    if (isComplete && queue.length > 0) {
+    if (!isComplete) {
+      // New session started (loadMissedQueue or loadQueue reset isComplete) — arm the guard
+      finishCalledRef.current = false
+      return
+    }
+    if (isComplete && queue.length > 0 && !finishCalledRef.current) {
+      finishCalledRef.current = true
       handleFinish()
     }
   }, [isComplete])
