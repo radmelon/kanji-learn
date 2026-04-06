@@ -1,5 +1,5 @@
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
-import { kanji, userKanjiProgress } from '@kanji-learn/db'
+import { kanji, userKanjiProgress, userProfiles } from '@kanji-learn/db'
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
@@ -141,6 +141,9 @@ export async function applyPlacementResults(
     .where(and(eq(userKanjiProgress.userId, userId), inArray(userKanjiProgress.kanjiId, passedIds)))
 
   const existingMap = new Map(existing.map((r: any) => [r.kanjiId as number, r.status as string]))
+
+  // Ensure the user profile row exists (FK requirement) before inserting progress rows
+  await db.insert(userProfiles).values({ id: userId }).onConflictDoNothing()
 
   const nextReviewAt = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000)
   const toInsert: any[] = []

@@ -16,7 +16,7 @@ const JLPT_LEVELS: JlptLevel[] = ['N5', 'N4', 'N3', 'N2', 'N1']
 export default function PlacementScreen() {
   const router = useRouter()
   const {
-    status, questions, currentQuestionIndex, phase,
+    status, error, questions, currentQuestionIndex, phase,
     stats, passedByLevel, totalApplied,
     startTest, answerMeaning, answerReading, reset, engine,
   } = usePlacementStore()
@@ -136,6 +136,7 @@ export default function PlacementScreen() {
         <View style={styles.centerView}>
           <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
           <Text style={styles.errorText}>Something went wrong</Text>
+          {error ? <Text style={styles.errorDetail}>{error}</Text> : null}
           <TouchableOpacity style={styles.primaryBtn} onPress={startTest}>
             <Text style={styles.primaryBtnText}>Try again</Text>
           </TouchableOpacity>
@@ -261,6 +262,7 @@ const styles = StyleSheet.create({
   centerView: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, padding: spacing.xl },
   loadingText: { ...typography.body, color: colors.textSecondary },
   errorText: { ...typography.h3, color: colors.textPrimary },
+  errorDetail: { ...typography.caption, color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.lg },
 
   // Intro
   introContainer: { flex: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.lg },
