@@ -541,7 +541,17 @@ const periodStyles = StyleSheet.create({
 })
 
 function ActivityChart({ stats, days }: { stats: DailyStats[]; days: number }) {
-  const recent = stats.slice(0, days).reverse()
+  // Build a dense date-keyed map so empty days get zero bars.
+  // The API only stores rows for days with activity, so a plain slice()
+  // always returns the same sparse set regardless of which period is selected.
+  const statsMap = new Map(stats.map((d) => [d.date, d]))
+  const recent: DailyStats[] = []
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const key = d.toISOString().slice(0, 10) // 'YYYY-MM-DD'
+    recent.push(statsMap.get(key) ?? { date: key, reviewed: 0, correct: 0, newLearned: 0, burned: 0, studyTimeMs: 0 })
+  }
   const max = Math.max(...recent.map((d) => d.reviewed), 1)
 
   return (
