@@ -119,4 +119,58 @@ export async function kanjiRoutes(server: FastifyInstance) {
       })
     }
   )
+
+  // GET /v1/kanji/:id  — full detail for one kanji + user SRS progress
+  server.get<{ Params: { id: string } }>(
+    '/:id',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const id = Number(req.params.id)
+      if (!Number.isInteger(id) || id <= 0) {
+        return reply.code(400).send({ ok: false, error: 'Invalid kanji ID', code: 'VALIDATION_ERROR' })
+      }
+
+      const [row] = await server.db
+        .select({
+          id: kanji.id,
+          character: kanji.character,
+          jlptLevel: kanji.jlptLevel,
+          strokeCount: kanji.strokeCount,
+          meanings: kanji.meanings,
+          kunReadings: kanji.kunReadings,
+          onReadings: kanji.onReadings,
+          exampleVocab: kanji.exampleVocab,
+          radicals: kanji.radicals,
+          svgPath: kanji.svgPath,
+          srsStatus: userKanjiProgress.status,
+          srsInterval: userKanjiProgress.interval,
+          srsRepetitions: userKanjiProgress.repetitions,
+          srsNextReviewAt: userKanjiProgress.nextReviewAt,
+          srsLastReviewedAt: userKanjiProgress.lastReviewedAt,
+          srsEaseFactor: userKanjiProgress.easeFactor,
+          srsReadingStage: userKanjiProgress.readingStage,
+        })
+        .from(kanji)
+        .leftJoin(
+          userKanjiProgress,
+          and(
+            eq(userKanjiProgress.kanjiId, kanji.id),
+            eq(userKanjiProgress.userId, req.userId!)
+          )
+        )
+        .where(eq(kanji.id, id))
+
+      if (!row) {
+        return reply.code(404).send({ ok: false, error: 'Kanji not found', code: 'NOT_FOUND' })
+      }
+
+      return reply.send({
+        ok: true,
+        data: {
+          ...row,
+          srsStatus: row.srsStatus ?? 'unseen',
+        },
+      })
+    }
+  )
 }

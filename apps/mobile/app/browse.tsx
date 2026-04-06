@@ -204,7 +204,7 @@ export default function BrowseScreen() {
           numColumns={2}
           contentContainerStyle={styles.listContent}
           columnWrapperStyle={styles.columnWrap}
-          renderItem={({ item }) => <KanjiCard item={item} />}
+          renderItem={({ item }) => <KanjiCard item={item} onPress={() => router.push(`/kanji/${item.id}`)} />}
           onEndReached={onEndReached}
           onEndReachedThreshold={0.3}
           ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary} style={{ padding: spacing.md }} /> : null}
@@ -221,18 +221,18 @@ export default function BrowseScreen() {
 
 // ─── KanjiCard ────────────────────────────────────────────────────────────────
 
-function KanjiCard({ item }: { item: KanjiBrowseItem }) {
+function KanjiCard({ item, onPress }: { item: KanjiBrowseItem; onPress: () => void }) {
   const statusColor = STATUS_COLORS[item.srsStatus]
   const meaning = item.meanings[0] ?? ''
 
   return (
-    <View style={cardStyles.container}>
+    <TouchableOpacity style={cardStyles.container} onPress={onPress} activeOpacity={0.7}>
       <View style={cardStyles.top}>
         <Text style={cardStyles.character}>{item.character}</Text>
         <View style={[cardStyles.statusDot, { backgroundColor: statusColor }]} />
       </View>
       <Text style={cardStyles.meaning} numberOfLines={1}>{meaning}</Text>
-    </View>
+    </TouchableOpacity>
   )
 }
 
