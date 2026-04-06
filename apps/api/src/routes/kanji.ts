@@ -142,6 +142,14 @@ export async function kanjiRoutes(server: FastifyInstance) {
           exampleVocab: kanji.exampleVocab,
           radicals: kanji.radicals,
           svgPath: kanji.svgPath,
+          // Cross-reference codes
+          jisCode: kanji.jisCode,
+          nelsonClassic: kanji.nelsonClassic,
+          nelsonNew: kanji.nelsonNew,
+          morohashiIndex: kanji.morohashiIndex,
+          morohashiVolume: kanji.morohashiVolume,
+          morohashiPage: kanji.morohashiPage,
+          // SRS progress
           srsStatus: userKanjiProgress.status,
           srsInterval: userKanjiProgress.interval,
           srsRepetitions: userKanjiProgress.repetitions,

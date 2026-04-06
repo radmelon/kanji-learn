@@ -601,20 +601,28 @@ const chartStyles = StyleSheet.create({
   legend: { flexDirection: 'row', gap: spacing.md },
 })
 
-function JlptGrid({ jlptProgress }: { jlptProgress: Record<string, number> }) {
+interface JlptBreakdown { learning: number; reviewing: number; remembered: number; burned: number }
+
+function JlptGrid({ jlptProgress }: { jlptProgress: Record<string, JlptBreakdown | number> }) {
   return (
     <View style={jlptStyles.grid}>
       {JLPT_LEVELS.map((level) => {
         const levelTotal = JLPT_KANJI_COUNTS[level]
-        const seen = jlptProgress[level] ?? 0
-        const pct = Math.min((seen / levelTotal) * 100, 100)
+        const raw = jlptProgress[level]
+        const bd: JlptBreakdown = typeof raw === 'number'
+          ? { learning: 0, reviewing: 0, remembered: 0, burned: raw }
+          : raw ?? { learning: 0, reviewing: 0, remembered: 0, burned: 0 }
+        const total = bd.learning + bd.reviewing + bd.remembered + bd.burned
         return (
           <View key={level} style={jlptStyles.row}>
             <Text style={jlptStyles.level}>{level}</Text>
             <View style={jlptStyles.track}>
-              <View style={[jlptStyles.fill, { width: `${pct}%` }]} />
+              {bd.learning > 0 && <View style={[jlptStyles.seg, { width: `${(bd.learning / levelTotal) * 100}%`, backgroundColor: colors.learning }]} />}
+              {bd.reviewing > 0 && <View style={[jlptStyles.seg, { width: `${(bd.reviewing / levelTotal) * 100}%`, backgroundColor: colors.reviewing }]} />}
+              {bd.remembered > 0 && <View style={[jlptStyles.seg, { width: `${(bd.remembered / levelTotal) * 100}%`, backgroundColor: colors.remembered }]} />}
+              {bd.burned > 0 && <View style={[jlptStyles.seg, { width: `${(bd.burned / levelTotal) * 100}%`, backgroundColor: colors.burned }]} />}
             </View>
-            <Text style={jlptStyles.count}>{seen}/{levelTotal}</Text>
+            <Text style={jlptStyles.count}>{total}/{levelTotal}</Text>
           </View>
         )
       })}
@@ -626,8 +634,8 @@ const jlptStyles = StyleSheet.create({
   grid: { gap: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   level: { ...typography.caption, color: colors.textMuted, width: 24, fontWeight: '700' },
-  track: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
-  fill: { height: '100%', backgroundColor: colors.burned, borderRadius: radius.full },
+  track: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden', flexDirection: 'row' },
+  seg: { height: '100%' },
   count: { ...typography.caption, color: colors.textMuted, width: 64, textAlign: 'right' },
 })
 

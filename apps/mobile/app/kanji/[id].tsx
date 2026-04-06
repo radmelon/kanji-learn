@@ -29,6 +29,14 @@ interface KanjiDetail {
   exampleVocab: VocabExample[]
   radicals: string[]
   svgPath: string | null
+  // Cross-reference codes
+  jisCode: string | null
+  nelsonClassic: number | null
+  nelsonNew: number | null
+  morohashiIndex: number | null
+  morohashiVolume: number | null
+  morohashiPage: number | null
+  // SRS progress
   srsStatus: SrsStatus
   srsInterval: number | null
   srsRepetitions: number | null
@@ -241,11 +249,51 @@ export default function KanjiDetail() {
               </View>
             </Card>
           )}
+
+          {/* Cross-references */}
+          {(kanji.nelsonClassic != null || kanji.nelsonNew != null || kanji.morohashiIndex != null || kanji.jisCode != null) && (
+            <Card title="References">
+              {kanji.jisCode != null && <RefRow label="JIS Code" value={kanji.jisCode} />}
+              {kanji.nelsonClassic != null && <RefRow label="Nelson Classic" value={`#${kanji.nelsonClassic}`} />}
+              {kanji.nelsonNew != null && <RefRow label="New Nelson" value={`#${kanji.nelsonNew}`} />}
+              {kanji.morohashiIndex != null && (
+                <RefRow
+                  label="Morohashi (大漢和)"
+                  value={
+                    kanji.morohashiVolume != null && kanji.morohashiPage != null
+                      ? `${kanji.morohashiIndex} (vol. ${kanji.morohashiVolume}, p. ${kanji.morohashiPage})`
+                      : `${kanji.morohashiIndex}`
+                  }
+                />
+              )}
+              <Text style={styles.refCredit}>
+                Nelson: Andrew Nelson (Classic 1962); Jack Halpern ed. (New Nelson, 1997).{'\n'}
+                Morohashi: Tetsuji Morohashi, 大漢和辞典 (1955–1960). Source: KANJIDIC2 (CC BY-SA 4.0).
+              </Text>
+            </Card>
+          )}
         </ScrollView>
       ) : null}
     </SafeAreaView>
   )
 }
+
+// ─── RefRow sub-component ────────────────────────────────────────────────────
+
+function RefRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={refRowStyles.row}>
+      <Text style={refRowStyles.label}>{label}</Text>
+      <Text style={refRowStyles.value}>{value}</Text>
+    </View>
+  )
+}
+
+const refRowStyles = StyleSheet.create({
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
+  label: { ...typography.bodySmall, color: colors.textMuted },
+  value: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
+})
 
 // ─── Card sub-component ────────────────────────────────────────────────────────
 
@@ -365,4 +413,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   radicalText: { ...typography.h3, color: colors.textPrimary },
+
+  // References
+  refCredit: {
+    ...typography.caption, color: colors.textMuted, fontStyle: 'italic',
+    lineHeight: 16, marginTop: spacing.xs,
+    borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.xs,
+  },
 })

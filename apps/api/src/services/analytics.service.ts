@@ -291,18 +291,34 @@ export class AnalyticsService {
 
   // ── Per-JLPT-level seen counts ─────────────────────────────────────────────
 
-  async getJlptProgress(userId: string): Promise<Record<string, number>> {
+  async getJlptProgress(userId: string): Promise<Record<string, { learning: number; reviewing: number; remembered: number; burned: number }>> {
     const rows = await this.db
       .select({
         jlptLevel: kanji.jlptLevel,
+        status: userKanjiProgress.status,
         count: sql<number>`count(*)::int`,
       })
       .from(userKanjiProgress)
       .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
-      .where(eq(userKanjiProgress.userId, userId))
-      .groupBy(kanji.jlptLevel)
+      .where(
+        and(
+          eq(userKanjiProgress.userId, userId),
+          sql`${userKanjiProgress.status} != 'unseen'`
+        )
+      )
+      .groupBy(kanji.jlptLevel, userKanjiProgress.status)
 
-    return Object.fromEntries(rows.map((r) => [r.jlptLevel, Number(r.count)]))
+    const result: Record<string, { learning: number; reviewing: number; remembered: number; burned: number }> = {}
+    for (const row of rows) {
+      if (!result[row.jlptLevel]) {
+        result[row.jlptLevel] = { learning: 0, reviewing: 0, remembered: 0, burned: 0 }
+      }
+      const st = row.status as keyof typeof result[string]
+      if (st in result[row.jlptLevel]) {
+        result[row.jlptLevel][st] = Number(row.count)
+      }
+    }
+    return result
   }
 
   // ── Streak: consecutive days with at least 1 review ────────────────────────
