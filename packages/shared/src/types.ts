@@ -162,3 +162,20 @@ export interface TestResultSummary {
   scorePct: number
   passed: boolean
 }
+
+// ─── Placement Test ───────────────────────────────────────────────────────────
+
+export interface PlacementQuestionData {
+  kanjiId: number
+  character: string
+  jlptLevel: JlptLevel
+  meaningOptions: string[]
+  correctMeaningIndex: number
+  readingOptions: string[]
+  correctReadingIndex: number
+}
+
+export interface PlacementResult {
+  kanjiId: number
+  passed: boolean
+}

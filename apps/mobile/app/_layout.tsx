@@ -57,6 +57,7 @@ export default function RootLayout() {
         <Stack.Screen name="kanji/[id]" />
         <Stack.Screen name="browse" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="about" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="placement" options={{ headerShown: false }} />
       </Stack>
     </GestureHandlerRootView>
   )

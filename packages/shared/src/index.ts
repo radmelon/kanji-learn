@@ -2,3 +2,4 @@
 export * from './types'
 export * from './constants'
 export * from './srs'
+export * from './placement'

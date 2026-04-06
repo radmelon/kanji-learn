@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, Alert,
 } from 'react-native'
-import { Link } from 'expo-router'
+import { Link, useRouter } from 'expo-router'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
@@ -12,6 +12,7 @@ export default function SignUp() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const { signUp, isLoading } = useAuthStore()
+  const router = useRouter()
 
   const handleSignUp = async () => {
     if (!displayName || !email || !password) {
@@ -24,6 +25,7 @@ export default function SignUp() {
     }
     try {
       await signUp(email.trim().toLowerCase(), password, displayName.trim())
+      router.replace('/placement')
     } catch (err: any) {
       Alert.alert('Sign up failed', err.message ?? 'Please try again')
     }

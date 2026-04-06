@@ -12,6 +12,7 @@ import { analyticsRoutes } from './routes/analytics.js'
 import { userRoutes } from './routes/user.js'
 import { interventionRoutes } from './routes/interventions.js'
 import { kanjiRoutes } from './routes/kanji.js'
+import { placementRoutes } from './routes/placement.js'
 import { testRoutes } from './routes/test.js'
 import { socialRoutes } from './routes/social.js'
 import { internalRoutes } from './routes/internal.js'
@@ -71,6 +72,7 @@ export async function buildServer() {
   await server.register(analyticsRoutes, { prefix: '/v1/analytics' })
   await server.register(interventionRoutes, { prefix: '/v1' })
   await server.register(kanjiRoutes, { prefix: '/v1/kanji' })
+  await server.register(placementRoutes, { prefix: '/v1/placement' })
   await server.register(testRoutes, { prefix: '/v1/tests' })
   await server.register(socialRoutes, { prefix: '/v1/social' })
   await server.register(internalRoutes, { prefix: '/internal' })

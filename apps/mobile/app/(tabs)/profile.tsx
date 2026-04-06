@@ -311,6 +311,20 @@ export default function ProfileScreen() {
         <Section title="App">
           <TouchableOpacity
             style={styles.row}
+            onPress={() => router.push('/placement' as never)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="trophy-outline" size={20} color={colors.textSecondary} />
+              <View>
+                <Text style={styles.rowLabel}>Placement Test</Text>
+                <Text style={styles.rowSub}>Identify kanji you already know</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.row}
             onPress={() => router.push('/about' as never)}
             activeOpacity={0.7}
           >
