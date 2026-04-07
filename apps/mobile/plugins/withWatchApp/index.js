@@ -312,7 +312,6 @@ function withWatchXcodeTarget(config) {
 
     const commonSettings = {
       ALWAYS_SEARCH_USER_PATHS: 'NO',
-      ASSETCATALOG_COMPILER_APPICON_NAME: 'AppIcon',
       CODE_SIGN_IDENTITY: hasProfile ? '"Apple Distribution"' : '"Apple Development"',
       CODE_SIGN_STYLE: codeSignStyle,
       CURRENT_PROJECT_VERSION: '1',
@@ -326,7 +325,11 @@ function withWatchXcodeTarget(config) {
       PROVISIONING_PROFILE: profileUUID ? `"${profileUUID}"` : '""',
       PROVISIONING_PROFILE_SPECIFIER: profileUUID ? `"${profileUUID}"` : hasProfile ? `"${WATCH_PROFILE_NAME}"` : '""',
       SDKROOT: 'watchos',
-      SKIP_INSTALL: 'NO',
+      // SKIP_INSTALL must be YES for embedded Watch apps — the Watch .app is
+      // copied into the iPhone .app via the "Embed Watch Apps" build phase.
+      // Setting NO causes Xcode to also place it at the archive root, which
+      // conflicts with the iPhone app and breaks the Fastlane export step.
+      SKIP_INSTALL: 'YES',
       SWIFT_VERSION: SWIFT_VERSION,
       TARGETED_DEVICE_FAMILY: '"4"',
       WATCHOS_DEPLOYMENT_TARGET: WATCHOS_DEPLOY,
