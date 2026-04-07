@@ -26,7 +26,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     // ── Connection warning ────────────────────────────────────
-                    if !AuthService.shared.isAuthenticated {
+                    if !watchSession.isAuthenticated {
                         NotAuthenticatedBanner()
                     }
 
@@ -47,7 +47,7 @@ struct HomeView: View {
 
                     // ── Primary action ────────────────────────────────────────
                     let dueCount = status?.dueCount ?? 0
-                    let canStudy = dueCount > 0 && AuthService.shared.isAuthenticated
+                    let canStudy = dueCount > 0 && watchSession.isAuthenticated
 
                     Button {
                         viewModel.startSession()
@@ -117,7 +117,7 @@ struct HomeView: View {
     // ── Refresh status from API ────────────────────────────────────────────────
 
     private func refreshStatus() async {
-        guard AuthService.shared.isAuthenticated else {
+        guard watchSession.isAuthenticated else {
             isLoadingStatus = false
             return
         }

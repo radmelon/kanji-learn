@@ -18,6 +18,7 @@ final class WatchSessionManager: NSObject, ObservableObject {
     @Published var isPaired: Bool = false
     @Published var isWatchAppInstalled: Bool = false  // always true on Watch side
     @Published var connectionStatus: ConnectionStatus = .unknown
+    @Published var isAuthenticated: Bool = false
 
     enum ConnectionStatus {
         case unknown
@@ -47,6 +48,8 @@ final class WatchSessionManager: NSObject, ObservableObject {
         s.delegate = self
         s.activate()
         session = s
+        // Reflect any tokens already stored from a previous session
+        isAuthenticated = AuthService.shared.isAuthenticated
     }
 
     // ── Send message to iPhone (e.g. request token refresh) ──────────────────
@@ -118,6 +121,9 @@ extension WatchSessionManager: WCSessionDelegate {
             UserDefaults.standard.removeObject(forKey: "kl_rest_day")
         }
 
+        DispatchQueue.main.async {
+            self.isAuthenticated = true
+        }
         print("[WatchSessionManager] Auth tokens and settings received from iPhone")
     }
 
