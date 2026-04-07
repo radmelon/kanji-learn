@@ -54,6 +54,19 @@ struct ReviewStatus: Codable {
     let remembered: Int
     let burned: Int
     let dueCount: Int
+    let todayReviewed: Int?   // injected by Watch from daily_stats if available
+}
+
+// Friend activity (for delay encouragement mate comparison)
+struct FriendActivity: Codable {
+    let userId: String
+    let displayName: String?
+    let todayReviewed: Int
+}
+
+struct FriendsActivityResponse: Codable {
+    let ok: Bool
+    let data: [FriendActivity]
 }
 
 struct StatusResponse: Codable {

@@ -83,4 +83,16 @@ export async function socialRoutes(server: FastifyInstance) {
       return reply.send({ ok: true, data })
     }
   )
+
+  // GET /v1/social/friends/activity
+  // Lightweight endpoint for Watch delay picker: returns today's review count
+  // for each friend so the Watch can show competitive encouragement context.
+  server.get(
+    '/friends/activity',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const data = await service.getFriendsActivity(req.userId!)
+      return reply.send({ ok: true, data })
+    }
+  )
 }

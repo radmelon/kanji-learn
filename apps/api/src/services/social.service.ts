@@ -224,6 +224,30 @@ export class SocialService {
 
     return entries.sort((a, b) => b.streak - a.streak || b.totalReviewed - a.totalReviewed)
   }
+
+  // ── Friends activity (Watch: delay picker encouragement) ───────────────────
+  // Returns today's review count per friend — lightweight, no streak computation.
+
+  async getFriendsActivity(userId: string): Promise<{ userId: string; displayName: string | null; todayReviewed: number }[]> {
+    const friends = await this.getFriends(userId)
+    if (friends.length === 0) return []
+
+    const today = new Date().toISOString().slice(0, 10)
+    const friendIds = friends.map((f) => f.id)
+
+    const rows = await this.db
+      .select({ userId: dailyStats.userId, reviewed: dailyStats.reviewed })
+      .from(dailyStats)
+      .where(and(inArray(dailyStats.userId, friendIds), eq(dailyStats.date, today)))
+
+    const reviewedMap = Object.fromEntries(rows.map((r) => [r.userId, r.reviewed]))
+
+    return friends.map((f) => ({
+      userId: f.id,
+      displayName: f.displayName,
+      todayReviewed: reviewedMap[f.id] ?? 0,
+    }))
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

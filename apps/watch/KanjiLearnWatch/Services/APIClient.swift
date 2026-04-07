@@ -170,4 +170,11 @@ final class APIClient {
         let response: WeeklySummaryResponse = try await get("/v1/analytics/weekly-summary")
         return response.data
     }
+
+    /// Fetch friends' activity for delay picker encouragement.
+    /// Returns today's review count per friend — used to show competitive context.
+    func fetchFriendsActivity() async throws -> [FriendActivity] {
+        let response: FriendsActivityResponse = try await get("/v1/social/friends/activity")
+        return response.data
+    }
 }
