@@ -18,16 +18,19 @@
 
 const { withDangerousMod, withXcodeProject } = require('expo/config-plugins')
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const WATCH_TARGET     = 'KanjiLearnWatch'
-const WATCH_BUNDLE_ID  = 'com.rdennis.kanjilearn2.watchkitapp'
-const WATCHOS_DEPLOY   = '10.0'
-const TEAM_ID          = 'JN43UP9MQL'
-const SWIFT_VERSION    = '5.9'
+const WATCH_TARGET        = 'KanjiLearnWatch'
+const WATCH_BUNDLE_ID     = 'com.rdennis.kanjilearn2.watchkitapp'
+const WATCHOS_DEPLOY      = '10.0'
+const TEAM_ID             = 'JN43UP9MQL'
+const SWIFT_VERSION       = '5.9'
+// Must match the profile name used when creating it on developer.apple.com
+const WATCH_PROFILE_NAME  = 'Kanji Learn Watch Distribution'
 
 // pbxproj-style UUID: 24 uppercase hex characters
 const uid = () => crypto.randomBytes(12).toString('hex').toUpperCase()
@@ -55,6 +58,26 @@ function withWatchFiles(config) {
 
       copyDirSync(watchSrc, watchDst)
       console.log(`[withWatchApp] Copied Watch sources → ${watchDst}`)
+
+      // ── Install Watch provisioning profile (EAS builds only) ──────────────
+      // The WATCH_MOBILEPROVISION_B64 secret is set via `eas env:create`.
+      // It contains the base64-encoded App Store distribution .mobileprovision
+      // for com.rdennis.kanjilearn2.watchkitapp. Without it, Xcode can't sign
+      // the Watch target during the EAS build (automatic signing is disabled).
+      const profileB64 = process.env.WATCH_MOBILEPROVISION_B64
+      if (profileB64) {
+        const profileContent = Buffer.from(profileB64, 'base64')
+        const profilesDir = path.join(
+          os.homedir(), 'Library', 'MobileDevice', 'Provisioning Profiles'
+        )
+        fs.mkdirSync(profilesDir, { recursive: true })
+        const profileDst = path.join(profilesDir, 'kanji-learn-watch.mobileprovision')
+        fs.writeFileSync(profileDst, profileContent)
+        console.log(`[withWatchApp] Installed Watch provisioning profile → ${profileDst}`)
+      } else {
+        console.log('[withWatchApp] WATCH_MOBILEPROVISION_B64 not set — Watch target will use automatic signing (local dev only)')
+      }
+
       return config
     },
   ])
@@ -254,10 +277,16 @@ function withWatchXcodeTarget(config) {
     objects['PBXResourcesBuildPhase'][`${resourcesBuildPhaseUuid}_comment`] = 'Resources'
 
     // ── Build Configurations for Watch target ─────────────────────────────────
+    // Use manual signing when the profile secret is available (EAS builds),
+    // automatic signing otherwise (local development with Xcode).
+    const hasProfile = !!process.env.WATCH_MOBILEPROVISION_B64
+    const codeSignStyle = hasProfile ? 'Manual' : 'Automatic'
+
     const commonSettings = {
       ALWAYS_SEARCH_USER_PATHS: 'NO',
       ASSETCATALOG_COMPILER_APPICON_NAME: 'AppIcon',
-      CODE_SIGN_STYLE: 'Automatic',
+      CODE_SIGN_IDENTITY: hasProfile ? '"Apple Distribution"' : '"Apple Development"',
+      CODE_SIGN_STYLE: codeSignStyle,
       CURRENT_PROJECT_VERSION: '1',
       DEVELOPMENT_TEAM: TEAM_ID,
       ENABLE_USER_SCRIPT_SANDBOXING: 'NO',
@@ -265,6 +294,7 @@ function withWatchXcodeTarget(config) {
       MARKETING_VERSION: '1.0',
       PRODUCT_BUNDLE_IDENTIFIER: `"${WATCH_BUNDLE_ID}"`,
       PRODUCT_NAME: '"$(TARGET_NAME)"',
+      PROVISIONING_PROFILE_SPECIFIER: hasProfile ? `"${WATCH_PROFILE_NAME}"` : '""',
       SDKROOT: 'watchos',
       SKIP_INSTALL: 'NO',
       SWIFT_VERSION: SWIFT_VERSION,
