@@ -425,6 +425,16 @@ export class SrsService {
       .where(eq(userKanjiProgress.userId, userId))
       .groupBy(userKanjiProgress.status)
 
+    const [dueRow] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(userKanjiProgress)
+      .where(
+        and(
+          eq(userKanjiProgress.userId, userId),
+          lte(userKanjiProgress.nextReviewAt, new Date()),
+        )
+      )
+
     return {
       unseen: 0,
       learning: 0,
@@ -432,6 +442,7 @@ export class SrsService {
       remembered: 0,
       burned: 0,
       ...Object.fromEntries(rows.map((r) => [r.status, r.count])),
+      dueCount: dueRow?.count ?? 0,
     }
   }
 }
