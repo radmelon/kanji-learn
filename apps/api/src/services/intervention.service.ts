@@ -1,4 +1,4 @@
-import { and, eq, isNull, desc } from 'drizzle-orm'
+import { and, eq, gt, isNull, desc } from 'drizzle-orm'
 import { interventions, userProfiles, dailyStats } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import { AnalyticsService } from './analytics.service.js'
@@ -151,7 +151,7 @@ export class InterventionService {
     const [latest] = await this.db
       .select({ date: dailyStats.date })
       .from(dailyStats)
-      .where(and(eq(dailyStats.userId, userId), /* reviewed > 0 */ eq(dailyStats.reviewed, 0).not() as any))
+      .where(and(eq(dailyStats.userId, userId), gt(dailyStats.reviewed, 0)))
       .orderBy(desc(dailyStats.date))
       .limit(1)
 

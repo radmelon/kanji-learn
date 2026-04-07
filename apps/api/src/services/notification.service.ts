@@ -1,6 +1,6 @@
 import { Expo, type ExpoPushMessage } from 'expo-server-sdk'
 import { and, eq, gte, isNotNull, sql } from 'drizzle-orm'
-import { userProfiles, dailyStats, type InferSelectModel } from '@kanji-learn/db'
+import { userProfiles, dailyStats } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 
 const expo = new Expo()

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { sql } from 'drizzle-orm'
 
 export async function healthRoutes(server: FastifyInstance) {
   server.get('/health', async (_req, reply) => {
@@ -7,7 +8,7 @@ export async function healthRoutes(server: FastifyInstance) {
 
   server.get('/health/db', { preHandler: [server.authenticate] }, async (_req, reply) => {
     try {
-      await server.db.execute('SELECT 1')
+      await server.db.execute(sql`SELECT 1`)
       return reply.send({ ok: true, status: 'connected' })
     } catch {
       return reply.code(503).send({ ok: false, status: 'disconnected' })

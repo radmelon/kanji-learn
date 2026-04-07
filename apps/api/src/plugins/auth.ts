@@ -19,14 +19,14 @@ export const authPlugin = fp(async (server: FastifyInstance) => {
   const resp = await fetch(jwksUrl)
   if (!resp.ok) throw new Error(`Failed to fetch JWKS from ${jwksUrl}: ${resp.status}`)
 
-  const { keys } = (await resp.json()) as { keys: JsonWebKey[] }
+  const { keys } = (await resp.json()) as { keys: import('node:crypto').JsonWebKey[] }
   if (!keys?.length) throw new Error('No keys in Supabase JWKS response')
 
   // Convert the first JWK to PEM so @fastify/jwt can use it
   const cryptoKey = createPublicKey({ key: keys[0], format: 'jwk' })
   const publicKeyPem = cryptoKey.export({ type: 'spki', format: 'pem' }) as string
 
-  server.log.info({ kid: (keys[0] as { kid?: string }).kid, alg: keys[0].alg }, 'Loaded Supabase public key')
+  server.log.info({ kid: keys[0].kid, alg: keys[0].alg }, 'Loaded Supabase public key')
 
   await server.register(jwt, {
     secret: {

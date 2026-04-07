@@ -109,7 +109,7 @@ export async function getQuestionsWithDistractors(db: any, kanjiIds: number[]) {
       const dedupedReadings = [...new Set(rDistractors)].slice(0, 3)
       while (dedupedReadings.length < 3) dedupedReadings.push(`—`)
 
-      shuffledReadings = shuffle([correctReading, ...dedupedReadings])
+      shuffledReadings = shuffle([correctReading, ...dedupedReadings]) as string[]
       correctReadingIndex = shuffledReadings.indexOf(correctReading)
     }
 

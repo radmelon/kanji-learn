@@ -29,7 +29,7 @@ export async function internalRoutes(fastify: FastifyInstance): Promise<void> {
       fastify.log.info('[Internal] Daily reminders sent successfully')
       return reply.send({ ok: true })
     } catch (err) {
-      fastify.log.error('[Internal] Daily reminders failed: %o', err)
+      fastify.log.error({ err }, '[Internal] Daily reminders failed')
       return reply.code(500).send({ error: 'Job failed' })
     }
   })
