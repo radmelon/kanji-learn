@@ -425,6 +425,7 @@ export class SrsService {
       .where(eq(userKanjiProgress.userId, userId))
       .groupBy(userKanjiProgress.status)
 
+    // Cards with nextReviewAt <= now (due for review)
     const [dueRow] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(userKanjiProgress)
@@ -435,6 +436,19 @@ export class SrsService {
         )
       )
 
+    // Unseen kanji not yet in user_kanji_progress (available as new cards)
+    const [unseenRow] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(kanji)
+      .where(
+        sql`${kanji.id} NOT IN (
+          SELECT kanji_id FROM user_kanji_progress WHERE user_id = ${userId}
+        )`
+      )
+
+    const dueCards = dueRow?.count ?? 0
+    const availableNew = unseenRow?.count ?? 0
+
     return {
       unseen: 0,
       learning: 0,
@@ -442,7 +456,7 @@ export class SrsService {
       remembered: 0,
       burned: 0,
       ...Object.fromEntries(rows.map((r) => [r.status, r.count])),
-      due_count: dueRow?.count ?? 0,
+      due_count: dueCards + availableNew,
     }
   }
 }
