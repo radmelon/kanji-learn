@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { SrsService } from '../services/srs.service.js'
 import { InterventionService } from '../services/intervention.service.js'
 import { AnalyticsService } from '../services/analytics.service.js'
+import { NotificationService } from '../services/notification.service.js'
 import { evaluateReading } from '../services/reading-eval.service.js'
 import { voiceAttempts, writingAttempts } from '@kanji-learn/db'
 
@@ -25,6 +26,7 @@ export async function reviewRoutes(server: FastifyInstance) {
   const srs = new SrsService(server.db)
   const interventions = new InterventionService(server.db)
   const analytics = new AnalyticsService(server.db)
+  const notifications = new NotificationService(server.db)
 
   // GET /v1/review/queue?limit=20
   server.get<{ Querystring: { limit?: string } }>(
@@ -79,6 +81,8 @@ export async function reviewRoutes(server: FastifyInstance) {
       }).catch((err) => server.log.error({ err }, 'upsertDailyStats failed'))
       void interventions.resolveAbsenceOnActivity(req.userId!)
       void interventions.runChecks(req.userId!)
+      // Notify friends that this user completed a session (fire-and-forget)
+      void notifications.notifyStudyMates(req.userId!, summary.totalItems)
 
       return reply.code(201).send({ ok: true, data: summary })
     }

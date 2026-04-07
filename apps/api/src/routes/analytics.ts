@@ -33,6 +33,12 @@ export async function analyticsRoutes(server: FastifyInstance) {
     return reply.send({ ok: true, data: { streakDays } })
   })
 
+  // GET /v1/analytics/weekly-summary — used by Watch rest-day message and WeeklySummaryView
+  server.get('/weekly-summary', { preHandler: [server.authenticate] }, async (req, reply) => {
+    const summary = await analytics.getWeeklySummary(req.userId!)
+    return reply.send({ ok: true, data: summary })
+  })
+
   // GET /v1/analytics/sessions?limit=20&offset=0
   server.get<{ Querystring: { limit?: string; offset?: string } }>(
     '/sessions',

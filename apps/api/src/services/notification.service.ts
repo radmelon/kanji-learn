@@ -1,7 +1,12 @@
 import { Expo, type ExpoPushMessage } from 'expo-server-sdk'
-import { and, eq, gte, isNotNull, sql } from 'drizzle-orm'
-import { userProfiles, dailyStats } from '@kanji-learn/db'
+import { and, eq, gte, isNotNull, or, sql } from 'drizzle-orm'
+import { userProfiles, dailyStats, friendships } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
+
+// Module-level frequency cap for study-mate alerts.
+// Key: "${submitterId}:${recipientId}" → last-sent timestamp (ms).
+// Lives for process lifetime; restarts reset it (acceptable for a 24-hour cap).
+const mateNotifyCache = new Map<string, number>()
 
 const expo = new Expo()
 
@@ -38,6 +43,25 @@ function buildMessage(streakDays: number, dueCount: number): { title: string; bo
       ? `${dueCount} kanji are ready — pick up where you left off!`
       : 'Come back and keep building your vocabulary.',
   }
+}
+
+function buildRestDayMessage(stats: { reviewed: number; burned: number; streakDays: number }): { title: string; body: string } {
+  const { reviewed, burned, streakDays } = stats
+
+  let title = '🎉 Rest day — you earned it!'
+  let body: string
+
+  if (streakDays >= 7) {
+    body = `${streakDays}-day streak! This week: ${reviewed} kanji reviewed${burned > 0 ? `, ${burned} burned 🔥` : ''}. Tomorrow brings fresh cards.`
+  } else if (burned > 0) {
+    body = `You burned ${burned} kanji this week — locked in! Enjoy the rest day. Study on your Watch anytime.`
+  } else if (reviewed >= 30) {
+    body = `${reviewed} kanji reviewed this week — solid consistency! Take a break; tomorrow your cards will be ready.`
+  } else {
+    body = `Great effort this week. Rest days recharge your memory. Your Watch is always ready when you are!`
+  }
+
+  return { title, body }
 }
 
 // ─── Notification Service ─────────────────────────────────────────────────────
@@ -119,6 +143,112 @@ export class NotificationService {
     }
   }
 
+  // Notify a user's friends when they complete a study session.
+  // Called fire-and-forget from the POST /v1/review/submit route.
+  // Respects: notificationsEnabled, pushToken validity, 24-hour frequency cap.
+  async notifyStudyMates(submitterId: string, reviewedCount: number): Promise<void> {
+    // Get submitter's display name for the notification copy
+    const submitter = await this.db.query.userProfiles.findFirst({
+      where: eq(userProfiles.id, submitterId),
+      columns: { displayName: true },
+    })
+    const name = submitter?.displayName ?? 'Your study mate'
+
+    // Find all accepted friends (bidirectional)
+    const rows = await this.db.query.friendships.findMany({
+      where: and(
+        or(
+          eq(friendships.requesterId, submitterId),
+          eq(friendships.addresseeId, submitterId)
+        ),
+        eq(friendships.status, 'accepted')
+      ),
+      with: { requester: true, addressee: true },
+    })
+
+    const messages: ExpoPushMessage[] = []
+    const now = Date.now()
+    const oneDayMs = 24 * 60 * 60 * 1000
+
+    for (const row of rows) {
+      const friend = row.requesterId === submitterId ? row.addressee : row.requester
+      if (!friend.pushToken || !friend.notificationsEnabled) continue
+      if (!Expo.isExpoPushToken(friend.pushToken)) continue
+
+      // Frequency cap: max 1 alert per submitter–recipient pair per 24 hours
+      const cacheKey = `${submitterId}:${friend.id}`
+      const lastSent = mateNotifyCache.get(cacheKey) ?? 0
+      if (now - lastSent < oneDayMs) continue
+
+      messages.push({
+        to: friend.pushToken,
+        title: `📚 ${name} just studied!`,
+        body: `They reviewed ${reviewedCount} kanji today. Ready to match them?`,
+        sound: 'default',
+        data: { type: 'mate_activity', friendId: submitterId },
+      })
+      mateNotifyCache.set(cacheKey, now)
+    }
+
+    if (messages.length > 0) {
+      await this.sendMessages(messages)
+    }
+  }
+
+  // Send rest-day weekly summary notifications.
+  // Called hourly by the cron alongside sendDailyReminders().
+  // Only fires for users whose local hour == reminderHour AND today == restDay.
+  async sendRestDaySummaries(): Promise<void> {
+    const nowUtc = new Date()
+
+    // Fetch users who have a rest day configured, notifications on, and a push token
+    const users = await this.db
+      .select({
+        id:          userProfiles.id,
+        pushToken:   userProfiles.pushToken,
+        timezone:    userProfiles.timezone,
+        reminderHour: userProfiles.reminderHour,
+        restDay:     userProfiles.restDay,
+      })
+      .from(userProfiles)
+      .where(
+        and(
+          eq(userProfiles.notificationsEnabled, true),
+          isNotNull(userProfiles.pushToken),
+          sql`${userProfiles.restDay} IS NOT NULL`
+        )
+      )
+
+    const utcHour = nowUtc.getUTCHours()
+
+    for (const user of users) {
+      if (!user.pushToken || !Expo.isExpoPushToken(user.pushToken)) continue
+      if (user.restDay == null) continue
+
+      // Determine local hour and weekday for this user
+      let localHour: number
+      let localWeekday: number
+      try {
+        const localDate = new Date(nowUtc.toLocaleString('en-US', { timeZone: user.timezone ?? 'UTC' }))
+        localHour    = localDate.getHours()
+        localWeekday = localDate.getDay() // 0=Sun … 6=Sat
+      } catch {
+        localHour    = utcHour
+        localWeekday = nowUtc.getUTCDay()
+      }
+
+      // Only fire at reminderHour on restDay
+      if (localWeekday !== user.restDay) continue
+      if (localHour !== (user.reminderHour ?? 20)) continue
+
+      // Build weekly summary for the message body
+      const stats = await this.getWeeklyStats(user.id)
+      const { title, body } = buildRestDayMessage(stats)
+
+      await this.sendMessages([{ to: user.pushToken, title, body, sound: 'default' }])
+    }
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   private async getUserStreak(userId: string): Promise<number> {
@@ -154,6 +284,27 @@ export class NotificationService {
           AND (next_review_at IS NULL OR next_review_at <= ${now})`
     )
     return Number(row?.count ?? 0)
+  }
+
+  private async getWeeklyStats(userId: string): Promise<{ reviewed: number; burned: number; streakDays: number }> {
+    const since = new Date()
+    since.setDate(since.getDate() - 7)
+    const sinceStr = since.toISOString().slice(0, 10)
+
+    const [row] = await this.db
+      .select({
+        reviewed: sql<number>`COALESCE(SUM(reviewed), 0)::int`,
+        burned:   sql<number>`COALESCE(SUM(burned), 0)::int`,
+      })
+      .from(dailyStats)
+      .where(and(eq(dailyStats.userId, userId), gte(dailyStats.date, sinceStr)))
+
+    const streak = await this.getUserStreak(userId)
+    return {
+      reviewed: Number(row?.reviewed ?? 0),
+      burned:   Number(row?.burned ?? 0),
+      streakDays: streak,
+    }
   }
 
   private async sendMessages(messages: ExpoPushMessage[]): Promise<void> {

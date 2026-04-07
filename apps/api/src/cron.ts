@@ -18,6 +18,11 @@ export function scheduleDailyReminders(db: Db): void {
     } catch (err) {
       console.error('[Cron] Daily reminder failed:', err)
     }
+    try {
+      await notifications.sendRestDaySummaries()
+    } catch (err) {
+      console.error('[Cron] Rest-day summary failed:', err)
+    }
   })
 
   console.log('[Cron] Hourly reminder scheduler started')

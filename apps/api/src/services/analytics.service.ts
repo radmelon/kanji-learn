@@ -465,6 +465,43 @@ export class AnalyticsService {
     `)
   }
 
+  // ── Weekly summary (last 7 days) — for Watch rest-day message ─────────────
+
+  async getWeeklySummary(userId: string): Promise<{
+    reviewed: number
+    newLearned: number
+    burned: number
+    accuracyPct: number
+    streakDays: number
+  }> {
+    const since = new Date()
+    since.setDate(since.getDate() - 7)
+    const sinceStr = since.toISOString().slice(0, 10)
+
+    const [row] = await this.db
+      .select({
+        reviewed:   sql<number>`COALESCE(SUM(reviewed), 0)::int`,
+        newLearned: sql<number>`COALESCE(SUM(new_learned), 0)::int`,
+        burned:     sql<number>`COALESCE(SUM(burned), 0)::int`,
+        correct:    sql<number>`COALESCE(SUM(correct), 0)::int`,
+      })
+      .from(dailyStats)
+      .where(and(eq(dailyStats.userId, userId), gte(dailyStats.date, sinceStr)))
+
+    const reviewed   = Number(row?.reviewed ?? 0)
+    const correct    = Number(row?.correct ?? 0)
+    const accuracyPct = reviewed > 0 ? Math.round((correct / reviewed) * 100) : 0
+    const streakDays  = await this.getStreakDays(userId)
+
+    return {
+      reviewed,
+      newLearned: Number(row?.newLearned ?? 0),
+      burned:     Number(row?.burned ?? 0),
+      accuracyPct,
+      streakDays,
+    }
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   private calculateTrend(current: number, previous: number): 'up' | 'down' | 'stable' {

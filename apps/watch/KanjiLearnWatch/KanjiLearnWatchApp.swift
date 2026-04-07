@@ -3,14 +3,19 @@
 //
 // Responsibilities:
 //   - Bootstrap WatchSessionManager (WatchConnectivity) on launch
+//   - Wire ExtensionDelegate for background task routing
 //   - Set root view to HomeView
 //   - Request local notification permissions on first launch
+//   - Schedule first background refresh
 
 import SwiftUI
 import UserNotifications
 
 @main
 struct KanjiLearnWatchApp: App {
+
+    // Routes WKApplicationRefreshBackgroundTask → BackgroundRefreshHandler
+    @WKExtensionDelegateAdaptor(ExtensionDelegate.self) private var extensionDelegate
 
     @StateObject private var watchSession = WatchSessionManager.shared
     @StateObject private var studyViewModel = StudyViewModel()
@@ -20,6 +25,9 @@ struct KanjiLearnWatchApp: App {
         // iPhone can push auth tokens before the user tries to study.
         WatchSessionManager.shared.activate()
         requestNotificationPermission()
+        // Kick off the first background refresh cycle on launch.
+        // Subsequent refreshes are re-scheduled by BackgroundRefreshHandler.
+        BackgroundRefreshHandler.shared.scheduleNextRefresh()
     }
 
     var body: some Scene {
