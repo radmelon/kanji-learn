@@ -247,6 +247,12 @@ export default function ProgressScreen() {
                 label="Seen"
               />
               <HeroStat
+                icon="star"
+                iconColor={colors.remembered}
+                value={`${summary.statusCounts.remembered}`}
+                label="Remembered"
+              />
+              <HeroStat
                 icon="checkmark-circle"
                 iconColor={colors.success}
                 value={`${summary.completionPct}%`}

@@ -452,17 +452,27 @@ export class AnalyticsService {
       studyTimeMs: number
     }
   ): Promise<void> {
-    // Use raw SQL to reliably target the unique index on (user_id, date)
-    await this.db.execute(sql`
-      INSERT INTO daily_stats (user_id, date, reviewed, correct, new_learned, burned, study_time_ms)
-      VALUES (${userId}, ${date}, ${delta.reviewed}, ${delta.correct}, ${delta.newLearned}, ${delta.burned}, ${delta.studyTimeMs})
-      ON CONFLICT (user_id, date) DO UPDATE SET
-        reviewed    = daily_stats.reviewed    + EXCLUDED.reviewed,
-        correct     = daily_stats.correct     + EXCLUDED.correct,
-        new_learned = daily_stats.new_learned + EXCLUDED.new_learned,
-        burned      = daily_stats.burned      + EXCLUDED.burned,
-        study_time_ms = daily_stats.study_time_ms + EXCLUDED.study_time_ms
-    `)
+    await this.db
+      .insert(dailyStats)
+      .values({
+        userId,
+        date,
+        reviewed:   delta.reviewed,
+        correct:    delta.correct,
+        newLearned: delta.newLearned,
+        burned:     delta.burned,
+        studyTimeMs: delta.studyTimeMs,
+      })
+      .onConflictDoUpdate({
+        target: [dailyStats.userId, dailyStats.date],
+        set: {
+          reviewed:    sql`${dailyStats.reviewed}    + EXCLUDED.reviewed`,
+          correct:     sql`${dailyStats.correct}     + EXCLUDED.correct`,
+          newLearned:  sql`${dailyStats.newLearned}  + EXCLUDED.new_learned`,
+          burned:      sql`${dailyStats.burned}      + EXCLUDED.burned`,
+          studyTimeMs: sql`${dailyStats.studyTimeMs} + EXCLUDED.study_time_ms`,
+        },
+      })
   }
 
   // ── Weekly summary (last 7 days) — for Watch rest-day message ─────────────

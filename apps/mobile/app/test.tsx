@@ -55,6 +55,7 @@ export default function TestScreen() {
   const [answers, setAnswers] = useState<SubmitAnswer[]>([])
   const [result, setResult] = useState<TestResultSummary | null>(null)
   const [quizModeIdx, setQuizModeIdx] = useState(0)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const cardStartMs = useRef(Date.now())
 
   // ── Load questions on mount ───────────────────────────────────────────────
@@ -69,15 +70,22 @@ export default function TestScreen() {
     const typesParam = types.join(',')
     try {
       const data = await api.get<TestQuestion[]>(`/v1/tests/questions?limit=10&types=${typesParam}`)
+      if (!data || data.length === 0) {
+        setLoadError('No quiz questions available yet — study more kanji first.')
+        setStatus('error')
+        return
+      }
       setQuestions(data)
       setCurrentIdx(0)
       setSelectedIdx(null)
       setAnswers([])
       setResult(null)
+      setLoadError(null)
       cardStartMs.current = Date.now()
       setStatus('question')
-    } catch (err) {
+    } catch (err: any) {
       console.error('[TestScreen] loadQuestions error:', err)
+      setLoadError(err?.message ?? 'Unknown error')
       setStatus('error')
     }
   }
@@ -154,6 +162,7 @@ export default function TestScreen() {
         <View style={styles.centeredFull}>
           <Ionicons name="alert-circle-outline" size={64} color={colors.error} />
           <Text style={styles.loadingText}>Couldn't load quiz questions.{'\n'}Check your connection and try again.</Text>
+          {loadError && <Text style={styles.errorDetail}>{loadError}</Text>}
           <TouchableOpacity style={styles.retryButton} onPress={() => loadQuestions(quizModeIdx)}>
             <Ionicons name="refresh" size={16} color="#fff" />
             <Text style={styles.retryButtonText}>Retry</Text>
@@ -597,6 +606,13 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     ...typography.h3,
     color: colors.textSecondary,
+  },
+  errorDetail: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    fontFamily: 'Courier',
   },
   retryButton: {
     flexDirection: 'row',
