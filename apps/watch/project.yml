@@ -1,0 +1,71 @@
+name: KanjiLearnWatch
+
+options:
+  deploymentTarget:
+    watchOS: "10.0"
+  xcodeVersion: "16"
+  generateEmptyDirectories: false
+  defaultConfig: Debug
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: B75NC2Y5Y3
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+    DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+
+configs:
+  Debug: debug
+  Release: release
+
+targets:
+
+  # ── Main Watch App ──────────────────────────────────────────────────────────
+  KanjiLearnWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "10.0"
+
+    sources:
+      - path: KanjiLearnWatch
+        excludes:
+          - "**/*.entitlements"
+          - "**/*.plist"
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rdennis.kanjilearn2.watchkitapp
+        INFOPLIST_FILE: KanjiLearnWatch/Info.plist
+        CODE_SIGN_ENTITLEMENTS: KanjiLearnWatch/KanjiLearnWatch.entitlements
+        SKIP_INSTALL: "NO"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+    dependencies:
+      - sdk: WatchConnectivity.framework
+        weak: true
+      - target: KanjiLearnWatchComplication
+        embed: true
+
+  # ── WidgetKit Complication Extension ────────────────────────────────────────
+  KanjiLearnWatchComplication:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "10.0"
+
+    sources:
+      - path: KanjiLearnWatchComplication
+        excludes:
+          - "**/*.entitlements"
+          - "**/*.plist"
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rdennis.kanjilearn2.watchkitapp.complication
+        INFOPLIST_FILE: KanjiLearnWatchComplication/Info.plist
+        CODE_SIGN_ENTITLEMENTS: KanjiLearnWatchComplication/KanjiLearnWatchComplication.entitlements
+        SKIP_INSTALL: "YES"
+
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework

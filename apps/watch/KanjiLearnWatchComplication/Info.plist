@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>Kanji Learn</string>
+    <string>Kanji Due</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -20,13 +20,10 @@
     <string>1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
-    <key>UISupportedInterfaceOrientations</key>
-    <array/>
-    <key>WKApplication</key>
-    <true/>
-    <key>BGTaskSchedulerPermittedIdentifiers</key>
-    <array>
-        <string>com.rdennis.kanjilearn2.watchkitapp.refresh</string>
-    </array>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.widgetkit-extension</string>
+    </dict>
 </dict>
 </plist>

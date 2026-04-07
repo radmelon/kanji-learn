@@ -55,11 +55,7 @@ struct StudyView: View {
 
     @ViewBuilder
     private func studyingBody(index: Int, revealed: Bool) -> some View {
-        guard let card = viewModel.currentCard else {
-            Color.clear
-            return
-        }
-
+        if let card = viewModel.currentCard {
         SwipeableCardView(isRevealed: revealed) { quality in
             viewModel.grade(quality)
         } content: {
@@ -86,6 +82,9 @@ struct StudyView: View {
                 .padding(.horizontal, 4)
         }
         .animation(.easeInOut(duration: 0.15), value: revealed)
+        } else {
+            Color.clear
+        }
     }
 }
 

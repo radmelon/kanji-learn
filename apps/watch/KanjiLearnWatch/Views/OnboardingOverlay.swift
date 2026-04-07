@@ -87,7 +87,7 @@ struct OnboardingOverlay: View {
             .tag(pages.count + 1)
         }
         .tabViewStyle(.page)
-        .indexViewStyle(.page(backgroundDisplayMode: .always))
+        .indexViewStyle(.page(backgroundDisplayMode: .automatic))
         // Also allow skipping from any page via toolbar button
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

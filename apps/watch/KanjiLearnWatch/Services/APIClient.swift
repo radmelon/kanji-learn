@@ -72,7 +72,7 @@ final class APIClient {
             throw APIError.parseError("API base URL not configured")
         }
 
-        let token = try AuthService.shared.getAccessToken()
+        let token = try await AuthService.shared.getAccessToken()
 
         guard var url = URL(string: baseURL + path) else {
             throw APIError.parseError("Invalid URL: \(baseURL + path)")

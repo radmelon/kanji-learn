@@ -3,10 +3,9 @@
 //
 // Responsibilities:
 //   - Bootstrap WatchSessionManager (WatchConnectivity) on launch
-//   - Wire ExtensionDelegate for background task routing
-//   - Set root view to HomeView
 //   - Request local notification permissions on first launch
-//   - Schedule first background refresh
+//   - Schedule first BGTaskScheduler background refresh
+//   - Handle background app refresh via SwiftUI .backgroundTask() modifier
 
 import SwiftUI
 import UserNotifications
@@ -14,19 +13,14 @@ import UserNotifications
 @main
 struct KanjiLearnWatchApp: App {
 
-    // Routes WKApplicationRefreshBackgroundTask → BackgroundRefreshHandler
-    @WKExtensionDelegateAdaptor(ExtensionDelegate.self) private var extensionDelegate
-
     @StateObject private var watchSession = WatchSessionManager.shared
     @StateObject private var studyViewModel = StudyViewModel()
 
     init() {
-        // Activate WatchConnectivity session as early as possible so the
-        // iPhone can push auth tokens before the user tries to study.
         WatchSessionManager.shared.activate()
         requestNotificationPermission()
-        // Kick off the first background refresh cycle on launch.
-        // Subsequent refreshes are re-scheduled by BackgroundRefreshHandler.
+        // Schedule the first background refresh. Subsequent ones are scheduled
+        // by BackgroundRefreshHandler after each task completes.
         BackgroundRefreshHandler.shared.scheduleNextRefresh()
     }
 
@@ -35,6 +29,12 @@ struct KanjiLearnWatchApp: App {
             HomeView()
                 .environmentObject(watchSession)
                 .environmentObject(studyViewModel)
+        }
+        // Executes every ~2 hours when the system grants a background wakeup.
+        // The identifier must appear in BGTaskSchedulerPermittedIdentifiers in Info.plist.
+        .backgroundTask(.appRefresh(backgroundRefreshID)) {
+            await BackgroundRefreshHandler.shared.performRefresh()
+            BackgroundRefreshHandler.shared.scheduleNextRefresh()
         }
     }
 
