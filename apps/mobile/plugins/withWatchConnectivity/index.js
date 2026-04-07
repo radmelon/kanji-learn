@@ -84,11 +84,13 @@ class WatchConnectivityModule: NSObject, WCSessionDelegate {
     ]
     if restDay >= 0 { context["restDay"] = restDay }
 
+    NSLog("[WatchConnectivity] Calling updateApplicationContext, isPaired=%d isReachable=%d", session.isPaired ? 1 : 0, session.isReachable ? 1 : 0)
     do {
       try session.updateApplicationContext(context)
+      NSLog("[WatchConnectivity] updateApplicationContext succeeded")
       resolve(["sent": true])
     } catch {
-      // Non-fatal — token will be pushed next time auth state changes
+      NSLog("[WatchConnectivity] updateApplicationContext failed: %@", error.localizedDescription)
       resolve(["sent": false, "reason": error.localizedDescription])
     }
   }

@@ -37,7 +37,7 @@ const GOAL_OPTIONS = [5, 10, 15, 20, 30, 50] as const
 
 export default function ProfileScreen() {
   const router = useRouter()
-  const { user, signOut, setWatchEnabled, getWatchConnectionStatus } = useAuthStore()
+  const { user, signOut, setWatchEnabled, forceSyncToWatch, getWatchConnectionStatus } = useAuthStore()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -66,9 +66,30 @@ export default function ProfileScreen() {
 
   const handleWatchToggle = useCallback(async (value: boolean) => {
     setWatchEnabledLocal(value)
-    await setWatchEnabled(value)
-    if (value) loadWatchStatus()
+    const result = await setWatchEnabled(value)
+    if (value) {
+      loadWatchStatus()
+      if (result) {
+        Alert.alert(
+          'Watch Sync',
+          result.sent
+            ? '✅ Context sent to Watch successfully'
+            : `❌ Not sent — ${result.reason ?? 'unknown reason'}`,
+        )
+      }
+    }
   }, [setWatchEnabled, loadWatchStatus])
+
+  const handleForceSyncToWatch = useCallback(async () => {
+    const status = await getWatchConnectionStatus()
+    const result = await forceSyncToWatch()
+    Alert.alert(
+      'Watch Sync Diagnostic',
+      `Status: paired=${status.paired}, reachable=${status.reachable}\n\n` +
+      `Push result: ${result ? JSON.stringify(result) : 'native module unavailable'}`,
+    )
+    loadWatchStatus()
+  }, [forceSyncToWatch, getWatchConnectionStatus, loadWatchStatus])
 
   // Social
   const { friends, pendingRequests, isSearching, loadAll, searchByEmail, sendRequest, respondToRequest, removeFriend } = useSocial()
@@ -388,6 +409,9 @@ export default function ProfileScreen() {
                 color={watchStatus === 'Connected' ? colors.success : colors.textMuted}
               />
               <Text style={styles.watchStatusText}>{watchStatus}</Text>
+              <TouchableOpacity onPress={handleForceSyncToWatch} style={styles.watchSyncBtn}>
+                <Text style={styles.watchSyncBtnText}>Sync Now</Text>
+              </TouchableOpacity>
             </View>
           )}
         </Section>
@@ -673,7 +697,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingTop: spacing.xs,
   },
-  watchStatusText: { ...typography.caption, color: colors.textMuted },
+  watchStatusText: { ...typography.caption, color: colors.textMuted, flex: 1 },
+  watchSyncBtn: { paddingHorizontal: 8, paddingVertical: 2, backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.border },
+  watchSyncBtnText: { ...typography.caption, color: colors.primary },
 
   // Reminder time picker
   reminderTimeRow: {

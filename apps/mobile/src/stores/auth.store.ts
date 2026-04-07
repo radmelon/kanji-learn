@@ -27,12 +27,16 @@ const WatchConnectivity: {
 
 const WATCH_ENABLED_KEY = 'kl:watch_enabled'
 
-async function pushToWatch(session: Session): Promise<void> {
-  if (!WatchConnectivity) return
+type PushResult = { sent: boolean; reason?: string }
+
+async function pushToWatch(session: Session, force = false): Promise<PushResult | null> {
+  if (!WatchConnectivity) return null
 
   try {
-    const isEnabled = await storage.getItem<boolean>(WATCH_ENABLED_KEY)
-    if (!isEnabled) return
+    if (!force) {
+      const isEnabled = await storage.getItem<boolean>(WATCH_ENABLED_KEY)
+      if (!isEnabled) return null
+    }
 
     // Read cached profile for settings needed by Watch encouragement messages
     const profile = await storage.getItem<{
@@ -47,18 +51,24 @@ async function pushToWatch(session: Session): Promise<void> {
     // expiresAt is a Unix timestamp in seconds (Supabase standard)
     const expiresAt = session.expires_at ?? Math.floor(Date.now() / 1000) + 3600
 
-    await WatchConnectivity.pushTokensToWatch(
+    console.log('[Watch] pushToWatch called, supabaseURL:', supabaseURL ? 'set' : 'EMPTY', 'apiBaseURL:', apiBaseURL ? 'set' : 'EMPTY')
+
+    const result = await WatchConnectivity.pushTokensToWatch(
       session.access_token,
       session.refresh_token ?? '',
       expiresAt,
       supabaseURL,
       apiBaseURL,
-      profile?.data?.dailyGoal ?? 20,
-      profile?.data?.reminderHour ?? 20,
-      profile?.data?.restDay ?? -1,  // -1 = no rest day
+      profile?.dailyGoal ?? 20,
+      profile?.reminderHour ?? 20,
+      profile?.restDay ?? -1,  // -1 = no rest day
     )
-  } catch {
-    // Non-fatal — Watch will use cached tokens and retry on next auth change
+
+    console.log('[Watch] pushTokensToWatch result:', JSON.stringify(result))
+    return result
+  } catch (err) {
+    console.warn('[Watch] pushTokensToWatch threw:', err)
+    return { sent: false, reason: String(err) }
   }
 }
 
@@ -73,7 +83,8 @@ interface AuthState {
   setSession: (session: Session | null) => void
   initialize: () => Promise<void>
   // Watch connectivity
-  setWatchEnabled: (enabled: boolean) => Promise<void>
+  setWatchEnabled: (enabled: boolean) => Promise<PushResult | null>
+  forceSyncToWatch: () => Promise<PushResult | null>
   getWatchConnectionStatus: () => Promise<{ supported: boolean; paired?: boolean; watchAppInstalled?: boolean; reachable?: boolean }>
 }
 
@@ -138,7 +149,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     await storage.setItem(WATCH_ENABLED_KEY, enabled)
     // If enabling, immediately push current session if available
     const { session } = useAuthStore.getState()
-    if (enabled && session) void pushToWatch(session)
+    if (enabled && session) return pushToWatch(session)
+    return null
+  },
+
+  forceSyncToWatch: async () => {
+    const { session } = useAuthStore.getState()
+    if (!session) return { sent: false, reason: 'no_session' }
+    return pushToWatch(session, true)
   },
 
   getWatchConnectionStatus: async () => {
