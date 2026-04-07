@@ -67,6 +67,23 @@ function withWatchFiles(config) {
       const profileB64 = process.env.WATCH_MOBILEPROVISION_B64
       if (profileB64) {
         const profileContent = Buffer.from(profileB64, 'base64')
+
+        // Extract UUID and app ID from the profile for verification + Xcode specifier
+        const profileText  = profileContent.toString('binary')
+        const uuidMatch    = profileText.match(/<key>UUID<\/key>\s*<string>([A-F0-9-]+)<\/string>/i)
+        const appIdMatch   = profileText.match(/<key>application-identifier<\/key>\s*<string>([^<]+)<\/string>/i)
+        const profileUUID  = uuidMatch?.[1]  ?? null
+        const profileAppId = appIdMatch?.[1] ?? null
+
+        console.log(`[withWatchApp] Profile app-id : ${profileAppId ?? '(not found)'}`)
+        console.log(`[withWatchApp] Profile UUID   : ${profileUUID  ?? '(not found)'}`)
+
+        if (profileAppId && !profileAppId.includes('watchkitapp') && !profileAppId.endsWith('.widget') === false) {
+          // Safety check — bail clearly if wrong profile was uploaded
+          console.warn(`[withWatchApp] WARNING: profile app-id does not look like the Watch app profile!`)
+        }
+
+        // Install to Xcode's provisioning profiles directory
         const profilesDir = path.join(
           os.homedir(), 'Library', 'MobileDevice', 'Provisioning Profiles'
         )
@@ -74,6 +91,12 @@ function withWatchFiles(config) {
         const profileDst = path.join(profilesDir, 'kanji-learn-watch.mobileprovision')
         fs.writeFileSync(profileDst, profileContent)
         console.log(`[withWatchApp] Installed Watch provisioning profile → ${profileDst}`)
+
+        // Store UUID so withWatchXcodeTarget can reference it directly (avoids
+        // name collisions when multiple profiles share the same display name)
+        if (profileUUID) {
+          fs.writeFileSync(path.join(iosDir, '.watch-profile-uuid'), profileUUID)
+        }
       } else {
         console.log('[withWatchApp] WATCH_MOBILEPROVISION_B64 not set — Watch target will use automatic signing (local dev only)')
       }
@@ -280,7 +303,16 @@ function withWatchXcodeTarget(config) {
     // Use manual signing when the profile secret is available (EAS builds),
     // automatic signing otherwise (local development with Xcode).
     const hasProfile = !!process.env.WATCH_MOBILEPROVISION_B64
+
+    // UUID written by withWatchFiles — use it as the specifier so Xcode
+    // finds the exact profile regardless of display-name collisions.
+    const uuidFile    = path.join(iosDir, '.watch-profile-uuid')
+    const profileUUID = hasProfile && fs.existsSync(uuidFile)
+      ? fs.readFileSync(uuidFile, 'utf8').trim()
+      : null
+
     const codeSignStyle = hasProfile ? 'Manual' : 'Automatic'
+    console.log(`[withWatchApp] Watch signing: style=${codeSignStyle} uuid=${profileUUID ?? 'n/a'}`)
 
     const commonSettings = {
       ALWAYS_SEARCH_USER_PATHS: 'NO',
@@ -294,7 +326,9 @@ function withWatchXcodeTarget(config) {
       MARKETING_VERSION: '1.0',
       PRODUCT_BUNDLE_IDENTIFIER: `"${WATCH_BUNDLE_ID}"`,
       PRODUCT_NAME: '"$(TARGET_NAME)"',
-      PROVISIONING_PROFILE_SPECIFIER: hasProfile ? `"${WATCH_PROFILE_NAME}"` : '""',
+      // Use UUID if available (avoids name-based collisions), else fall back to name
+      PROVISIONING_PROFILE: profileUUID ? `"${profileUUID}"` : '""',
+      PROVISIONING_PROFILE_SPECIFIER: profileUUID ? `"${profileUUID}"` : hasProfile ? `"${WATCH_PROFILE_NAME}"` : '""',
       SDKROOT: 'watchos',
       SKIP_INSTALL: 'NO',
       SWIFT_VERSION: SWIFT_VERSION,
