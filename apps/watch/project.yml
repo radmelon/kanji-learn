@@ -61,7 +61,7 @@ targets:
 
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.rdennis.kanjilearn2.watchkitapp.complication
+        PRODUCT_BUNDLE_IDENTIFIER: com.rdennis.kanjilearn2.watchkitapp.widget
         INFOPLIST_FILE: KanjiLearnWatchComplication/Info.plist
         CODE_SIGN_ENTITLEMENTS: KanjiLearnWatchComplication/KanjiLearnWatchComplication.entitlements
         SKIP_INSTALL: "YES"
