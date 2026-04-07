@@ -22,6 +22,8 @@
     <string>1</string>
     <key>UISupportedInterfaceOrientations</key>
     <array/>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>WKApplication</key>
     <true/>
     <key>WKCompanionAppBundleIdentifier</key>

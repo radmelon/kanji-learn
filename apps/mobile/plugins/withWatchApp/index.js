@@ -157,6 +157,8 @@ function withWatchXcodeTarget(config) {
     const embedBuildFileUuid      = uid()   // PBXBuildFile for embedded Watch .app
     const containerItemUuid       = uid()   // PBXContainerItemProxy
     const targetDependencyUuid    = uid()   // PBXTargetDependency
+    const assetsFileRefUuid       = uid()   // PBXFileReference for Assets.xcassets
+    const assetsBuildFileUuid     = uid()   // PBXBuildFile for Assets.xcassets in Resources
 
     // ── Ensure pbxproj sections exist ─────────────────────────────────────────
     for (const section of [
@@ -290,10 +292,31 @@ function withWatchXcodeTarget(config) {
     }
     objects['PBXFrameworksBuildPhase'][`${frameworksBuildPhaseUuid}_comment`] = 'Frameworks'
 
+    // ── Assets.xcassets file reference + build file ───────────────────────────
+    objects['PBXFileReference'][assetsFileRefUuid] = {
+      isa: 'PBXFileReference',
+      lastKnownFileType: 'folder.assetcatalog',
+      name: '"Assets.xcassets"',
+      path: '"Assets.xcassets"',
+      sourceTree: '"<group>"',
+    }
+    objects['PBXFileReference'][`${assetsFileRefUuid}_comment`] = 'Assets.xcassets'
+
+    objects['PBXBuildFile'][assetsBuildFileUuid] = {
+      isa: 'PBXBuildFile',
+      fileRef: assetsFileRefUuid,
+    }
+    objects['PBXBuildFile'][`${assetsBuildFileUuid}_comment`] = 'Assets.xcassets in Resources'
+
+    // Add Assets.xcassets to the Watch group
+    objects['PBXGroup'][watchGroupUuid].children.unshift(
+      { value: assetsFileRefUuid, comment: 'Assets.xcassets' }
+    )
+
     objects['PBXResourcesBuildPhase'][resourcesBuildPhaseUuid] = {
       isa: 'PBXResourcesBuildPhase',
       buildActionMask: 2147483647,
-      files: [],
+      files: [{ value: assetsBuildFileUuid, comment: 'Assets.xcassets in Resources' }],
       runOnlyForDeploymentPostprocessing: 0,
     }
     objects['PBXResourcesBuildPhase'][`${resourcesBuildPhaseUuid}_comment`] = 'Resources'
@@ -312,6 +335,7 @@ function withWatchXcodeTarget(config) {
 
     const commonSettings = {
       ALWAYS_SEARCH_USER_PATHS: 'NO',
+      ASSETCATALOG_COMPILER_APPICON_NAME: 'AppIcon',
       CODE_SIGN_IDENTITY: hasProfile ? '"Apple Distribution"' : '"Apple Development"',
       CODE_SIGN_STYLE: codeSignStyle,
       CURRENT_PROJECT_VERSION: '1',
