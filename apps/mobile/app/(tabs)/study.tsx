@@ -22,7 +22,7 @@ const HELP_KEY = 'kl_has_seen_study_help'
 
 export default function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, loadQueue, loadMissedQueue, submitResult, finishSession, syncPendingSessions, reset } =
+  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset } =
     useReviewStore()
 
   const [isRevealed, setIsRevealed] = useState(false)
@@ -175,6 +175,18 @@ export default function StudySession() {
     setNudgeItem(null)
   }, [pendingResult, submitResult])
 
+  const handleUndo = useCallback(() => {
+    const ok = undoLastResult()
+    if (ok) {
+      setIsRevealed(false)
+      isRevealedRef.current = false
+      swipeX.setValue(0)
+      setPendingResult(null)
+      setNudgeItem(null)
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    }
+  }, [undoLastResult])
+
   const handleFinish = useCallback(async () => {
     setIsSaving(true)
     const { results } = useReviewStore.getState()
@@ -314,6 +326,11 @@ export default function StudySession() {
         <Text style={styles.counter}>
           {currentIndex + 1}/{queue.length}
         </Text>
+        {currentIndex > 0 && (
+          <TouchableOpacity onPress={handleUndo} style={styles.undoBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="arrow-undo" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
       </View>
       {isOfflineQueue && (
         <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.xs }}>
@@ -457,6 +474,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm, width: '100%' },
   closeBtn: { padding: spacing.xs },
+  undoBtn: { padding: spacing.xs },
   progressTrack: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radius.full },
   counter: { ...typography.caption, color: colors.textMuted, minWidth: 36, textAlign: 'right' },

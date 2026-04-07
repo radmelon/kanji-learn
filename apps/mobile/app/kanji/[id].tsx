@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator,
+  ActivityIndicator, Linking,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -313,8 +313,8 @@ export default function KanjiDetail() {
           {(kanji.nelsonClassic != null || kanji.nelsonNew != null || kanji.morohashiIndex != null || kanji.jisCode != null) && (
             <Card title="References">
               {kanji.jisCode != null && <RefRow label="JIS Code" value={kanji.jisCode} />}
-              {kanji.nelsonClassic != null && <RefRow label="Nelson Classic" value={`#${kanji.nelsonClassic}`} />}
-              {kanji.nelsonNew != null && <RefRow label="New Nelson" value={`#${kanji.nelsonNew}`} />}
+              {kanji.nelsonClassic != null && <RefRow label="Nelson Classic" value={`#${kanji.nelsonClassic}`} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(kanji.character)}%23kanji`)} />}
+              {kanji.nelsonNew != null && <RefRow label="New Nelson" value={`#${kanji.nelsonNew}`} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(kanji.character)}%23kanji`)} />}
               {kanji.morohashiIndex != null && (
                 <RefRow
                   label="Morohashi (大漢和)"
@@ -339,19 +339,24 @@ export default function KanjiDetail() {
 
 // ─── RefRow sub-component ────────────────────────────────────────────────────
 
-function RefRow({ label, value }: { label: string; value: string }) {
+function RefRow({ label, value, onPress }: { label: string; value: string; onPress?: () => void }) {
   return (
-    <View style={refRowStyles.row}>
+    <TouchableOpacity style={refRowStyles.row} onPress={onPress} disabled={!onPress} activeOpacity={0.7}>
       <Text style={refRowStyles.label}>{label}</Text>
-      <Text style={refRowStyles.value}>{value}</Text>
-    </View>
+      <View style={refRowStyles.valueRow}>
+        <Text style={[refRowStyles.value, onPress != null && refRowStyles.valueLink]}>{value}</Text>
+        {onPress != null && <Ionicons name="open-outline" size={13} color={colors.primary} />}
+      </View>
+    </TouchableOpacity>
   )
 }
 
 const refRowStyles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
   label: { ...typography.bodySmall, color: colors.textMuted },
+  valueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   value: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
+  valueLink: { color: colors.primary },
 })
 
 // ─── Card sub-component ────────────────────────────────────────────────────────

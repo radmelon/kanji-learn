@@ -14,6 +14,7 @@ import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { DailyStats } from '@kanji-learn/shared'
 import { JLPT_LEVELS, JLPT_KANJI_COUNTS } from '@kanji-learn/shared'
+import { computeMilestones } from '../../src/constants/milestones'
 
 type Period = '7d' | '30d' | '90d'
 
@@ -270,6 +271,14 @@ export default function ProgressScreen() {
               <JlptGrid jlptProgress={summary.jlptProgress} />
             </Section>
 
+            {/* Milestones */}
+            <MilestonesSection
+              burned={summary.statusCounts.burned}
+              streakDays={summary.streakDays}
+              totalSeen={summary.totalSeen}
+              jlptProgress={summary.jlptProgress}
+            />
+
             {/* Period selector + activity chart */}
             <Section
               title="Activity"
@@ -503,6 +512,70 @@ export default function ProgressScreen() {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+// ─── Milestones ───────────────────────────────────────────────────────────────
+
+function MilestonesSection({ burned, streakDays, totalSeen, jlptProgress }: {
+  burned: number
+  streakDays: number
+  totalSeen: number
+  jlptProgress: Record<string, { learning: number; reviewing: number; remembered: number; burned: number }>
+}) {
+  const milestones = computeMilestones({ burned, streakDays, totalSeen, jlptProgress })
+  const achieved = milestones.filter((m) => m.achieved)
+  const next = milestones.filter((m) => !m.achieved).slice(0, 3)
+
+  return (
+    <Section title="Milestones">
+      {achieved.length === 0 ? (
+        <Text style={milestoneStyles.empty}>Keep studying — your first milestone is just around the corner!</Text>
+      ) : (
+        <View style={milestoneStyles.grid}>
+          {achieved.map((m) => (
+            <View key={m.id} style={milestoneStyles.badge}>
+              <Text style={milestoneStyles.emoji}>{m.emoji}</Text>
+              <Text style={milestoneStyles.badgeLabel}>{m.label}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+      {next.length > 0 && (
+        <View style={milestoneStyles.nextRow}>
+          <Text style={milestoneStyles.nextTitle}>Up next:</Text>
+          {next.map((m) => (
+            <View key={m.id} style={milestoneStyles.nextItem}>
+              <Text style={milestoneStyles.nextEmoji}>{m.emoji}</Text>
+              <Text style={milestoneStyles.nextLabel}>{m.label}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </Section>
+  )
+}
+
+const milestoneStyles = StyleSheet.create({
+  empty: { ...typography.bodySmall, color: colors.textMuted, fontStyle: 'italic' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  badge: {
+    alignItems: 'center',
+    backgroundColor: colors.primary + '18',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary + '44',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    gap: 2,
+    minWidth: 72,
+  },
+  emoji: { fontSize: 22, lineHeight: 28 },
+  badgeLabel: { ...typography.caption, color: colors.primary, textAlign: 'center', fontWeight: '600' },
+  nextRow: { gap: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm, marginTop: spacing.xs },
+  nextTitle: { ...typography.caption, color: colors.textMuted, fontWeight: '600', marginBottom: 2 },
+  nextItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  nextEmoji: { fontSize: 14, opacity: 0.4 },
+  nextLabel: { ...typography.caption, color: colors.textMuted },
+})
 
 function HeroStat({ icon, iconColor, value, label }: { icon: string; iconColor: string; value: string; label: string }) {
   return (
