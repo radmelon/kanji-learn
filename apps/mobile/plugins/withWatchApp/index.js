@@ -185,8 +185,12 @@ function withWatchXcodeTarget(config) {
       const fileRefUuid   = uid()
       const buildFileUuid = uid()
       const name    = path.basename(filePath)
-      const relPath = path.relative(iosDir, filePath).replace(/\\/g, '/')
-      const subdir  = SUBDIRS.find(d => relPath.includes(`/${d}/`)) ?? null
+      // relPath must be relative to watchDir (not iosDir) because the PBXGroup
+      // for the Watch target already has path="KanjiLearnWatch" — Xcode appends
+      // the file path to the group path, so using iosDir-relative paths would
+      // produce a double KanjiLearnWatch/KanjiLearnWatch/ prefix.
+      const relPath = path.relative(watchDir, filePath).replace(/\\/g, '/')
+      const subdir  = SUBDIRS.find(d => relPath.startsWith(`${d}/`)) ?? null
 
       objects['PBXFileReference'][fileRefUuid] = {
         isa: 'PBXFileReference',
