@@ -56,8 +56,7 @@ final class APIClient {
     init(session: URLSession = .shared) {
         self.session = session
         self.decoder = JSONDecoder()
-        // API uses camelCase keys matching Swift property names directly
-        self.decoder.keyDecodingStrategy = .convertFromSnakeCase
+        // API returns camelCase keys (from Drizzle ORM) matching Swift property names
     }
 
     // ── Core request ──────────────────────────────────────────────────────────

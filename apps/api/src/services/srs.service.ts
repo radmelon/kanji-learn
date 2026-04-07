@@ -456,7 +456,7 @@ export class SrsService {
       remembered: 0,
       burned: 0,
       ...Object.fromEntries(rows.map((r) => [r.status, r.count])),
-      due_count: dueCards + availableNew,
+      dueCount: dueCards + availableNew,
     }
   }
 }
