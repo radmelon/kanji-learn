@@ -24,6 +24,10 @@
     <array/>
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
+    <key>CFBundleIconFiles</key>
+    <array>
+        <string>AppIcon</string>
+    </array>
     <key>WKApplication</key>
     <true/>
     <key>WKCompanionAppBundleIdentifier</key>
