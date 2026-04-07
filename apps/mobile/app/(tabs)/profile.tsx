@@ -37,7 +37,7 @@ const GOAL_OPTIONS = [5, 10, 15, 20, 30, 50] as const
 
 export default function ProfileScreen() {
   const router = useRouter()
-  const { user, signOut } = useAuthStore()
+  const { user, signOut, setWatchEnabled, getWatchConnectionStatus } = useAuthStore()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -51,6 +51,24 @@ export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [reminderHour, setReminderHour] = useState(20)
   const [restDay, setRestDay] = useState<number | null>(null)
+
+  // Apple Watch
+  const [watchEnabled, setWatchEnabledLocal] = useState(false)
+  const [watchStatus, setWatchStatus] = useState<string>('Checking...')
+
+  const loadWatchStatus = useCallback(async () => {
+    const status = await getWatchConnectionStatus()
+    if (!status.supported) { setWatchStatus('Not supported'); return }
+    if (!status.paired) { setWatchStatus('Apple Watch not paired'); return }
+    if (!status.watchAppInstalled) { setWatchStatus('Watch app not installed'); return }
+    setWatchStatus(status.reachable ? 'Connected' : 'Watch out of range')
+  }, [getWatchConnectionStatus])
+
+  const handleWatchToggle = useCallback(async (value: boolean) => {
+    setWatchEnabledLocal(value)
+    await setWatchEnabled(value)
+    if (value) loadWatchStatus()
+  }, [setWatchEnabled, loadWatchStatus])
 
   // Social
   const { friends, pendingRequests, isSearching, loadAll, searchByEmail, sendRequest, respondToRequest, removeFriend } = useSocial()
@@ -99,7 +117,11 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     loadProfile()
-  }, [loadProfile])
+    storage.getItem<boolean>('kl:watch_enabled').then((v) => {
+      setWatchEnabledLocal(v ?? false)
+      if (v) loadWatchStatus()
+    })
+  }, [loadProfile, loadWatchStatus])
 
   // ── Save helpers ─────────────────────────────────────────────────────────
 
@@ -338,6 +360,35 @@ export default function ProfileScreen() {
                 </View>
               </View>
             </>
+          )}
+        </Section>
+
+        {/* Apple Watch */}
+        <Section title="Apple Watch">
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Ionicons name="watch-outline" size={20} color={colors.textSecondary} />
+              <View>
+                <Text style={styles.rowLabel}>Enable Apple Watch</Text>
+                <Text style={styles.rowSub}>Sync study sessions to your Watch</Text>
+              </View>
+            </View>
+            <Switch
+              value={watchEnabled}
+              onValueChange={handleWatchToggle}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </View>
+          {watchEnabled && (
+            <View style={styles.watchStatusRow}>
+              <Ionicons
+                name={watchStatus === 'Connected' ? 'checkmark-circle' : 'ellipse-outline'}
+                size={14}
+                color={watchStatus === 'Connected' ? colors.success : colors.textMuted}
+              />
+              <Text style={styles.watchStatusText}>{watchStatus}</Text>
+            </View>
           )}
         </Section>
 
@@ -614,6 +665,15 @@ const styles = StyleSheet.create({
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
   rowLabel: { ...typography.body, color: colors.textPrimary },
   rowSub: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+
+  // Apple Watch status
+  watchStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
+  },
+  watchStatusText: { ...typography.caption, color: colors.textMuted },
 
   // Reminder time picker
   reminderTimeRow: {

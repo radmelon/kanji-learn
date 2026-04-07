@@ -46,3 +46,11 @@ pnpm-debug.log*
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 coverage/
+
+# ── Xcode (apps/watch/) ───────────────────────────────────────────────────────
+apps/watch/**/*.xcuserstate
+apps/watch/**/xcuserdata/
+apps/watch/**/DerivedData/
+apps/watch/**/*.xccheckout
+apps/watch/**/*.moved-aside
+apps/watch/**/build/
