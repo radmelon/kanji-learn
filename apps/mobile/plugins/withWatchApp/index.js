@@ -59,16 +59,16 @@ function withWatchFiles(config) {
       copyDirSync(watchSrc, watchDst)
       console.log(`[withWatchApp] Copied Watch sources → ${watchDst}`)
 
-      // ── Install Watch provisioning profile (EAS builds only) ──────────────
-      // The WATCH_MOBILEPROVISION_B64 secret is set via `eas env:create`.
-      // It contains the base64-encoded App Store distribution .mobileprovision
-      // for com.rdennis.kanjilearn2.watchkitapp. Without it, Xcode can't sign
-      // the Watch target during the EAS build (automatic signing is disabled).
-      const profileB64 = process.env.WATCH_MOBILEPROVISION_B64
-      if (profileB64) {
-        const profileContent = Buffer.from(profileB64, 'base64')
+      // ── Install Watch provisioning profile ────────────────────────────────
+      // The profile is committed at apps/mobile/provisioning/watch-profile.mobileprovision.
+      // Committing it is safe — .mobileprovision files contain no private keys.
+      // The private key lives only in the distribution certificate (.p12).
+      const profileSrc = path.resolve(iosDir, '..', 'provisioning', 'watch-profile.mobileprovision')
 
-        // Extract UUID and app ID from the profile for verification + Xcode specifier
+      if (fs.existsSync(profileSrc)) {
+        const profileContent = fs.readFileSync(profileSrc)
+
+        // Extract UUID and app-id for logging and Xcode specifier
         const profileText  = profileContent.toString('binary')
         const uuidMatch    = profileText.match(/<key>UUID<\/key>\s*<string>([A-F0-9-]+)<\/string>/i)
         const appIdMatch   = profileText.match(/<key>application-identifier<\/key>\s*<string>([^<]+)<\/string>/i)
@@ -78,27 +78,22 @@ function withWatchFiles(config) {
         console.log(`[withWatchApp] Profile app-id : ${profileAppId ?? '(not found)'}`)
         console.log(`[withWatchApp] Profile UUID   : ${profileUUID  ?? '(not found)'}`)
 
-        if (profileAppId && !profileAppId.includes('watchkitapp') && !profileAppId.endsWith('.widget') === false) {
-          // Safety check — bail clearly if wrong profile was uploaded
-          console.warn(`[withWatchApp] WARNING: profile app-id does not look like the Watch app profile!`)
+        if (profileAppId && profileAppId.includes('.widget')) {
+          throw new Error(`[withWatchApp] Wrong profile — app-id is ${profileAppId}. Expected com.rdennis.kanjilearn2.watchkitapp`)
         }
 
         // Install to Xcode's provisioning profiles directory
-        const profilesDir = path.join(
-          os.homedir(), 'Library', 'MobileDevice', 'Provisioning Profiles'
-        )
+        const profilesDir = path.join(os.homedir(), 'Library', 'MobileDevice', 'Provisioning Profiles')
         fs.mkdirSync(profilesDir, { recursive: true })
-        const profileDst = path.join(profilesDir, 'kanji-learn-watch.mobileprovision')
-        fs.writeFileSync(profileDst, profileContent)
-        console.log(`[withWatchApp] Installed Watch provisioning profile → ${profileDst}`)
+        fs.writeFileSync(path.join(profilesDir, 'kanji-learn-watch.mobileprovision'), profileContent)
+        console.log(`[withWatchApp] Installed Watch provisioning profile (UUID: ${profileUUID ?? 'unknown'})`)
 
-        // Store UUID so withWatchXcodeTarget can reference it directly (avoids
-        // name collisions when multiple profiles share the same display name)
+        // Store UUID for withWatchXcodeTarget to use as the Xcode specifier
         if (profileUUID) {
           fs.writeFileSync(path.join(iosDir, '.watch-profile-uuid'), profileUUID)
         }
       } else {
-        console.log('[withWatchApp] WATCH_MOBILEPROVISION_B64 not set — Watch target will use automatic signing (local dev only)')
+        console.log(`[withWatchApp] No profile at ${profileSrc} — Watch target will use automatic signing (local dev only)`)
       }
 
       return config
