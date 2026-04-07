@@ -8,8 +8,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 > **Highest priority** — directly requested by users. Several of these (stroke order, radicals, Nelson IDs) use data already stored in the database that just isn't surfaced in the UI yet, making them relatively quick wins.
 
-- [ ] **Full On/Kun Reading Display with Romaji Toggle** — Expand the KanjiCard to show all on-yomi and kun-yomi readings instead of capping at 3 each. Add a toggle button to show/hide romaji transliterations alongside the kana for learners who haven't memorized the kana sets yet.
-  `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Full On/Kun Reading Display with Romaji Toggle** — Expand the KanjiCard to show all on-yomi and kun-yomi readings instead of capping at 3 each. Add a toggle button to show/hide romaji transliterations alongside the kana for learners who haven't memorized the kana sets yet.
+  `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **Nelson Classic & New Dictionary IDs with Jisho Deep-Link** — Display the Nelson Classic and Nelson New index numbers (already stored in the DB) on the KanjiCard detail view. Render each as a tappable link that opens `jisho.org` (or the Nelson entry directly) so users can jump to authoritative reference material mid-study.
   `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
@@ -39,17 +39,17 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 📊 Analytics & Progress
 
-- [ ] **Fix: JLPT Progress Bars Show as Blank** — The JLPT progress bars on the dashboard are empty for most users because the bar width is calculated as `burned / total`. Burning a kanji requires months of correct reviews, so new and early-stage users see no fill at all. Fix: switch to a stacked bar showing all meaningful SRS stages — **seen** (learning + reviewing + remembered) in a muted fill, **burned** in a solid highlight — so the bar reflects real study progress from day one. This also makes the bar a richer signal (e.g. N5: 60% seen / 5% burned vs N1: 2% seen / 0% burned). Backend change: `levelProjections` in `GET /v1/analytics/summary` needs to return `seen` count in addition to `burned`; currently only `burned` is exposed.
+- [x] **Fix: JLPT Progress Bars Show as Blank** — The JLPT progress bars on the dashboard are empty for most users because the bar width is calculated as `burned / total`. Burning a kanji requires months of correct reviews, so new and early-stage users see no fill at all. Fix: switch to a stacked bar showing all meaningful SRS stages — **seen** (learning + reviewing + remembered) in a muted fill, **burned** in a solid highlight — so the bar reflects real study progress from day one. This also makes the bar a richer signal (e.g. N5: 60% seen / 5% burned vs N1: 2% seen / 0% burned). Backend change: `levelProjections` in `GET /v1/analytics/summary` needs to return `seen` count in addition to `burned`; currently only `burned` is exposed.
   `[Effort: S]` `[Impact: High]` `[Backend: Yes]` `[Status: 🐛 Bug]`
 
-- [ ] **Fix: Journey Progress Bar Shows as Blank** — The Journey progress bar on the dashboard uses `completionPct = totalSeen / 2294 * 100`. For a user who has studied 50 kanji this renders as ~2% — a barely visible sliver that feels discouraging. Two fixes needed: (1) show a **dual-fill bar** — pale fill for seen/in-progress, solid fill for burned — so early progress is visually meaningful; (2) consider a log-scale or milestone-anchored axis so the first 100 kanji (N5 complete) feels like a genuine achievement rather than 4% of the whole. No API change needed; purely a UI rework in `index.tsx`.
+- [x] **Fix: Journey Progress Bar Shows as Blank** — The Journey progress bar on the dashboard uses `completionPct = totalSeen / 2294 * 100`. For a user who has studied 50 kanji this renders as ~2% — a barely visible sliver that feels discouraging. Two fixes needed: (1) show a **dual-fill bar** — pale fill for seen/in-progress, solid fill for burned — so early progress is visually meaningful; (2) consider a log-scale or milestone-anchored axis so the first 100 kanji (N5 complete) feels like a genuine achievement rather than 4% of the whole. No API change needed; purely a UI rework in `index.tsx`.
   `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: 🐛 Bug]`
 
 - [ ] **Heatmap Calendar View** — A GitHub-style contribution heatmap showing daily study activity over the past year. Color intensity represents cards reviewed that day. Gives users a satisfying visual record of consistency and motivates streak maintenance.
   `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
 
-- [ ] **Accuracy Breakdown by Review Type** — Break down correct/incorrect rates separately for meaning, reading, writing, and compound review types. Surfaces which modality a user struggles with most so they can focus their study time more intentionally.
-  `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Accuracy Breakdown by Review Type** — Break down correct/incorrect rates separately for meaning, reading, writing, and compound review types. Surfaces which modality a user struggles with most so they can focus their study time more intentionally.
+  `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **JLPT Level Completion Progress** — Show a per-level progress bar (e.g., "N5: 72% mastered, 18% learning, 10% not started"). Gives learners a concrete milestone to work toward and a clear sense of how close they are to full level coverage.
   `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
@@ -92,8 +92,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Dark / Light Theme Toggle** — Add a manual theme toggle (with system default option) for dark and light mode. Dark mode is especially useful for late-night study sessions and is a highly requested feature in language learning apps.
   `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
 
-- [ ] **Haptic Feedback on Grade Buttons** — Trigger subtle haptic patterns (light tap for "Again", medium for "Hard", strong for "Easy") when grading cards. Adds a tactile dimension to the grading action and makes the UI feel more responsive and polished.
-  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Haptic Feedback on Grade Buttons** — Trigger subtle haptic patterns (light tap for "Again", medium for "Hard", strong for "Easy") when grading cards. Adds a tactile dimension to the grading action and makes the UI feel more responsive and polished.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **Swipe Gestures for Grading** — Allow users to swipe the card right for "Easy", left for "Again", and down for "Hard" instead of tapping grade buttons. Speeds up review sessions and feels more natural for mobile-first users.
   `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`

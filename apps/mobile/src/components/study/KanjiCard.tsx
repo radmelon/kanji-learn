@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native'
+import { useCallback, useRef, useState } from 'react'
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
 import { Ionicons } from '@expo/vector-icons'
@@ -27,6 +27,13 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   // Which group is currently being spoken: null | 'kun' | 'on' | vocab index
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
 
+  // 3D flip animation — rotates through 90° (disappear) → swap content → 90° (reappear)
+  const flipAnim = useRef(new Animated.Value(0)).current
+  const rotateY = flipAnim.interpolate({
+    inputRange: [-90, 0, 90],
+    outputRange: ['-90deg', '0deg', '90deg'],
+  })
+
   // Show readings on ALL card types after reveal — even meaning cards benefit
   // from seeing the on/kun alongside the meaning
   const hasReadings = true
@@ -36,8 +43,22 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
 
   const handleReveal = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    onReveal()
-  }, [onReveal])
+    // First half: rotate to 90° (card disappears edge-on)
+    Animated.timing(flipAnim, {
+      toValue: 90,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      onReveal()                // swap content at the midpoint
+      flipAnim.setValue(-90)    // jump to the other side, still edge-on
+      // Second half: rotate back to 0° (answer side comes into view)
+      Animated.timing(flipAnim, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }).start()
+    })
+  }, [onReveal, flipAnim])
 
   /** Speak a list of kana in sequence, updating speakingGroup for visual feedback. */
   const speakSequence = useCallback((
@@ -87,7 +108,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   }, [speakingGroup])
 
   return (
-    <View style={styles.card}>
+    <Animated.View style={[styles.card, { transform: [{ perspective: 1200 }, { rotateY }] }]}>
       {/* JLPT badge — top right */}
       <View style={[styles.jlptBadge, { backgroundColor: jlptColor + '22', borderColor: jlptColor + '44' }]}>
         <Text style={[styles.jlptText, { color: jlptColor }]}>{item.jlptLevel}</Text>
@@ -209,7 +230,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
           <ReferencesPanel item={item} />
         </ScrollView>
       )}
-    </View>
+    </Animated.View>
   )
 }
 
