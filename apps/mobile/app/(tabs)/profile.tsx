@@ -698,7 +698,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
   },
   watchStatusText: { ...typography.caption, color: colors.textMuted, flex: 1 },
-  watchSyncBtn: { paddingHorizontal: 8, paddingVertical: 2, backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.border },
+  watchSyncBtn: { paddingHorizontal: 8, paddingVertical: 2, backgroundColor: colors.bgSurface, borderRadius: 4, borderWidth: 1, borderColor: colors.border },
   watchSyncBtnText: { ...typography.caption, color: colors.primary },
 
   // Reminder time picker

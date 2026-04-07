@@ -65,13 +65,13 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
 
 async function fetchKanjiList(jlptLevel: number): Promise<string[]> {
   const res = await fetchWithRetry(`https://kanjiapi.dev/v1/kanji/jlpt-${jlptLevel}`)
-  return res.json()
+  return res.json() as Promise<string[]>
 }
 
 async function fetchKanjiDetail(char: string): Promise<KanjiApiResponse> {
   const encoded = encodeURIComponent(char)
   const res = await fetchWithRetry(`https://kanjiapi.dev/v1/kanji/${encoded}`)
-  return res.json()
+  return res.json() as Promise<KanjiApiResponse>
 }
 
 // ─── Concurrency pool ─────────────────────────────────────────────────────────

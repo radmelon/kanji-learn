@@ -88,7 +88,7 @@ interface AuthState {
   getWatchConnectionStatus: () => Promise<{ supported: boolean; paired?: boolean; watchAppInstalled?: boolean; reachable?: boolean }>
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   user: null,
   isLoading: false,
@@ -148,13 +148,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   setWatchEnabled: async (enabled: boolean) => {
     await storage.setItem(WATCH_ENABLED_KEY, enabled)
     // If enabling, immediately push current session if available
-    const { session } = useAuthStore.getState()
+    const { session } = get()
     if (enabled && session) return pushToWatch(session)
     return null
   },
 
   forceSyncToWatch: async () => {
-    const { session } = useAuthStore.getState()
+    const { session } = get()
     if (!session) return { sent: false, reason: 'no_session' }
     return pushToWatch(session, true)
   },

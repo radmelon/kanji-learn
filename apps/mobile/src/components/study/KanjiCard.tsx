@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Linking } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
 import { Ionicons } from '@expo/vector-icons'
@@ -318,10 +318,10 @@ function ReferencesPanel({ item }: { item: ReviewQueueItem }) {
                 <RefRow icon="grid-outline" label="Radicals" value={radicals.join('　')} />
               )}
               {nelsonC != null && (
-                <RefRow icon="book-outline" label="Nelson Classic" value={`#${nelsonC}`} />
+                <RefRow icon="book-outline" label="Nelson Classic" value={`#${nelsonC}`} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(item.character)}%23kanji`)} />
               )}
               {nelsonN != null && (
-                <RefRow icon="book-outline" label="New Nelson" value={`#${nelsonN}`} />
+                <RefRow icon="book-outline" label="New Nelson" value={`#${nelsonN}`} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(item.character)}%23kanji`)} />
               )}
               {morohashi != null && (
                 <RefRow icon="library-outline" label="Morohashi" value={morohashi} />
@@ -339,13 +339,14 @@ function ReferencesPanel({ item }: { item: ReviewQueueItem }) {
   )
 }
 
-function RefRow({ icon, label, value }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; value: string }) {
+function RefRow({ icon, label, value, onPress }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; value: string; onPress?: () => void }) {
   return (
-    <View style={refStyles.row}>
+    <TouchableOpacity style={refStyles.row} onPress={onPress} disabled={!onPress} activeOpacity={0.7}>
       <Ionicons name={icon} size={12} color={colors.textMuted} style={refStyles.rowIcon} />
       <Text style={refStyles.rowLabel}>{label}</Text>
-      <Text style={refStyles.rowValue}>{value}</Text>
-    </View>
+      <Text style={[refStyles.rowValue, onPress != null && refStyles.rowValueLink]}>{value}</Text>
+      {onPress != null && <Ionicons name="open-outline" size={11} color={colors.primary} />}
+    </TouchableOpacity>
   )
 }
 
@@ -371,6 +372,7 @@ const refStyles = StyleSheet.create({
   rowIcon: { width: 16 },
   rowLabel: { ...typography.caption, color: colors.textMuted, width: 96 },
   rowValue: { ...typography.caption, color: colors.textSecondary, flex: 1 },
+  rowValueLink: { color: colors.primary },
   noData: { ...typography.caption, color: colors.textMuted, fontStyle: 'italic', lineHeight: 18 },
   credit: {
     ...typography.caption,

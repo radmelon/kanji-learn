@@ -68,7 +68,6 @@ export const RADICAL_NAMES: Record<string, string> = {
 
   // ── 30–32: mouth / earth ──────────────────────────────────────────────────
   '口': 'kuchi',
-  '囗': 'kunigamae',
   '土': 'tsuchi',
   '士': 'samurai',
 

@@ -7,26 +7,8 @@ import { SURPRISE_BURNED_CHECK_RATE } from '@kanji-learn/shared'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface ReviewQueueItem {
-  kanjiId: number
-  character: string
-  jlptLevel: string
-  meanings: string[]
-  kunReadings: string[]
-  onReadings: string[]
-  exampleVocab: { word: string; reading: string; meaning: string }[]
-  status: string
-  readingStage: number
-  reviewType: 'meaning' | 'reading' | 'writing' | 'compound'
-  // Reference / cross-index fields
-  strokeCount: number
-  radicals: string[]
-  nelsonClassic: number | null
-  nelsonNew: number | null
-  morohashiIndex: number | null
-  morohashiVolume: number | null
-  morohashiPage: number | null
-}
+export type { ReviewQueueItem } from '@kanji-learn/shared'
+import type { ReviewQueueItem } from '@kanji-learn/shared'
 
 export interface SessionSummary {
   sessionId: string

@@ -222,9 +222,9 @@ export default function PlacementScreen() {
       {/* Answer options */}
       <View style={styles.optionsContainer}>
         {options.map((opt, i) => {
-          let bg = colors.bgCard
-          let border = colors.border
-          let textColor = colors.textPrimary
+          let bg: string = colors.bgCard
+          let border: string = colors.border
+          let textColor: string = colors.textPrimary
           if (selectedIndex !== null) {
             if (i === correctIndex) { bg = colors.success + '33'; border = colors.success; textColor = colors.success }
             else if (i === selectedIndex) { bg = colors.error + '33'; border = colors.error; textColor = colors.error }

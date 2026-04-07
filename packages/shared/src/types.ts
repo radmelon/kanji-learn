@@ -71,6 +71,23 @@ export interface ReviewItem {
   reviewType: 'meaning' | 'reading' | 'writing' | 'compound'
 }
 
+export interface ReviewQueueItem extends ReviewItem {
+  jlptLevel: string
+  meanings: string[]
+  kunReadings: string[]
+  onReadings: string[]
+  exampleVocab: { word: string; reading: string; meaning: string }[]
+  status: string
+  readingStage: number
+  strokeCount: number
+  radicals: string[]
+  nelsonClassic: number | null
+  nelsonNew: number | null
+  morohashiIndex: number | null
+  morohashiVolume: number | null
+  morohashiPage: number | null
+}
+
 export interface ReviewResult {
   kanjiId: number
   quality: 0 | 1 | 2 | 3 | 4 | 5

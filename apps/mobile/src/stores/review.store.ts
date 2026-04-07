@@ -51,6 +51,7 @@ interface ReviewState {
 
   loadQueue: (limit?: number) => Promise<void>
   submitResult: (result: ReviewResult) => void
+  undoLastResult: () => boolean
   loadWeakQueue: (limit?: number) => Promise<boolean>
   finishSession: () => Promise<{ burned: number; studyTimeMs: number } | null>
   syncPendingSessions: () => Promise<void>
@@ -153,6 +154,17 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
     // Persist progress so it survives app restarts
     storage.setItem(KEY_PROGRESS, { userId: 'current', results: newResults, studyStartMs })
+  },
+
+  undoLastResult: () => {
+    const { results, currentIndex, studyStartMs } = get()
+    // Can only undo if we've graded at least one card and haven't completed the session
+    if (results.length === 0 || currentIndex === 0) return false
+    const newResults = results.slice(0, -1)
+    const prevIndex = currentIndex - 1
+    set({ results: newResults, currentIndex: prevIndex, isComplete: false })
+    storage.setItem(KEY_PROGRESS, { userId: 'current', results: newResults, studyStartMs })
+    return true
   },
 
   finishSession: async () => {
