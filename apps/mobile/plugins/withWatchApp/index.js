@@ -60,10 +60,10 @@ function withWatchFiles(config) {
       console.log(`[withWatchApp] Copied Watch sources → ${watchDst}`)
 
       // ── Install Watch provisioning profile ────────────────────────────────
-      // The profile is committed at apps/mobile/provisioning/watch-profile.mobileprovision.
+      // The profile is committed alongside this plugin file. Using __dirname
+      // guarantees the path is always correct regardless of monorepo layout.
       // Committing it is safe — .mobileprovision files contain no private keys.
-      // The private key lives only in the distribution certificate (.p12).
-      const profileSrc = path.resolve(iosDir, '..', 'provisioning', 'watch-profile.mobileprovision')
+      const profileSrc = path.join(__dirname, 'watch-profile.mobileprovision')
 
       if (fs.existsSync(profileSrc)) {
         const profileContent = fs.readFileSync(profileSrc)
@@ -295,17 +295,14 @@ function withWatchXcodeTarget(config) {
     objects['PBXResourcesBuildPhase'][`${resourcesBuildPhaseUuid}_comment`] = 'Resources'
 
     // ── Build Configurations for Watch target ─────────────────────────────────
-    // Use manual signing when the profile secret is available (EAS builds),
-    // automatic signing otherwise (local development with Xcode).
-    const hasProfile = !!process.env.WATCH_MOBILEPROVISION_B64
-
-    // UUID written by withWatchFiles — use it as the specifier so Xcode
-    // finds the exact profile regardless of display-name collisions.
+    // Use manual signing only when the profile was actually installed
+    // (withWatchFiles writes the UUID file). Falls back to Automatic for
+    // local dev builds where no profile file is present.
     const uuidFile    = path.join(iosDir, '.watch-profile-uuid')
-    const profileUUID = hasProfile && fs.existsSync(uuidFile)
+    const profileUUID = fs.existsSync(uuidFile)
       ? fs.readFileSync(uuidFile, 'utf8').trim()
       : null
-
+    const hasProfile    = !!profileUUID
     const codeSignStyle = hasProfile ? 'Manual' : 'Automatic'
     console.log(`[withWatchApp] Watch signing: style=${codeSignStyle} uuid=${profileUUID ?? 'n/a'}`)
 

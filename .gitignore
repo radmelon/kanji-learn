@@ -43,6 +43,8 @@ pnpm-debug.log*
 *.p12
 *.key
 *.mobileprovision
+# Allow the Watch distribution profile committed alongside its plugin
+!apps/mobile/plugins/withWatchApp/watch-profile.mobileprovision
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 coverage/
