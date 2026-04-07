@@ -65,8 +65,10 @@ class WatchConnectivityModule: NSObject, WCSessionDelegate {
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
-    guard let session, session.isPaired, session.isWatchAppInstalled else {
+    guard let session, session.isPaired else {
       // Not an error — Watch may not be paired yet. Resolve silently.
+      // Note: isWatchAppInstalled is unreliable for development builds so
+      // we only check isPaired and let updateApplicationContext handle delivery.
       resolve(["sent": false, "reason": "watch_not_available"])
       return
     }

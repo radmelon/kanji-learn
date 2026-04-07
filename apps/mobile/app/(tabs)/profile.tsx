@@ -58,10 +58,10 @@ export default function ProfileScreen() {
 
   const loadWatchStatus = useCallback(async () => {
     const status = await getWatchConnectionStatus()
+    console.log('[Watch] status:', JSON.stringify(status))
     if (!status.supported) { setWatchStatus('Not supported'); return }
     if (!status.paired) { setWatchStatus('Apple Watch not paired'); return }
-    if (!status.watchAppInstalled) { setWatchStatus('Watch app not installed'); return }
-    setWatchStatus(status.reachable ? 'Connected' : 'Watch out of range')
+    setWatchStatus(status.reachable ? 'Connected' : 'Paired — open Watch app to connect')
   }, [getWatchConnectionStatus])
 
   const handleWatchToggle = useCallback(async (value: boolean) => {

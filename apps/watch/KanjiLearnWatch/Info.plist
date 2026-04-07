@@ -24,6 +24,8 @@
     <array/>
     <key>WKApplication</key>
     <true/>
+    <key>WKCompanionAppBundleIdentifier</key>
+    <string>com.rdennis.kanjilearn2</string>
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
         <string>com.rdennis.kanjilearn2.watchkitapp.refresh</string>

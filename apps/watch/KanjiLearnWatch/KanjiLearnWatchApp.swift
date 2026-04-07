@@ -19,9 +19,6 @@ struct KanjiLearnWatchApp: App {
     init() {
         WatchSessionManager.shared.activate()
         requestNotificationPermission()
-        // Schedule the first background refresh. Subsequent ones are scheduled
-        // by BackgroundRefreshHandler after each task completes.
-        BackgroundRefreshHandler.shared.scheduleNextRefresh()
     }
 
     var body: some Scene {
@@ -29,6 +26,10 @@ struct KanjiLearnWatchApp: App {
             HomeView()
                 .environmentObject(watchSession)
                 .environmentObject(studyViewModel)
+                .onAppear {
+                    // Schedule after app is fully initialized
+                    BackgroundRefreshHandler.shared.scheduleNextRefresh()
+                }
         }
         // Executes every ~2 hours when the system grants a background wakeup.
         // The identifier must appear in BGTaskSchedulerPermittedIdentifiers in Info.plist.

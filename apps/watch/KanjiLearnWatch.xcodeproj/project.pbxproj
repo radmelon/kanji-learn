@@ -13,7 +13,6 @@
 		21106CB3813A93094E4F3287 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583F2397F9FDC24317783157 /* APIClient.swift */; };
 		21A2AB28C9230B7B52FDBEC9 /* BackgroundRefreshHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4119A18E2B9BA070794AD2B /* BackgroundRefreshHandler.swift */; };
 		2BB55D1C943BB29F643F131D /* CardFaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E730FA01D7A639CE0DED88 /* CardFaceView.swift */; };
-		2DFC011989C24FAC9D2C588C /* KanjiLearnComplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05E350733C580D6971F0230E /* KanjiLearnComplication.swift */; };
 		3270D97E90D7C0E96CE52E8F /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FFD5CA3E838947944A71236E /* WatchConnectivity.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 		43B7B607996CB01831771751 /* KanjiCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EEF0DDDCEFAB5E2D7B6C497 /* KanjiCard.swift */; };
 		4EF3BE83E2D76AAA93CB42E6 /* SessionCompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 873606AF883E9E8175E885B9 /* SessionCompleteView.swift */; };
@@ -21,10 +20,7 @@
 		82560E3593E6C9FF26DC8D8E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBAC00877E15B567A23AB67 /* HomeView.swift */; };
 		8FB7B38CAA9C0A3DE7450A96 /* ReviewResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D46B4133D1B002815EE5F54 /* ReviewResult.swift */; };
 		A0A28797E2EB6E19E9AB4549 /* SessionSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 059F6E9D56D1972428F20486 /* SessionSummary.swift */; };
-		B1A018B87EAF81AA286A64A4 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17DB185998D2EB72AD9D4422 /* WidgetKit.framework */; };
-		B70F5B6DC536B1329256839A /* KanjiLearnWatchComplication.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60CB50EFFF44B8233294C8EC /* KanjiLearnWatchComplication.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		BCBDFF1C06CD0B708E7B950F /* DelayPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F038A4A67E36060B33E3F3D /* DelayPickerView.swift */; };
-		C3A95DCAB8A499AF9536B773 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6C04F2192769B89080450F5A /* SwiftUI.framework */; };
 		D5FCD4BE6286E1C646AAEE8A /* SrsStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 942A7B5D636A4E43EAF40E33 /* SrsStatus.swift */; };
 		DF3FCDEACC41220A41197AA0 /* StudyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36F05EFBFD67DF0268650DD6 /* StudyViewModel.swift */; };
 		E196D3B0F9DBC792E9CFB6FF /* CardRevealView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B32EB5FD0DB2854D688972B4 /* CardRevealView.swift */; };
@@ -33,35 +29,9 @@
 		F2FDF5A2C553B710810BC5E0 /* SwipeableCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30EF27CA3AC425CB690C1781 /* SwipeableCardView.swift */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		4495656EB007B7811A8C5315 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E190FD3763D71F29AB41C21B /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = FFC2819F70BFEBCC45950B20;
-			remoteInfo = KanjiLearnWatchComplication;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		CFF88C0C884A34C6AF611A0B /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				B70F5B6DC536B1329256839A /* KanjiLearnWatchComplication.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
 		059F6E9D56D1972428F20486 /* SessionSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSummary.swift; sourceTree = "<group>"; };
-		05E350733C580D6971F0230E /* KanjiLearnComplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanjiLearnComplication.swift; sourceTree = "<group>"; };
 		0DC40DAD728568B47AF1E6BC /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
-		17DB185998D2EB72AD9D4422 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		2D46B4133D1B002815EE5F54 /* ReviewResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewResult.swift; sourceTree = "<group>"; };
 		2F038A4A67E36060B33E3F3D /* DelayPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelayPickerView.swift; sourceTree = "<group>"; };
 		30EF27CA3AC425CB690C1781 /* SwipeableCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeableCardView.swift; sourceTree = "<group>"; };
@@ -72,8 +42,6 @@
 		583F2397F9FDC24317783157 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		5CBB7048E777751E66CC6A23 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		5EEF0DDDCEFAB5E2D7B6C497 /* KanjiCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanjiCard.swift; sourceTree = "<group>"; };
-		60CB50EFFF44B8233294C8EC /* KanjiLearnWatchComplication.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KanjiLearnWatchComplication.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		6C04F2192769B89080450F5A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		778142048AA4132F28DA0638 /* KanjiLearnWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KanjiLearnWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		873606AF883E9E8175E885B9 /* SessionCompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCompleteView.swift; sourceTree = "<group>"; };
 		942A7B5D636A4E43EAF40E33 /* SrsStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SrsStatus.swift; sourceTree = "<group>"; };
@@ -86,15 +54,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		5BFAF65F9587C8C04F902913 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				B1A018B87EAF81AA286A64A4 /* WidgetKit.framework in Frameworks */,
-				C3A95DCAB8A499AF9536B773 /* SwiftUI.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		89DFF386FF3B0201AEDBF533 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -109,26 +68,15 @@
 		22AA946714E5E44F909CC190 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				6C04F2192769B89080450F5A /* SwiftUI.framework */,
 				FFD5CA3E838947944A71236E /* WatchConnectivity.framework */,
-				17DB185998D2EB72AD9D4422 /* WidgetKit.framework */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		5E2687406C2FC58B647A9F2F /* KanjiLearnWatchComplication */ = {
-			isa = PBXGroup;
-			children = (
-				05E350733C580D6971F0230E /* KanjiLearnComplication.swift */,
-			);
-			path = KanjiLearnWatchComplication;
 			sourceTree = "<group>";
 		};
 		7CD4C775F5D51A83D5301F2C = {
 			isa = PBXGroup;
 			children = (
 				D0273A835E4100269A2771C5 /* KanjiLearnWatch */,
-				5E2687406C2FC58B647A9F2F /* KanjiLearnWatchComplication */,
 				22AA946714E5E44F909CC190 /* Frameworks */,
 				E85D9C2B230324EAF4933BED /* Products */,
 			);
@@ -196,7 +144,6 @@
 			isa = PBXGroup;
 			children = (
 				778142048AA4132F28DA0638 /* KanjiLearnWatch.app */,
-				60CB50EFFF44B8233294C8EC /* KanjiLearnWatchComplication.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -210,12 +157,10 @@
 			buildPhases = (
 				B1329BD491B73608CD743214 /* Sources */,
 				89DFF386FF3B0201AEDBF533 /* Frameworks */,
-				CFF88C0C884A34C6AF611A0B /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				58835D2539934CF33CBB97A6 /* PBXTargetDependency */,
 			);
 			name = KanjiLearnWatch;
 			packageProductDependencies = (
@@ -223,24 +168,6 @@
 			productName = KanjiLearnWatch;
 			productReference = 778142048AA4132F28DA0638 /* KanjiLearnWatch.app */;
 			productType = "com.apple.product-type.application";
-		};
-		FFC2819F70BFEBCC45950B20 /* KanjiLearnWatchComplication */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = C7D5304EFD85CE256C04652D /* Build configuration list for PBXNativeTarget "KanjiLearnWatchComplication" */;
-			buildPhases = (
-				ACFAB00790BFB7864E6991EE /* Sources */,
-				5BFAF65F9587C8C04F902913 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = KanjiLearnWatchComplication;
-			packageProductDependencies = (
-			);
-			productName = KanjiLearnWatchComplication;
-			productReference = 60CB50EFFF44B8233294C8EC /* KanjiLearnWatchComplication.appex */;
-			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -252,11 +179,7 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					0AF5EB22F9F02B0C3D39EB87 = {
-						DevelopmentTeam = B75NC2Y5Y3;
-						ProvisioningStyle = Automatic;
-					};
-					FFC2819F70BFEBCC45950B20 = {
-						DevelopmentTeam = B75NC2Y5Y3;
+						DevelopmentTeam = JN43UP9MQL;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -276,20 +199,11 @@
 			projectRoot = "";
 			targets = (
 				0AF5EB22F9F02B0C3D39EB87 /* KanjiLearnWatch */,
-				FFC2819F70BFEBCC45950B20 /* KanjiLearnWatchComplication */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
-		ACFAB00790BFB7864E6991EE /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				2DFC011989C24FAC9D2C588C /* KanjiLearnComplication.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		B1329BD491B73608CD743214 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -318,20 +232,14 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		58835D2539934CF33CBB97A6 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = FFC2819F70BFEBCC45950B20 /* KanjiLearnWatchComplication */;
-			targetProxy = 4495656EB007B7811A8C5315 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
 		1C68D7148FD41993E7563D70 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KanjiLearnWatch/KanjiLearnWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JN43UP9MQL;
 				INFOPLIST_FILE = KanjiLearnWatch/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rdennis.kanjilearn2.watchkitapp;
 				SDKROOT = watchos;
@@ -374,10 +282,8 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = B75NC2Y5Y3;
+				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -407,47 +313,13 @@
 			};
 			name = Debug;
 		};
-		53A4DB6AB7608531D0B673D0 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = KanjiLearnWatchComplication/KanjiLearnWatchComplication.entitlements;
-				INFOPLIST_FILE = KanjiLearnWatchComplication/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.rdennis.kanjilearn2.watchkitapp.widget;
-				SDKROOT = watchos;
-				SKIP_INSTALL = YES;
-				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
-			};
-			name = Release;
-		};
-		6B0EA575D0448B81CB19B104 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = KanjiLearnWatchComplication/KanjiLearnWatchComplication.entitlements;
-				INFOPLIST_FILE = KanjiLearnWatchComplication/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.rdennis.kanjilearn2.watchkitapp.widget;
-				SDKROOT = watchos;
-				SKIP_INSTALL = YES;
-				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
-			};
-			name = Debug;
-		};
 		8C5037325895593BEE0EC7D8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KanjiLearnWatch/KanjiLearnWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JN43UP9MQL;
 				INFOPLIST_FILE = KanjiLearnWatch/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rdennis.kanjilearn2.watchkitapp;
 				SDKROOT = watchos;
@@ -490,10 +362,8 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = B75NC2Y5Y3;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -533,15 +403,6 @@
 			buildConfigurations = (
 				4CF8EB94C5821741DAF28A5B /* Debug */,
 				F4BD3758286BA606B9E61964 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		C7D5304EFD85CE256C04652D /* Build configuration list for PBXNativeTarget "KanjiLearnWatchComplication" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				6B0EA575D0448B81CB19B104 /* Debug */,
-				53A4DB6AB7608531D0B673D0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
