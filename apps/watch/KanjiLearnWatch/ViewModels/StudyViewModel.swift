@@ -103,7 +103,9 @@ final class StudyViewModel: ObservableObject {
                 results = []
                 state = .studying(index: 0, revealed: false)
             } else {
-                state = .error(message: "Couldn't load cards. Check your connection.")
+                // Expose the real error so it can be reported
+                let detail = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                state = .error(message: detail)
             }
         }
     }
@@ -153,6 +155,8 @@ final class StudyViewModel: ObservableObject {
             // Buffer results for retry on next launch
             bufferPendingSubmission(results: results, studyTimeMs: studyTimeMs)
             // Still show a local summary so the session feels complete
+            let detail = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            print("[StudyViewModel] Submit failed (buffered): \(detail)")
             let localSummary = buildLocalSummary(studyTimeMs: studyTimeMs)
             state = .complete(summary: localSummary)
         }
