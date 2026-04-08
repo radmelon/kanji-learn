@@ -8,6 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as Speech from 'expo-speech'
 import { Audio } from 'expo-av'
+import { StrokeOrderAnimation } from '../../src/components/writing/StrokeOrderAnimation'
 import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { SrsStatus } from '@kanji-learn/shared'
@@ -24,6 +25,14 @@ async function enableAudioForSpeech() {
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
+
+interface RelatedKanji {
+  id: number
+  character: string
+  jlptLevel: string
+  meaning: string
+  srsStatus: SrsStatus
+}
 
 interface VocabExample {
   word: string
@@ -105,6 +114,7 @@ export default function KanjiDetail() {
   const [kanji, setKanji] = useState<KanjiDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [related, setRelated] = useState<RelatedKanji[]>([])
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
   const speakingGroupRef = useRef<string | null>(null)
 
@@ -135,8 +145,15 @@ export default function KanjiDetail() {
   const load = () => {
     setIsLoading(true)
     setError(null)
+    setRelated([])
     api.get<KanjiDetail>(`/v1/kanji/${id}`)
-      .then(setKanji)
+      .then((k) => {
+        setKanji(k)
+        // Fire-and-forget related kanji fetch once the detail loads
+        api.get<RelatedKanji[]>(`/v1/kanji/${k.id}/related`)
+          .then(setRelated)
+          .catch(() => { /* non-fatal */ })
+      })
       .catch((err) => setError(err?.message ?? 'Failed to load'))
       .finally(() => setIsLoading(false))
   }
@@ -319,6 +336,11 @@ export default function KanjiDetail() {
             </Card>
           )}
 
+          {/* Stroke Order */}
+          <Card title="Stroke Order">
+            <StrokeOrderAnimation character={kanji.character} width={300} height={240} />
+          </Card>
+
           {/* Cross-references */}
           {(kanji.nelsonClassic != null || kanji.nelsonNew != null || kanji.morohashiIndex != null || kanji.jisCode != null) && (
             <Card title="References">
@@ -339,6 +361,32 @@ export default function KanjiDetail() {
                 Nelson: Andrew Nelson (Classic 1962); Jack Halpern ed. (New Nelson, 1997).{'\n'}
                 Morohashi: Tetsuji Morohashi, 大漢和辞典 (1955–1960). Source: KANJIDIC2 (CC BY-SA 4.0).
               </Text>
+            </Card>
+          )}
+
+          {/* Related Kanji */}
+          {related.length > 0 && (
+            <Card title="Related Kanji">
+              <Text style={styles.relatedSubtitle}>Shares a radical · sorted by frequency</Text>
+              <View style={styles.relatedGrid}>
+                {related.map((r) => {
+                  const jlptColor = JLPT_COLORS[r.jlptLevel] ?? colors.primary
+                  const statusColor = SRS_COLORS[r.srsStatus]
+                  return (
+                    <TouchableOpacity
+                      key={r.id}
+                      style={styles.relatedChip}
+                      onPress={() => router.push(`/kanji/${r.id}`)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.relatedStatusDot, { backgroundColor: statusColor }]} />
+                      <Text style={styles.relatedChar}>{r.character}</Text>
+                      <Text style={[styles.relatedLevel, { color: jlptColor }]}>{r.jlptLevel}</Text>
+                      <Text style={styles.relatedMeaning} numberOfLines={1}>{r.meaning}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
             </Card>
           )}
         </ScrollView>
@@ -499,4 +547,28 @@ const styles = StyleSheet.create({
     lineHeight: 16, marginTop: spacing.xs,
     borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.xs,
   },
+
+  // Related Kanji
+  relatedSubtitle: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.xs },
+  relatedGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  relatedChip: {
+    width: '47%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  relatedStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  relatedChar: { ...typography.h3, color: colors.textPrimary, minWidth: 24 },
+  relatedLevel: { ...typography.caption, fontWeight: '700', minWidth: 20 },
+  relatedMeaning: { ...typography.caption, color: colors.textMuted, flex: 1 },
 })

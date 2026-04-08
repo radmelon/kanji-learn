@@ -11,11 +11,11 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Full On/Kun Reading Display with Romaji Toggle** — Expand the KanjiCard to show all on-yomi and kun-yomi readings instead of capping at 3 each. Add a toggle button to show/hide romaji transliterations alongside the kana for learners who haven't memorized the kana sets yet.
   `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Nelson Classic & New Dictionary IDs with Jisho Deep-Link** — Display the Nelson Classic and Nelson New index numbers (already stored in the DB) on the KanjiCard detail view. Render each as a tappable link that opens `jisho.org` (or the Nelson entry directly) so users can jump to authoritative reference material mid-study.
-  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Nelson Classic & New Dictionary IDs with Jisho Deep-Link** — Display the Nelson Classic and Nelson New index numbers (already stored in the DB) on the KanjiCard detail view. Render each as a tappable link that opens `jisho.org` (or the Nelson entry directly) so users can jump to authoritative reference material mid-study.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Expandable "References" Section (JIS Code & Morohashi Index)** — Add a collapsible "References" bottom row on KanjiCard that reveals the JIS code, Morohashi index (volume + page), and any other dictionary identifiers stored in the DB. Keeps the card uncluttered by default while surfacing data for power users.
-  `[Effort: S]` `[Impact: Low]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Expandable "References" Section (JIS Code & Morohashi Index)** — Add a collapsible "References" bottom row on KanjiCard that reveals the JIS code, Morohashi index (volume + page), and any other dictionary identifiers stored in the DB. Keeps the card uncluttered by default while surfacing data for power users.
+  `[Effort: S]` `[Impact: Low]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **Example Sentences for Vocab Words** — Show 1–2 short JLPT-appropriate example sentences on the KanjiCard and CompoundCard, with the target vocabulary highlighted. The DB currently stores vocab examples (word/reading/meaning) but no full sentence text. Requires: (1) sourcing a sentence corpus — Tatoeba CC-BY or a curated JLPT sentence dataset are the best free options; (2) enriching the seed data or adding a new `example_sentences` table keyed by vocabulary; (3) a backend endpoint `/sentences?vocab=xxx`; (4) updating the card UI to display and audio-play each sentence. The Tatoeba Japanese–English dataset has ~200k sentence pairs and is freely available at tatoeba.org/en/downloads.
   `[Effort: L]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
@@ -51,8 +51,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Accuracy Breakdown by Review Type** — Break down correct/incorrect rates separately for meaning, reading, writing, and compound review types. Surfaces which modality a user struggles with most so they can focus their study time more intentionally.
   `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **JLPT Level Completion Progress** — Show a per-level progress bar (e.g., "N5: 72% mastered, 18% learning, 10% not started"). Gives learners a concrete milestone to work toward and a clear sense of how close they are to full level coverage.
-  `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **JLPT Level Completion Progress** — Show a per-level progress bar (e.g., "N5: 72% mastered, 18% learning, 10% not started"). Gives learners a concrete milestone to work toward and a clear sense of how close they are to full level coverage.
+  `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **Projected JLPT Exam Readiness Date** — Using current velocity and the number of remaining kanji at the target JLPT level, calculate and display an estimated date by which the user will have reviewed all kanji at least once. Updates dynamically as study pace changes.
   `[Effort: M]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
@@ -60,8 +60,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Retention Rate Over Time Graph** — A line chart showing overall answer accuracy as a rolling 7-day or 30-day average. Helps users see whether their retention is improving or declining and whether SRS intervals are calibrated well.
   `[Effort: M]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
 
-- [ ] **Personal Records & Milestones** — Surface achievement-style milestones ("First 100 kanji mastered", "30-day streak", "All N5 complete") with a simple notification or badge. Low-effort motivation boost; no new data infrastructure needed.
-  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Personal Records & Milestones** — Surface achievement-style milestones ("First 100 kanji mastered", "30-day streak", "All N5 complete") with a simple notification or badge. Low-effort motivation boost; no new data infrastructure needed.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 ---
 
@@ -76,11 +76,11 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Cram Mode** — A study mode that presents cards in rapid succession without updating SRS intervals or streaks. Ideal for last-minute exam prep or revisiting a lesson without "polluting" long-term SRS data.
   `[Effort: M]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
 
-- [ ] **Undo Last Card Grade** — Add an undo button that reverses the most recent card grade and re-presents the card. Prevents accidental fat-finger taps from skewing SRS intervals. Limit to one level of undo to keep implementation simple.
-  `[Effort: S]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
+- [x] **Undo Last Card Grade** — Add an undo button that reverses the most recent card grade and re-presents the card. Prevents accidental fat-finger taps from skewing SRS intervals. Limit to one level of undo to keep implementation simple.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Audio Pronunciation (TTS for Readings)** — Play a text-to-speech audio clip of the on/kun readings and example vocabulary when a card is flipped. Can use the device's built-in TTS engine (Expo Speech) as a zero-cost first pass before considering native speaker recordings.
-  `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Audio Pronunciation (TTS for Readings)** — Play a text-to-speech audio clip of the on/kun readings and example vocabulary when a card is flipped. Can use the device's built-in TTS engine (Expo Speech) as a zero-cost first pass before considering native speaker recordings.
+  `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **Adaptive Daily Goal** — Automatically suggest a daily card goal adjustment when the user consistently finishes well under or far over their goal. Keeps the daily goal realistic and prevents review pile-up from over-ambitious targets.
   `[Effort: M]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
@@ -95,8 +95,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Haptic Feedback on Grade Buttons** — Trigger subtle haptic patterns (light tap for "Again", medium for "Hard", strong for "Easy") when grading cards. Adds a tactile dimension to the grading action and makes the UI feel more responsive and polished.
   `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Swipe Gestures for Grading** — Allow users to swipe the card right for "Easy", left for "Again", and down for "Hard" instead of tapping grade buttons. Speeds up review sessions and feels more natural for mobile-first users.
-  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Swipe Gestures for Grading** — Allow users to swipe the card right for "Easy", left for "Again", and down for "Hard" instead of tapping grade buttons. Speeds up review sessions and feels more natural for mobile-first users.
+  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **Home Screen Widget (Daily Progress)** — A small iOS/Android home screen widget showing today's review count, streak, and cards remaining. Keeps the app top-of-mind without requiring the user to open it to check progress.
   `[Effort: L]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
@@ -104,8 +104,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Onboarding Tutorial** — A guided first-run walkthrough that explains the SRS system, how review types work, and how to interpret card metadata. Reduces early churn from users who don't understand spaced repetition and abandon the app prematurely.
   `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
 
-- [ ] **Card Flip Animation Polish** — Add a smooth 3D card-flip animation when revealing the answer side of a flashcard. A small UX detail that significantly improves the feel of the core study loop.
-  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Card Flip Animation Polish** — Add a smooth 3D card-flip animation when revealing the answer side of a flashcard. A small UX detail that significantly improves the feel of the core study loop.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 ---
 
@@ -149,8 +149,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Social Features (Study Groups & Shared Mnemonics)** — Let users join study groups, compare streaks on a leaderboard, and share or upvote community-created mnemonics. Adds an accountability and discovery layer on top of the existing mnemonic system.
   `[Effort: XL]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
-- [ ] **Apple Watch Complication for Quick Reviews** — A watchOS companion app that surfaces the 5 most urgent due cards for a quick wrist-based review session. Ideal for commuters or users who want to squeeze in micro-study sessions throughout the day.
-  `[Effort: XL]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Apple Watch Complication for Quick Reviews** — A watchOS companion app that surfaces the 5 most urgent due cards for a quick wrist-based review session. Ideal for commuters or users who want to squeeze in micro-study sessions throughout the day.
+  `[Effort: XL]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **iPad & Mac Catalyst Support** — Optimize the layout for larger screens with a two-column study view (card on left, details/mnemonics on right) and full keyboard shortcut support for grading. Opens the app to desktop study sessions and multi-device users.
   `[Effort: L]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`

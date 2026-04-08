@@ -120,6 +120,69 @@ export async function kanjiRoutes(server: FastifyInstance) {
     }
   )
 
+  // GET /v1/kanji/:id/related  — kanji sharing at least one radical, ordered by jlptOrder (most commonly seen first)
+  server.get<{ Params: { id: string } }>(
+    '/:id/related',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const id = Number(req.params.id)
+      if (!Number.isInteger(id) || id <= 0) {
+        return reply.code(400).send({ ok: false, error: 'Invalid kanji ID', code: 'VALIDATION_ERROR' })
+      }
+
+      const target = await server.db.query.kanji.findFirst({
+        where: eq(kanji.id, id),
+        columns: { radicals: true },
+      })
+
+      if (!target) {
+        return reply.code(404).send({ ok: false, error: 'Kanji not found', code: 'NOT_FOUND' })
+      }
+
+      const radicals = (target.radicals as string[]) ?? []
+      if (radicals.length === 0) {
+        return reply.send({ ok: true, data: [] })
+      }
+
+      const rows = await server.db
+        .select({
+          id: kanji.id,
+          character: kanji.character,
+          jlptLevel: kanji.jlptLevel,
+          jlptOrder: kanji.jlptOrder,
+          meanings: kanji.meanings,
+          srsStatus: userKanjiProgress.status,
+        })
+        .from(kanji)
+        .leftJoin(
+          userKanjiProgress,
+          and(
+            eq(userKanjiProgress.kanjiId, kanji.id),
+            eq(userKanjiProgress.userId, req.userId!)
+          )
+        )
+        .where(
+          and(
+            sql`${kanji.id} != ${id}`,
+            sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${kanji.radicals}) r WHERE r = ANY(ARRAY[${sql.join(radicals.map((r) => sql`${r}`), sql`, `)}]))`
+          )
+        )
+        .orderBy(asc(kanji.jlptLevel), asc(kanji.jlptOrder))
+        .limit(8)
+
+      return reply.send({
+        ok: true,
+        data: rows.map((r) => ({
+          id: r.id,
+          character: r.character,
+          jlptLevel: r.jlptLevel,
+          meaning: (r.meanings as string[])[0] ?? '',
+          srsStatus: r.srsStatus ?? 'unseen',
+        })),
+      })
+    }
+  )
+
   // GET /v1/kanji/:id  — full detail for one kanji + user SRS progress
   server.get<{ Params: { id: string } }>(
     '/:id',

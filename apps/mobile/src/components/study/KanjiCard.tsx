@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Linking } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Linking, Modal, SafeAreaView } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
 import { Audio } from 'expo-av'
@@ -7,6 +7,8 @@ import { Ionicons } from '@expo/vector-icons'
 import { toRomaji } from 'wanakana'
 import { colors, spacing, radius, typography } from '../../theme'
 import type { ReviewQueueItem } from '@kanji-learn/shared'
+import { StrokeOrderAnimation } from '../writing/StrokeOrderAnimation'
+import { getRadicalName } from '../../constants/radicals'
 
 /** Configure iOS audio session to play through silent mode before speaking. */
 async function enableAudioForSpeech() {
@@ -237,13 +239,258 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
             </View>
           )}
 
+          {/* Stroke order animation */}
+          <StrokeOrderSection character={item.character} />
+
           {/* References panel */}
           <ReferencesPanel item={item} />
+
+          {/* Reveal All drawer trigger */}
+          <RevealAllButton item={item} />
         </ScrollView>
       )}
     </Animated.View>
   )
 }
+
+// ─── RevealAllButton + Drawer ─────────────────────────────────────────────────
+
+function RevealAllButton({ item }: { item: ReviewQueueItem }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <TouchableOpacity
+        style={drawerStyles.trigger}
+        onPress={() => setOpen(true)}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
+        <Text style={drawerStyles.triggerText}>Full details</Text>
+        <Ionicons name="chevron-forward" size={13} color={colors.textMuted} />
+      </TouchableOpacity>
+      <RevealAllDrawer item={item} visible={open} onClose={() => setOpen(false)} />
+    </>
+  )
+}
+
+function RevealAllDrawer({ item, visible, onClose }: { item: ReviewQueueItem; visible: boolean; onClose: () => void }) {
+  const jlptColor = JLPT_COLORS[item.jlptLevel as keyof typeof JLPT_COLORS] ?? colors.textMuted
+  const meanings = (item.meanings as string[]) ?? []
+  const kunReadings = (item.kunReadings as string[]) ?? []
+  const onReadings = (item.onReadings as string[]) ?? []
+  const exampleVocab = (item.exampleVocab as { word: string; reading: string; meaning: string }[]) ?? []
+  const radicals = (item.radicals as string[] | undefined) ?? []
+  const strokes = item.strokeCount as number | null | undefined
+  const nelsonC = item.nelsonClassic as number | null | undefined
+  const nelsonN = item.nelsonNew as number | null | undefined
+  const morIndex = item.morohashiIndex as number | null | undefined
+  const morVol = item.morohashiVolume as number | null | undefined
+  const morPage = item.morohashiPage as number | null | undefined
+  const morohashi = morIndex != null
+    ? morVol != null && morPage != null ? `${morIndex} (vol. ${morVol}, p. ${morPage})` : `${morIndex}`
+    : null
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={drawerStyles.safe}>
+        {/* Header */}
+        <View style={drawerStyles.header}>
+          <View style={[drawerStyles.jlptBadge, { backgroundColor: jlptColor + '22', borderColor: jlptColor + '55' }]}>
+            <Text style={[drawerStyles.jlptText, { color: jlptColor }]}>{item.jlptLevel}</Text>
+          </View>
+          <Text style={drawerStyles.character}>{item.character}</Text>
+          <TouchableOpacity onPress={onClose} style={drawerStyles.closeBtn}>
+            <Ionicons name="close" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={drawerStyles.body} showsVerticalScrollIndicator={false}>
+
+          {/* Meanings */}
+          <DrawerSection title="Meanings">
+            {meanings.map((m, i) => (
+              <Text key={i} style={drawerStyles.meaningRow}>
+                <Text style={drawerStyles.meaningIndex}>{i + 1}. </Text>{m}
+              </Text>
+            ))}
+          </DrawerSection>
+
+          {/* Readings */}
+          {(kunReadings.length > 0 || onReadings.length > 0) && (
+            <DrawerSection title="Readings">
+              {kunReadings.length > 0 && (
+                <View style={drawerStyles.readingRow}>
+                  <Text style={drawerStyles.readingLabel}>kun</Text>
+                  <Text style={drawerStyles.readingValue}>{kunReadings.join('　')}</Text>
+                </View>
+              )}
+              {onReadings.length > 0 && (
+                <View style={drawerStyles.readingRow}>
+                  <Text style={drawerStyles.readingLabel}>on</Text>
+                  <Text style={drawerStyles.readingValue}>{onReadings.join('　')}</Text>
+                </View>
+              )}
+            </DrawerSection>
+          )}
+
+          {/* Example Vocab */}
+          {exampleVocab.length > 0 && (
+            <DrawerSection title="Example Vocabulary">
+              {exampleVocab.map((v, i) => (
+                <View key={i} style={drawerStyles.vocabRow}>
+                  <Text style={drawerStyles.vocabWord}>{v.word}</Text>
+                  <Text style={drawerStyles.vocabReading}>【{v.reading}】</Text>
+                  <Text style={drawerStyles.vocabMeaning}>{v.meaning}</Text>
+                </View>
+              ))}
+            </DrawerSection>
+          )}
+
+          {/* Radicals */}
+          {radicals.length > 0 && (
+            <DrawerSection title="Radicals">
+              <View style={drawerStyles.radicalGrid}>
+                {radicals.map((r, i) => {
+                  const name = getRadicalName(r)
+                  return (
+                    <View key={i} style={drawerStyles.radicalPill}>
+                      <Text style={drawerStyles.radicalChar}>{r}</Text>
+                      {name ? <Text style={drawerStyles.radicalName}>{name}</Text> : null}
+                    </View>
+                  )
+                })}
+              </View>
+            </DrawerSection>
+          )}
+
+          {/* Stroke Order */}
+          <DrawerSection title="Stroke Order">
+            <StrokeOrderAnimation character={item.character} width={300} height={240} />
+          </DrawerSection>
+
+          {/* References */}
+          {(strokes != null || nelsonC != null || nelsonN != null || morohashi != null) && (
+            <DrawerSection title="References">
+              {strokes != null && (
+                <View style={drawerStyles.refRow}>
+                  <Text style={drawerStyles.refLabel}>Stroke count</Text>
+                  <Text style={drawerStyles.refValue}>{strokes}</Text>
+                </View>
+              )}
+              {nelsonC != null && (
+                <TouchableOpacity style={drawerStyles.refRow} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(item.character)}%23kanji`)} activeOpacity={0.7}>
+                  <Text style={drawerStyles.refLabel}>Nelson Classic</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={[drawerStyles.refValue, { color: colors.primary }]}>#{nelsonC}</Text>
+                    <Ionicons name="open-outline" size={12} color={colors.primary} />
+                  </View>
+                </TouchableOpacity>
+              )}
+              {nelsonN != null && (
+                <TouchableOpacity style={drawerStyles.refRow} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(item.character)}%23kanji`)} activeOpacity={0.7}>
+                  <Text style={drawerStyles.refLabel}>New Nelson</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={[drawerStyles.refValue, { color: colors.primary }]}>#{nelsonN}</Text>
+                    <Ionicons name="open-outline" size={12} color={colors.primary} />
+                  </View>
+                </TouchableOpacity>
+              )}
+              {morohashi != null && (
+                <View style={drawerStyles.refRow}>
+                  <Text style={drawerStyles.refLabel}>Morohashi</Text>
+                  <Text style={drawerStyles.refValue}>{morohashi}</Text>
+                </View>
+              )}
+            </DrawerSection>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  )
+}
+
+function DrawerSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={drawerStyles.section}>
+      <Text style={drawerStyles.sectionTitle}>{title}</Text>
+      <View style={drawerStyles.sectionBody}>{children}</View>
+    </View>
+  )
+}
+
+const drawerStyles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+  header: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md, paddingBottom: spacing.sm, gap: spacing.md,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  jlptBadge: { borderWidth: 1, borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 3 },
+  jlptText: { ...typography.caption, fontWeight: '700' },
+  character: { ...typography.kanjiDisplay, color: colors.textPrimary, flex: 1, textAlign: 'center', fontSize: 40, lineHeight: 52 },
+  closeBtn: { padding: spacing.xs },
+  body: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl },
+  section: { gap: spacing.sm },
+  sectionTitle: { ...typography.h3, color: colors.textPrimary },
+  sectionBody: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
+  meaningRow: { ...typography.body, color: colors.textPrimary },
+  meaningIndex: { color: colors.textMuted },
+  readingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  readingLabel: { ...typography.caption, color: colors.textMuted, width: 28 },
+  readingValue: { ...typography.body, color: colors.textPrimary },
+  vocabRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
+  vocabWord: { ...typography.body, color: colors.textPrimary, fontWeight: '700' },
+  vocabReading: { ...typography.body, color: colors.textSecondary },
+  vocabMeaning: { ...typography.bodySmall, color: colors.textMuted, flex: 1 },
+  radicalGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  radicalPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.bgElevated, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 4 },
+  radicalChar: { ...typography.h3, color: colors.textPrimary },
+  radicalName: { ...typography.caption, color: colors.textMuted },
+  refRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
+  refLabel: { ...typography.bodySmall, color: colors.textMuted },
+  refValue: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
+  trigger: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, paddingVertical: spacing.sm, marginTop: spacing.xs,
+    borderTopWidth: 1, borderTopColor: colors.divider,
+  },
+  triggerText: { ...typography.caption, color: colors.textMuted },
+})
+
+// ─── StrokeOrderSection ───────────────────────────────────────────────────────
+
+function StrokeOrderSection({ character }: { character: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <View style={strokeStyles.container}>
+      <TouchableOpacity
+        style={strokeStyles.toggle}
+        onPress={() => setOpen((v) => !v)}
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="pencil-outline" size={13} color={colors.textMuted} />
+        <Text style={strokeStyles.toggleLabel}>Stroke Order</Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textMuted} />
+      </TouchableOpacity>
+      {open && (
+        <View style={strokeStyles.body}>
+          <StrokeOrderAnimation character={character} width={280} height={220} />
+        </View>
+      )}
+    </View>
+  )
+}
+
+const strokeStyles = StyleSheet.create({
+  container: { width: '100%', marginTop: spacing.xs },
+  toggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, paddingVertical: spacing.xs,
+  },
+  toggleLabel: { ...typography.caption, color: colors.textMuted },
+  body: { alignItems: 'center', paddingTop: spacing.sm },
+})
 
 // ─── SpeakButton ──────────────────────────────────────────────────────────────
 
@@ -326,7 +573,21 @@ function ReferencesPanel({ item }: { item: ReviewQueueItem }) {
                 <RefRow icon="pencil-outline" label="Strokes" value={String(strokes)} />
               )}
               {radicals.length > 0 && (
-                <RefRow icon="grid-outline" label="Radicals" value={radicals.join('　')} />
+                <View style={refStyles.row}>
+                  <Ionicons name="grid-outline" size={12} color={colors.textMuted} style={refStyles.rowIcon} />
+                  <Text style={refStyles.rowLabel}>Radicals</Text>
+                  <View style={refStyles.radicalPills}>
+                    {radicals.map((r, i) => {
+                      const name = getRadicalName(r)
+                      return (
+                        <View key={i} style={refStyles.radicalPill}>
+                          <Text style={refStyles.radicalChar}>{r}</Text>
+                          {name ? <Text style={refStyles.radicalName}>{name}</Text> : null}
+                        </View>
+                      )
+                    })}
+                  </View>
+                </View>
               )}
               {nelsonC != null && (
                 <RefRow icon="book-outline" label="Nelson Classic" value={`#${nelsonC}`} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(item.character)}%23kanji`)} />
@@ -384,6 +645,10 @@ const refStyles = StyleSheet.create({
   rowLabel: { ...typography.caption, color: colors.textMuted, width: 96 },
   rowValue: { ...typography.caption, color: colors.textSecondary, flex: 1 },
   rowValueLink: { color: colors.primary },
+  radicalPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, flex: 1 },
+  radicalPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.bgElevated, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
+  radicalChar: { ...typography.caption, color: colors.textPrimary, fontWeight: '700' },
+  radicalName: { ...typography.caption, color: colors.textMuted },
   noData: { ...typography.caption, color: colors.textMuted, fontStyle: 'italic', lineHeight: 18 },
   credit: {
     ...typography.caption,
