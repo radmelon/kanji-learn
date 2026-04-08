@@ -2,11 +2,20 @@ import { useCallback, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Linking } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
+import { Audio } from 'expo-av'
 import { Ionicons } from '@expo/vector-icons'
 import { toRomaji } from 'wanakana'
 import { colors, spacing, radius, typography } from '../../theme'
 import type { ReviewQueueItem } from '@kanji-learn/shared'
-// Audio session is configured globally in app/_layout.tsx (playsInSilentModeIOS: true)
+
+/** Configure iOS audio session to play through silent mode before speaking. */
+async function enableAudioForSpeech() {
+  try {
+    await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false })
+  } catch {
+    // Non-fatal: continue without silent-mode override
+  }
+}
 
 interface Props {
   item: ReviewQueueItem
@@ -61,7 +70,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   }, [onReveal, flipAnim])
 
   /** Speak a list of kana in sequence, updating speakingGroup for visual feedback. */
-  const speakSequence = useCallback((
+  const speakSequence = useCallback(async (
     words: string[],
     groupKey: string,
     stripDot = false,
@@ -74,6 +83,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
     }
     Speech.stop()
     setSpeakingGroup(groupKey)
+    await enableAudioForSpeech()
 
     const cleaned = words.map((w) => (stripDot ? w.replace('.', '') : w))
 
@@ -92,7 +102,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   }, [speakingGroup])
 
   /** Speak a single vocab word by its reading. */
-  const speakVocab = useCallback((reading: string, key: string) => {
+  const speakVocab = useCallback(async (reading: string, key: string) => {
     if (speakingGroup === key) {
       Speech.stop()
       setSpeakingGroup(null)
@@ -100,6 +110,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
     }
     Speech.stop()
     setSpeakingGroup(key)
+    await enableAudioForSpeech()
     Speech.speak(reading, {
       ...SPEECH_OPTS,
       onDone: () => setSpeakingGroup(null),
