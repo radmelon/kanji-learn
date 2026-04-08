@@ -38,6 +38,7 @@ struct StudyView: View {
 
             case .error(let message):
                 ErrorView(message: message) {
+                    viewModel.reset()          // back to .idle so startSession() guard passes
                     viewModel.startSession()
                 } onDismiss: {
                     viewModel.reset()

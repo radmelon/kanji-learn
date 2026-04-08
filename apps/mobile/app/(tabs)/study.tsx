@@ -22,7 +22,7 @@ const HELP_KEY = 'kl_has_seen_study_help'
 
 export default function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset } =
+  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset } =
     useReviewStore()
 
   const [isRevealed, setIsRevealed] = useState(false)
@@ -105,7 +105,11 @@ export default function StudySession() {
 
   useEffect(() => {
     syncPendingSessions()
-    loadQueue(20)
+    // Skip loadQueue when arriving from "Drill Weak Spots" — the weak queue
+    // was already loaded by loadWeakQueue() before navigation and must not be overwritten.
+    if (!useReviewStore.getState().isWeakDrill) {
+      loadQueue(20)
+    }
     return () => reset()
   }, [])
 

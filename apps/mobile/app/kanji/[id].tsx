@@ -111,6 +111,17 @@ export default function KanjiDetail() {
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
   const speakingGroupRef = useRef<string | null>(null)
 
+  // Stop TTS and prevent callbacks from firing after the screen unmounts
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      speakingGroupRef.current = null
+      Speech.stop()
+    }
+  }, [])
+
   // Play a list of readings sequentially; tap again to stop
   const speakReadings = useCallback((readings: string[], groupKey: string, stripDot = false) => {
     if (speakingGroupRef.current === groupKey) {
@@ -124,12 +135,23 @@ export default function KanjiDetail() {
     setSpeakingGroup(groupKey)
     const cleaned = readings.map((r) => stripDot ? r.replace(/\./g, '') : r)
     const speakAt = (idx: number) => {
-      if (idx >= cleaned.length || speakingGroupRef.current !== groupKey) {
-        speakingGroupRef.current = null
-        setSpeakingGroup(null)
+      if (!isMountedRef.current || idx >= cleaned.length || speakingGroupRef.current !== groupKey) {
+        if (isMountedRef.current) {
+          speakingGroupRef.current = null
+          setSpeakingGroup(null)
+        }
         return
       }
-      Speech.speak(cleaned[idx], { ...SPEECH_OPTS, onDone: () => speakAt(idx + 1), onError: () => { speakingGroupRef.current = null; setSpeakingGroup(null) } })
+      Speech.speak(cleaned[idx], {
+        ...SPEECH_OPTS,
+        onDone: () => speakAt(idx + 1),
+        onError: () => {
+          if (isMountedRef.current) {
+            speakingGroupRef.current = null
+            setSpeakingGroup(null)
+          }
+        },
+      })
     }
     speakAt(0)
   }, [])

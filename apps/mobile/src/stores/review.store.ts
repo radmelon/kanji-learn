@@ -48,6 +48,8 @@ interface ReviewState {
   error: string | null
   isOfflineQueue: boolean
   hasPendingSessions: boolean
+  /** True when the current queue was loaded via loadWeakQueue — study.tsx skips its normal loadQueue() call */
+  isWeakDrill: boolean
 
   loadQueue: (limit?: number) => Promise<void>
   submitResult: (result: ReviewResult) => void
@@ -69,9 +71,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   error: null,
   isOfflineQueue: false,
   hasPendingSessions: false,
+  isWeakDrill: false,
 
   loadQueue: async (limit = 20) => {
-    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false })
+    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false })
 
     // Check for pending sessions immediately (fire-and-forget)
     const pending = await storage.getItem<PendingSession[]>(KEY_PENDING)
@@ -131,7 +134,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         set({ isLoading: false })
         return false
       }
-      set({ queue, studyStartMs: now, currentIndex: 0, results: [] })
+      set({ queue, studyStartMs: now, currentIndex: 0, results: [], isWeakDrill: true })
       return true
     } catch (err: any) {
       set({ error: err?.message ?? 'Could not load weak kanji queue.' })
@@ -244,6 +247,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   reset: () => {
     storage.removeItem(KEY_PROGRESS)
-    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false })
+    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false })
   },
 }))

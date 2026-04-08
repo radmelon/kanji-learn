@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Linking, Modal, SafeAreaView } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
@@ -45,6 +45,16 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
 
   // Which group is currently being spoken: null | 'kun' | 'on' | vocab index
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
+
+  // Track mount state to prevent TTS callbacks from firing after unmount
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      Speech.stop()
+    }
+  }, [])
 
   // 3D flip animation — rotates through 90° (disappear) → swap content → 90° (reappear)
   const flipAnim = useRef(new Animated.Value(0)).current
@@ -98,14 +108,14 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
     const cleaned = words.map((w) => (stripDot ? w.replace('.', '') : w))
 
     const speakAt = (idx: number) => {
-      if (idx >= cleaned.length) {
-        setSpeakingGroup(null)
+      if (!isMountedRef.current || idx >= cleaned.length) {
+        if (isMountedRef.current) setSpeakingGroup(null)
         return
       }
       Speech.speak(cleaned[idx], {
         ...SPEECH_OPTS,
         onDone: () => speakAt(idx + 1),
-        onError: () => setSpeakingGroup(null),
+        onError: () => { if (isMountedRef.current) setSpeakingGroup(null) },
       })
     }
     speakAt(0)
@@ -122,8 +132,8 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
     setSpeakingGroup(key)
     Speech.speak(reading, {
       ...SPEECH_OPTS,
-      onDone: () => setSpeakingGroup(null),
-      onError: () => setSpeakingGroup(null),
+      onDone: () => { if (isMountedRef.current) setSpeakingGroup(null) },
+      onError: () => { if (isMountedRef.current) setSpeakingGroup(null) },
     })
   }, [speakingGroup])
 
