@@ -454,6 +454,11 @@ export class SrsService {
     const dueCards = dueRow?.count ?? 0
     const availableNew = unseenRow?.count ?? 0
 
+    // Cap new cards at what a single session would actually load (avoids showing
+    // huge numbers like 2078 when the user has barely started)
+    const SESSION_LIMIT = 20
+    const cappedNew = Math.min(availableNew, Math.max(0, SESSION_LIMIT - dueCards))
+
     return {
       unseen: 0,
       learning: 0,
@@ -461,7 +466,7 @@ export class SrsService {
       remembered: 0,
       burned: 0,
       ...Object.fromEntries(rows.map((r) => [r.status, r.count])),
-      dueCount: dueCards + availableNew,
+      dueCount: dueCards + cappedNew,
     }
   }
 }

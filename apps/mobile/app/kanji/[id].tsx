@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as Speech from 'expo-speech'
-import { Audio } from 'expo-av'
 import { StrokeOrderAnimation } from '../../src/components/writing/StrokeOrderAnimation'
 import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -16,13 +15,6 @@ import { getRadicalName } from '../../src/constants/radicals'
 
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.9 }
 
-async function enableAudioForSpeech() {
-  try {
-    await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false })
-  } catch {
-    // Non-fatal
-  }
-}
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -120,7 +112,7 @@ export default function KanjiDetail() {
   const speakingGroupRef = useRef<string | null>(null)
 
   // Play a list of readings sequentially; tap again to stop
-  const speakReadings = useCallback(async (readings: string[], groupKey: string, stripDot = false) => {
+  const speakReadings = useCallback((readings: string[], groupKey: string, stripDot = false) => {
     if (speakingGroupRef.current === groupKey) {
       Speech.stop()
       speakingGroupRef.current = null
@@ -130,7 +122,6 @@ export default function KanjiDetail() {
     Speech.stop()
     speakingGroupRef.current = groupKey
     setSpeakingGroup(groupKey)
-    await enableAudioForSpeech()
     const cleaned = readings.map((r) => stripDot ? r.replace(/\./g, '') : r)
     const speakAt = (idx: number) => {
       if (idx >= cleaned.length || speakingGroupRef.current !== groupKey) {

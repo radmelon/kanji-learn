@@ -61,7 +61,12 @@ final class StudyViewModel: ObservableObject {
     // ── Session entry point ────────────────────────────────────────────────────
 
     func startSession() {
-        guard case .idle = state, state != .loading else { return }
+        guard case .idle = state else { return }
+
+        // Set loading state synchronously before spawning the async task so that
+        // any re-entrant call (e.g. StudyView's .onAppear idle case) sees .loading
+        // and bails out via the guard above.
+        state = .loading
 
         // Show onboarding overlay on first ever launch
         if !defaults.bool(forKey: CacheKey.onboardingSeen) {
@@ -74,7 +79,7 @@ final class StudyViewModel: ObservableObject {
     // ── Load queue ────────────────────────────────────────────────────────────
 
     private func loadQueue() async {
-        state = .loading
+        // state is already .loading (set synchronously by startSession)
 
         // First, attempt any buffered submission from a previous session
         await retryPendingSubmission()
