@@ -90,7 +90,7 @@ struct DelayPickerView: View {
     private var encouragement: String {
         // 1. Daily goal
         if dueCount >= dailyGoal {
-            return "You have \(dueCount) cards waiting — that's your full daily goal! A quick session keeps your streak alive."
+            return "You have \(dueCount) reviews due — that's your full daily goal! A quick session keeps your streak alive."
         }
 
         // 2. Study mates

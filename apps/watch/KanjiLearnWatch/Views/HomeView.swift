@@ -167,7 +167,7 @@ private struct DueCountHero: View {
                     .contentTransition(.numericText())
                     .animation(.easeInOut, value: dueCount)
             }
-            Text(dueCount == 1 ? "card due" : "cards due")
+            Text(dueCount == 1 ? "review due" : "reviews due")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
         }
