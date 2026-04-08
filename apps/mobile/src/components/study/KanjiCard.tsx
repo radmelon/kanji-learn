@@ -10,6 +10,23 @@ import type { ReviewQueueItem } from '@kanji-learn/shared'
 import { StrokeOrderAnimation } from '../writing/StrokeOrderAnimation'
 import { getRadicalName } from '../../constants/radicals'
 
+/** Render a Japanese sentence with the target vocab word highlighted in accent color. */
+function highlightVocab(sentence: string, vocab: string): React.ReactNode {
+  const idx = sentence.indexOf(vocab)
+  if (idx === -1) return <Text style={sentenceJaText}>{sentence}</Text>
+  return (
+    <>
+      <Text style={sentenceJaText}>{sentence.slice(0, idx)}</Text>
+      <Text style={[sentenceJaText, sentenceHighlight]}>{vocab}</Text>
+      <Text style={sentenceJaText}>{sentence.slice(idx + vocab.length)}</Text>
+    </>
+  )
+}
+
+// Hoisted style refs used inside highlightVocab (plain objects, not StyleSheet entries)
+const sentenceJaText = { fontSize: 15, color: colors.textPrimary } as const
+const sentenceHighlight = { color: colors.accent, fontWeight: '700' as const }
+
 /** Configure iOS audio session to play through silent mode before speaking. */
 async function enableAudioForSpeech() {
   try {
@@ -51,6 +68,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   const kunReadings = item.kunReadings as string[]
   const onReadings = item.onReadings as string[]
   const exampleVocab = item.exampleVocab as { word: string; reading: string; meaning: string }[]
+  const exampleSentences = (item.exampleSentences as { ja: string; en: string; vocab: string }[] | undefined) ?? []
 
   const handleReveal = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -236,6 +254,23 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
                   </TouchableOpacity>
                 )
               })}
+            </View>
+          )}
+
+          {/* Example sentences */}
+          {exampleSentences.length > 0 && (
+            <View style={styles.sentences}>
+              {exampleSentences.slice(0, 2).map((s, i) => (
+                <View key={i} style={styles.sentenceRow}>
+                  <Text style={styles.sentenceJa}>
+                    {s.vocab
+                      ? highlightVocab(s.ja, s.vocab)
+                      : <Text style={styles.sentenceJaText}>{s.ja}</Text>
+                    }
+                  </Text>
+                  <Text style={styles.sentenceEn}>{s.en}</Text>
+                </View>
+              ))}
             </View>
           )}
 
@@ -778,6 +813,20 @@ const styles = StyleSheet.create({
   speakBtnActive: {
     backgroundColor: colors.accent + '22',
   },
+
+  // Example sentences
+  sentences: { gap: spacing.sm, width: '100%' },
+  sentenceRow: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    gap: 3,
+  },
+  sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22 },
+  sentenceEn: { ...typography.caption, color: colors.textMuted, lineHeight: 16 },
 
   // Vocab examples
   vocab: { gap: 6, width: '100%' },

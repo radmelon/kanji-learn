@@ -41,6 +41,7 @@ export class SrsService {
         kunReadings: kanji.kunReadings,
         onReadings: kanji.onReadings,
         exampleVocab: kanji.exampleVocab,
+        exampleSentences: kanji.exampleSentences,
         strokeCount: kanji.strokeCount,
         radicals: kanji.radicals,
         nelsonClassic: kanji.nelsonClassic,
@@ -78,6 +79,7 @@ export class SrsService {
               kunReadings: kanji.kunReadings,
               onReadings: kanji.onReadings,
               exampleVocab: kanji.exampleVocab,
+        exampleSentences: kanji.exampleSentences,
               strokeCount: kanji.strokeCount,
               radicals: kanji.radicals,
               nelsonClassic: kanji.nelsonClassic,
@@ -109,6 +111,7 @@ export class SrsService {
         kunReadings: kanji.kunReadings,
         onReadings: kanji.onReadings,
         exampleVocab: kanji.exampleVocab,
+        exampleSentences: kanji.exampleSentences,
         strokeCount: kanji.strokeCount,
         radicals: kanji.radicals,
         nelsonClassic: kanji.nelsonClassic,
@@ -383,6 +386,7 @@ export class SrsService {
         kunReadings: kanji.kunReadings,
         onReadings: kanji.onReadings,
         exampleVocab: kanji.exampleVocab,
+        exampleSentences: kanji.exampleSentences,
         strokeCount: kanji.strokeCount,
         radicals: kanji.radicals,
         nelsonClassic: kanji.nelsonClassic,
@@ -410,6 +414,7 @@ export class SrsService {
       readingStage: c.readingStage ?? 0,
       reviewType: this.pickReviewType(c.readingStage ?? 0, c.status ?? 'learning'),
       exampleVocab: c.exampleVocab ?? [],
+      exampleSentences: c.exampleSentences ?? [],
     }))
   }
 

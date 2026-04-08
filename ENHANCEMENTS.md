@@ -17,20 +17,20 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Expandable "References" Section (JIS Code & Morohashi Index)** — Add a collapsible "References" bottom row on KanjiCard that reveals the JIS code, Morohashi index (volume + page), and any other dictionary identifiers stored in the DB. Keeps the card uncluttered by default while surfacing data for power users.
   `[Effort: S]` `[Impact: Low]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Example Sentences for Vocab Words** — Show 1–2 short JLPT-appropriate example sentences on the KanjiCard and CompoundCard, with the target vocabulary highlighted. The DB currently stores vocab examples (word/reading/meaning) but no full sentence text. Requires: (1) sourcing a sentence corpus — Tatoeba CC-BY or a curated JLPT sentence dataset are the best free options; (2) enriching the seed data or adding a new `example_sentences` table keyed by vocabulary; (3) a backend endpoint `/sentences?vocab=xxx`; (4) updating the card UI to display and audio-play each sentence. The Tatoeba Japanese–English dataset has ~200k sentence pairs and is freely available at tatoeba.org/en/downloads.
-  `[Effort: L]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
+- [x] **Example Sentences for Vocab Words** — Show 1–2 short JLPT-appropriate example sentences on the KanjiCard and CompoundCard, with the target vocabulary highlighted. Sourced from Tatoeba CC-BY 2.0 via API (Claude Haiku fallback). Stored as `example_sentences` JSONB on the kanji table; seed script at `packages/db/src/seeds/seed-sentences.ts`. Run `pnpm --filter @kanji-learn/db seed:sentences` after running migration 0012.
+  `[Effort: L]` `[Impact: High]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 
-- [ ] **Stroke Order Animation** — Animate the kanji being drawn stroke-by-stroke using the KanjiVG SVG path data already stored in the DB. Accessible from a button on the KanjiCard; plays at normal speed with an option to step through one stroke at a time. No new data needed — purely a front-end rendering task.
-  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Stroke Order Animation** — Animate the kanji being drawn stroke-by-stroke using the KanjiVG SVG path data already stored in the DB. Accessible from a button on the KanjiCard; plays at normal speed with an option to step through one stroke at a time. No new data needed — purely a front-end rendering task.
+  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Radical Decomposition Display** — Render the radical breakdown stored in the DB as a row of tappable radical chips on the KanjiCard. Tapping a radical could filter the kanji browser to show all kanji sharing that radical, helping users build pattern recognition across characters.
-  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Radical Decomposition Display** — Render the radical breakdown stored in the DB as a row of tappable radical chips on the KanjiCard. Tapping a radical could filter the kanji browser to show all kanji sharing that radical, helping users build pattern recognition across characters.
+  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **"Reveal All" Details Drawer** — Add an expandable bottom sheet on any study card that presents the full kanji record: all readings, all meanings, stroke count, JLPT level, radical breakdown, dictionary references, stroke order, and linked vocab. Lets curious learners explore deeply without cluttering the default card view.
-  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **"Reveal All" Details Drawer** — Add an expandable bottom sheet on any study card that presents the full kanji record: all readings, all meanings, stroke count, JLPT level, radical breakdown, dictionary references, stroke order, and linked vocab. Lets curious learners explore deeply without cluttering the default card view.
+  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Related Kanji Suggestions** — At the bottom of the details drawer, show 3–4 visually or semantically similar kanji (same radical, similar meaning, or commonly confused pairs). Helps learners build associations and avoid mix-ups between look-alike characters.
-  `[Effort: M]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
+- [x] **Related Kanji Suggestions** — At the bottom of the details drawer, show 3–4 visually or semantically similar kanji (same radical, similar meaning, or commonly confused pairs). Helps learners build associations and avoid mix-ups between look-alike characters.
+  `[Effort: M]` `[Impact: Med]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 
 - [ ] **Pitch Accent Indicator** — Display the pitch accent pattern (高低 pattern) for kun-yomi readings on the KanjiCard. Sourced from an open pitch accent dictionary (e.g., Wadoku or a bundled dataset). Particularly valuable for intermediate learners targeting natural spoken Japanese.
   `[Effort: L]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`

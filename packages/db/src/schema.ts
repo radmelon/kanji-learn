@@ -62,6 +62,10 @@ export const kanji = pgTable(
       .$type<{ word: string; reading: string; meaning: string }[]>()
       .notNull()
       .default([]),
+    exampleSentences: jsonb('example_sentences')
+      .$type<{ ja: string; en: string; vocab: string }[]>()
+      .notNull()
+      .default([]),
     radicals: jsonb('radicals').$type<string[]>().notNull().default([]),
     svgPath: text('svg_path'), // KanjiVG stroke order SVG
 

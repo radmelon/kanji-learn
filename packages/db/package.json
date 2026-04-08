@@ -19,6 +19,7 @@
     "seed:mnemonics": "tsx src/seeds/seed-mnemonics.ts",
     "seed:vocab": "tsx src/seeds/enrich-vocab.ts",
     "seed:backfill-radicals": "tsx src/seeds/backfill-radicals.ts",
+    "seed:sentences": "tsx src/seeds/seed-sentences.ts",
     "seed": "pnpm seed:kanji && pnpm seed:kanjidic2 && pnpm seed:mnemonics"
   },
   "dependencies": {

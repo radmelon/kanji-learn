@@ -203,6 +203,7 @@ export async function kanjiRoutes(server: FastifyInstance) {
           kunReadings: kanji.kunReadings,
           onReadings: kanji.onReadings,
           exampleVocab: kanji.exampleVocab,
+          exampleSentences: kanji.exampleSentences,
           radicals: kanji.radicals,
           svgPath: kanji.svgPath,
           // Cross-reference codes

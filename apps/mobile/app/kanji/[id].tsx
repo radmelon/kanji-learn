@@ -49,6 +49,7 @@ interface KanjiDetail {
   kunReadings: string[]
   onReadings: string[]
   exampleVocab: VocabExample[]
+  exampleSentences: { ja: string; en: string; vocab: string }[]
   radicals: string[]
   svgPath: string | null
   // Cross-reference codes
@@ -319,6 +320,32 @@ export default function KanjiDetail() {
             </Card>
           )}
 
+          {/* Example Sentences */}
+          {(kanji.exampleSentences ?? []).length > 0 && (
+            <Card title="Example Sentences">
+              {(kanji.exampleSentences ?? []).map((s, i) => (
+                <View key={i} style={[styles.sentenceRow, i > 0 && styles.sentenceRowBorder]}>
+                  <Text style={styles.sentenceJa}>
+                    {s.vocab ? (
+                      (() => {
+                        const idx = s.ja.indexOf(s.vocab)
+                        if (idx === -1) return <Text>{s.ja}</Text>
+                        return (
+                          <>
+                            <Text>{s.ja.slice(0, idx)}</Text>
+                            <Text style={styles.sentenceVocabHighlight}>{s.vocab}</Text>
+                            <Text>{s.ja.slice(idx + s.vocab.length)}</Text>
+                          </>
+                        )
+                      })()
+                    ) : s.ja}
+                  </Text>
+                  <Text style={styles.sentenceEn}>{s.en}</Text>
+                </View>
+              ))}
+            </Card>
+          )}
+
           {/* Radicals */}
           {(kanji.radicals ?? []).length > 0 && (
             <Card title="Radicals">
@@ -526,6 +553,13 @@ const styles = StyleSheet.create({
   vocabWord: { ...typography.h3, color: colors.textPrimary },
   vocabReading: { ...typography.caption, color: colors.textMuted },
   vocabMeaning: { ...typography.bodySmall, color: colors.textSecondary, flex: 1, textAlign: 'right' },
+
+  // Example Sentences
+  sentenceRow: { gap: 4, paddingVertical: spacing.xs },
+  sentenceRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+  sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22 },
+  sentenceVocabHighlight: { color: colors.accent, fontWeight: '700' },
+  sentenceEn: { ...typography.caption, color: colors.textMuted, lineHeight: 16 },
 
   // Radicals
   radicalPills: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

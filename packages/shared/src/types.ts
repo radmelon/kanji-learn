@@ -77,6 +77,7 @@ export interface ReviewQueueItem extends ReviewItem {
   kunReadings: string[]
   onReadings: string[]
   exampleVocab: { word: string; reading: string; meaning: string }[]
+  exampleSentences: { ja: string; en: string; vocab: string }[]
   status: string
   readingStage: number
   strokeCount: number
