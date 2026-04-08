@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as Speech from 'expo-speech'
+import { Audio } from 'expo-av'
 import { StrokeOrderAnimation } from '../../src/components/writing/StrokeOrderAnimation'
 import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -115,6 +116,9 @@ export default function KanjiDetail() {
   const isMountedRef = useRef(true)
   useEffect(() => {
     isMountedRef.current = true
+    // Reconfigure audio session when screen mounts so TTS plays through iOS silent mode.
+    // Called once at mount (not per-press) to avoid races with Speech.speak().
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false }).catch(() => {})
     return () => {
       isMountedRef.current = false
       speakingGroupRef.current = null

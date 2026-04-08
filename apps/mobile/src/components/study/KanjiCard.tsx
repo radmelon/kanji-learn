@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Linking, Modal, SafeAreaView } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
+import { Audio } from 'expo-av'
 import { Ionicons } from '@expo/vector-icons'
 import { toRomaji } from 'wanakana'
 import { colors, spacing, radius, typography } from '../../theme'
@@ -50,6 +51,10 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   const isMountedRef = useRef(true)
   useEffect(() => {
     isMountedRef.current = true
+    // Reconfigure audio session at study session start so TTS plays through
+    // iOS silent mode. Called once at mount (not per-press) to avoid races
+    // with Speech.speak() that caused expo-av v16 crashes.
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false }).catch(() => {})
     return () => {
       isMountedRef.current = false
       Speech.stop()
