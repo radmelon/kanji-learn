@@ -8,7 +8,6 @@ export interface FriendRequest {
   id: string
   requesterId: string
   requesterName: string | null
-  requesterEmail: string | null
   addresseeId: string
   status: string
   createdAt: Date
@@ -17,13 +16,11 @@ export interface FriendRequest {
 export interface Friend {
   id: string
   displayName: string | null
-  email: string | null
 }
 
 export interface LeaderboardEntry {
   userId: string
   displayName: string | null
-  email: string | null
   streak: number
   totalReviewed: number
   totalBurned: number
@@ -57,7 +54,7 @@ export class SocialService {
     })
 
     return {
-      user: { id: found.id, displayName: found.displayName, email: found.email },
+      user: { id: found.id, displayName: found.displayName },
       friendshipStatus: existing?.status ?? null,
     }
   }
@@ -81,7 +78,6 @@ export class SocialService {
       id: row.id,
       requesterId: row.requesterId,
       requesterName: requester?.displayName ?? null,
-      requesterEmail: requester?.email ?? null,
       addresseeId: row.addresseeId,
       status: row.status,
       createdAt: row.createdAt,
@@ -113,7 +109,6 @@ export class SocialService {
       id: r.id,
       requesterId: r.requesterId,
       requesterName: r.requester.displayName,
-      requesterEmail: r.requester.email,
       addresseeId: r.addresseeId,
       status: r.status,
       createdAt: r.createdAt,
@@ -133,7 +128,7 @@ export class SocialService {
 
     return rows.map((r) => {
       const friend = r.requesterId === userId ? r.addressee : r.requester
-      return { id: friend.id, displayName: friend.displayName, email: friend.email }
+      return { id: friend.id, displayName: friend.displayName }
     })
   }
 
@@ -205,7 +200,7 @@ export class SocialService {
 
     // Fetch display names
     const profiles = await this.db
-      .select({ id: userProfiles.id, displayName: userProfiles.displayName, email: userProfiles.email })
+      .select({ id: userProfiles.id, displayName: userProfiles.displayName })
       .from(userProfiles)
       .where(inArray(userProfiles.id, targetIds))
 
@@ -215,7 +210,6 @@ export class SocialService {
     const entries: LeaderboardEntry[] = targetIds.map((uid) => ({
       userId: uid,
       displayName: profileMap[uid]?.displayName ?? null,
-      email: profileMap[uid]?.email ?? null,
       streak: computeStreak(statsByUser[uid] ?? []),
       totalReviewed: reviewedMap[uid] ?? 0,
       totalBurned: burnedMap[uid] ?? 0,

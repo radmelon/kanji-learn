@@ -578,7 +578,7 @@ export default function Dashboard() {
                 <Text style={styles.lbRank}>{i + 1}</Text>
                 <View style={styles.lbInfo}>
                   <Text style={[styles.lbName, entry.isMe && styles.lbNameMe]} numberOfLines={1}>
-                    {entry.displayName ?? entry.email ?? 'Unknown'}
+                    {entry.displayName ?? 'Unknown'}
                     {entry.isMe ? ' (you)' : ''}
                   </Text>
                   <Text style={styles.lbStats}>

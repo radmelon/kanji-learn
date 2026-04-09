@@ -4,14 +4,12 @@ import { api } from '../lib/api'
 export interface Friend {
   id: string
   displayName: string | null
-  email: string | null
 }
 
 export interface FriendRequest {
   id: string
   requesterId: string
   requesterName: string | null
-  requesterEmail: string | null
   addresseeId: string
   status: string
   createdAt: string
@@ -20,7 +18,6 @@ export interface FriendRequest {
 export interface LeaderboardEntry {
   userId: string
   displayName: string | null
-  email: string | null
   streak: number
   totalReviewed: number
   totalBurned: number

@@ -478,8 +478,8 @@ export default function ProfileScreen() {
               <View style={styles.rowLeft}>
                 <Ionicons name="person-circle-outline" size={32} color={colors.primary} />
                 <View>
-                  <Text style={styles.rowLabel}>{searchResult.user.displayName ?? searchResult.user.email}</Text>
-                  <Text style={styles.rowSub}>{searchResult.user.email}</Text>
+                  <Text style={styles.rowLabel}>{searchResult.user.displayName ?? friendSearch}</Text>
+                  <Text style={styles.rowSub}>{friendSearch}</Text>
                 </View>
               </View>
               {searchResult.friendshipStatus === 'accepted' ? (
@@ -520,7 +520,7 @@ export default function ProfileScreen() {
                   <View style={styles.rowLeft}>
                     <Ionicons name="person-circle-outline" size={28} color={colors.accent} />
                     <View>
-                      <Text style={styles.rowLabel}>{r.requesterName ?? r.requesterEmail ?? 'Someone'}</Text>
+                      <Text style={styles.rowLabel}>{r.requesterName ?? 'Someone'}</Text>
                       <Text style={styles.rowSub}>wants to study together</Text>
                     </View>
                   </View>
@@ -546,8 +546,7 @@ export default function ProfileScreen() {
                   <View style={styles.rowLeft}>
                     <Ionicons name="person-circle-outline" size={28} color={colors.primary} />
                     <View>
-                      <Text style={styles.rowLabel}>{f.displayName ?? f.email}</Text>
-                      {f.displayName && <Text style={styles.rowSub}>{f.email}</Text>}
+                      <Text style={styles.rowLabel}>{f.displayName ?? 'Unknown'}</Text>
                     </View>
                   </View>
                   <TouchableOpacity onPress={() => handleRemoveFriend(f.id, f.displayName ?? '')}>

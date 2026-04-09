@@ -321,7 +321,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
                   <Text style={styles.sentenceJa}>
                     {s.vocab
                       ? highlightVocab(s.ja, s.vocab)
-                      : <Text style={styles.sentenceJaText}>{s.ja}</Text>
+                      : <Text style={styles.sentenceJa}>{s.ja}</Text>
                     }
                   </Text>
                   <Text style={styles.sentenceEn}>{s.en}</Text>
