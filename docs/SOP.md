@@ -9,10 +9,10 @@ Standard operating procedures for building, testing, and deploying the Kanji Lea
 ### One-command release (preferred)
 ```bash
 cd apps/mobile
-eas build --platform ios --profile production --non-interactive
+eas build --platform ios --profile production --auto-submit --non-interactive
 ```
 
-`autoSubmit: true` is set in `eas.json` production profile, so EAS will **build AND submit** to App Store Connect automatically. Apple processing takes 5–30 min after the EAS step completes; a TestFlight notification email arrives when it is ready.
+The `--auto-submit` flag tells EAS to **build AND submit** to App Store Connect in one step. Note: `autoSubmit` is NOT a valid `eas.json` key — it must be passed as a CLI flag. Apple processing takes 5–30 min after the EAS step completes; a TestFlight notification email arrives when it is ready.
 
 ### Manual submit (if build was run without autoSubmit)
 If a build completed but never appeared in TestFlight, the `.ipa` was built but not submitted:
