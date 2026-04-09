@@ -27,20 +27,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High]` `[Status: 🐛 Reported]`
 
-- [ ] **Speak icons not working on Study Cards and Browse Kanji Cards** — The speaker/audio icons on both the study flashcards and the kanji browser cards do not play audio when tapped. No sound is produced and no visible error is shown to the user.
+- [x] **Speak icons not working on Study Cards and Browse Kanji Cards** — ✅ Resolved. Device media volume was muted (physical ringer switch). TTS was functioning correctly all along. Build 87 adds a helpful alert if a Japanese TTS voice is not installed on the device, as a bonus improvement for future users.
 
-  **Steps to reproduce:**
-  1. Open a study session or navigate to the kanji browser.
-  2. Tap the speak/audio icon on any card.
-  3. No audio plays.
-
-  **Suspected root cause:** `Audio.setAudioModeAsync({ playsInSilentModeIOS: true })` was called at module scope in `_layout.tsx`, before the React Native bridge finishes initialising the `Audio` native module. The call silently failed (error swallowed with `.catch(() => {})`), so `playsInSilentModeIOS` was never applied and `expo-speech` remained in the default ambient audio session — muted by the iOS ringer switch. Fix in Build 86: moved to `useEffect(() => {}, [])` in `RootLayout` so it runs after native modules are ready; also added `console.error` logging to TTS `onError` callbacks.
-
-  **Affected files:**
-  - `apps/mobile/app/_layout.tsx` — audio session setup
-  - `apps/mobile/src/components/study/KanjiCard.tsx` — `speakSequence`, `speakVocab` onError callbacks
-
-  `[Effort: S]` `[Impact: High]` `[Status: 🔧 Fix in Build 86 — Awaiting Verification]`
+  `[Effort: S]` `[Impact: High]` `[Status: ✅ Not a bug — device was muted]`
 
 - [ ] **Daily push notifications never delivered** — Users with notifications enabled and a reminder time set never receive daily reminder push notifications.
 
