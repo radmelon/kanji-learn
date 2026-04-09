@@ -407,7 +407,7 @@ export default function Dashboard() {
                       styles.progressFill,
                       {
                         position: 'absolute', top: 0, left: 0, bottom: 0,
-                        width: `${Math.round((summary.totalSeen / (summary.totalSeen + summary.statusCounts.unseen)) * 100)}%`,
+                        width: `${Math.max(Math.round((summary.totalSeen / (summary.totalSeen + summary.statusCounts.unseen)) * 100), 2)}%`,
                         backgroundColor: colors.primary + '33',
                       },
                     ]}
@@ -441,7 +441,9 @@ export default function Dashboard() {
                   {summary.velocity.levelProjections.map((proj) => {
                     const levelKey = proj.level.toLowerCase() as keyof typeof colors
                     const levelColor = colors[levelKey] ?? colors.textMuted
-                    const pct = proj.total > 0 ? Math.round((proj.burned / proj.total) * 100) : 0
+                    const bd = summary.jlptProgress?.[proj.level] ?? { learning: 0, reviewing: 0, remembered: 0, burned: 0 }
+                    const totalActive = bd.learning + bd.reviewing + bd.remembered + bd.burned
+                    const pct = proj.total > 0 ? Math.round((bd.burned / proj.total) * 100) : 0
                     return (
                       <View key={proj.level} style={styles.jlptRow}>
                         {/* Level badge */}
@@ -451,22 +453,16 @@ export default function Dashboard() {
 
                         {/* Progress bar + numbers */}
                         <View style={styles.jlptBarCol}>
-                          <View style={styles.jlptBarTrack}>
-                            {proj.seen > 0 && (
-                              <View style={[styles.jlptBarFill, {
-                                position: 'absolute', top: 0, left: 0, bottom: 0,
-                                width: `${Math.round((proj.seen / proj.total) * 100)}%`,
-                                backgroundColor: levelColor + '44',
-                              }]} />
-                            )}
-                            {proj.burned > 0 && (
-                              <View style={[styles.jlptBarFill, { width: `${pct}%`, backgroundColor: levelColor }]} />
-                            )}
+                          <View style={[styles.jlptBarTrack, { flexDirection: 'row' }]}>
+                            {bd.learning > 0 && <View style={{ width: `${(bd.learning / proj.total) * 100}%`, height: '100%', backgroundColor: colors.learning }} />}
+                            {bd.reviewing > 0 && <View style={{ width: `${(bd.reviewing / proj.total) * 100}%`, height: '100%', backgroundColor: colors.reviewing }} />}
+                            {bd.remembered > 0 && <View style={{ width: `${(bd.remembered / proj.total) * 100}%`, height: '100%', backgroundColor: colors.remembered }} />}
+                            {bd.burned > 0 && <View style={{ width: `${(bd.burned / proj.total) * 100}%`, height: '100%', backgroundColor: colors.burned }} />}
                           </View>
                           <View style={styles.jlptBarLabels}>
                             <Text style={styles.jlptCount}>
-                              {proj.seen}/{proj.total}
-                              <Text style={styles.jlptPct}> · {pct}%</Text>
+                              {totalActive}/{proj.total}
+                              <Text style={styles.jlptPct}> · {pct}% mastered</Text>
                             </Text>
                             {proj.projectedDate ? (
                               <Text style={styles.jlptDate}>

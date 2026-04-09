@@ -69,6 +69,7 @@ function StudySession() {
   // ── Swipe-to-grade ─────────────────────────────────────────────────────────
   const SWIPE_THRESHOLD = 80
   const swipeX = useRef(new Animated.Value(0)).current
+  const swipeY = useRef(new Animated.Value(0)).current
   // Refs so PanResponder (created once) can read current values without stale closure
   const isRevealedRef = useRef(false)
   const handleGradeRef = useRef<(q: 0 | 1 | 2 | 3 | 4 | 5) => void>(() => {})
@@ -78,42 +79,72 @@ function StudySession() {
 
   const panResponder = useRef(
     PanResponder.create({
-      // Only steal the gesture when it's clearly horizontal and the answer is revealed
+      // Steal gesture when clearly horizontal (left/right) OR clearly vertical (up/down)
       onMoveShouldSetPanResponder: (_, gs) =>
-        isRevealedRef.current &&
-        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 &&
-        Math.abs(gs.dx) > 8,
+        isRevealedRef.current && (
+          (Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 8) ||
+          (Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5 && Math.abs(gs.dy) > 8)
+        ),
       onPanResponderGrant: () => {
         didFireHapticRef.current = false
       },
       onPanResponderMove: (_, gs) => {
-        swipeX.setValue(gs.dx)
+        const isHoriz = Math.abs(gs.dx) > Math.abs(gs.dy)
+        if (isHoriz) {
+          swipeX.setValue(gs.dx)
+          swipeY.setValue(0)
+        } else {
+          swipeY.setValue(gs.dy)
+          swipeX.setValue(0)
+        }
         // Single haptic "click" when crossing the commit threshold
-        if (!didFireHapticRef.current && Math.abs(gs.dx) >= SWIPE_THRESHOLD) {
+        if (!didFireHapticRef.current &&
+            (Math.abs(gs.dx) >= SWIPE_THRESHOLD || Math.abs(gs.dy) >= SWIPE_THRESHOLD)) {
           didFireHapticRef.current = true
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
         }
       },
       onPanResponderRelease: (_, gs) => {
-        if (gs.dx > SWIPE_THRESHOLD) {
-          // Fly off right → Easy
-          Animated.timing(swipeX, { toValue: 600, duration: 220, useNativeDriver: true }).start(() => {
-            swipeX.setValue(0)
-            handleGradeRef.current(5)
-          })
-        } else if (gs.dx < -SWIPE_THRESHOLD) {
-          // Fly off left → Again
-          Animated.timing(swipeX, { toValue: -600, duration: 220, useNativeDriver: true }).start(() => {
-            swipeX.setValue(0)
-            handleGradeRef.current(1)
-          })
+        const isHoriz = Math.abs(gs.dx) > Math.abs(gs.dy)
+        if (isHoriz) {
+          if (gs.dx > SWIPE_THRESHOLD) {
+            // Fly off right → Easy
+            Animated.timing(swipeX, { toValue: 600, duration: 220, useNativeDriver: true }).start(() => {
+              swipeX.setValue(0)
+              handleGradeRef.current(5)
+            })
+          } else if (gs.dx < -SWIPE_THRESHOLD) {
+            // Fly off left → Again
+            Animated.timing(swipeX, { toValue: -600, duration: 220, useNativeDriver: true }).start(() => {
+              swipeX.setValue(0)
+              handleGradeRef.current(1)
+            })
+          } else {
+            Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }).start()
+          }
+          swipeY.setValue(0)
         } else {
-          // Snap back
-          Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }).start()
+          if (gs.dy < -SWIPE_THRESHOLD) {
+            // Fly off top → Easy
+            Animated.timing(swipeY, { toValue: -800, duration: 220, useNativeDriver: true }).start(() => {
+              swipeY.setValue(0)
+              handleGradeRef.current(5)
+            })
+          } else if (gs.dy > SWIPE_THRESHOLD) {
+            // Fly off bottom → Hard
+            Animated.timing(swipeY, { toValue: 800, duration: 220, useNativeDriver: true }).start(() => {
+              swipeY.setValue(0)
+              handleGradeRef.current(3)
+            })
+          } else {
+            Animated.spring(swipeY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }).start()
+          }
+          swipeX.setValue(0)
         }
       },
       onPanResponderTerminate: () => {
         Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }).start()
+        Animated.spring(swipeY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }).start()
       },
     })
   ).current
@@ -122,6 +153,8 @@ function StudySession() {
   const cardRotate = swipeX.interpolate({ inputRange: [-200, 0, 200], outputRange: ['-6deg', '0deg', '6deg'] })
   const easyOpacity = swipeX.interpolate({ inputRange: [0, SWIPE_THRESHOLD * 0.4, SWIPE_THRESHOLD], outputRange: [0, 0.6, 1], extrapolate: 'clamp' })
   const againOpacity = swipeX.interpolate({ inputRange: [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD * 0.4, 0], outputRange: [1, 0.6, 0], extrapolate: 'clamp' })
+  const upEasyOpacity = swipeY.interpolate({ inputRange: [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD * 0.4, 0], outputRange: [1, 0.6, 0], extrapolate: 'clamp' })
+  const hardOpacity = swipeY.interpolate({ inputRange: [0, SWIPE_THRESHOLD * 0.4, SWIPE_THRESHOLD], outputRange: [0, 0.6, 1], extrapolate: 'clamp' })
 
   useEffect(() => {
     syncPendingSessions()
@@ -158,6 +191,7 @@ function StudySession() {
     setIsRevealed(false)
     cardStartMs.current = Date.now()
     swipeX.setValue(0)
+    swipeY.setValue(0)
   }, [currentIndex])
 
   useEffect(() => {
@@ -381,7 +415,7 @@ function StudySession() {
 
       {/* Card — wrapped in animated view for swipe-to-grade */}
       <Animated.View
-        style={[styles.cardArea, { transform: [{ translateX: swipeX }, { rotate: cardRotate }] }]}
+        style={[styles.cardArea, { transform: [{ translateX: swipeX }, { translateY: swipeY }, { rotate: cardRotate }] }]}
         {...panResponder.panHandlers}
       >
         {/* "EASY" badge — appears on right pull */}
@@ -394,6 +428,16 @@ function StudySession() {
         <Animated.View style={[styles.swipeBadge, styles.swipeBadgeLeft, { opacity: againOpacity }]}
           pointerEvents="none">
           <Text style={styles.swipeBadgeText}>AGAIN ✗</Text>
+        </Animated.View>
+
+        {/* "EASY" badge — appears on up swipe */}
+        <Animated.View style={[styles.swipeBadgeTop, { opacity: upEasyOpacity }]} pointerEvents="none">
+          <Text style={styles.swipeBadgeText}>EASY ✓</Text>
+        </Animated.View>
+
+        {/* "HARD" badge — appears on down swipe */}
+        <Animated.View style={[styles.swipeBadgeBottom, { opacity: hardOpacity }]} pointerEvents="none">
+          <Text style={styles.swipeBadgeText}>HARD</Text>
         </Animated.View>
 
         {currentItem.reviewType === 'compound' ? (
@@ -419,7 +463,7 @@ function StudySession() {
         {isRevealed ? (
           <>
             <GradeButtons onGrade={handleGrade} />
-            <Text style={styles.swipeHint}>← swipe Again · Easy swipe →</Text>
+            <Text style={styles.swipeHint}>← Again · ↑ Easy · ↓ Hard</Text>
           </>
         ) : (
           <View style={styles.revealHint}>
@@ -451,7 +495,7 @@ function StudySession() {
             <View style={onboardStyles.section}>
               <Text style={onboardStyles.sectionTitle}>Swipe to grade quickly</Text>
               <Text style={onboardStyles.sectionBody}>
-                After revealing, swipe <Text style={{ fontWeight: '700', color: colors.accent }}>right for Easy</Text> or <Text style={{ fontWeight: '700', color: colors.error }}>left for Again</Text>. Or tap the grade buttons below for all four options.
+                After revealing, swipe <Text style={{ fontWeight: '700', color: colors.accent }}>up for Easy</Text>, <Text style={{ fontWeight: '700', color: colors.error }}>left for Again</Text>, or <Text style={{ fontWeight: '700', color: colors.warning }}>down for Hard</Text>. Or tap the grade buttons below for all four options.
               </Text>
             </View>
             <View style={onboardStyles.section}>
@@ -550,6 +594,32 @@ const styles = StyleSheet.create({
     left: spacing.xl,
     borderColor: colors.error,
     backgroundColor: colors.error + '22',
+    transform: [{ rotate: '8deg' }],
+  },
+  swipeBadgeTop: {
+    position: 'absolute',
+    top: spacing.xl,
+    left: '25%',
+    zIndex: 10,
+    borderWidth: 3,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent + '22',
+    transform: [{ rotate: '-8deg' }],
+  },
+  swipeBadgeBottom: {
+    position: 'absolute',
+    bottom: spacing.xl,
+    left: '25%',
+    zIndex: 10,
+    borderWidth: 3,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderColor: colors.warning,
+    backgroundColor: colors.warning + '22',
     transform: [{ rotate: '8deg' }],
   },
   swipeBadgeText: {
