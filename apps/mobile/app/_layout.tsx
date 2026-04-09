@@ -1,9 +1,11 @@
 import '../src/polyfills'
 import { useEffect, useRef } from 'react'
+import { Alert, Linking } from 'react-native'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Audio } from 'expo-av'
+import * as Speech from 'expo-speech'
 import { useAuthStore } from '../src/stores/auth.store'
 import { usePushNotifications } from '../src/hooks/usePushNotifications'
 import { useNetworkStatus } from '../src/hooks/useNetworkStatus'
@@ -17,12 +19,9 @@ export default function RootLayout() {
   const { isOnline } = useNetworkStatus()
   const wasOfflineRef = useRef(false)
 
-  // Configure the iOS audio session once on first mount — after native modules are
-  // fully initialised. Module-scope execution (before React starts) is too early:
-  // the Audio native module may not be ready yet and the call silently fails,
-  // leaving playsInSilentModeIOS unset so expo-speech is muted by the ringer switch.
-  // RootLayout mounts exactly once per app lifetime so this is still a single call.
+  // Configure audio session + check Japanese TTS voice availability on first mount.
   useEffect(() => {
+    // 1. Set playsInSilentModeIOS so expo-speech plays through the ringer switch.
     Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
@@ -30,6 +29,26 @@ export default function RootLayout() {
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
     }).catch((e) => console.error('[Audio] setAudioModeAsync failed:', e))
+
+    // 2. Check whether a Japanese TTS voice is installed on this device.
+    //    If not, expo-speech silently fires onError and no audio plays —
+    //    the user never gets any feedback about why the speaker icons don't work.
+    Speech.getAvailableVoicesAsync()
+      .then((voices) => {
+        console.log('[TTS] Available voices:', voices.map((v) => `${v.language} — ${v.name}`).join(', '))
+        const hasJapanese = voices.some((v) => v.language.startsWith('ja'))
+        if (!hasJapanese) {
+          Alert.alert(
+            'Japanese Voice Not Installed',
+            'Kanji pronunciations require a Japanese text-to-speech voice.\n\nTo install one:\nSettings → Accessibility → Spoken Content → Voices → Japanese\n\nDownload any Japanese voice, then reopen the app.',
+            [
+              { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
+              { text: 'Later' },
+            ]
+          )
+        }
+      })
+      .catch((e) => console.error('[TTS] getAvailableVoicesAsync failed:', e))
   }, [])
 
   usePushNotifications(!!session)
