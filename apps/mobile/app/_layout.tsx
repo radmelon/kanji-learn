@@ -10,26 +10,27 @@ import { useNetworkStatus } from '../src/hooks/useNetworkStatus'
 import { useReviewStore } from '../src/stores/review.store'
 import { colors } from '../src/theme'
 
-// Configure the iOS audio session ONCE at module load time — before React starts.
-// This sets playsInSilentModeIOS so expo-speech plays through the ringer switch.
-// We call it here (module scope) rather than in a component effect because:
-//   - Module scope runs once, ever. No repeat calls that destabilise expo-av v16.
-//   - Component effects run on every mount/unmount — KanjiCard mounts repeatedly
-//     in weak-spots queues, which was causing expo-av v16 native bridge instability.
-Audio.setAudioModeAsync({
-  allowsRecordingIOS: false,
-  playsInSilentModeIOS: true,
-  staysActiveInBackground: false,
-  shouldDuckAndroid: true,
-  playThroughEarpieceAndroid: false,
-}).catch(() => {})
-
 export default function RootLayout() {
   const { isInitialized, session, initialize } = useAuthStore()
   const router = useRouter()
   const segments = useSegments()
   const { isOnline } = useNetworkStatus()
   const wasOfflineRef = useRef(false)
+
+  // Configure the iOS audio session once on first mount — after native modules are
+  // fully initialised. Module-scope execution (before React starts) is too early:
+  // the Audio native module may not be ready yet and the call silently fails,
+  // leaving playsInSilentModeIOS unset so expo-speech is muted by the ringer switch.
+  // RootLayout mounts exactly once per app lifetime so this is still a single call.
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    }).catch((e) => console.error('[Audio] setAudioModeAsync failed:', e))
+  }, [])
 
   usePushNotifications(!!session)
 

@@ -166,7 +166,10 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       Speech.speak(cleaned[idx], {
         ...SPEECH_OPTS,
         onDone: () => speakAt(idx + 1),
-        onError: () => { if (isMountedRef.current) setSpeakingGroup(null) },
+        onError: (e) => {
+          console.error('[TTS] speakSequence error for', cleaned[idx], e)
+          if (isMountedRef.current) setSpeakingGroup(null)
+        },
       })
     }
     speakAt(0)
@@ -184,7 +187,10 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
     Speech.speak(reading, {
       ...SPEECH_OPTS,
       onDone: () => { if (isMountedRef.current) setSpeakingGroup(null) },
-      onError: () => { if (isMountedRef.current) setSpeakingGroup(null) },
+      onError: (e) => {
+        console.error('[TTS] speakVocab error for', reading, e)
+        if (isMountedRef.current) setSpeakingGroup(null)
+      },
     })
   }, [speakingGroup])
 
