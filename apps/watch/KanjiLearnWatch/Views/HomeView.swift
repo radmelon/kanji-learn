@@ -21,6 +21,17 @@ struct HomeView: View {
 
     private let api = APIClient.shared
 
+    /// Daily goal from the iPhone app (synced via WatchConnectivity), defaulting to 20.
+    private var dailyGoal: Int {
+        let v = UserDefaults.standard.integer(forKey: "kl_daily_goal")
+        return v > 0 ? v : 20
+    }
+
+    /// Cap the due count at the daily goal — the server backlog can be thousands
+    /// of overdue cards, but the user only needs to see how many they'll actually
+    /// do today (one session = up to dailyGoal cards).
+    private var cappedDueCount: Int { min(status?.dueCount ?? 0, dailyGoal) }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -32,7 +43,7 @@ struct HomeView: View {
 
                     // ── Due count hero ────────────────────────────────────────
                     DueCountHero(
-                        dueCount: status?.dueCount ?? 0,
+                        dueCount: cappedDueCount,
                         isLoading: isLoadingStatus
                     )
 
@@ -46,7 +57,7 @@ struct HomeView: View {
                     }
 
                     // ── Primary action ────────────────────────────────────────
-                    let dueCount = status?.dueCount ?? 0
+                    let dueCount = cappedDueCount
                     let canStudy = dueCount > 0 && watchSession.isAuthenticated
 
                     Button {

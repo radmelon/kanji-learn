@@ -10,18 +10,19 @@ import { useNetworkStatus } from '../src/hooks/useNetworkStatus'
 import { useReviewStore } from '../src/stores/review.store'
 import { colors } from '../src/theme'
 
-// Configure audio session once at startup so TTS plays through silent mode (iOS)
-// and respects Android audio focus. Done here rather than per-button-press to
-// avoid race conditions between setAudioModeAsync and Speech.speak().
+// Configure the iOS audio session ONCE at module load time — before React starts.
+// This sets playsInSilentModeIOS so expo-speech plays through the ringer switch.
+// We call it here (module scope) rather than in a component effect because:
+//   - Module scope runs once, ever. No repeat calls that destabilise expo-av v16.
+//   - Component effects run on every mount/unmount — KanjiCard mounts repeatedly
+//     in weak-spots queues, which was causing expo-av v16 native bridge instability.
 Audio.setAudioModeAsync({
   allowsRecordingIOS: false,
   playsInSilentModeIOS: true,
   staysActiveInBackground: false,
   shouldDuckAndroid: true,
   playThroughEarpieceAndroid: false,
-}).catch(() => {
-  // Non-fatal — device will use default audio mode
-})
+}).catch(() => {})
 
 export default function RootLayout() {
   const { isInitialized, session, initialize } = useAuthStore()

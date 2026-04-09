@@ -19,7 +19,8 @@ const JLPT_COLORS = {
 }
 
 export function CompoundCard({ item, onReveal, isRevealed }: Props) {
-  const vocab = item.exampleVocab as { word: string; reading: string; meaning: string }[]
+  // Null-coalesce: exampleVocab can be null from DB for some kanji
+  const vocab = (item.exampleVocab as { word: string; reading: string; meaning: string }[] | null) ?? []
   const jlptColor = JLPT_COLORS[item.jlptLevel as keyof typeof JLPT_COLORS] ?? colors.textMuted
 
   // Pick a stable featured word per kanji, cycle through vocab on each SRS rep

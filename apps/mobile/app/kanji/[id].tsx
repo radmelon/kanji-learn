@@ -1,3 +1,11 @@
+// kanji/[id].tsx
+// Kanji detail screen (browse / dashboard deep-link).
+//
+// TTS notes (build 76):
+//   Audio session setup is handled globally in _layout.tsx. isMountedRef and
+//   speakingGroupRef guard sequential-speech callbacks so they do not fire after
+//   the user navigates away and the screen unmounts.
+
 import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -7,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as Speech from 'expo-speech'
-import { Audio } from 'expo-av'
 import { StrokeOrderAnimation } from '../../src/components/writing/StrokeOrderAnimation'
 import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -116,9 +123,6 @@ export default function KanjiDetail() {
   const isMountedRef = useRef(true)
   useEffect(() => {
     isMountedRef.current = true
-    // Reconfigure audio session when screen mounts so TTS plays through iOS silent mode.
-    // Called once at mount (not per-press) to avoid races with Speech.speak().
-    Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false }).catch(() => {})
     return () => {
       isMountedRef.current = false
       speakingGroupRef.current = null
@@ -134,7 +138,10 @@ export default function KanjiDetail() {
       setSpeakingGroup(null)
       return
     }
-    Speech.stop()
+    // Only stop if something is actually playing — stopping an idle synthesizer
+    // puts iOS into a transient "stopping" state that causes Speech.speak() issued
+    // immediately after to be silently dropped.
+    if (speakingGroupRef.current !== null) Speech.stop()
     speakingGroupRef.current = groupKey
     setSpeakingGroup(groupKey)
     const cleaned = readings.map((r) => stripDot ? r.replace(/\./g, '') : r)

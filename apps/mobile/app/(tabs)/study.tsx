@@ -1,10 +1,30 @@
-import { useState, useEffect, useRef, useCallback, type FC } from 'react'
+// study.tsx
+// Active SRS study session screen.
+//
+// State machine (via Zustand review.store):
+//   queue loaded → card shown → reveal → grade → next card → … → finishSession()
+//
+// TTS crash fix (build 76):
+//   Speech.stop() is called proactively on every currentIndex change so that any
+//   in-flight expo-speech callback is cancelled before the card component switches.
+//   This prevents the RCTFatal that occurred in weak-spots mode, where the queue
+//   mixes KanjiCard and CompoundCard types — advancing from a KanjiCard to a
+//   CompoundCard unmounts KanjiCard while speech may still be running.
+//
+// Audio session fix (build 76):
+//   Audio session configuration (playsInSilentModeIOS) is managed globally in
+//   _layout.tsx and re-applied on every app foreground. It is NOT called here,
+//   because expo-av v16 crashes if setAudioModeAsync is called from within a
+//   component that mounts/unmounts frequently (as KanjiCard does in weak-spots mode).
+
+import { useState, useEffect, useRef, useCallback, Component, type FC } from 'react'
 import type { ReviewResult } from '@kanji-learn/shared'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Pressable,
-  PanResponder, Animated,
+  PanResponder, Animated, Alert,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
+import * as Speech from 'expo-speech'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -20,7 +40,7 @@ import { colors, spacing, radius, typography } from '../../src/theme'
 
 const HELP_KEY = 'kl_has_seen_study_help'
 
-export default function StudySession() {
+function StudySession() {
   const router = useRouter()
   const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset } =
     useReviewStore()
@@ -125,6 +145,16 @@ export default function StudySession() {
   }, [])
 
   useEffect(() => {
+    // Reset card state on every advance. We deliberately do NOT call Speech.stop()
+    // here — that was our previous (incorrect) fix. It fired on the initial render
+    // (currentIndex=0) and on every subsequent card, which put the iOS synthesizer
+    // into a brief "stopping" state. Any Speech.speak() issued while the synthesizer
+    // was stopping was silently dropped, producing the "no sound" bug.
+    //
+    // Crash safety is handled instead by:
+    //   • KanjiCard cleanup: calls Speech.stop() + sets isMountedRef=false on unmount
+    //   • activeFlipRef: stops the native flip animation before it can run on a
+    //     destroyed native node (the real RCTFatal root cause in weak-spots mode)
     setIsRevealed(false)
     cardStartMs.current = Date.now()
     swipeX.setValue(0)
@@ -144,25 +174,32 @@ export default function StudySession() {
 
   const handleGrade = useCallback(
     (quality: 0 | 1 | 2 | 3 | 4 | 5) => {
-      const item = queue[currentIndex]
-      if (!item) return
-      const result: ReviewResult = {
-        kanjiId: item.kanjiId,
-        quality,
-        responseTimeMs: Date.now() - cardStartMs.current,
-        reviewType: item.reviewType,
-      }
-      if ((quality === 1 || quality === 3) && item.reviewType !== 'compound') {
-        // Show mnemonic nudge — defer submitResult so the card doesn't advance
-        // until the user dismisses the sheet (fixes "wrong kanji underneath" bug)
-        setPendingResult(result)
-        setNudgeItem({
+      try {
+        const item = queue[currentIndex]
+        if (!item) return
+        const result: ReviewResult = {
           kanjiId: item.kanjiId,
-          character: item.character,
-          meaning: (item.meanings as string[])?.[0] ?? '',
-        })
-      } else {
-        submitResult(result)
+          quality,
+          responseTimeMs: Date.now() - cardStartMs.current,
+          reviewType: item.reviewType,
+        }
+        if ((quality === 1 || quality === 3) && item.reviewType !== 'compound') {
+          // Show mnemonic nudge — defer submitResult so the card doesn't advance
+          // until the user dismisses the sheet (fixes "wrong kanji underneath" bug)
+          setPendingResult(result)
+          setNudgeItem({
+            kanjiId: item.kanjiId,
+            character: item.character,
+            meaning: ((item.meanings as string[] | null) ?? [])[0] ?? '',
+          })
+        } else {
+          submitResult(result)
+        }
+      } catch (e: any) {
+        // Event handler errors bypass the React error boundary — surface them here
+        // so we can identify the root cause. Remove this Alert before final release.
+        Alert.alert('handleGrade Error', e?.message ?? String(e), [{ text: 'OK' }])
+        console.error('[handleGrade]', e)
       }
     },
     [queue, currentIndex, submitResult]
@@ -362,6 +399,11 @@ export default function StudySession() {
         {currentItem.reviewType === 'compound' ? (
           <CompoundCard item={currentItem} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
         ) : (
+          // No key prop — KanjiCard stays mounted across same-type card advances.
+          // Forcing a remount via key={currentIndex} caused the cleanup to call
+          // Speech.stop() on every grade press, crashing the native speech bridge
+          // when the synthesizer was idle. speakingGroup is reset inside KanjiCard
+          // via a useEffect on item.kanjiId instead.
           <KanjiCard
             item={currentItem}
             isRevealed={isRevealed}
@@ -522,3 +564,49 @@ const styles = StyleSheet.create({
   backButton: { backgroundColor: colors.primary, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: radius.lg, marginTop: spacing.md },
   backText: { ...typography.h3, color: '#fff' },
 })
+
+// ─── Error boundary ───────────────────────────────────────────────────────────
+// Catches JS render errors. Uses only primitive RN components (no SafeAreaView
+// from react-native-safe-area-context) so the boundary itself can't throw.
+// Remove before final App Store release.
+
+interface EBState { error: Error | null }
+class StudyErrorBoundary extends Component<{ children: React.ReactNode }, EBState> {
+  state: EBState = { error: null }
+  static getDerivedStateFromError(error: Error): EBState { return { error } }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[StudyErrorBoundary] RENDER ERROR:', error.message)
+    console.error(error.stack)
+    console.error('Component stack:', info.componentStack)
+    // Also show an Alert so it's visible in TestFlight without needing Metro logs
+    Alert.alert(
+      'Render Error (debug)',
+      `${error.message}\n\n${error.stack?.slice(0, 400) ?? ''}`,
+      [{ text: 'OK' }]
+    )
+  }
+  render() {
+    if (this.state.error) {
+      // Use plain View/Text — NOT SafeAreaView from context, which can itself throw
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.bg, padding: 24, justifyContent: 'center' }}>
+          <Text style={{ color: 'red', fontSize: 16, fontWeight: '700', marginBottom: 12 }}>
+            ⚠️ Render Error
+          </Text>
+          <Text style={{ color: colors.textPrimary, fontSize: 13 }}>
+            {this.state.error.message}
+          </Text>
+        </View>
+      )
+    }
+    return this.props.children
+  }
+}
+
+const WrappedStudySession: FC = () => (
+  <StudyErrorBoundary>
+    <StudySession />
+  </StudyErrorBoundary>
+)
+
+export default WrappedStudySession

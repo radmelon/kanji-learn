@@ -1,8 +1,18 @@
+// KanjiCard.tsx
+// Flip card shown during a study session for meaning/reading/writing reviews.
+//
+// TTS notes (build 76):
+//   - Audio session setup (playsInSilentModeIOS) is intentionally NOT done here.
+//     It lives in _layout.tsx and is refreshed on every app foreground. Calling
+//     Audio.setAudioModeAsync from KanjiCard caused expo-av v16 instability
+//     because the component mounts/unmounts repeatedly in weak-spots queues.
+//   - isMountedRef + Speech.stop() on unmount guard against post-unmount callbacks
+//     that would crash when the card type changes (KanjiCard ↔ CompoundCard).
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Linking, Modal, SafeAreaView } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
-import { Audio } from 'expo-av'
 import { Ionicons } from '@expo/vector-icons'
 import { toRomaji } from 'wanakana'
 import { colors, spacing, radius, typography } from '../../theme'
@@ -41,22 +51,42 @@ interface Props {
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.85 }
 
 export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRomaji }: Props) {
-  const meanings = (item.meanings as string[]).join(', ')
+  // Array.isArray() guards protect against non-array truthy values (e.g. a string
+  // stored as jsonb in the DB). `?? []` only catches null/undefined — a string
+  // passes through and calling .map()/.join() on it gives "undefined is not a function".
+  const meanings = (Array.isArray(item.meanings) ? item.meanings : []).join(', ')
   const jlptColor = JLPT_COLORS[item.jlptLevel as keyof typeof JLPT_COLORS] ?? colors.textMuted
 
   // Which group is currently being spoken: null | 'kun' | 'on' | vocab index
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
 
-  // Track mount state to prevent TTS callbacks from firing after unmount
+  // Guard TTS callbacks against post-unmount execution.
+  //
+  // KanjiCard unmounts whenever the queue advances to a compound card (and vice
+  // versa). Without this guard, a speakSequence onDone callback scheduled by the
+  // previous card would fire into the now-unmounted component, triggering either
+  // a setState-on-unmounted-component warning or, in expo-av v16, an RCTFatal
+  // native crash. Speech.stop() in the cleanup cancels the native utterance so
+  // the callback never fires; isMountedRef provides a second layer of defence
+  // for any callbacks that have already been scheduled before stop() takes effect.
+  // Reset speaking state when the card changes (kanjiId changes) without unmounting.
+  // KanjiCard stays mounted across same-type card advances to avoid calling
+  // Speech.stop() in the cleanup on every grade press (crashes native speech bridge).
+  useEffect(() => {
+    setSpeakingGroup(null)
+  }, [item.kanjiId])
+
   const isMountedRef = useRef(true)
+  // Holds the currently-running flip animation so we can stop it on unmount.
+  // Without this, Part 2 of the flip (useNativeDriver:true) can outlive the
+  // component and crash the native animation thread when its node is destroyed.
+  const activeFlipRef = useRef<Animated.CompositeAnimation | null>(null)
+
   useEffect(() => {
     isMountedRef.current = true
-    // Reconfigure audio session at study session start so TTS plays through
-    // iOS silent mode. Called once at mount (not per-press) to avoid races
-    // with Speech.speak() that caused expo-av v16 crashes.
-    Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false }).catch(() => {})
     return () => {
       isMountedRef.current = false
+      activeFlipRef.current?.stop()   // cancel any in-flight native flip animation
       Speech.stop()
     }
   }, [])
@@ -71,27 +101,40 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   // Show readings on ALL card types after reveal — even meaning cards benefit
   // from seeing the on/kun alongside the meaning
   const hasReadings = true
-  const kunReadings = item.kunReadings as string[]
-  const onReadings = item.onReadings as string[]
-  const exampleVocab = item.exampleVocab as { word: string; reading: string; meaning: string }[]
-  const exampleSentences = (item.exampleSentences as { ja: string; en: string; vocab: string }[] | undefined) ?? []
+  // Null-coalesce all array fields — some kanji (e.g. kokuji with no on'yomi,
+  // or kanji with no kun'yomi) may have null in the DB. Without this, accessing
+  // .length on null throws a JS TypeError that RN reports as RCTFatal.
+  const kunReadings = Array.isArray(item.kunReadings) ? item.kunReadings as string[] : []
+  const onReadings = Array.isArray(item.onReadings) ? item.onReadings as string[] : []
+  const exampleVocab = Array.isArray(item.exampleVocab) ? item.exampleVocab as { word: string; reading: string; meaning: string }[] : []
+  const exampleSentences = Array.isArray(item.exampleSentences) ? item.exampleSentences as { ja: string; en: string; vocab: string }[] : []
 
   const handleReveal = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    // First half: rotate to 90° (card disappears edge-on)
-    Animated.timing(flipAnim, {
-      toValue: 90,
-      duration: 180,
-      useNativeDriver: true,
-    }).start(() => {
-      onReveal()                // swap content at the midpoint
-      flipAnim.setValue(-90)    // jump to the other side, still edge-on
-      // Second half: rotate back to 0° (answer side comes into view)
-      Animated.timing(flipAnim, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }).start()
+
+    // Part 1: rotate to 90° (card disappears edge-on)
+    const part1 = Animated.timing(flipAnim, { toValue: 90, duration: 180, useNativeDriver: true })
+    activeFlipRef.current = part1
+    part1.start(() => {
+      // Clear the ref as soon as part1 finishes so the cleanup effect's
+      // activeFlipRef.current?.stop() call is a no-op if no animation is
+      // in flight. Calling stopAnimation() on an already-completed native
+      // animation frees its ID, causing an RCTFatal in RN 0.81.
+      activeFlipRef.current = null
+
+      // Guard: if the component unmounted while part1 was running bail out —
+      // starting part2 on a destroyed native node also causes RCTFatal.
+      if (!isMountedRef.current) return
+
+      onReveal()             // swap content at the midpoint
+      flipAnim.setValue(-90) // jump to the other side, still edge-on
+
+      // Part 2: rotate back to 0° (answer side comes into view)
+      const part2 = Animated.timing(flipAnim, { toValue: 0, duration: 180, useNativeDriver: true })
+      activeFlipRef.current = part2
+      part2.start(() => {
+        activeFlipRef.current = null  // clear when done — same reason as above
+      })
     })
   }, [onReveal, flipAnim])
 
@@ -107,7 +150,10 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       setSpeakingGroup(null)
       return
     }
-    Speech.stop()
+    // Only stop if something is actually playing. Calling Speech.stop() on an
+    // idle synthesizer briefly puts iOS into a "stopping" state; starting a new
+    // utterance immediately after causes it to be silently dropped.
+    if (speakingGroup !== null) Speech.stop()
     setSpeakingGroup(groupKey)
 
     const cleaned = words.map((w) => (stripDot ? w.replace('.', '') : w))
@@ -133,7 +179,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       setSpeakingGroup(null)
       return
     }
-    Speech.stop()
+    if (speakingGroup !== null) Speech.stop()  // only stop if something is actually playing
     setSpeakingGroup(key)
     Speech.speak(reading, {
       ...SPEECH_OPTS,
@@ -314,11 +360,14 @@ function RevealAllButton({ item }: { item: ReviewQueueItem }) {
 
 function RevealAllDrawer({ item, visible, onClose }: { item: ReviewQueueItem; visible: boolean; onClose: () => void }) {
   const jlptColor = JLPT_COLORS[item.jlptLevel as keyof typeof JLPT_COLORS] ?? colors.textMuted
-  const meanings = (item.meanings as string[]) ?? []
-  const kunReadings = (item.kunReadings as string[]) ?? []
-  const onReadings = (item.onReadings as string[]) ?? []
-  const exampleVocab = (item.exampleVocab as { word: string; reading: string; meaning: string }[]) ?? []
-  const radicals = (item.radicals as string[] | undefined) ?? []
+  // Array.isArray() is required here — `?? []` only catches null/undefined, but if a
+  // field arrives as a non-array truthy value (e.g. a string stored as jsonb), the
+  // `??` passes it through and calling .map()/.join() throws "undefined is not a function".
+  const meanings = Array.isArray(item.meanings) ? item.meanings as string[] : []
+  const kunReadings = Array.isArray(item.kunReadings) ? item.kunReadings as string[] : []
+  const onReadings = Array.isArray(item.onReadings) ? item.onReadings as string[] : []
+  const exampleVocab = Array.isArray(item.exampleVocab) ? item.exampleVocab as { word: string; reading: string; meaning: string }[] : []
+  const radicals = Array.isArray(item.radicals) ? item.radicals as string[] : []
   const strokes = item.strokeCount as number | null | undefined
   const nelsonC = item.nelsonClassic as number | null | undefined
   const nelsonN = item.nelsonNew as number | null | undefined
@@ -564,7 +613,7 @@ function SpeakButton({
 function ReferencesPanel({ item }: { item: ReviewQueueItem }) {
   const [open, setOpen] = useState(false)
 
-  const radicals = (item.radicals as string[] | undefined) ?? []
+  const radicals = Array.isArray(item.radicals) ? item.radicals as string[] : []
   const strokes = item.strokeCount as number | null | undefined
   const nelsonC = item.nelsonClassic as number | null | undefined
   const nelsonN = item.nelsonNew as number | null | undefined

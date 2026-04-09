@@ -126,25 +126,51 @@ export class SrsService {
       .orderBy(sql`RANDOM()`)
       .limit(surpriseCount)
 
-    // Combine and assign review types
+    // Combine and assign review types.
+    // kunReadings/onReadings/exampleVocab/exampleSentences are null-coalesced here
+    // so the client never receives null for array fields — accessing .length on null
+    // throws a JS TypeError that React Native reports as RCTFatal.
+    // Array.isArray() guards are required here — `?? []` only catches null/undefined.
+    // If a jsonb column contains a non-array value (e.g. a string) `??` passes it
+    // through, and the client then calls .map()/.join() on a string → RCTFatal.
+    const toArr = <T,>(v: unknown): T[] => Array.isArray(v) ? v as T[] : []
+
     const queue: ReviewQueueItem[] = [
       ...dueCards.map((c) => ({
         ...c,
         status: c.status ?? 'learning',
         readingStage: c.readingStage ?? 0,
         reviewType: this.pickReviewType(c.readingStage ?? 0, c.status ?? 'learning'),
+        meanings: toArr<string>(c.meanings),
+        kunReadings: toArr<string>(c.kunReadings),
+        onReadings: toArr<string>(c.onReadings),
+        radicals: toArr<string>(c.radicals),
+        exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(c.exampleVocab),
+        exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(c.exampleSentences),
       })),
       ...newCards.map((c) => ({
         ...c,
         status: 'unseen' as const,
         readingStage: 0,
         reviewType: 'meaning' as const,
+        meanings: toArr<string>(c.meanings),
+        kunReadings: toArr<string>(c.kunReadings),
+        onReadings: toArr<string>(c.onReadings),
+        radicals: toArr<string>(c.radicals),
+        exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(c.exampleVocab),
+        exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(c.exampleSentences),
       })),
       ...burnedChecks.map((c) => ({
         ...c,
         status: c.status ?? 'burned',
         readingStage: c.readingStage ?? 4,
         reviewType: this.pickReviewType(c.readingStage ?? 4, 'burned'),
+        meanings: toArr<string>(c.meanings),
+        kunReadings: toArr<string>(c.kunReadings),
+        onReadings: toArr<string>(c.onReadings),
+        radicals: toArr<string>(c.radicals),
+        exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(c.exampleVocab),
+        exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(c.exampleSentences),
       })),
     ]
 
@@ -408,13 +434,19 @@ export class SrsService {
     const accuracyMap = new Map(weakRows.map((r) => [r.kanjiId, r.accuracyPct]))
     rows.sort((a, b) => (accuracyMap.get(a.kanjiId) ?? 0) - (accuracyMap.get(b.kanjiId) ?? 0))
 
+    const toArr = <T,>(v: unknown): T[] => Array.isArray(v) ? v as T[] : []
+
     return rows.map((c) => ({
       ...c,
       status: c.status ?? 'learning',
       readingStage: c.readingStage ?? 0,
       reviewType: this.pickReviewType(c.readingStage ?? 0, c.status ?? 'learning'),
-      exampleVocab: c.exampleVocab ?? [],
-      exampleSentences: c.exampleSentences ?? [],
+      meanings: toArr<string>(c.meanings),
+      kunReadings: toArr<string>(c.kunReadings),
+      onReadings: toArr<string>(c.onReadings),
+      radicals: toArr<string>(c.radicals),
+      exampleVocab: toArr(c.exampleVocab),
+      exampleSentences: toArr(c.exampleSentences),
     }))
   }
 
