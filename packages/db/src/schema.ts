@@ -576,6 +576,227 @@ export const buddyNudges = pgTable(
   })
 )
 
+// ─── study_plans ──────────────────────────────────────────────────────────────
+
+export const studyPlans = pgTable(
+  'study_plans',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    activities: jsonb('activities')
+      .$type<Array<Record<string, unknown>>>()
+      .notNull()
+      .default([]),
+    rationale: text('rationale').notNull(),
+    scaffoldLevel: smallint('scaffold_level').notNull(),
+    generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+    deviceType: deviceTypeEnum('device_type'),
+    completedCount: integer('completed_count').notNull().default(0),
+    skippedCount: integer('skipped_count').notNull().default(0),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    userActiveIdx: index('study_plans_user_active_idx').on(t.userId, t.expiresAt),
+  })
+)
+
+export const studyPlanEvents = pgTable('study_plan_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  planId: uuid('plan_id')
+    .notNull()
+    .references(() => studyPlans.id, { onDelete: 'cascade' }),
+  activityIndex: smallint('activity_index').notNull(),
+  event: text('event').notNull(), // 'started' | 'completed' | 'skipped' | 'navigated_away'
+  eventAt: timestamp('event_at', { withTimezone: true }).notNull().defaultNow(),
+  deviceType: deviceTypeEnum('device_type'),
+})
+
+// ─── study_log_entries ────────────────────────────────────────────────────────
+// Enhanced journal entries with photos, sentences, audio, mood, tags.
+
+export const studyLogEntries = pgTable(
+  'study_log_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    kanjiId: integer('kanji_id')
+      .notNull()
+      .references(() => kanji.id, { onDelete: 'cascade' }),
+    mnemonicId: uuid('mnemonic_id').references(() => mnemonics.id, { onDelete: 'set null' }),
+    userNote: text('user_note'),
+    exampleSentence: text('example_sentence'),
+    sentenceReading: text('sentence_reading'),
+    sentenceTranslation: text('sentence_translation'),
+    photoUrls: jsonb('photo_urls').$type<string[]>().notNull().default([]),
+    audioNoteUrl: text('audio_note_url'),
+    locationLat: real('location_lat'),
+    locationLng: real('location_lng'),
+    locationName: text('location_name'),
+    tags: jsonb('tags').$type<string[]>().notNull().default([]),
+    mood: studyLogMoodEnum('mood'),
+    sharedWithFriends: boolean('shared_with_friends').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    lastViewedAt: timestamp('last_viewed_at', { withTimezone: true }),
+  },
+  (t) => ({
+    userCreatedIdx: index('study_log_user_created_idx').on(t.userId, t.createdAt),
+    userKanjiIdx: index('study_log_user_kanji_idx').on(t.userId, t.kanjiId),
+  })
+)
+
+// ─── shared_goals ─────────────────────────────────────────────────────────────
+
+export const sharedGoals = pgTable(
+  'shared_goals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userIdA: uuid('user_id_a')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    userIdB: uuid('user_id_b')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    goalType: text('goal_type').notNull(), // 'burn_milestone' | 'streak_match' | 'level_complete'
+    target: integer('target').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    achievedAt: timestamp('achieved_at', { withTimezone: true }),
+    achievedBy: jsonb('achieved_by').$type<Record<string, string>>().notNull().default({}),
+  },
+  (t) => ({
+    pairTypeIdx: index('shared_goals_pair_type_idx').on(t.userIdA, t.userIdB, t.goalType),
+  })
+)
+
+// ─── Universal Knowledge Graph ────────────────────────────────────────────────
+// App-agnostic projection of learner state. Subjects are namespaced (e.g. "kanji:持").
+
+export const learnerIdentity = pgTable('learner_identity', {
+  // PK is named learnerId (not id) so every other UKG table can reference
+  // `learnerIdentity.learnerId` with the same name they use for their own FK.
+  learnerId: uuid('learner_id').primaryKey(), // matches user_profiles.id
+  displayName: text('display_name'),
+  email: text('email'),
+  nativeLanguage: text('native_language'),
+  targetLanguages: jsonb('target_languages').$type<string[]>().notNull().default(['ja']),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const learnerProfileUniversal = pgTable('learner_profile_universal', {
+  learnerId: uuid('learner_id')
+    .primaryKey()
+    .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
+  interests: jsonb('interests').$type<string[]>().notNull().default([]),
+  reasonsForLearning: jsonb('reasons_for_learning').$type<string[]>().notNull().default([]),
+  preferredLearningStyles: jsonb('preferred_learning_styles').$type<string[]>().notNull().default([]),
+  goals: jsonb('goals').$type<string[]>().notNull().default([]),
+  studyHabits: jsonb('study_habits').$type<Record<string, unknown>>().notNull().default({}),
+  buddyPersonalityPref: buddyPersonalityEnum('buddy_personality_pref').notNull().default('encouraging'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const learnerConnections = pgTable(
+  'learner_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    learnerIdA: uuid('learner_id_a')
+      .notNull()
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
+    learnerIdB: uuid('learner_id_b')
+      .notNull()
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
+    relationship: text('relationship').notNull().default('friend'),
+    sharedApps: jsonb('shared_apps').$type<string[]>().notNull().default(['kanji_buddy']),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pairIdx: uniqueIndex('learner_connections_pair_idx').on(t.learnerIdA, t.learnerIdB),
+  })
+)
+
+export const learnerMemoryArtifacts = pgTable(
+  'learner_memory_artifacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    learnerId: uuid('learner_id')
+      .notNull()
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
+    subject: text('subject').notNull(), // e.g. "kanji:持"
+    artifactType: text('artifact_type').notNull(), // 'mnemonic' | 'note' | 'sentence' | 'photo' | 'audio'
+    content: jsonb('content').$type<Record<string, unknown>>().notNull(),
+    context: jsonb('context').$type<Record<string, unknown>>().notNull().default({}),
+    effectivenessScore: real('effectiveness_score').notNull().default(0.5),
+    appSource: text('app_source').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    subjectIdx: index('learner_artifacts_subject_idx').on(t.learnerId, t.subject),
+  })
+)
+
+export const learnerKnowledgeState = pgTable(
+  'learner_knowledge_state',
+  {
+    learnerId: uuid('learner_id')
+      .notNull()
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
+    subject: text('subject').notNull(),
+    masteryLevel: real('mastery_level').notNull().default(0),
+    status: text('status').notNull().default('unseen'), // 'unseen' | 'learning' | 'reviewing' | 'mastered'
+    reviewCount: integer('review_count').notNull().default(0),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }),
+    lastReviewedAt: timestamp('last_reviewed_at', { withTimezone: true }),
+    appSource: text('app_source').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.learnerId, t.subject] }),
+    subjectOnlyIdx: index('learner_knowledge_subject_only_idx').on(t.subject),
+  })
+)
+
+export const learnerAppGrants = pgTable(
+  'learner_app_grants',
+  {
+    learnerId: uuid('learner_id')
+      .notNull()
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
+    appId: text('app_id').notNull(),
+    scopes: jsonb('scopes').$type<string[]>().notNull().default([]),
+    grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    lastAccessedAt: timestamp('last_accessed_at', { withTimezone: true }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.learnerId, t.appId] }),
+  })
+)
+
+export const learnerTimelineEvents = pgTable(
+  'learner_timeline_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    learnerId: uuid('learner_id')
+      .notNull()
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
+    eventType: text('event_type').notNull(),
+    subject: text('subject'),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    appSource: text('app_source').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    learnerTimeIdx: index('learner_timeline_learner_time_idx').on(t.learnerId, t.occurredAt),
+  })
+)
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const kanjiRelations = relations(kanji, ({ many }) => ({
