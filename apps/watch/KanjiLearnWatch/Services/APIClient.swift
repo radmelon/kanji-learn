@@ -162,10 +162,81 @@ final class APIClient {
 
     // ── Domain methods ────────────────────────────────────────────────────────
 
-    /// Fetch the review queue. Watch uses limit=10 (smaller than mobile's 20).
+    /// Fetch the review queue using JSONSerialization instead of JSONDecoder.
+    ///
+    /// watchOS 26.4 beta has a bug in JSONDecoder that causes EXC_BREAKPOINT
+    /// (brk #1 / SIGTRAP) when decoding arrays of complex nested structs.
+    /// Confirmed via build-96 crash breadcrumb: crash occurs inside
+    /// JSONDecoder().decode(QueueResponse.self, from: data) after the network
+    /// call succeeds and raw JSON is stored.
+    ///
+    /// JSONSerialization (ObjC NSJSONSerialization) is unaffected. KanjiCard
+    /// is populated via its manual init?(jsonDict:) initializer.
     func fetchQueue(limit: Int = 10) async throws -> [KanjiCard] {
-        let response: QueueResponse = try await get("/v1/review/queue?limit=\(limit)")
-        return response.data
+        let path = "/v1/review/queue?limit=\(limit)"
+        let data = try await fetchRawData(path: path)
+
+        guard
+            let json  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let array = json["data"] as? [[String: Any]]
+        else {
+            // Surface the raw response in the error for debugging
+            let preview = String(data: data, encoding: .utf8).map { String($0.prefix(200)) } ?? "<binary>"
+            throw APIError.parseError("fetchQueue: unexpected response shape — \(preview)")
+        }
+
+        let cards = array.compactMap { KanjiCard(jsonDict: $0) }
+        return cards
+    }
+
+    // ── Raw data fetch (bypasses JSONDecoder) ─────────────────────────────────
+
+    /// Performs a GET request and returns the raw response Data.
+    /// Used for endpoints where JSONDecoder has known beta-OS issues.
+    private func fetchRawData(path: String) async throws -> Data {
+        guard !baseURL.isEmpty else {
+            throw APIError.parseError("API base URL not configured")
+        }
+
+        let token = try await AuthService.shared.getAccessToken()
+
+        guard let url = URL(string: baseURL + path) else {
+            throw APIError.parseError("Invalid URL: \(baseURL + path)")
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch {
+            throw APIError.networkError(error)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.parseError("Non-HTTP response")
+        }
+
+        if http.statusCode >= 400 {
+            if let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data) {
+                throw APIError.httpError(
+                    statusCode: http.statusCode,
+                    code: envelope.code ?? "UNKNOWN",
+                    message: envelope.error ?? "Unknown error"
+                )
+            }
+            throw APIError.httpError(
+                statusCode: http.statusCode,
+                code: "HTTP_\(http.statusCode)",
+                message: HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            )
+        }
+
+        return data
     }
 
     /// Submit graded results after a session completes.
