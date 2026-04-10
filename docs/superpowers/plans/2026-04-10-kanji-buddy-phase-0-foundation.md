@@ -317,11 +317,10 @@ export const learnerStateCache = pgTable(
       .notNull()
       .default({}),
     groupMomentum: text('group_momentum'), // 'rising' | 'steady' | 'falling'
-  },
-  (t) => ({
-    updatedIdx: index('learner_state_updated_idx').on(t.userId, t.updatedAt),
-  })
+  }
 )
+// No secondary index: userId is PK, so all lookups are already point-lookups.
+// If a cache-staleness job is added later, add `index(...).on(t.updatedAt)`.
 ```
 
 - [ ] **Step 2: Append buddy_conversations table**
