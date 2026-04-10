@@ -6,30 +6,28 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
-- [ ] **"Drill X missed card(s)" button does nothing on Session Complete screen** — Tapping the button shows the "Loading reviews…" spinner briefly, then returns to the same Session Complete page. No drill session starts.
+- [x] **"Drill X missed card(s)" button does nothing on Session Complete screen** — ✅ Resolved.
 
-  **Steps to reproduce:**
-  1. Complete a study session with at least one card graded Again (quality 1) or Hard (quality 2).
-  2. The Session Complete screen appears with a "Drill N missed card(s)" button visible.
-  3. Tap the button.
-  4. The "Loading reviews…" spinner appears briefly.
-  5. The Session Complete screen reappears — no cards are shown.
-
-  **Affected files:**
-  - `apps/mobile/app/(tabs)/study.tsx` — `onReview` callback (lines 262–270); `useEffect([isComplete])` (lines 124–128); `handleFinish` useCallback (lines 167–199)
-  - `apps/mobile/src/stores/review.store.ts` — `loadMissedQueue()` (lines 221–231); `submitResult()` (lines 143–156)
-
-  **Suspected root cause:** `loadMissedQueue()` synchronously updates the Zustand store (`isComplete → false`, `queue → missedCards`, `results → []`). This triggers subscriber notifications and a React re-render before `setSessionSummary(null)` is batched in. During that intermediate render, `sessionSummary` is still non-null, so `SessionComplete` renders again.
-
-  A secondary concern: `handleFinish` is a `useCallback` with `[finishSession, queue]` dependencies, but the `useEffect` that calls it only lists `[isComplete]`. If the effect fires with a stale `handleFinish` that captured the already-cleared `results: []`, `finishSession()` returns `null` (guard on line 160) and immediately sets `sessionSummary` back to a zeroed-out summary.
-
-  The "Loading reviews…" text the user sees is produced only by the `isLoading` path (line 207), which is only set by `loadQueue()`. This suggests the component may be briefly unmounting/remounting (re-triggering the mount effect `loadQueue(20)`) as a side effect of the state transition, or that a stale `handleFinish` invocation kicks off a new queue load.
-
-  `[Effort: S]` `[Impact: High]` `[Status: 🐛 Reported]`
+  `[Effort: S]` `[Impact: High]` `[Status: ✅ Resolved]`
 
 - [x] **Speak icons not working on Study Cards and Browse Kanji Cards** — ✅ Resolved. Device media volume was muted (physical ringer switch). TTS was functioning correctly all along. Build 87 adds a helpful alert if a Japanese TTS voice is not installed on the device, as a bonus improvement for future users.
 
   `[Effort: S]` `[Impact: High]` `[Status: ✅ Not a bug — device was muted]`
+
+- [ ] **Rōmaji toggle button non-functional on study card** — Tapping the "Rōmaji" button on the revealed side of a KanjiCard has no visible effect. Readings do not display romanized transliterations despite the toggle state and `wanakana` conversion logic being present in the code.
+
+  **Steps to reproduce:**
+  1. Start a study session and reveal a card.
+  2. Tap the "Rōmaji" button (top-left of card, revealed side only).
+  3. Kun/on readings remain in kana — no rōmaji appears below them.
+
+  **Suspected root cause:** Unknown — `showRomaji` state and `toRomaji()` calls exist in `KanjiCard.tsx` but the conditional render may be gated incorrectly or the state is not reaching the component as expected.
+
+  **Affected files:**
+  - `apps/mobile/src/components/study/KanjiCard.tsx`
+  - `apps/mobile/app/(tabs)/study.tsx`
+
+  `[Effort: S]` `[Impact: Low]` `[Status: 🐛 Active]`
 
 - [ ] **Daily push notifications never delivered** — Users with notifications enabled and a reminder time set never receive daily reminder push notifications.
 
