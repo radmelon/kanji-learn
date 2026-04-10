@@ -12,6 +12,12 @@ export interface ClaudeProviderOptions {
   model?: string
 }
 
+// TODO: before live deployment, confirm the exact alias format. Anthropic's
+// pattern is typically `claude-sonnet-4-6-<yyyymmdd>` with a `-latest` alias
+// after a model has been GA'd. The bare `claude-sonnet-4-6` string works as
+// an alias on some Anthropic endpoints but not others; the router's integration
+// smoke test (Task 24) will surface any 404. Override via ClaudeProviderOptions.model
+// if needed.
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 /**
@@ -35,6 +41,10 @@ export class ClaudeProvider implements LLMProvider {
   readonly maxContextTokens = 200_000
   /** ~p50 for a 500-token claude-sonnet-4-6 completion. */
   readonly estimatedLatencyMs = 1_200
+  // TODO: verify Sonnet 4.6 pricing against anthropic.com/pricing. These
+  // values ($3/MTok input, $15/MTok output) are the Sonnet 3.5/4 prices and
+  // have historically held flat across Sonnet versions, but 4.6 should be
+  // confirmed before the router's cost-based tiering (Task 14) goes live.
   readonly costPerInputToken = 0.000003
   readonly costPerOutputToken = 0.000015
 
@@ -113,8 +123,11 @@ export class ClaudeProvider implements LLMProvider {
         finishReason: hasToolUse
           ? 'tool_use'
           : this.mapFinishReason(response.stop_reason ?? 'end_turn'),
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
+        // The Anthropic SDK currently always returns usage, but guard with
+        // optional chaining for parity with Groq/Gemini — a missing usage
+        // field should not crash the provider.
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
         providerName: this.name,
         latencyMs: Date.now() - start,
       }
