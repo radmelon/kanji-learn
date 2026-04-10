@@ -441,6 +441,142 @@ export const learnerProfiles = pgTable('learner_profiles', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+// ─── learner_state_cache ──────────────────────────────────────────────────────
+// Pre-computed snapshot of a learner's current state. Refreshed after each session.
+
+export const learnerStateCache = pgTable(
+  'learner_state_cache',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    currentStreakDays: integer('current_streak_days').notNull().default(0),
+    longestStreakDays: integer('longest_streak_days').notNull().default(0),
+    velocityTrend: velocityTrendEnum('velocity_trend').notNull().default('inactive'),
+    totalKanjiSeen: integer('total_kanji_seen').notNull().default(0),
+    totalKanjiBurned: integer('total_kanji_burned').notNull().default(0),
+    activeLeechCount: integer('active_leech_count').notNull().default(0),
+    leechKanjiIds: jsonb('leech_kanji_ids').$type<number[]>().notNull().default([]),
+    weakestModality: weakestModalityEnum('weakest_modality').notNull().default('meaning'),
+    strongestJlptLevel: jlptLevelEnum('strongest_jlpt_level'),
+    currentFocusLevel: jlptLevelEnum('current_focus_level'),
+    recentAccuracy: real('recent_accuracy').notNull().default(0),
+    lastSessionAt: timestamp('last_session_at', { withTimezone: true }),
+    avgDailyReviews: real('avg_daily_reviews').notNull().default(0),
+    avgSessionDurationMs: integer('avg_session_duration_ms').notNull().default(0),
+    daysSinceLastSession: integer('days_since_last_session').notNull().default(0),
+    daysSinceFirstSession: integer('days_since_first_session').notNull().default(0),
+    quizVsSrsGapHigh: boolean('quiz_vs_srs_gap_high').notNull().default(false),
+    primaryDevice: deviceTypeEnum('primary_device'),
+    deviceDistribution: jsonb('device_distribution')
+      .$type<Partial<Record<'iphone' | 'ipad' | 'watch', number>>>()
+      .notNull()
+      .default({}),
+    watchSessionAvgCards: integer('watch_session_avg_cards'),
+    recentMilestones: jsonb('recent_milestones')
+      .$type<{ type: string; achievedAt: string; payload: Record<string, unknown> }[]>()
+      .notNull()
+      .default([]),
+    studyPatterns: jsonb('study_patterns')
+      .$type<{
+        preferredTime?: 'morning' | 'midday' | 'evening' | 'night'
+        avgSessionsPerDay: number
+        weekendVsWeekdayRatio: number
+      }>()
+      .notNull()
+      .default({ avgSessionsPerDay: 0, weekendVsWeekdayRatio: 1 }),
+    nextRecommendedActivity: text('next_recommended_activity'),
+    buddyMood: buddyMoodEnum('buddy_mood').notNull().default('supportive'),
+    // 'heavy' | 'medium' | 'light' — mirrors ScaffoldLevel in api/src/services/buddy/constants.ts
+    scaffoldLevel: text('scaffold_level').notNull().default('medium'),
+    friendsCount: integer('friends_count').notNull().default(0),
+    activeFriendsToday: integer('active_friends_today').notNull().default(0),
+    friendsAheadOnBurn: jsonb('friends_ahead_on_burn')
+      .$type<{ friendId: string; displayName: string; metric: string; value: number; delta: number }[]>()
+      .notNull()
+      .default([]),
+    friendsBehindOnBurn: jsonb('friends_behind_on_burn')
+      .$type<{ friendId: string; displayName: string; metric: string; value: number; delta: number }[]>()
+      .notNull()
+      .default([]),
+    friendsAheadOnStreak: jsonb('friends_ahead_on_streak')
+      .$type<{ friendId: string; displayName: string; metric: string; value: number; delta: number }[]>()
+      .notNull()
+      .default([]),
+    friendsBehindOnStreak: jsonb('friends_behind_on_streak')
+      .$type<{ friendId: string; displayName: string; metric: string; value: number; delta: number }[]>()
+      .notNull()
+      .default([]),
+    userStrengthsVsFriends: jsonb('user_strengths_vs_friends')
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
+    groupMomentum: text('group_momentum'), // 'rising' | 'steady' | 'falling'
+  },
+  (t) => ({
+    updatedIdx: index('learner_state_updated_idx').on(t.userId, t.updatedAt),
+  })
+)
+
+// ─── buddy_conversations ──────────────────────────────────────────────────────
+// Short-lived LLM conversation state. Expires 30min after last activity.
+
+export const buddyConversations = pgTable(
+  'buddy_conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    context: text('context').notNull(), // 'session_start' | 'card_failed' | ...
+    messages: jsonb('messages')
+      .$type<Array<Record<string, unknown>>>()
+      .notNull()
+      .default([]),
+    turnCount: integer('turn_count').notNull().default(0),
+    lastActiveAt: timestamp('last_active_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userActiveIdx: index('buddy_conv_user_active_idx').on(t.userId, t.lastActiveAt),
+  })
+)
+
+// ─── buddy_nudges ─────────────────────────────────────────────────────────────
+// Pre-computed nudge messages for inline display on specific screens.
+
+export const buddyNudges = pgTable(
+  'buddy_nudges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    screen: text('screen').notNull(), // 'dashboard' | 'study' | 'journal' | 'write' | 'speak' | 'progress'
+    nudgeType: text('nudge_type').notNull(),
+    content: text('content').notNull(),
+    watchSummary: text('watch_summary'),
+    actionType: text('action_type'), // 'navigate' | 'start_drill' | 'view_kanji' | 'generate_mnemonic' | 'dismiss' | 'none'
+    actionPayload: jsonb('action_payload').$type<Record<string, unknown>>(),
+    priority: smallint('priority').notNull().default(3),
+    deliveryTarget: text('delivery_target').notNull().default('app'),
+    watchDeliveredAt: timestamp('watch_delivered_at', { withTimezone: true }),
+    pushDeliveredAt: timestamp('push_delivered_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+    generatedBy: text('generated_by').notNull(), // 'template' | 'on_device' | 'cloud'
+    deviceType: deviceTypeEnum('device_type'),
+    socialFraming: boolean('social_framing').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userScreenIdx: index('buddy_nudges_user_screen_idx').on(t.userId, t.screen, t.expiresAt),
+    watchDeliveryIdx: index('buddy_nudges_watch_delivery_idx').on(t.userId, t.deliveryTarget, t.watchDeliveredAt),
+  })
+)
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const kanjiRelations = relations(kanji, ({ many }) => ({
