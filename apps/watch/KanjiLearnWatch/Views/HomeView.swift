@@ -232,9 +232,9 @@ private struct StatusPills: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            MiniPill(count: status.learning,   label: "learn", color: .blue)
-            MiniPill(count: status.reviewing,  label: "review", color: .purple)
-            MiniPill(count: status.burned,     label: "burned", color: .orange)
+            MiniPill(count: status.learning,   label: "learn",  color: Color(hex: "#3B82F6"))
+            MiniPill(count: status.reviewing,  label: "review", color: Color(hex: "#F59E0B"))
+            MiniPill(count: status.burned,     label: "burned", color: Color(hex: "#EF4444"))
         }
     }
 }
