@@ -12,11 +12,20 @@ describe('BuddyLLMError', () => {
   })
 })
 
+describe('BuddyLLMError', () => {
+  it('sets cause as a non-enumerable property (matches native Error.cause)', () => {
+    const cause = new Error('boom')
+    const err = new BuddyLLMError('wrap', cause)
+    const descriptor = Object.getOwnPropertyDescriptor(err, 'cause')
+    expect(descriptor?.enumerable).toBe(false)
+    expect(JSON.stringify(err)).not.toContain('cause')
+  })
+})
+
 describe('classifyTier', () => {
   const base: BuddyRequest = {
     context: 'encouragement',
     userId: 'u1',
-    systemPrompt: '',
     messages: [],
   }
 
@@ -38,5 +47,20 @@ describe('classifyTier', () => {
     expect(classifyTier({ ...base, context: 'mnemonic_question_generation' })).toBe(2)
     expect(classifyTier({ ...base, context: 'mnemonic_assembly' })).toBe(2)
     expect(classifyTier({ ...base, context: 'social_nudge' })).toBe(2)
+  })
+
+  it('preferredTier overrides context-based classification', () => {
+    // context would classify as tier 1, but preferredTier forces 3
+    expect(
+      classifyTier({ ...base, context: 'encouragement', preferredTier: 3 })
+    ).toBe(3)
+    // context would classify as tier 3, but preferredTier forces 1
+    expect(
+      classifyTier({ ...base, context: 'deep_diagnostic', preferredTier: 1 })
+    ).toBe(1)
+    // tier-2 override on a tier-1 context
+    expect(
+      classifyTier({ ...base, context: 'session_summary', preferredTier: 2 })
+    ).toBe(2)
   })
 })

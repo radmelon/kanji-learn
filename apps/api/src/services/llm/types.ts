@@ -16,8 +16,8 @@ export type RequestContext =
 export interface BuddyRequest {
   context: RequestContext
   userId: string
-  systemPrompt: string
-  messages: Message[]
+  systemPrompt?: string
+  messages: readonly Message[]
   tools?: ToolDefinition[]
   preferredTier?: 1 | 2 | 3
   userOptedInPremium?: boolean
@@ -26,12 +26,9 @@ export interface BuddyRequest {
 }
 
 export class BuddyLLMError extends Error {
-  public readonly cause?: unknown
-
   constructor(message: string, cause?: unknown) {
-    super(message)
+    super(message, { cause })
     this.name = 'BuddyLLMError'
-    this.cause = cause
   }
 }
 

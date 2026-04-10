@@ -1394,13 +1394,20 @@ describe('BuddyLLMError', () => {
     expect(err.cause).toBe(cause)
     expect(err.name).toBe('BuddyLLMError')
   })
+
+  it('sets cause as a non-enumerable property (matches native Error.cause)', () => {
+    const cause = new Error('boom')
+    const err = new BuddyLLMError('wrap', cause)
+    const descriptor = Object.getOwnPropertyDescriptor(err, 'cause')
+    expect(descriptor?.enumerable).toBe(false)
+    expect(JSON.stringify(err)).not.toContain('cause')
+  })
 })
 
 describe('classifyTier', () => {
   const base: BuddyRequest = {
     context: 'encouragement',
     userId: 'u1',
-    systemPrompt: '',
     messages: [],
   }
 
@@ -1422,6 +1429,21 @@ describe('classifyTier', () => {
     expect(classifyTier({ ...base, context: 'mnemonic_question_generation' })).toBe(2)
     expect(classifyTier({ ...base, context: 'mnemonic_assembly' })).toBe(2)
     expect(classifyTier({ ...base, context: 'social_nudge' })).toBe(2)
+  })
+
+  it('preferredTier overrides context-based classification', () => {
+    // context would classify as tier 1, but preferredTier forces 3
+    expect(
+      classifyTier({ ...base, context: 'encouragement', preferredTier: 3 })
+    ).toBe(3)
+    // context would classify as tier 3, but preferredTier forces 1
+    expect(
+      classifyTier({ ...base, context: 'deep_diagnostic', preferredTier: 1 })
+    ).toBe(1)
+    // tier-2 override on a tier-1 context
+    expect(
+      classifyTier({ ...base, context: 'session_summary', preferredTier: 2 })
+    ).toBe(2)
   })
 })
 ```
@@ -1454,8 +1476,17 @@ export type RequestContext =
 export interface BuddyRequest {
   context: RequestContext
   userId: string
-  systemPrompt: string
-  messages: Message[]
+  /**
+   * Optional to mirror CompletionRequest.systemPrompt in @kanji-learn/shared.
+   * Callers that don't need a system prompt should omit this rather than
+   * passing ''. The router decides whether to forward a system turn.
+   */
+  systemPrompt?: string
+  /**
+   * `readonly` so the router (Task 14) must copy before truncating —
+   * prevents accidental in-place mutation of the caller's array.
+   */
+  messages: readonly Message[]
   tools?: ToolDefinition[]
   preferredTier?: 1 | 2 | 3
   userOptedInPremium?: boolean
@@ -1464,12 +1495,13 @@ export interface BuddyRequest {
 }
 
 export class BuddyLLMError extends Error {
-  public readonly cause?: unknown
-
   constructor(message: string, cause?: unknown) {
-    super(message)
+    // Forward to the ES2022 Error constructor so `.cause` is stored as the
+    // native non-enumerable own property. Declaring our own `cause` field
+    // would shadow the native slot with an enumerable property and leak
+    // the chain into JSON.stringify/structured loggers.
+    super(message, { cause })
     this.name = 'BuddyLLMError'
-    this.cause = cause
   }
 }
 
@@ -1496,7 +1528,7 @@ export function classifyTier(request: BuddyRequest): 1 | 2 | 3 {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `pnpm --filter @kanji-learn/api test -- llm/types`
-Expected: PASS — 2 test files, 4 tests passing.
+Expected: PASS — 1 test file, 6 tests passing.
 
 - [ ] **Step 5: Commit**
 
