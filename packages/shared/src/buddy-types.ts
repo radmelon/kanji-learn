@@ -1,6 +1,15 @@
 // packages/shared/src/buddy-types.ts
-// All Buddy domain types shared between API and mobile app.
-// Matches the columns defined in schema.ts Buddy tables — keep in sync.
+// Buddy domain types shared between API and mobile app.
+//
+// Most of these mirror columns in the Buddy tables in packages/db/src/schema.ts
+// (camelCase here, snake_case in the DB via Drizzle column mappings). A few
+// exceptions are called out inline:
+//   - LearnerStateCache matches the `learner_state_cache` row shape.
+//   - StudyPlan.scaffoldLevel uses the string form; the DB column is a
+//     smallint encoding — see the comment on StudyPlan.
+//   - CoCreationSession is an in-memory session shape used during
+//     co-created mnemonic flows. It is not persisted directly; the final
+//     result is stored on `mnemonics.cocreation_context` (jsonb).
 
 export type BuddyScreen =
   | 'dashboard'
@@ -43,7 +52,12 @@ export type WeakestModality =
   | 'voice'
   | 'compound'
 
-export type ScaffoldLevel = 1 | 2 | 3
+// Canonical scaffold level. Matches `learner_state_cache.scaffold_level` (text)
+// and the API-internal ScaffoldLevel declared in
+// apps/api/src/services/buddy/constants.ts (Task 15). The `study_plans`
+// table stores this as a smallint encoding — the mapping lives in the
+// StudyPlanService mapper (Phase 1).
+export type ScaffoldLevel = 'heavy' | 'medium' | 'light'
 
 export type BuddyPersonalityPref = 'encouraging' | 'direct' | 'playful'
 
@@ -61,6 +75,16 @@ export type NudgeActionType =
   | 'generate_mnemonic'
   | 'dismiss'
   | 'none'
+
+export type ActivityType =
+  | 'flashcard_review'
+  | 'new_kanji'
+  | 'quiz'
+  | 'writing'
+  | 'voice'
+  | 'leech_drill'
+  | 'mnemonic_review'
+  | 'confused_pair_drill'
 
 export interface FriendComparison {
   friendId: string
@@ -82,18 +106,24 @@ export interface StudyPatterns {
   weekendVsWeekdayRatio: number
 }
 
+// Mirrors `learner_state_cache` in packages/db/src/schema.ts. Field names
+// match the Drizzle table one-to-one so the service layer can pass rows
+// through with minimal mapping. Keep in sync with the DB.
 export interface LearnerStateCache {
   userId: string
-  computedAt: Date
-  currentStreak: number
+  updatedAt: Date
+  currentStreakDays: number
+  longestStreakDays: number
   velocityTrend: VelocityTrend
-  totalSeen: number
-  totalBurned: number
-  activeLeeches: number
+  totalKanjiSeen: number
+  totalKanjiBurned: number
+  activeLeechCount: number
   leechKanjiIds: number[]
-  weakestModality?: WeakestModality
+  weakestModality: WeakestModality
   strongestJlptLevel?: 'N5' | 'N4' | 'N3' | 'N2' | 'N1'
   currentFocusLevel?: 'N5' | 'N4' | 'N3' | 'N2' | 'N1'
+  recentAccuracy: number // 0–1, average across modalities
+  lastSessionAt?: Date
   avgDailyReviews: number
   avgSessionDurationMs: number
   daysSinceLastSession: number
@@ -138,16 +168,6 @@ export interface BuddyNudge {
   createdAt: Date
 }
 
-export type ActivityType =
-  | 'flashcard_review'
-  | 'new_kanji'
-  | 'quiz'
-  | 'writing'
-  | 'voice'
-  | 'leech_drill'
-  | 'mnemonic_review'
-  | 'confused_pair_drill'
-
 export interface StudyActivity {
   order: number
   type: ActivityType
@@ -160,6 +180,9 @@ export interface StudyActivity {
   skipped: boolean
 }
 
+// Domain shape for a study plan. The DB column `study_plans.scaffold_level`
+// is a smallint; the mapping between that integer and the string
+// ScaffoldLevel lives in the StudyPlanService mapper (Phase 1).
 export interface StudyPlan {
   id: string
   userId: string
@@ -195,6 +218,10 @@ export interface StudyLogEntry {
   lastViewedAt?: Date
 }
 
+// In-memory shape tracked by the Buddy co-creation flow while a user
+// builds a personal mnemonic. Not a DB row: the finished mnemonic is
+// written to `mnemonics.cocreation_context` (jsonb). Phase 0 defines
+// the type so API/mobile stay aligned when the flow is implemented.
 export interface CoCreationSession {
   id: string
   userId: string
