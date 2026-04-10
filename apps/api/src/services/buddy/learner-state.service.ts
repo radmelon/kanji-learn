@@ -1,4 +1,4 @@
-import { and, eq, gte } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import {
   learnerStateCache,
   userKanjiProgress,
@@ -122,7 +122,10 @@ export class LearnerStateService {
       totalKanjiBurned: row.totalKanjiBurned,
       velocityTrend: row.velocityTrend,
       weakestModality: row.weakestModality,
-      scaffoldLevel: (row.scaffoldLevel ?? 'medium') as ScaffoldLevel,
+      // learner_state_cache.scaffold_level is a notNull text column with a
+      // 'medium' default, so `row.scaffoldLevel` is always a string. The cast
+      // narrows text to the ScaffoldLevel literal union.
+      scaffoldLevel: row.scaffoldLevel as ScaffoldLevel,
       activeLeechCount: row.activeLeechCount,
       lastSessionAt: row.lastSessionAt,
       recentAccuracy: row.recentAccuracy,
@@ -175,26 +178,26 @@ export class LearnerStateService {
       consecutiveFailures += 1
     }
 
-    // 6. Daily stats — last 14 days of review counts, for streak + velocity.
-    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
-    const fourteenDaysAgoStr = fourteenDaysAgo.toISOString().slice(0, 10)
-    const stats = await this.db.query.dailyStats.findMany({
-      where: and(eq(dailyStats.userId, userId), gte(dailyStats.date, fourteenDaysAgoStr)),
-      orderBy: (ds, { asc }) => asc(ds.date),
-    })
-    const last7 = stats.slice(-7).map((s) => s.reviewed)
-    const prev7 = stats.slice(-14, -7).map((s) => s.reviewed)
-    const pad = (arr: number[]) => [...arr, ...Array(Math.max(0, 7 - arr.length)).fill(0)]
-
-    // 7. Streak derivation from dailyStats.
-    // Phase 0: load the full dailyStats table for this user (bounded by the
-    // user's lifetime use; the intended Phase 1 optimization is a scheduled
-    // task that maintains a materialized streak counter). Walk chronologically
-    // to compute longestStreak; walk backwards from today to compute currentStreak.
+    // 6. Daily stats — single query for the full per-user history. We need
+    // this for both streak derivation (all history) and the 14-day velocity
+    // window. Phase 0: bounded by the user's lifetime use; Phase 1 will
+    // replace streak derivation with a materialized counter updated
+    // incrementally on each new day, and we'll only need a 14-day window here.
     const allStats = await this.db.query.dailyStats.findMany({
       where: eq(dailyStats.userId, userId),
       orderBy: (ds, { asc }) => asc(ds.date),
     })
+
+    // Velocity window: isolate the last 14 days (or fewer if the user has
+    // less history) for the two 7-day buckets.
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+    const fourteenDaysAgoStr = fourteenDaysAgo.toISOString().slice(0, 10)
+    const recentStats = allStats.filter((s) => s.date >= fourteenDaysAgoStr)
+    const last7 = recentStats.slice(-7).map((s) => s.reviewed)
+    const prev7 = recentStats.slice(-14, -7).map((s) => s.reviewed)
+    const pad = (arr: number[]) => [...arr, ...Array(Math.max(0, 7 - arr.length)).fill(0)]
+
+    // 7. Streak derivation walks allStats.
     const { currentStreakDays, longestStreakDays } = deriveStreaks(allStats)
 
     // 8. Last session timestamp from reviewSessions.
