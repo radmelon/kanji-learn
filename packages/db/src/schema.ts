@@ -253,11 +253,14 @@ export const mnemonics = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     generationMethod: mnemonicGenerationMethodEnum('generation_method').notNull().default('system'),
     locationType: text('location_type'),
+    // Nullable jsonb — Drizzle already infers `T | null` from the missing .notNull().
     cocreationContext: jsonb('cocreation_context').$type<{
       questions: string[]
       answers: string[]
       timeOfDay?: string
-    } | null>(),
+    }>(),
+    // effectivenessScore is only meaningful once reinforcementCount > 0;
+    // the 0.5 default is a placeholder for freshly-created mnemonics.
     effectivenessScore: real('effectiveness_score').notNull().default(0.5),
     lastReinforcedAt: timestamp('last_reinforced_at', { withTimezone: true }),
     reinforcementCount: integer('reinforcement_count').notNull().default(0),
