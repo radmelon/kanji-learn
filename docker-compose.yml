@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kanji-buddy-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: kanji
+      POSTGRES_PASSWORD: kanji
+      POSTGRES_DB: kanji_buddy_dev
+    volumes:
+      - kanji_buddy_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kanji -d kanji_buddy_dev"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kanji_buddy_pgdata:
