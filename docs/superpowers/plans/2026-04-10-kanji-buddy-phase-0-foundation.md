@@ -437,16 +437,23 @@ export const studyPlans = pgTable(
   })
 )
 
-export const studyPlanEvents = pgTable('study_plan_events', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  planId: uuid('plan_id')
-    .notNull()
-    .references(() => studyPlans.id, { onDelete: 'cascade' }),
-  activityIndex: smallint('activity_index').notNull(),
-  event: text('event').notNull(), // 'started' | 'completed' | 'skipped' | 'navigated_away'
-  eventAt: timestamp('event_at', { withTimezone: true }).notNull().defaultNow(),
-  deviceType: deviceTypeEnum('device_type'),
-})
+export const studyPlanEvents = pgTable(
+  'study_plan_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    planId: uuid('plan_id')
+      .notNull()
+      .references(() => studyPlans.id, { onDelete: 'cascade' }),
+    activityIndex: smallint('activity_index').notNull(),
+    event: text('event').notNull(), // 'started' | 'completed' | 'skipped' | 'navigated_away'
+    eventAt: timestamp('event_at', { withTimezone: true }).notNull().defaultNow(),
+    deviceType: deviceTypeEnum('device_type'),
+  },
+  (t) => ({
+    // Postgres does not auto-index FKs; "all events for plan X" is the core read.
+    planIdx: index('study_plan_events_plan_idx').on(t.planId),
+  })
+)
 ```
 
 - [ ] **Step 2: Append study_log_entries**
@@ -543,6 +550,8 @@ export const learnerProfileUniversal = pgTable('learner_profile_universal', {
   preferredLearningStyles: jsonb('preferred_learning_styles').$type<string[]>().notNull().default([]),
   goals: jsonb('goals').$type<string[]>().notNull().default([]),
   studyHabits: jsonb('study_habits').$type<Record<string, unknown>>().notNull().default({}),
+  // buddyPersonalityEnum is Kanji-Buddy-specific vocabulary ('encouraging' | 'direct' | 'playful').
+  // If a second app joins the UKG and needs a different vocabulary, relax this to plain text.
   buddyPersonalityPref: buddyPersonalityEnum('buddy_personality_pref').notNull().default('encouraging'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -562,6 +571,8 @@ export const learnerConnections = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    // Callers MUST normalize so learnerIdA < learnerIdB before insert; otherwise
+    // (alice, bob) and (bob, alice) will both be accepted as distinct connections.
     pairIdx: uniqueIndex('learner_connections_pair_idx').on(t.learnerIdA, t.learnerIdB),
   })
 )
