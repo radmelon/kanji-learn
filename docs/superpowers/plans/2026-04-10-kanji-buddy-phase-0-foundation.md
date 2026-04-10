@@ -1297,12 +1297,16 @@ export default defineConfig({
 
 import { config } from 'dotenv'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// `apps/api` is ESM, so __dirname is not available — reconstruct it.
+const __dirname = resolve(fileURLToPath(import.meta.url), '..')
 
 config({ path: resolve(__dirname, '../.env.test') })
 
 if (!process.env.TEST_DATABASE_URL) {
   throw new Error(
-    'TEST_DATABASE_URL must be set in apps/api/.env.test before running tests'
+    'TEST_DATABASE_URL is not set. Copy apps/api/.env.test.example to apps/api/.env.test and fill in TEST_DATABASE_URL.'
   )
 }
 
@@ -1314,7 +1318,9 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL
 
 ```
 # Copy to apps/api/.env.test and fill in values.
-TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/kanji_learn_test
+# Matches the local dev Postgres in docker-compose.yml (user kanji,
+# password kanji, host port 5433, dedicated test database).
+TEST_DATABASE_URL=postgres://kanji:kanji@localhost:5433/kanji_buddy_test
 GROQ_API_KEY=test-fake-key
 GEMINI_API_KEY=test-fake-key
 ANTHROPIC_API_KEY=test-fake-key
@@ -1322,6 +1328,16 @@ LLM_PRIMARY_TIER2_PROVIDER=groq
 BUDDY_TIER2_DAILY_CAP_PER_USER=50
 BUDDY_TIER3_DAILY_CAP_PER_USER=2
 ```
+
+> Note: `.env.test` contains credentials (even if they are local dev fakes)
+> and must not be committed. Ensure it is covered by `.gitignore` — in this
+> repo the root `.gitignore` explicitly lists `.env.test`. Only the
+> `.env.test.example` template goes into git.
+>
+> `apps/api/tsconfig.json` must include the `test` directory so
+> `pnpm --filter @kanji-learn/api typecheck` catches type errors in tests.
+> Keep `apps/api/tsconfig.build.json` scoped to `src` so test files do not
+> land in `dist/`.
 
 - [ ] **Step 6: Create a sanity test to prove the runner works**
 

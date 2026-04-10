@@ -11,7 +11,7 @@ config({ path: resolve(__dirname, '../.env.test') })
 
 if (!process.env.TEST_DATABASE_URL) {
   throw new Error(
-    'TEST_DATABASE_URL must be set in apps/api/.env.test before running tests'
+    'TEST_DATABASE_URL is not set. Copy apps/api/.env.test.example to apps/api/.env.test and fill in TEST_DATABASE_URL.'
   )
 }
 
