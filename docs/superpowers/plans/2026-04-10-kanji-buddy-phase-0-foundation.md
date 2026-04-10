@@ -523,7 +523,9 @@ export const sharedGoals = pgTable(
 // App-agnostic projection of learner state. Subjects are namespaced (e.g. "kanji:持").
 
 export const learnerIdentity = pgTable('learner_identity', {
-  id: uuid('id').primaryKey(), // matches user_profiles.id
+  // PK is named learnerId (not id) so every other UKG table can reference
+  // `learnerIdentity.learnerId` with the same name they use for their own FK.
+  learnerId: uuid('learner_id').primaryKey(), // matches user_profiles.id
   displayName: text('display_name'),
   email: text('email'),
   nativeLanguage: text('native_language'),
@@ -535,7 +537,7 @@ export const learnerIdentity = pgTable('learner_identity', {
 export const learnerProfileUniversal = pgTable('learner_profile_universal', {
   learnerId: uuid('learner_id')
     .primaryKey()
-    .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+    .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
   interests: jsonb('interests').$type<string[]>().notNull().default([]),
   reasonsForLearning: jsonb('reasons_for_learning').$type<string[]>().notNull().default([]),
   preferredLearningStyles: jsonb('preferred_learning_styles').$type<string[]>().notNull().default([]),
@@ -551,10 +553,10 @@ export const learnerConnections = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     learnerIdA: uuid('learner_id_a')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     learnerIdB: uuid('learner_id_b')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     relationship: text('relationship').notNull().default('friend'),
     sharedApps: jsonb('shared_apps').$type<string[]>().notNull().default(['kanji_buddy']),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -570,13 +572,13 @@ export const learnerMemoryArtifacts = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     learnerId: uuid('learner_id')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     subject: text('subject').notNull(), // e.g. "kanji:持"
     artifactType: text('artifact_type').notNull(), // 'mnemonic' | 'note' | 'sentence' | 'photo' | 'audio'
     content: jsonb('content').$type<Record<string, unknown>>().notNull(),
     context: jsonb('context').$type<Record<string, unknown>>().notNull().default({}),
     effectivenessScore: real('effectiveness_score').notNull().default(0.5),
-    sourceApp: text('source_app').notNull(),
+    appSource: text('app_source').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -590,14 +592,16 @@ export const learnerKnowledgeState = pgTable(
   {
     learnerId: uuid('learner_id')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     subject: text('subject').notNull(),
     masteryLevel: real('mastery_level').notNull().default(0),
     status: text('status').notNull().default('unseen'), // 'unseen' | 'learning' | 'reviewing' | 'mastered'
+    reviewCount: integer('review_count').notNull().default(0),
     firstSeenAt: timestamp('first_seen_at', { withTimezone: true }),
-    lastReinforcedAt: timestamp('last_reinforced_at', { withTimezone: true }),
-    sourceApp: text('source_app').notNull(),
+    lastReviewedAt: timestamp('last_reviewed_at', { withTimezone: true }),
+    appSource: text('app_source').notNull(),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.learnerId, t.subject] }),
@@ -610,7 +614,7 @@ export const learnerAppGrants = pgTable(
   {
     learnerId: uuid('learner_id')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     appId: text('app_id').notNull(),
     scopes: jsonb('scopes').$type<string[]>().notNull().default([]),
     grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
@@ -628,11 +632,11 @@ export const learnerTimelineEvents = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     learnerId: uuid('learner_id')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     eventType: text('event_type').notNull(),
     subject: text('subject'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
-    sourceApp: text('source_app').notNull(),
+    appSource: text('app_source').notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
