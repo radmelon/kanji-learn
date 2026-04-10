@@ -144,6 +144,7 @@ export const userProfiles = pgTable('user_profiles', {
   timezone: text('timezone').notNull().default('UTC'),
   reminderHour: smallint('reminder_hour').notNull().default(20),   // 0-23, in user's timezone
   restDay: smallint('rest_day'),                                    // 0=Sun…6=Sat, null=no rest day
+  onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -192,6 +193,7 @@ export const reviewSessions = pgTable(
     correctItems: integer('correct_items').notNull().default(0),
     studyTimeMs: integer('study_time_ms').notNull().default(0),
     sessionType: text('session_type').notNull().default('daily'), // daily | weekly | checkpoint | surprise | audit
+    deviceType: deviceTypeEnum('device_type'),
   },
   (t) => ({
     userSessionIdx: index('review_session_user_idx').on(t.userId, t.startedAt),
@@ -221,6 +223,7 @@ export const reviewLogs = pgTable(
     prevInterval: integer('prev_interval').notNull(),
     nextInterval: integer('next_interval').notNull(),
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull().defaultNow(),
+    deviceType: deviceTypeEnum('device_type'),
   },
   (t) => ({
     userReviewIdx: index('review_log_user_idx').on(t.userId, t.reviewedAt),
@@ -248,6 +251,16 @@ export const mnemonics = pgTable(
     refreshPromptAt: timestamp('refresh_prompt_at', { withTimezone: true }), // 30-day nudge
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    generationMethod: mnemonicGenerationMethodEnum('generation_method').notNull().default('system'),
+    locationType: text('location_type'),
+    cocreationContext: jsonb('cocreation_context').$type<{
+      questions: string[]
+      answers: string[]
+      timeOfDay?: string
+    } | null>(),
+    effectivenessScore: real('effectiveness_score').notNull().default(0.5),
+    lastReinforcedAt: timestamp('last_reinforced_at', { withTimezone: true }),
+    reinforcementCount: integer('reinforcement_count').notNull().default(0),
   },
   (t) => ({
     kanjiMnemonicIdx: index('mnemonic_kanji_idx').on(t.kanjiId, t.type),
@@ -363,6 +376,7 @@ export const testSessions = pgTable(
     scorePct:      numeric('score_pct', { precision: 5, scale: 2 }),
     passed:        boolean('passed'),
     voiceEnabled:  boolean('voice_enabled').notNull().default(false),
+    deviceType: deviceTypeEnum('device_type'),
   },
   (t) => ({
     userTestIdx: index('test_session_user_idx').on(t.userId, t.startedAt),
@@ -805,6 +819,49 @@ export const learnerTimelineEvents = pgTable(
   },
   (t) => ({
     learnerTimeIdx: index('learner_timeline_learner_time_idx').on(t.learnerId, t.occurredAt),
+  })
+)
+
+// ─── buddy_llm_telemetry ──────────────────────────────────────────────────────
+// Per-call latency, provider, tier, tokens, success/failure. Used for dashboards.
+
+export const buddyLlmTelemetry = pgTable(
+  'buddy_llm_telemetry',
+  {
+    id: serial('id').primaryKey(),
+    userId: uuid('user_id').references(() => userProfiles.id, { onDelete: 'set null' }),
+    tier: llmTierEnum('tier').notNull(),
+    providerName: text('provider_name').notNull(),
+    requestContext: text('request_context').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    latencyMs: integer('latency_ms').notNull(),
+    success: boolean('success').notNull(),
+    errorCode: text('error_code'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    providerTimeIdx: index('buddy_llm_telemetry_provider_time_idx').on(t.providerName, t.createdAt),
+    userTimeIdx: index('buddy_llm_telemetry_user_time_idx').on(t.userId, t.createdAt),
+  })
+)
+
+// ─── buddy_llm_usage ──────────────────────────────────────────────────────────
+// Per-user daily counters enforced by the rate limiter.
+
+export const buddyLlmUsage = pgTable(
+  'buddy_llm_usage',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    usageDate: text('usage_date').notNull(), // YYYY-MM-DD in user tz
+    tier: llmTierEnum('tier').notNull(),
+    callCount: integer('call_count').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.usageDate, t.tier] }),
   })
 )
 
