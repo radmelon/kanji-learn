@@ -182,6 +182,109 @@ describe('GeminiProvider', () => {
     expect(result.finishReason).toBe('safety')
   })
 
+  it('maps assistant turns to role: "model" and preserves multi-turn order', async () => {
+    // The user/assistant → user/model translation is the most Gemini-specific
+    // piece of logic in the provider and deserves a dedicated test so a
+    // future refactor can't silently break multi-turn conversations.
+    generateContentMock.mockResolvedValue({
+      response: {
+        candidates: [
+          { content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' },
+        ],
+        usageMetadata: { promptTokenCount: 6, candidatesTokenCount: 1 },
+        text: () => 'ok',
+      },
+    })
+
+    const provider = new GeminiProvider({ apiKey: 'test' })
+    await provider.generateCompletion({
+      messages: [
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'hi there' },
+        { role: 'user', content: 'how are you' },
+      ],
+      maxTokens: 10,
+      temperature: 0,
+    })
+
+    const call = generateContentMock.mock.calls[0][0]
+    expect(call.contents).toEqual([
+      { role: 'user', parts: [{ text: 'hello' }] },
+      { role: 'model', parts: [{ text: 'hi there' }] },
+      { role: 'user', parts: [{ text: 'how are you' }] },
+    ])
+  })
+
+  it('hoists system messages from the messages array into systemInstruction', async () => {
+    // Gemini has no per-turn system slot — it has a single top-level
+    // systemInstruction. If a caller puts a system message in the messages
+    // array (legal per the shared Message union), we must hoist it rather
+    // than silently dropping it (as the original implementation did). If
+    // both systemPrompt AND system messages are supplied, they should be
+    // concatenated so nothing is lost.
+    generateContentMock.mockResolvedValue({
+      response: {
+        candidates: [
+          { content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' },
+        ],
+        usageMetadata: { promptTokenCount: 6, candidatesTokenCount: 1 },
+        text: () => 'ok',
+      },
+    })
+
+    const provider = new GeminiProvider({ apiKey: 'test' })
+    await provider.generateCompletion({
+      systemPrompt: 'base prompt',
+      messages: [
+        { role: 'system', content: 'extra system rule' },
+        { role: 'user', content: 'hi' },
+      ],
+      maxTokens: 10,
+      temperature: 0,
+    })
+
+    const call = generateContentMock.mock.calls[0][0]
+    expect(call.systemInstruction).toBe('base prompt\n\nextra system rule')
+    // The system turn should NOT appear in contents.
+    expect(call.contents).toEqual([{ role: 'user', parts: [{ text: 'hi' }] }])
+  })
+
+  it('reports finishReason "tool_use" when a candidate carries a functionCall part', async () => {
+    // Gemini signals tool calls by attaching a functionCall part to the
+    // assistant's content — typically with finishReason: 'STOP'. The
+    // provider must detect this and override the finish reason so the
+    // router doesn't mistake a tool call for a normal stop. Phase 0 does
+    // NOT populate result.toolCalls; that's Phase 1.
+    generateContentMock.mockResolvedValue({
+      response: {
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [{ functionCall: { name: 'lookup_kanji', args: { kanji: '水' } } }],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 5 },
+        text: () => {
+          throw new Error('no text parts')
+        },
+      },
+    })
+
+    const provider = new GeminiProvider({ apiKey: 'test' })
+    const result = await provider.generateCompletion({
+      messages: [{ role: 'user', content: 'look up 水' }],
+      maxTokens: 50,
+      temperature: 0,
+    })
+
+    expect(result.finishReason).toBe('tool_use')
+    expect(result.content).toBeUndefined()
+    expect(result.toolCalls).toBeUndefined() // Phase 0 doesn't populate
+  })
+
   it('does not throw at construction when apiKey is empty; fails cleanly at call time', async () => {
     // Regression guard: the Google SDK may throw synchronously on an invalid
     // apiKey, which would bypass the generateCompletion try/catch. Lazy init

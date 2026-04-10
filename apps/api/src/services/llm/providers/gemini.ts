@@ -65,13 +65,16 @@ export class GeminiProvider implements LLMProvider {
 
       // Gemini's Content format separates a top-level systemInstruction from
       // the turn-based contents array. Assistant turns map to role: 'model'.
+      // Hoist any system messages embedded in request.messages into
+      // systemInstruction (joining with a double newline so multiple system
+      // instructions are preserved) — Gemini has no per-turn system slot.
+      const systemParts: string[] = []
+      if (request.systemPrompt) systemParts.push(request.systemPrompt)
       const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = []
       for (const m of request.messages) {
         if (m.role === 'tool') continue // Phase 1 will handle tool-result round-trips
         if (m.role === 'system') {
-          // Gemini has a dedicated systemInstruction field; if a caller puts a
-          // system message in the messages array, hoist it by appending to
-          // any systemPrompt they supplied.
+          systemParts.push(m.content)
           continue
         }
         // After the skips, m.role is narrowed to user | assistant, both of
@@ -79,10 +82,16 @@ export class GeminiProvider implements LLMProvider {
         const role: 'user' | 'model' = m.role === 'assistant' ? 'model' : 'user'
         contents.push({ role, parts: [{ text: m.content }] })
       }
+      const systemInstruction = systemParts.length > 0 ? systemParts.join('\n\n') : undefined
 
+      // TODO(phase1): forward request.tools to generateContent and parse
+      // candidates[0].content.parts[].functionCall into CompletionResult.toolCalls.
+      // Phase 0 intentionally drops request.tools — the class JSDoc documents
+      // this gap. If tools are supplied, the provider still returns a sensible
+      // result (the model just won't know tools exist).
       const result = await genModel.generateContent({
         contents,
-        systemInstruction: request.systemPrompt,
+        systemInstruction,
         generationConfig: {
           maxOutputTokens: request.maxTokens,
           temperature: request.temperature,
@@ -95,7 +104,7 @@ export class GeminiProvider implements LLMProvider {
         throw new BuddyLLMError('Gemini returned no candidates')
       }
 
-      const candidate = raw.candidates[0]
+      const candidate = raw.candidates[0]!
 
       // Preserve the distinction between "empty string" and "no text at all"
       // (e.g., a pure tool-call response or a safety-blocked candidate).
@@ -108,9 +117,19 @@ export class GeminiProvider implements LLMProvider {
         text = undefined
       }
 
+      // Detect tool-call responses: Gemini signals these with a functionCall
+      // part on the assistant's content (typically alongside finishReason
+      // 'STOP'). If any part carries a functionCall, override the finish
+      // reason so the router doesn't mistake a tool call for a normal stop.
+      // Phase 0 does not populate CompletionResult.toolCalls — that's Phase 1.
+      const hasFunctionCall =
+        candidate.content?.parts?.some(
+          (p: { functionCall?: unknown }) => p.functionCall !== undefined
+        ) ?? false
+
       return {
         content: text && text.length > 0 ? text : undefined,
-        finishReason: this.mapFinishReason(candidate?.finishReason),
+        finishReason: hasFunctionCall ? 'tool_use' : this.mapFinishReason(candidate.finishReason),
         inputTokens: raw.usageMetadata?.promptTokenCount ?? 0,
         outputTokens: raw.usageMetadata?.candidatesTokenCount ?? 0,
         providerName: this.name,
@@ -149,6 +168,10 @@ export class GeminiProvider implements LLMProvider {
       case 'MAX_TOKENS':
         return 'length'
       case 'SAFETY':
+      case 'RECITATION':
+      case 'BLOCKLIST':
+      case 'PROHIBITED_CONTENT':
+      case 'SPII':
         return 'safety'
       default:
         return 'stop'
