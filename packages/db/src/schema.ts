@@ -45,6 +45,52 @@ export const interventionTypeEnum = pgEnum('intervention_type', [
   'plateau',
 ])
 
+export const deviceTypeEnum = pgEnum('device_type', ['iphone', 'ipad', 'watch'])
+
+export const buddyMoodEnum = pgEnum('buddy_mood', [
+  'celebratory',
+  'supportive',
+  'challenging',
+  'concerned',
+])
+
+export const velocityTrendEnum = pgEnum('velocity_trend', [
+  'accelerating',
+  'steady',
+  'decelerating',
+  'inactive',
+])
+
+export const weakestModalityEnum = pgEnum('weakest_modality', [
+  'meaning',
+  'reading',
+  'writing',
+  'voice',
+  'compound',
+])
+
+export const buddyPersonalityEnum = pgEnum('buddy_personality', [
+  'encouraging',
+  'direct',
+  'playful',
+])
+
+export const mnemonicGenerationMethodEnum = pgEnum('mnemonic_generation_method', [
+  'system',
+  'user',
+  'cocreated',
+])
+
+export const llmTierEnum = pgEnum('llm_tier', ['tier1', 'tier2', 'tier3'])
+
+export const studyLogMoodEnum = pgEnum('study_log_mood', [
+  'aha',
+  'struggle',
+  'breakthrough',
+  'fun',
+  'confused',
+])
+
 // ─── kanji ────────────────────────────────────────────────────────────────────
 
 export const kanji = pgTable(
@@ -374,6 +420,26 @@ export const friendships = pgTable(
     statusIdx: index('friendship_status_idx').on(t.requesterId, t.status),
   })
 )
+
+// ─── learner_profiles ─────────────────────────────────────────────────────────
+// Extended preference and personality data for Kanji Buddy. One row per user.
+
+export const learnerProfiles = pgTable('learner_profiles', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => userProfiles.id, { onDelete: 'cascade' }),
+  nativeLanguage: text('native_language'),
+  reasonsForLearning: jsonb('reasons_for_learning').$type<string[]>().notNull().default([]),
+  interests: jsonb('interests').$type<string[]>().notNull().default([]),
+  preferredMnemonicStyle: text('preferred_mnemonic_style'), // 'visual' | 'narrative' | 'wordplay' | 'spatial'
+  preferredLearningStyles: jsonb('preferred_learning_styles').$type<string[]>().notNull().default([]),
+  buddyPersonalityPref: buddyPersonalityEnum('buddy_personality_pref').notNull().default('encouraging'),
+  studyEnvironments: jsonb('study_environments').$type<string[]>().notNull().default([]),
+  goals: jsonb('goals').$type<string[]>().notNull().default([]),
+  onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 
