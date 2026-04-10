@@ -127,6 +127,19 @@ final class APIClient {
             )
         }
 
+        // DIAGNOSTIC: store raw response before decoding so we can read it after a crash.
+        // Truncated to 1000 chars to avoid bloating UserDefaults.
+        // Key suffix uses the last path component (e.g. "queue", "status").
+        let pathKey = path.components(separatedBy: "/").last?.components(separatedBy: "?").first ?? "unknown"
+        if let rawStr = String(data: data, encoding: .utf8) {
+            UserDefaults.standard.set(String(rawStr.prefix(1000)), forKey: "kl_diag_raw_\(pathKey)")
+            // Mirror to the crash-specific key if this is the queue endpoint
+            if pathKey.hasPrefix("queue") {
+                UserDefaults.standard.set(String(rawStr.prefix(500)), forKey: DiagKey.rawQueue)
+            }
+            UserDefaults.standard.synchronize()
+        }
+
         do {
             // Create a fresh JSONDecoder per call — sharing a single instance
             // across concurrent async tasks (fetchStatus + fetchQueue) is not

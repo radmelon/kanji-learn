@@ -45,6 +45,15 @@ private enum CacheKey {
 
 // ─── StudyViewModel ───────────────────────────────────────────────────────────
 
+// ─── Crash diagnostic keys ───────────────────────────────────────────────────
+
+enum DiagKey {
+    static let breadcrumb = "kl_diag_breadcrumb"
+    static let rawQueue   = "kl_diag_raw_queue"
+}
+
+// ─── StudyViewModel ───────────────────────────────────────────────────────────
+
 @MainActor
 final class StudyViewModel: ObservableObject {
     @Published var state: StudyState = .idle
@@ -52,11 +61,31 @@ final class StudyViewModel: ObservableObject {
     @Published var results: [ReviewResult] = []
     @Published var showOnboarding: Bool = false
 
+    /// Set on launch if a crash breadcrumb was found from the previous session.
+    /// Displayed in HomeView to help diagnose persistent crashes.
+    @Published var crashDiagnostic: String? = nil
+
     private var sessionStartMs: Int = 0
     private var cardRevealMs: Int = 0
 
     private let api = APIClient.shared
     private let defaults = UserDefaults.standard
+
+    init() {
+        // On launch, check if a crash breadcrumb was written before the previous crash.
+        // If present, surface it in HomeView and clear it so it doesn't repeat.
+        let ud = UserDefaults.standard
+        if let crumb = ud.string(forKey: DiagKey.breadcrumb), !crumb.isEmpty {
+            var msg = "⚠ Crash after: \(crumb)"
+            if let raw = ud.string(forKey: DiagKey.rawQueue) {
+                msg += "\nRaw: \(raw)"
+            }
+            crashDiagnostic = msg
+            ud.removeObject(forKey: DiagKey.breadcrumb)
+            ud.removeObject(forKey: DiagKey.rawQueue)
+            ud.synchronize()
+        }
+    }
 
     // ── Session entry point ────────────────────────────────────────────────────
 
@@ -72,26 +101,45 @@ final class StudyViewModel: ObservableObject {
 
     // ── Load queue ────────────────────────────────────────────────────────────
 
+    private func crumb(_ step: String) {
+        defaults.set(step, forKey: DiagKey.breadcrumb)
+        defaults.synchronize()
+    }
+
     private func loadQueue() async {
         // state is already .loading (set synchronously by startSession)
 
         // First, attempt any buffered submission from a previous session
+        crumb("retryPendingSubmission_start")
         await retryPendingSubmission()
+        crumb("retryPendingSubmission_done")
 
         do {
+            crumb("fetchQueue_start")
             let cards = try await api.fetchQueue(limit: 10)
+            crumb("fetchQueue_done_count:\(cards.count)")
             if cards.isEmpty {
                 state = .empty
+                defaults.removeObject(forKey: DiagKey.breadcrumb)
+                defaults.synchronize()
                 return
             }
+            crumb("assigning_queue")
             queue = cards
+            crumb("caching_queue")
             cacheQueue(cards)
             sessionStartMs = currentMs()
             results = []
+            crumb("setting_state_studying")
             state = .studying(index: 0, revealed: false)
+            crumb("onboarding_check")
             if !defaults.bool(forKey: CacheKey.onboardingSeen) {
                 showOnboarding = true
             }
+            // Clear breadcrumb — session started successfully
+            defaults.removeObject(forKey: DiagKey.breadcrumb)
+            defaults.removeObject(forKey: DiagKey.rawQueue)
+            defaults.synchronize()
         } catch {
             // Fall back to cached queue if available
             if let cached = loadCachedQueue(), !cached.isEmpty {
