@@ -89,12 +89,9 @@ final class StudyViewModel: ObservableObject {
             sessionStartMs = currentMs()
             results = []
             state = .studying(index: 0, revealed: false)
-            // DIAGNOSTIC BUILD 93: onboarding suppressed to isolate crash source.
-            // If crash stops → TabView pager overlay is culprit.
-            // If crash continues → root cause is elsewhere in load/render path.
-            // if !defaults.bool(forKey: CacheKey.onboardingSeen) {
-            //     showOnboarding = true
-            // }
+            if !defaults.bool(forKey: CacheKey.onboardingSeen) {
+                showOnboarding = true
+            }
         } catch {
             // Fall back to cached queue if available
             if let cached = loadCachedQueue(), !cached.isEmpty {
@@ -102,9 +99,9 @@ final class StudyViewModel: ObservableObject {
                 sessionStartMs = currentMs()
                 results = []
                 state = .studying(index: 0, revealed: false)
-                // if !defaults.bool(forKey: CacheKey.onboardingSeen) {
-                //     showOnboarding = true
-                // }
+                if !defaults.bool(forKey: CacheKey.onboardingSeen) {
+                    showOnboarding = true
+                }
             } else {
                 // Expose the real error so it can be reported
                 let detail = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
