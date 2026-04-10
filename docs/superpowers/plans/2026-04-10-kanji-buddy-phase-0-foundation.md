@@ -1750,13 +1750,16 @@ Create `apps/api/test/unit/llm/providers/groq.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GroqProvider } from '../../../../src/services/llm/providers/groq'
 
-// Mock the groq-sdk module
+// Mock the groq-sdk module.
+// Note: the default export must be a function expression (not an arrow
+// function) because the implementation calls `new Groq(...)` and vitest 4
+// uses Reflect.construct on the mock — arrow functions aren't constructors.
 vi.mock('groq-sdk', () => {
   const createMock = vi.fn()
   return {
-    default: vi.fn().mockImplementation(() => ({
-      chat: { completions: { create: createMock } },
-    })),
+    default: vi.fn().mockImplementation(function () {
+      return { chat: { completions: { create: createMock } } }
+    }),
     __createMock: createMock,
   }
 })
@@ -1966,13 +1969,16 @@ Create `apps/api/test/unit/llm/providers/gemini.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GeminiProvider } from '../../../../src/services/llm/providers/gemini'
 
+// Note: GoogleGenerativeAI is invoked with `new ...` in the impl, so the
+// mock must be a function expression (not an arrow) — vitest 4 uses
+// Reflect.construct on the mock and arrow functions aren't constructors.
 vi.mock('@google/generative-ai', () => {
   const generateContentMock = vi.fn()
   const getGenerativeModelMock = vi.fn(() => ({ generateContent: generateContentMock }))
   return {
-    GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-      getGenerativeModel: getGenerativeModelMock,
-    })),
+    GoogleGenerativeAI: vi.fn().mockImplementation(function () {
+      return { getGenerativeModel: getGenerativeModelMock }
+    }),
     __generateContentMock: generateContentMock,
   }
 })
@@ -2159,10 +2165,15 @@ Create `apps/api/test/unit/llm/providers/claude.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ClaudeProvider } from '../../../../src/services/llm/providers/claude'
 
+// Note: the default export must be a function expression (not an arrow)
+// because the impl calls `new Anthropic(...)` — vitest 4 uses
+// Reflect.construct and arrow functions aren't constructors.
 vi.mock('@anthropic-ai/sdk', () => {
   const createMock = vi.fn()
   return {
-    default: vi.fn().mockImplementation(() => ({ messages: { create: createMock } })),
+    default: vi.fn().mockImplementation(function () {
+      return { messages: { create: createMock } }
+    }),
     __createMock: createMock,
   }
 })
