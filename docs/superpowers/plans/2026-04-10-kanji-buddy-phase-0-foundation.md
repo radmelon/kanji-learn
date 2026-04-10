@@ -254,16 +254,19 @@ export const learnerStateCache = pgTable(
     userId: uuid('user_id')
       .primaryKey()
       .references(() => userProfiles.id, { onDelete: 'cascade' }),
-    computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
-    currentStreak: integer('current_streak').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    currentStreakDays: integer('current_streak_days').notNull().default(0),
+    longestStreakDays: integer('longest_streak_days').notNull().default(0),
     velocityTrend: velocityTrendEnum('velocity_trend').notNull().default('inactive'),
-    totalSeen: integer('total_seen').notNull().default(0),
-    totalBurned: integer('total_burned').notNull().default(0),
-    activeLeeches: integer('active_leeches').notNull().default(0),
+    totalKanjiSeen: integer('total_kanji_seen').notNull().default(0),
+    totalKanjiBurned: integer('total_kanji_burned').notNull().default(0),
+    activeLeechCount: integer('active_leech_count').notNull().default(0),
     leechKanjiIds: jsonb('leech_kanji_ids').$type<number[]>().notNull().default([]),
-    weakestModality: weakestModalityEnum('weakest_modality'),
+    weakestModality: weakestModalityEnum('weakest_modality').notNull().default('meaning'),
     strongestJlptLevel: jlptLevelEnum('strongest_jlpt_level'),
     currentFocusLevel: jlptLevelEnum('current_focus_level'),
+    recentAccuracy: real('recent_accuracy').notNull().default(0),
+    lastSessionAt: timestamp('last_session_at', { withTimezone: true }),
     avgDailyReviews: real('avg_daily_reviews').notNull().default(0),
     avgSessionDurationMs: integer('avg_session_duration_ms').notNull().default(0),
     daysSinceLastSession: integer('days_since_last_session').notNull().default(0),
@@ -289,7 +292,8 @@ export const learnerStateCache = pgTable(
       .default({ avgSessionsPerDay: 0, weekendVsWeekdayRatio: 1 }),
     nextRecommendedActivity: text('next_recommended_activity'),
     buddyMood: buddyMoodEnum('buddy_mood').notNull().default('supportive'),
-    scaffoldLevel: smallint('scaffold_level').notNull().default(1),
+    // 'heavy' | 'medium' | 'light' — mirrors ScaffoldLevel in api/src/services/buddy/constants.ts
+    scaffoldLevel: text('scaffold_level').notNull().default('medium'),
     friendsCount: integer('friends_count').notNull().default(0),
     activeFriendsToday: integer('active_friends_today').notNull().default(0),
     friendsAheadOnBurn: jsonb('friends_ahead_on_burn')
@@ -315,7 +319,7 @@ export const learnerStateCache = pgTable(
     groupMomentum: text('group_momentum'), // 'rising' | 'steady' | 'falling'
   },
   (t) => ({
-    computedIdx: index('learner_state_computed_idx').on(t.userId, t.computedAt),
+    updatedIdx: index('learner_state_updated_idx').on(t.userId, t.updatedAt),
   })
 )
 ```
