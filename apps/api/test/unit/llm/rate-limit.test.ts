@@ -64,4 +64,21 @@ describe('RateLimiter', () => {
     await limiter.tryConsume(TEST_USER, 2)
     expect(await limiter.remainingForTier(TEST_USER, 2)).toBe(3)
   })
+
+  it('concurrent bursts at the cap boundary never over-consume', async () => {
+    // Regression test for the atomic DO UPDATE WHERE pattern. Fire many
+    // concurrent calls at a small cap — the total `true` count must equal
+    // the cap exactly, and the db row's call_count must not exceed the cap.
+    const cap = 5
+    const limiter = new RateLimiter(db, { tier2DailyCap: cap, tier3DailyCap: 1 })
+    const burst = 25
+    const results = await Promise.all(
+      Array.from({ length: burst }, () => limiter.tryConsume(TEST_USER, 2))
+    )
+    const allowed = results.filter((r) => r === true).length
+    expect(allowed).toBe(cap)
+
+    const remaining = await limiter.remainingForTier(TEST_USER, 2)
+    expect(remaining).toBe(0)
+  })
 })

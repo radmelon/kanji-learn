@@ -1616,6 +1616,21 @@ describe('RateLimiter', () => {
     await limiter.tryConsume(TEST_USER, 2)
     expect(await limiter.remainingForTier(TEST_USER, 2)).toBe(3)
   })
+
+  it('concurrent bursts at the cap boundary never over-consume', async () => {
+    // Regression test for the atomic DO UPDATE WHERE pattern.
+    const cap = 5
+    const limiter = new RateLimiter(db, { tier2DailyCap: cap, tier3DailyCap: 1 })
+    const burst = 25
+    const results = await Promise.all(
+      Array.from({ length: burst }, () => limiter.tryConsume(TEST_USER, 2))
+    )
+    const allowed = results.filter((r) => r === true).length
+    expect(allowed).toBe(cap)
+
+    const remaining = await limiter.remainingForTier(TEST_USER, 2)
+    expect(remaining).toBe(0)
+  })
 })
 ```
 
@@ -1636,13 +1651,25 @@ export interface RateLimiterOptions {
   tier3DailyCap: number
 }
 
+/**
+ * Per-user daily LLM rate limiter backed by the `buddy_llm_usage` table.
+ *
+ * **Day boundary:** all "days" are UTC. This is an intentional Phase 0
+ * simplification — per-user-timezone day boundaries are deferred until we
+ * plumb `userProfiles.timezone` through the router in a later phase.
+ *
+ * **Error policy:** `tryConsume` propagates db errors. The caller
+ * (`BuddyLLMRouter`) owns fail-open vs. fail-closed policy.
+ */
 export class RateLimiter {
   constructor(private db: Db, private options: RateLimiterOptions) {}
 
   /**
    * Atomically increments usage for the given (user, tier, today) row.
-   * Returns true if the call is allowed, false if it would exceed the cap.
-   * Tier 1 is never limited — returns true without touching the db.
+   * Uses a single `INSERT ... ON CONFLICT DO UPDATE ... WHERE call_count < cap`
+   * so the cap is enforced in one round-trip with no compensating write.
+   * When the WHERE suppresses the update, RETURNING emits zero rows — the
+   * "blocked" signal. Tier 1 is never limited.
    */
   async tryConsume(userId: string, tier: 1 | 2 | 3): Promise<boolean> {
     if (tier === 1) return true
@@ -1652,7 +1679,6 @@ export class RateLimiter {
     const today = this.todayIsoDate()
     const tierStr = `tier${tier}` as 'tier2' | 'tier3'
 
-    // Upsert + increment atomically, then check result.
     const rows = await this.db
       .insert(buddyLlmUsage)
       .values({ userId, usageDate: today, tier: tierStr, callCount: 1 })
@@ -1660,27 +1686,13 @@ export class RateLimiter {
         target: [buddyLlmUsage.userId, buddyLlmUsage.usageDate, buddyLlmUsage.tier],
         set: {
           callCount: sql`${buddyLlmUsage.callCount} + 1`,
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         },
+        where: sql`${buddyLlmUsage.callCount} < ${cap}`,
       })
       .returning({ callCount: buddyLlmUsage.callCount })
 
-    const newCount = rows[0]?.callCount ?? 0
-    if (newCount > cap) {
-      // Roll back the increment so the cap is never breached across concurrent calls.
-      await this.db
-        .update(buddyLlmUsage)
-        .set({ callCount: sql`${buddyLlmUsage.callCount} - 1` })
-        .where(
-          and(
-            eq(buddyLlmUsage.userId, userId),
-            eq(buddyLlmUsage.usageDate, today),
-            eq(buddyLlmUsage.tier, tierStr)
-          )
-        )
-      return false
-    }
-    return true
+    return rows.length > 0
   }
 
   async remainingForTier(userId: string, tier: 2 | 3): Promise<number> {
@@ -1707,7 +1719,7 @@ export class RateLimiter {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm --filter @kanji-learn/api test -- llm/rate-limit`
-Expected: PASS — 5 tests passing.
+Expected: PASS — 6 tests passing.
 
 - [ ] **Step 5: Commit**
 

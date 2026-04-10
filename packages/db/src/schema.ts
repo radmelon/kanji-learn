@@ -858,7 +858,7 @@ export const buddyLlmUsage = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => userProfiles.id, { onDelete: 'cascade' }),
-    usageDate: text('usage_date').notNull(), // YYYY-MM-DD in user tz
+    usageDate: text('usage_date').notNull(), // YYYY-MM-DD UTC (see RateLimiter docs)
     tier: llmTierEnum('tier').notNull(),
     callCount: integer('call_count').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
