@@ -109,6 +109,11 @@ export interface StudyPatterns {
 // Mirrors `learner_state_cache` in packages/db/src/schema.ts. Field names
 // match the Drizzle table one-to-one so the service layer can pass rows
 // through with minimal mapping. Keep in sync with the DB.
+//
+// Note: the transient `ComputedLearnerState` produced by LearnerStateService
+// (Task 16) uses `computedAt` as its own field name and maps it to
+// `updatedAt` on write. The two types intentionally serve different layers —
+// do not unify them.
 export interface LearnerStateCache {
   userId: string
   updatedAt: Date
