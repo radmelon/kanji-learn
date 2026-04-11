@@ -33,7 +33,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   - `apps/mobile/app/(tabs)/study.tsx` (PanResponder `onMoveShouldSetPanResponder`)
   - `apps/mobile/src/components/study/KanjiCard.tsx` (`detailsOpen` state needs to be surfaced to parent)
 
-  `[Effort: S]` `[Impact: High]` `[Status: 🐛 Active]`
+  `[Effort: S]` `[Impact: High]` `[Status: 🔧 Fix in Build 105, awaiting verification]`
 
 - [ ] **Rōmaji toggle button non-functional on study card** — Tapping the "Rōmaji" button on the revealed side of a KanjiCard has no visible effect. Readings do not display romanized transliterations despite the toggle state and `wanakana` conversion logic being present in the code.
 

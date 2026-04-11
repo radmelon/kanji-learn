@@ -72,6 +72,7 @@ function StudySession() {
   const swipeY = useRef(new Animated.Value(0)).current
   // Refs so PanResponder (created once) can read current values without stale closure
   const isRevealedRef = useRef(false)
+  const isDetailsOpenRef = useRef(false)
   const handleGradeRef = useRef<(q: 0 | 1 | 2 | 3 | 4 | 5) => void>(() => {})
   const didFireHapticRef = useRef(false)
 
@@ -81,7 +82,7 @@ function StudySession() {
     PanResponder.create({
       // Steal gesture when clearly horizontal (left/right) OR clearly vertical (up/down)
       onMoveShouldSetPanResponder: (_, gs) =>
-        isRevealedRef.current && (
+        isRevealedRef.current && !isDetailsOpenRef.current && (
           (Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 8) ||
           (Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5 && Math.abs(gs.vy) > 0.4)
         ),
@@ -454,6 +455,7 @@ function StudySession() {
             onReveal={() => setIsRevealed(true)}
             showRomaji={showRomaji}
             onToggleRomaji={toggleRomaji}
+            onDetailsOpenChange={(open) => { isDetailsOpenRef.current = open }}
           />
         )}
       </Animated.View>

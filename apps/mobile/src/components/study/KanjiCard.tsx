@@ -45,12 +45,15 @@ interface Props {
   /** Whether to show romaji transliterations below each reading (session-level toggle) */
   showRomaji: boolean
   onToggleRomaji: () => void
+  /** Called whenever the full-details drawer opens or closes — lets the parent
+   *  PanResponder yield gestures while the drawer is visible. */
+  onDetailsOpenChange?: (open: boolean) => void
 }
 
 // Japanese TTS options — slightly slower rate aids learning
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.85 }
 
-export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRomaji }: Props) {
+export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRomaji, onDetailsOpenChange }: Props) {
   // Array.isArray() guards protect against non-array truthy values (e.g. a string
   // stored as jsonb in the DB). `?? []` only catches null/undefined — a string
   // passes through and calling .map()/.join() on it gives "undefined is not a function".
@@ -80,6 +83,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   useEffect(() => {
     setSpeakingGroup(null)
     setDetailsOpen(false)
+    onDetailsOpenChange?.(false)
   }, [item.kanjiId])
 
   // Fade the magnifying glass icon in when the card is revealed, out on reset
@@ -216,7 +220,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
         {/* Full Details icon — fades in on reveal, bottom-left of kanji area */}
         <Animated.View style={[styles.detailsIcon, { opacity: iconOpacity }]} pointerEvents={isRevealed ? 'auto' : 'none'}>
           <TouchableOpacity
-            onPress={() => setDetailsOpen(true)}
+            onPress={() => { setDetailsOpen(true); onDetailsOpenChange?.(true) }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             activeOpacity={0.7}
           >
@@ -306,7 +310,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       )}
 
       {/* Full Details modal — opened via the magnifying glass icon */}
-      <RevealAllDrawer item={item} visible={detailsOpen} onClose={() => setDetailsOpen(false)} />
+      <RevealAllDrawer item={item} visible={detailsOpen} onClose={() => { setDetailsOpen(false); onDetailsOpenChange?.(false) }} />
     </Animated.View>
   )
 }
