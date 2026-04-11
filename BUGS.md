@@ -20,6 +20,21 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High]` `[Status: 🐛 Active — fix in Build 104, unverified]`
 
+- [ ] **Scrolling in "Reveal All" details drawer triggers card grade evaluation** — After opening the full details drawer (via the magnifying glass icon), scrolling down inside the drawer fires the swipe-down gesture on the underlying card, grading it as "Hard".
+
+  **Steps to reproduce:**
+  1. Reveal a study card and tap the magnifying glass icon to open the details drawer.
+  2. Scroll down inside the drawer (readings, vocab, sentences, etc.).
+  3. The drawer scrolls but the card behind it grades as "Hard" and the session advances.
+
+  **Suspected root cause:** The `RevealAllDrawer` uses `presentationStyle="pageSheet"`. On iOS, downward drags on a page sheet trigger the system dismiss gesture — this appears to leak through to the `PanResponder` on the underlying card view in `study.tsx`, which then fires `handleGrade(3)`. The fix likely requires a `isDetailsOpenRef` guard in `onMoveShouldSetPanResponder` (similar to the existing `isRevealedRef` pattern) so the PanResponder yields entirely when the drawer is open.
+
+  **Affected files:**
+  - `apps/mobile/app/(tabs)/study.tsx` (PanResponder `onMoveShouldSetPanResponder`)
+  - `apps/mobile/src/components/study/KanjiCard.tsx` (`detailsOpen` state needs to be surfaced to parent)
+
+  `[Effort: S]` `[Impact: High]` `[Status: 🐛 Active]`
+
 - [ ] **Rōmaji toggle button non-functional on study card** — Tapping the "Rōmaji" button on the revealed side of a KanjiCard has no visible effect. Readings do not display romanized transliterations despite the toggle state and `wanakana` conversion logic being present in the code.
 
   **Steps to reproduce:**
