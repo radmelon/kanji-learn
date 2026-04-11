@@ -1,3 +1,5 @@
 export * from './client'
 export * from './schema'
 export type { Db } from './client'
+export { backfillUniversalKg } from './seeds/backfill-universal-kg'
+export type { BackfillResult } from './seeds/backfill-universal-kg'
