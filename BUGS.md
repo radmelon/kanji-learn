@@ -6,6 +6,20 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **Scrolling down on reveal card triggers swipe-down "Hard" grade** — After a card is revealed, the answer area is a `ScrollView` containing readings and vocab. Attempting to scroll down to read the content fires the swipe-down gesture, grading the card as "Hard" instead of scrolling.
+
+  **Steps to reproduce:**
+  1. Start a study session and reveal a card with enough content to scroll.
+  2. Slowly drag downward on the answer area to read the content.
+  3. Card flies off and grades "Hard" instead of scrolling.
+
+  **Root cause:** `PanResponder` in `study.tsx` claims vertical gestures at a very low threshold. A velocity-based fix (`vy > 0.4`) was shipped in Build 104 — awaiting TestFlight verification.
+
+  **Affected files:**
+  - `apps/mobile/app/(tabs)/study.tsx` (PanResponder `onMoveShouldSetPanResponder`)
+
+  `[Effort: S]` `[Impact: High]` `[Status: 🐛 Active — fix in Build 104, unverified]`
+
 - [ ] **Rōmaji toggle button non-functional on study card** — Tapping the "Rōmaji" button on the revealed side of a KanjiCard has no visible effect. Readings do not display romanized transliterations despite the toggle state and `wanakana` conversion logic being present in the code.
 
   **Steps to reproduce:**
