@@ -2,9 +2,11 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
 import { db } from '@kanji-learn/db'
+import type { LLMProvider } from '@kanji-learn/shared'
 
 import { authPlugin } from './plugins/auth.js'
 import { errorHandler } from './plugins/error-handler.js'
+import { env } from './lib/env.js'
 import { healthRoutes } from './routes/health.js'
 import { reviewRoutes } from './routes/review.js'
 import { mnemonicRoutes } from './routes/mnemonics.js'
@@ -16,6 +18,17 @@ import { placementRoutes } from './routes/placement.js'
 import { testRoutes } from './routes/test.js'
 import { socialRoutes } from './routes/social.js'
 import { internalRoutes } from './routes/internal.js'
+
+// ── Buddy layer: LLM router + buddy services ────────────────────────────────
+import { GroqProvider } from './services/llm/providers/groq.js'
+import { GeminiProvider } from './services/llm/providers/gemini.js'
+import { ClaudeProvider } from './services/llm/providers/claude.js'
+import { AppleFoundationStubProvider } from './services/llm/providers/apple-foundation-stub.js'
+import { BuddyLLMRouter } from './services/llm/router.js'
+import { RateLimiter } from './services/llm/rate-limit.js'
+import { createTelemetryWriter } from './services/llm/telemetry.js'
+import { DualWriteService } from './services/buddy/dual-write.service.js'
+import { LearnerStateService } from './services/buddy/learner-state.service.js'
 
 export async function buildServer() {
   const server = Fastify({
@@ -59,9 +72,44 @@ export async function buildServer() {
 
   server.setErrorHandler(errorHandler)
 
+  // ── Buddy layer composition ───────────────────────────────────────────────
+  // Providers are lazy-initialised (they self-report unavailable when their
+  // api key is missing), so building them unconditionally here is safe even
+  // when only a subset of the tier 2/3 keys are configured.
+
+  const onDevice = new AppleFoundationStubProvider()
+  const groq = new GroqProvider({ apiKey: env.GROQ_API_KEY ?? '' })
+  const gemini = new GeminiProvider({ apiKey: env.GEMINI_API_KEY ?? '' })
+  const claude = new ClaudeProvider({ apiKey: env.ANTHROPIC_API_KEY })
+
+  const pickTier2Provider = (name: 'groq' | 'gemini'): LLMProvider =>
+    name === 'groq' ? groq : gemini
+  const tier2Primary = pickTier2Provider(env.LLM_PRIMARY_TIER2_PROVIDER)
+  const tier2Secondary = pickTier2Provider(env.LLM_SECONDARY_TIER2_PROVIDER)
+
+  const rateLimiter = new RateLimiter(db, {
+    tier2DailyCap: env.BUDDY_TIER2_DAILY_CAP_PER_USER,
+    tier3DailyCap: env.BUDDY_TIER3_DAILY_CAP_PER_USER,
+  })
+
+  const buddyLLM = new BuddyLLMRouter({
+    onDevice,
+    tier2Primary,
+    tier2Secondary,
+    tier3: claude,
+    rateLimiter,
+    emitTelemetry: createTelemetryWriter(db),
+  })
+
+  const dualWrite = new DualWriteService(db)
+  const learnerState = new LearnerStateService(db)
+
   // ── Decorators ────────────────────────────────────────────────────────────
 
   server.decorate('db', db)
+  server.decorate('buddyLLM', buddyLLM)
+  server.decorate('dualWrite', dualWrite)
+  server.decorate('learnerState', learnerState)
 
   // ── Routes ────────────────────────────────────────────────────────────────
 
