@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { SrsService } from '../services/srs.service.js'
+import { DualWriteService } from '../services/buddy/dual-write.service.js'
 import { InterventionService } from '../services/intervention.service.js'
 import { AnalyticsService } from '../services/analytics.service.js'
 import { NotificationService } from '../services/notification.service.js'
@@ -23,7 +24,8 @@ const submitReviewSchema = z.object({
 })
 
 export async function reviewRoutes(server: FastifyInstance) {
-  const srs = new SrsService(server.db)
+  const dualWrite = new DualWriteService(server.db)
+  const srs = new SrsService(server.db, dualWrite)
   const interventions = new InterventionService(server.db)
   const analytics = new AnalyticsService(server.db)
   const notifications = new NotificationService(server.db)

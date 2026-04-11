@@ -1,9 +1,17 @@
-import { and, eq, lte, gte, isNull, or, asc, desc, gt, sql } from 'drizzle-orm'
-import { userKanjiProgress, kanji, reviewSessions, reviewLogs, userProfiles } from '@kanji-learn/db'
+import { and, eq, lte, gte, isNull, or, asc, desc, gt, inArray, sql } from 'drizzle-orm'
+import {
+  userKanjiProgress,
+  kanji,
+  reviewSessions,
+  reviewLogs,
+  userProfiles,
+  learnerIdentity,
+} from '@kanji-learn/db'
 import { calculateNextReview, createNewCard } from '@kanji-learn/shared'
 import type { Db } from '@kanji-learn/db'
 import type { ReviewResult } from '@kanji-learn/shared'
 import { SURPRISE_BURNED_CHECK_RATE } from '@kanji-learn/shared'
+import { DualWriteService } from './buddy/dual-write.service'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,7 +30,10 @@ export interface SessionSummary {
 // ─── SRS Service ──────────────────────────────────────────────────────────────
 
 export class SrsService {
-  constructor(private db: Db) {}
+  constructor(
+    private db: Db,
+    private readonly dualWrite: DualWriteService
+  ) {}
 
   // ── Build daily review queue ────────────────────────────────────────────────
 
@@ -196,6 +207,15 @@ export class SrsService {
       .values({ id: userId })
       .onConflictDoNothing()
 
+    // Ensure learner_identity row exists. The dual-write below mirrors into
+    // learner_knowledge_state which has an FK on learner_identity.learner_id;
+    // creating it here makes submitReview self-sufficient regardless of
+    // whether the Phase 0 backfill (Task 20) has run for this user.
+    await this.db
+      .insert(learnerIdentity)
+      .values({ learnerId: userId })
+      .onConflictDoNothing()
+
     // Create session record
     await this.db.insert(reviewSessions).values({
       id: sessionId,
@@ -205,6 +225,18 @@ export class SrsService {
       studyTimeMs,
       sessionType: 'daily',
     })
+
+    // Batch-fetch the kanji characters for all results in one query so the
+    // dual-write call can construct UKG "kanji:<character>" subjects without
+    // a per-iteration lookup.
+    const kanjiIds = results.map((r) => r.kanjiId)
+    const kanjiRows = kanjiIds.length > 0
+      ? await this.db
+          .select({ id: kanji.id, character: kanji.character })
+          .from(kanji)
+          .where(inArray(kanji.id, kanjiIds))
+      : []
+    const charById = new Map(kanjiRows.map((r) => [r.id, r.character]))
 
     for (const result of results) {
       const existing = await this.db.query.userKanjiProgress.findFirst({
@@ -223,57 +255,42 @@ export class SrsService {
       if (prevStatus === 'unseen' || prevStatus === undefined) newLearned++
       if (srsResult.status === 'burned' && prevStatus !== 'burned') burned++
 
-      // Upsert progress
-      if (existing) {
-        await this.db
-          .update(userKanjiProgress)
-          .set({
-            status: srsResult.status,
-            easeFactor: srsResult.easeFactor,
-            interval: srsResult.interval,
-            repetitions: srsResult.repetitions,
-            nextReviewAt: srsResult.nextReviewAt,
-            lastReviewedAt: now,
-            updatedAt: now,
-            readingStage: this.advanceReadingStage(
-              existing.readingStage ?? 0,
-              srsResult.status,
-              result.quality
-            ),
-          })
-          .where(
-            and(
-              eq(userKanjiProgress.userId, userId),
-              eq(userKanjiProgress.kanjiId, result.kanjiId)
-            )
-          )
-      } else {
-        await this.db.insert(userKanjiProgress).values({
-          userId,
-          kanjiId: result.kanjiId,
-          status: srsResult.status,
-          easeFactor: srsResult.easeFactor,
-          interval: srsResult.interval,
-          repetitions: srsResult.repetitions,
-          nextReviewAt: srsResult.nextReviewAt,
-          lastReviewedAt: now,
-          readingStage: 0,
-        })
+      const prevReadingStage = existing?.readingStage ?? 0
+      const nextReadingStage = this.advanceReadingStage(
+        prevReadingStage,
+        srsResult.status,
+        result.quality
+      )
+
+      const character = charById.get(result.kanjiId)
+      if (!character) {
+        // Defensive — would indicate the client sent a kanjiId that doesn't
+        // exist in the kanji table. Fail loud rather than silently corrupting
+        // the UKG subject.
+        throw new Error(`SrsService.submitReview: unknown kanjiId ${result.kanjiId}`)
       }
 
-      // Write review log
-      await this.db.insert(reviewLogs).values({
-        sessionId,
+      // Delegate the per-result writes (review_logs + user_kanji_progress
+      // upsert) to DualWriteService so they happen atomically with the
+      // matching UKG mirror (learner_knowledge_state + learner_timeline_events).
+      await this.dualWrite.recordReviewSubmission({
         userId,
         kanjiId: result.kanjiId,
+        kanjiCharacter: character,
+        sessionId,
         reviewType: result.reviewType,
         quality: result.quality,
         responseTimeMs: result.responseTimeMs,
-        prevStatus: prevStatus as typeof reviewLogs.$inferInsert['prevStatus'],
-        nextStatus: srsResult.status,
+        prevStatus: (prevStatus ?? 'unseen') as Parameters<DualWriteService['recordReviewSubmission']>[0]['prevStatus'],
         prevInterval: prevCard.interval,
-        nextInterval: srsResult.interval,
-        reviewedAt: now,
+        progressAfter: {
+          status: srsResult.status,
+          interval: srsResult.interval,
+          easeFactor: srsResult.easeFactor,
+          repetitions: srsResult.repetitions,
+          nextReviewAt: srsResult.nextReviewAt,
+          readingStage: nextReadingStage,
+        },
       })
     }
 
