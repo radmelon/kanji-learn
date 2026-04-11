@@ -131,7 +131,7 @@ final class StudyViewModel: ObservableObject {
             // queue payload also triggers EXC_BREAKPOINT on watchOS 26.4 beta.
             // Offline fallback is acceptable until OS is stable.
             // cacheQueueData(result.rawData)
-            crumb("session_start_ms")
+            crumb("session_start_ms_before")
             sessionStartMs = currentMs()
             crumb("results_clear")
             results = []
@@ -296,7 +296,15 @@ final class StudyViewModel: ObservableObject {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private func currentMs() -> Int { Int(Date().timeIntervalSince1970 * 1000) }
+    private func currentMs() -> Int {
+        // watchOS 26.4 beta may return NaN/infinite from the system clock,
+        // causing Int(Double) to trap with EXC_BREAKPOINT. Guard defensively.
+        // currentMs() is only used for relative duration (finishSession, grade)
+        // so returning 0 produces 0ms durations — acceptable over a crash.
+        let t = Date().timeIntervalSince1970 * 1_000
+        guard t.isFinite, t > 0, t < Double(Int.max) else { return 0 }
+        return Int(t)
+    }
 
     var currentCard: KanjiCard? {
         guard case .studying(let index, _) = state, index < queue.count else { return nil }
