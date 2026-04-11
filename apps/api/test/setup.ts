@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = resolve(fileURLToPath(import.meta.url), '..')
 
-config({ path: resolve(__dirname, '../.env.test') })
+// `override: true` because the dev shell commonly pre-sets ANTHROPIC_API_KEY
+// (often to an empty string), which would otherwise block the stub value in
+// .env.test from landing and trip env.ts's strict sk-ant- prefix check when
+// a test imports buildServer().
+config({ path: resolve(__dirname, '../.env.test'), override: true })
 
 if (!process.env.TEST_DATABASE_URL) {
   throw new Error(
