@@ -56,6 +56,9 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   // passes through and calling .map()/.join() on it gives "undefined is not a function".
   const meanings = (Array.isArray(item.meanings) ? item.meanings : []).join(', ')
   const jlptColor = JLPT_COLORS[item.jlptLevel as keyof typeof JLPT_COLORS] ?? colors.textMuted
+  const exampleVocab = (Array.isArray(item.exampleVocab)
+    ? item.exampleVocab as { word: string; reading: string; meaning: string }[]
+    : []).slice(0, 2)
 
   // Which group is currently being spoken: null | 'kun' | 'on' | vocab index
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
@@ -283,6 +286,19 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
                   />
                 </View>
               )}
+            </View>
+          )}
+
+          {/* Example vocab — first 2 entries */}
+          {exampleVocab.length > 0 && (
+            <View style={styles.vocab}>
+              {exampleVocab.map((v, i) => (
+                <View key={i} style={styles.vocabRow}>
+                  <Text style={styles.vocabItem}>
+                    {v.word}【{v.reading}】{'  '}{v.meaning}
+                  </Text>
+                </View>
+              ))}
             </View>
           )}
 
