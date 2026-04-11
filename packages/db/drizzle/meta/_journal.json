@@ -24,6 +24,48 @@
       "breakpoints": true
     },
     {
+      "idx": 3,
+      "version": "7",
+      "when": 1775035281000,
+      "tag": "0003_mnemonic_image_url",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775095566000,
+      "tag": "0004_mnemonic_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775097991000,
+      "tag": "0005_social",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775518639000,
+      "tag": "0006_rest_day",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775726416000,
+      "tag": "0007_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775819655000,
+      "tag": "0008_phase0_foundation",
+      "breakpoints": true
+    },
+    {
       "idx": 9,
       "version": "7",
       "when": 1775981990000,

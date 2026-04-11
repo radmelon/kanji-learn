@@ -12,6 +12,7 @@ import type { Db } from '@kanji-learn/db'
 import type { ReviewResult } from '@kanji-learn/shared'
 import { SURPRISE_BURNED_CHECK_RATE } from '@kanji-learn/shared'
 import { DualWriteService } from './buddy/dual-write.service'
+import type { SrsStatus } from './buddy/constants'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -190,6 +191,27 @@ export class SrsService {
 
   // ── Submit a batch of review results ───────────────────────────────────────
 
+  /**
+   * Submit a batch of review results.
+   *
+   * Transaction boundary is PER RESULT, not per session. Each element of
+   * `results` is dispatched to DualWriteService.recordReviewSubmission,
+   * which wraps its four writes (review_logs, user_kanji_progress,
+   * learner_knowledge_state, learner_timeline_events) in a single
+   * transaction. If result N fails:
+   *
+   *   - results [0..N-1] are committed (each individually atomic across
+   *     its app + UKG tables — no partial review state is ever visible)
+   *   - result N and beyond are skipped
+   *   - the review_sessions row is left without completedAt set
+   *
+   * This is deliberate: a single bad kanjiId in a batch of 20 should not
+   * discard the other 19 valid reviews the user just completed. Clients
+   * that retry should be idempotent on already-committed kanjiIds (SM-2
+   * state is a pure function of prior state + quality, so replays reach
+   * the same steady state). See also the class-level DualWriteService
+   * rollback test for the atomicity guarantee of a single review.
+   */
   async submitReview(
     userId: string,
     results: ReviewResult[],
@@ -281,7 +303,7 @@ export class SrsService {
         reviewType: result.reviewType,
         quality: result.quality,
         responseTimeMs: result.responseTimeMs,
-        prevStatus: (prevStatus ?? 'unseen') as Parameters<DualWriteService['recordReviewSubmission']>[0]['prevStatus'],
+        prevStatus: (prevStatus ?? 'unseen') as SrsStatus,
         prevInterval: prevCard.interval,
         progressAfter: {
           status: srsResult.status,

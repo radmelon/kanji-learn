@@ -23,7 +23,17 @@ const envSchema = z.object({
   BUDDY_TIER3_DAILY_CAP_PER_USER: z.coerce.number().int().positive().default(5),
   LLM_PRIMARY_TIER2_PROVIDER: z.enum(['groq', 'gemini']).default('groq'),
   LLM_SECONDARY_TIER2_PROVIDER: z.enum(['groq', 'gemini']).default('gemini'),
-})
+}).refine(
+  (env) => env.LLM_PRIMARY_TIER2_PROVIDER !== env.LLM_SECONDARY_TIER2_PROVIDER,
+  {
+    // Router fail-over relies on diversity. If both slots point at the same
+    // provider, a rate-limit or auth failure on one call compounds instead
+    // of recovering, and the telemetry for both attempts is indistinguishable.
+    message:
+      'LLM_PRIMARY_TIER2_PROVIDER and LLM_SECONDARY_TIER2_PROVIDER must differ — router fail-over needs two distinct providers.',
+    path: ['LLM_SECONDARY_TIER2_PROVIDER'],
+  }
+)
 
 const parsed = envSchema.safeParse(process.env)
 

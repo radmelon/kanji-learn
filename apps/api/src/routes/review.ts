@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { SrsService } from '../services/srs.service.js'
-import { DualWriteService } from '../services/buddy/dual-write.service.js'
 import { InterventionService } from '../services/intervention.service.js'
 import { AnalyticsService } from '../services/analytics.service.js'
 import { NotificationService } from '../services/notification.service.js'
@@ -24,8 +23,11 @@ const submitReviewSchema = z.object({
 })
 
 export async function reviewRoutes(server: FastifyInstance) {
-  const dualWrite = new DualWriteService(server.db)
-  const srs = new SrsService(server.db, dualWrite)
+  // Reuse the DualWriteService instance composed in server.ts (Task 22) so
+  // there's a single source of truth for the buddy layer. Previously this
+  // route built its own copy — stateless and functionally equivalent, but
+  // two instances at the composition root invite drift.
+  const srs = new SrsService(server.db, server.dualWrite)
   const interventions = new InterventionService(server.db)
   const analytics = new AnalyticsService(server.db)
   const notifications = new NotificationService(server.db)
