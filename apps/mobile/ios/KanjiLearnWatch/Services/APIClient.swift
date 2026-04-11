@@ -172,7 +172,11 @@ final class APIClient {
     ///
     /// JSONSerialization (ObjC NSJSONSerialization) is unaffected. KanjiCard
     /// is populated via its manual init?(jsonDict:) initializer.
-    func fetchQueue(limit: Int = 10) async throws -> [KanjiCard] {
+    /// Returns (cards, rawResponseData).
+    /// The raw Data is returned so the caller can cache it directly without
+    /// re-encoding through JSONEncoder (which has the same watchOS 26.4 beta
+    /// trap as JSONDecoder when encoding complex nested Swift structs).
+    func fetchQueue(limit: Int = 10) async throws -> (cards: [KanjiCard], rawData: Data) {
         let path = "/v1/review/queue?limit=\(limit)"
         let data = try await fetchRawData(path: path)
 
@@ -180,13 +184,12 @@ final class APIClient {
             let json  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let array = json["data"] as? [[String: Any]]
         else {
-            // Surface the raw response in the error for debugging
             let preview = String(data: data, encoding: .utf8).map { String($0.prefix(200)) } ?? "<binary>"
             throw APIError.parseError("fetchQueue: unexpected response shape — \(preview)")
         }
 
         let cards = array.compactMap { KanjiCard(jsonDict: $0) }
-        return cards
+        return (cards: cards, rawData: data)
     }
 
     // ── Raw data fetch (bypasses JSONDecoder) ─────────────────────────────────

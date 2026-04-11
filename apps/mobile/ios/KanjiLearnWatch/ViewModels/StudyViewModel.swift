@@ -116,18 +116,20 @@ final class StudyViewModel: ObservableObject {
 
         do {
             crumb("fetchQueue_start")
-            let cards = try await api.fetchQueue(limit: 10)
-            crumb("fetchQueue_done_count:\(cards.count)")
-            if cards.isEmpty {
+            let result = try await api.fetchQueue(limit: 10)
+            crumb("fetchQueue_done_count:\(result.cards.count)")
+            if result.cards.isEmpty {
                 state = .empty
                 defaults.removeObject(forKey: DiagKey.breadcrumb)
                 defaults.synchronize()
                 return
             }
             crumb("assigning_queue")
-            queue = cards
+            queue = result.cards
             crumb("caching_queue")
-            cacheQueue(cards)
+            // Cache the raw server Data — avoids JSONEncoder which has the same
+            // watchOS 26.4 beta trap as JSONDecoder for complex nested structs.
+            cacheQueueData(result.rawData)
             sessionStartMs = currentMs()
             results = []
             crumb("setting_state_studying")
@@ -228,15 +230,22 @@ final class StudyViewModel: ObservableObject {
 
     // ── Offline queue cache ───────────────────────────────────────────────────
 
-    private func cacheQueue(_ cards: [KanjiCard]) {
-        guard let data = try? JSONEncoder().encode(cards) else { return }
+    /// Store raw server response Data directly — avoids JSONEncoder, which has the
+    /// same watchOS 26.4 beta EXC_BREAKPOINT trap as JSONDecoder when handling
+    /// complex nested Swift structs.
+    private func cacheQueueData(_ data: Data) {
         defaults.set(data, forKey: CacheKey.queue)
     }
 
+    /// Load the cached queue using JSONSerialization + manual KanjiCard init —
+    /// avoids JSONDecoder for the same beta-OS reason as cacheQueueData.
     private func loadCachedQueue() -> [KanjiCard]? {
         guard let data = defaults.data(forKey: CacheKey.queue),
-              let cards = try? JSONDecoder().decode([KanjiCard].self, from: data) else { return nil }
-        return cards
+              let json  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let array = json["data"] as? [[String: Any]]
+        else { return nil }
+        let cards = array.compactMap { KanjiCard(jsonDict: $0) }
+        return cards.isEmpty ? nil : cards
     }
 
     // ── Pending submission buffer ─────────────────────────────────────────────
