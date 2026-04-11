@@ -83,7 +83,7 @@ function StudySession() {
       onMoveShouldSetPanResponder: (_, gs) =>
         isRevealedRef.current && (
           (Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 8) ||
-          (Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5 && Math.abs(gs.dy) > 8)
+          (Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5 && Math.abs(gs.vy) > 0.4)
         ),
       onPanResponderGrant: () => {
         didFireHapticRef.current = false
