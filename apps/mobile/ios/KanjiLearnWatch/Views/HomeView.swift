@@ -36,20 +36,6 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
-                    // ── Crash diagnostic (dev only) ───────────────────────────
-                    if let diag = viewModel.crashDiagnostic {
-                        ScrollView {
-                            Text(diag)
-                                .font(.system(size: 9))
-                                .foregroundColor(.yellow)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxHeight: 60)
-                        .padding(6)
-                        .background(Color.yellow.opacity(0.12))
-                        .cornerRadius(8)
-                    }
-
                     // ── Connection warning ────────────────────────────────────
                     if !watchSession.isAuthenticated {
                         NotAuthenticatedBanner()

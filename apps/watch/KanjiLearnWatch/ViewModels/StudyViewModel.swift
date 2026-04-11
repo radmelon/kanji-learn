@@ -9,6 +9,11 @@
 //   .studying -> grade(_)      -> .studying(index+1, false)  OR  finishSession()
 //   finishSession() -> .loading -> .complete(summary)
 //                               -> .error (submit failed; results buffered)
+//
+// watchOS 26.4 beta workarounds (EXC_BREAKPOINT / brk #1 runtime traps):
+//   - fetchQueue uses JSONSerialization instead of JSONDecoder (decoder trap)
+//   - queue caching is disabled (UserDefaults.set(Data) trap with large payload)
+//   - currentMs() guards against NaN/infinite before Int() conversion
 
 import Foundation
 import WatchKit
@@ -45,15 +50,6 @@ private enum CacheKey {
 
 // ─── StudyViewModel ───────────────────────────────────────────────────────────
 
-// ─── Crash diagnostic keys ───────────────────────────────────────────────────
-
-enum DiagKey {
-    static let breadcrumb = "kl_diag_breadcrumb"
-    static let rawQueue   = "kl_diag_raw_queue"
-}
-
-// ─── StudyViewModel ───────────────────────────────────────────────────────────
-
 @MainActor
 final class StudyViewModel: ObservableObject {
     @Published var state: StudyState = .idle
@@ -61,31 +57,11 @@ final class StudyViewModel: ObservableObject {
     @Published var results: [ReviewResult] = []
     @Published var showOnboarding: Bool = false
 
-    /// Set on launch if a crash breadcrumb was found from the previous session.
-    /// Displayed in HomeView to help diagnose persistent crashes.
-    @Published var crashDiagnostic: String? = nil
-
     private var sessionStartMs: Int = 0
     private var cardRevealMs: Int = 0
 
     private let api = APIClient.shared
     private let defaults = UserDefaults.standard
-
-    init() {
-        // On launch, check if a crash breadcrumb was written before the previous crash.
-        // If present, surface it in HomeView and clear it so it doesn't repeat.
-        let ud = UserDefaults.standard
-        if let crumb = ud.string(forKey: DiagKey.breadcrumb), !crumb.isEmpty {
-            var msg = "⚠ Crash after: \(crumb)"
-            if let raw = ud.string(forKey: DiagKey.rawQueue) {
-                msg += "\nRaw: \(raw)"
-            }
-            crashDiagnostic = msg
-            ud.removeObject(forKey: DiagKey.breadcrumb)
-            ud.removeObject(forKey: DiagKey.rawQueue)
-            ud.synchronize()
-        }
-    }
 
     // ── Session entry point ────────────────────────────────────────────────────
 
@@ -101,50 +77,28 @@ final class StudyViewModel: ObservableObject {
 
     // ── Load queue ────────────────────────────────────────────────────────────
 
-    private func crumb(_ step: String) {
-        defaults.set(step, forKey: DiagKey.breadcrumb)
-        defaults.synchronize()
-    }
-
     private func loadQueue() async {
         // state is already .loading (set synchronously by startSession)
 
         // First, attempt any buffered submission from a previous session
-        crumb("retryPendingSubmission_start")
         await retryPendingSubmission()
-        crumb("retryPendingSubmission_done")
 
         do {
-            crumb("fetchQueue_start")
             let result = try await api.fetchQueue(limit: 10)
-            crumb("fetchQueue_done_count:\(result.cards.count)")
             if result.cards.isEmpty {
                 state = .empty
-                defaults.removeObject(forKey: DiagKey.breadcrumb)
-                defaults.synchronize()
                 return
             }
-            crumb("assigning_queue")
             queue = result.cards
-            crumb("caching_queue_skipped")
-            // Queue caching disabled: UserDefaults.set(Data) with the large
-            // queue payload also triggers EXC_BREAKPOINT on watchOS 26.4 beta.
-            // Offline fallback is acceptable until OS is stable.
-            // cacheQueueData(result.rawData)
-            crumb("session_start_ms_before")
+            // NOTE: queue caching disabled — UserDefaults.set(Data) with large
+            // payload triggers EXC_BREAKPOINT on watchOS 26.4 beta. Re-enable
+            // once the OS is stable: cacheQueueData(result.rawData)
             sessionStartMs = currentMs()
-            crumb("results_clear")
             results = []
-            crumb("setting_state_studying")
             state = .studying(index: 0, revealed: false)
-            crumb("onboarding_check")
             if !defaults.bool(forKey: CacheKey.onboardingSeen) {
                 showOnboarding = true
             }
-            // Clear breadcrumb — session started successfully
-            defaults.removeObject(forKey: DiagKey.breadcrumb)
-            defaults.removeObject(forKey: DiagKey.rawQueue)
-            defaults.synchronize()
         } catch {
             // Fall back to cached queue if available
             if let cached = loadCachedQueue(), !cached.isEmpty {
@@ -233,15 +187,8 @@ final class StudyViewModel: ObservableObject {
 
     // ── Offline queue cache ───────────────────────────────────────────────────
 
-    /// Store raw server response Data directly — avoids JSONEncoder, which has the
-    /// same watchOS 26.4 beta EXC_BREAKPOINT trap as JSONDecoder when handling
-    /// complex nested Swift structs.
-    private func cacheQueueData(_ data: Data) {
-        defaults.set(data, forKey: CacheKey.queue)
-    }
-
     /// Load the cached queue using JSONSerialization + manual KanjiCard init —
-    /// avoids JSONDecoder for the same beta-OS reason as cacheQueueData.
+    /// avoids JSONDecoder which triggers EXC_BREAKPOINT on watchOS 26.4 beta.
     private func loadCachedQueue() -> [KanjiCard]? {
         guard let data = defaults.data(forKey: CacheKey.queue),
               let json  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -297,10 +244,9 @@ final class StudyViewModel: ObservableObject {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private func currentMs() -> Int {
-        // watchOS 26.4 beta may return NaN/infinite from the system clock,
-        // causing Int(Double) to trap with EXC_BREAKPOINT. Guard defensively.
-        // currentMs() is only used for relative duration (finishSession, grade)
-        // so returning 0 produces 0ms durations — acceptable over a crash.
+        // Guard against NaN/infinite — watchOS 26.4 beta may return invalid
+        // system clock values causing Int(Double) to trap (EXC_BREAKPOINT).
+        // currentMs() is only used for relative durations so 0 is a safe fallback.
         let t = Date().timeIntervalSince1970 * 1_000
         guard t.isFinite, t > 0, t < Double(Int.max) else { return 0 }
         return Int(t)
