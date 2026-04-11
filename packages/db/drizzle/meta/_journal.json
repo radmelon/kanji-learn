@@ -71,6 +71,13 @@
       "when": 1775981990000,
       "tag": "0009_kanji_buddy_phase0_custom",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775982050000,
+      "tag": "0010_rls_phase0_tables",
+      "breakpoints": true
     }
   ]
 }
