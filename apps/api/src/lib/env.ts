@@ -10,6 +10,19 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().startsWith('sk-ant-'),
   CORS_ORIGIN: z.string().default('*'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+
+  // ── Kanji Buddy LLM router configuration ──────────────────────────────
+  // All optional / defaulted so local dev works with just ANTHROPIC_API_KEY.
+  // The router's tier 2 path requires at least one of GROQ_API_KEY or
+  // GEMINI_API_KEY to be set for generation to actually succeed; the
+  // providers themselves report isAvailable()=false when their key is
+  // missing, at which point the router surfaces a tier 2 failure.
+  GROQ_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  BUDDY_TIER2_DAILY_CAP_PER_USER: z.coerce.number().int().positive().default(50),
+  BUDDY_TIER3_DAILY_CAP_PER_USER: z.coerce.number().int().positive().default(5),
+  LLM_PRIMARY_TIER2_PROVIDER: z.enum(['groq', 'gemini']).default('groq'),
+  LLM_SECONDARY_TIER2_PROVIDER: z.enum(['groq', 'gemini']).default('gemini'),
 })
 
 const parsed = envSchema.safeParse(process.env)
