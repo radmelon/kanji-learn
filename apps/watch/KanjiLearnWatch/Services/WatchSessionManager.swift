@@ -50,6 +50,9 @@ final class WatchSessionManager: NSObject, ObservableObject {
         session = s
         // Reflect any tokens already stored from a previous session
         isAuthenticated = AuthService.shared.isAuthenticated
+        // Restore the API base URL from keychain — it is not held in memory across
+        // process relaunches, so every launch must reload it before API calls fire.
+        AuthService.shared.restoreBaseURL()
     }
 
     // ── Send message to iPhone (e.g. request token refresh) ──────────────────

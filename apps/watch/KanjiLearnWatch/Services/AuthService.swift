@@ -27,6 +27,7 @@ private enum KeychainKey {
     static let refreshToken = "kl_watch_refresh_token"
     static let expiresAt    = "kl_watch_expires_at"
     static let supabaseURL  = "kl_watch_supabase_url"
+    static let apiBaseURL   = "kl_watch_api_base_url"
 }
 
 // ─── AuthService ──────────────────────────────────────────────────────────────
@@ -56,7 +57,15 @@ final class AuthService {
         save(key: KeychainKey.refreshToken, value: refreshToken)
         save(key: KeychainKey.expiresAt,    value: String(expiresAt.timeIntervalSince1970))
         save(key: KeychainKey.supabaseURL,  value: supabaseURL)
+        save(key: KeychainKey.apiBaseURL,   value: apiBaseURL)
         APIClient.shared.baseURL = apiBaseURL
+    }
+
+    /// Restore the API base URL from keychain into APIClient after process relaunch.
+    func restoreBaseURL() {
+        if let url = load(key: KeychainKey.apiBaseURL), !url.isEmpty {
+            APIClient.shared.baseURL = url
+        }
     }
 
     var isAuthenticated: Bool {
@@ -132,6 +141,8 @@ final class AuthService {
         delete(key: KeychainKey.refreshToken)
         delete(key: KeychainKey.expiresAt)
         delete(key: KeychainKey.supabaseURL)
+        delete(key: KeychainKey.apiBaseURL)
+        APIClient.shared.baseURL = ""
     }
 
     // ── Keychain helpers ──────────────────────────────────────────────────────

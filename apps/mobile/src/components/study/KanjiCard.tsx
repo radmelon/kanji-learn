@@ -59,6 +59,8 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
 
   // Which group is currently being spoken: null | 'kun' | 'on' | vocab index
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const iconOpacity = useRef(new Animated.Value(0)).current
 
   // Guard TTS callbacks against post-unmount execution.
   //
@@ -74,7 +76,17 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   // Speech.stop() in the cleanup on every grade press (crashes native speech bridge).
   useEffect(() => {
     setSpeakingGroup(null)
+    setDetailsOpen(false)
   }, [item.kanjiId])
+
+  // Fade the magnifying glass icon in when the card is revealed, out on reset
+  useEffect(() => {
+    Animated.timing(iconOpacity, {
+      toValue: isRevealed ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start()
+  }, [isRevealed, iconOpacity])
 
   const isMountedRef = useRef(true)
   // Holds the currently-running flip animation so we can stop it on unmount.
@@ -106,8 +118,6 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   // .length on null throws a JS TypeError that RN reports as RCTFatal.
   const kunReadings = Array.isArray(item.kunReadings) ? item.kunReadings as string[] : []
   const onReadings = Array.isArray(item.onReadings) ? item.onReadings as string[] : []
-  const exampleVocab = Array.isArray(item.exampleVocab) ? item.exampleVocab as { word: string; reading: string; meaning: string }[] : []
-  const exampleSentences = Array.isArray(item.exampleSentences) ? item.exampleSentences as { ja: string; en: string; vocab: string }[] : []
 
   const handleReveal = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -175,25 +185,6 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
     speakAt(0)
   }, [speakingGroup])
 
-  /** Speak a single vocab word by its reading. */
-  const speakVocab = useCallback((reading: string, key: string) => {
-    if (speakingGroup === key) {
-      Speech.stop()
-      setSpeakingGroup(null)
-      return
-    }
-    if (speakingGroup !== null) Speech.stop()  // only stop if something is actually playing
-    setSpeakingGroup(key)
-    Speech.speak(reading, {
-      ...SPEECH_OPTS,
-      onDone: () => { if (isMountedRef.current) setSpeakingGroup(null) },
-      onError: (e) => {
-        console.error('[TTS] speakVocab error for', reading, e)
-        if (isMountedRef.current) setSpeakingGroup(null)
-      },
-    })
-  }, [speakingGroup])
-
   return (
     <Animated.View style={[styles.card, { transform: [{ perspective: 1200 }, { rotateY }] }]}>
       {/* JLPT badge — top right */}
@@ -219,6 +210,16 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       <View style={styles.kanjiArea}>
         <Text style={styles.kanji}>{item.character}</Text>
         <Text style={styles.prompt}>{PROMPT_LABELS[item.reviewType as keyof typeof PROMPT_LABELS]}</Text>
+        {/* Full Details icon — fades in on reveal, bottom-left of kanji area */}
+        <Animated.View style={[styles.detailsIcon, { opacity: iconOpacity }]} pointerEvents={isRevealed ? 'auto' : 'none'}>
+          <TouchableOpacity
+            onPress={() => setDetailsOpen(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="search" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
       {!isRevealed ? (
@@ -285,84 +286,16 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
             </View>
           )}
 
-          {/* Example vocab — tappable to hear pronunciation */}
-          {exampleVocab.length > 0 && (
-            <View style={styles.vocab}>
-              {exampleVocab.slice(0, 2).map((v, i) => {
-                const key = `vocab-${i}`
-                const isActive = speakingGroup === key
-                return (
-                  <TouchableOpacity
-                    key={i}
-                    style={[styles.vocabRow, isActive && styles.vocabRowActive]}
-                    onPress={() => speakVocab(v.reading, key)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={isActive ? 'volume-high' : 'volume-medium-outline'}
-                      size={13}
-                      color={isActive ? colors.accent : colors.textMuted}
-                      style={{ marginTop: 1 }}
-                    />
-                    <Text style={styles.vocabItem}>
-                      {v.word}【{v.reading}】{v.meaning}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
-          )}
-
-          {/* Example sentences */}
-          {exampleSentences.length > 0 && (
-            <View style={styles.sentences}>
-              {exampleSentences.slice(0, 2).map((s, i) => (
-                <View key={i} style={styles.sentenceRow}>
-                  <Text style={styles.sentenceJa}>
-                    {s.vocab
-                      ? highlightVocab(s.ja, s.vocab)
-                      : <Text style={styles.sentenceJa}>{s.ja}</Text>
-                    }
-                  </Text>
-                  <Text style={styles.sentenceEn}>{s.en}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* Stroke order animation */}
-          <StrokeOrderSection character={item.character} />
-
-          {/* References panel */}
-          <ReferencesPanel item={item} />
-
-          {/* Reveal All drawer trigger */}
-          <RevealAllButton item={item} />
         </ScrollView>
       )}
+
+      {/* Full Details modal — opened via the magnifying glass icon */}
+      <RevealAllDrawer item={item} visible={detailsOpen} onClose={() => setDetailsOpen(false)} />
     </Animated.View>
   )
 }
 
-// ─── RevealAllButton + Drawer ─────────────────────────────────────────────────
-
-function RevealAllButton({ item }: { item: ReviewQueueItem }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <TouchableOpacity
-        style={drawerStyles.trigger}
-        onPress={() => setOpen(true)}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
-        <Text style={drawerStyles.triggerText}>Full details</Text>
-        <Ionicons name="chevron-forward" size={13} color={colors.textMuted} />
-      </TouchableOpacity>
-      <RevealAllDrawer item={item} visible={open} onClose={() => setOpen(false)} />
-    </>
-  )
-}
+// ─── RevealAllDrawer ──────────────────────────────────────────────────────────
 
 function RevealAllDrawer({ item, visible, onClose }: { item: ReviewQueueItem; visible: boolean; onClose: () => void }) {
   const jlptColor = JLPT_COLORS[item.jlptLevel as keyof typeof JLPT_COLORS] ?? colors.textMuted
@@ -373,6 +306,7 @@ function RevealAllDrawer({ item, visible, onClose }: { item: ReviewQueueItem; vi
   const kunReadings = Array.isArray(item.kunReadings) ? item.kunReadings as string[] : []
   const onReadings = Array.isArray(item.onReadings) ? item.onReadings as string[] : []
   const exampleVocab = Array.isArray(item.exampleVocab) ? item.exampleVocab as { word: string; reading: string; meaning: string }[] : []
+  const exampleSentences = Array.isArray(item.exampleSentences) ? item.exampleSentences as { ja: string; en: string; vocab: string }[] : []
   const radicals = Array.isArray(item.radicals) ? item.radicals as string[] : []
   const strokes = item.strokeCount as number | null | undefined
   const nelsonC = item.nelsonClassic as number | null | undefined
@@ -427,19 +361,6 @@ function RevealAllDrawer({ item, visible, onClose }: { item: ReviewQueueItem; vi
             </DrawerSection>
           )}
 
-          {/* Example Vocab */}
-          {exampleVocab.length > 0 && (
-            <DrawerSection title="Example Vocabulary">
-              {exampleVocab.map((v, i) => (
-                <View key={i} style={drawerStyles.vocabRow}>
-                  <Text style={drawerStyles.vocabWord}>{v.word}</Text>
-                  <Text style={drawerStyles.vocabReading}>【{v.reading}】</Text>
-                  <Text style={drawerStyles.vocabMeaning}>{v.meaning}</Text>
-                </View>
-              ))}
-            </DrawerSection>
-          )}
-
           {/* Radicals */}
           {radicals.length > 0 && (
             <DrawerSection title="Radicals">
@@ -454,6 +375,36 @@ function RevealAllDrawer({ item, visible, onClose }: { item: ReviewQueueItem; vi
                   )
                 })}
               </View>
+            </DrawerSection>
+          )}
+
+          {/* Example Vocab */}
+          {exampleVocab.length > 0 && (
+            <DrawerSection title="Example Vocabulary">
+              {exampleVocab.map((v, i) => (
+                <View key={i} style={drawerStyles.vocabRow}>
+                  <Text style={drawerStyles.vocabWord}>{v.word}</Text>
+                  <Text style={drawerStyles.vocabReading}>【{v.reading}】</Text>
+                  <Text style={drawerStyles.vocabMeaning}>{v.meaning}</Text>
+                </View>
+              ))}
+            </DrawerSection>
+          )}
+
+          {/* Example Sentences */}
+          {exampleSentences.length > 0 && (
+            <DrawerSection title="Example Sentences">
+              {exampleSentences.map((s, i) => (
+                <View key={i} style={drawerStyles.sentenceRow}>
+                  <Text style={drawerStyles.sentenceJa}>
+                    {s.vocab
+                      ? highlightVocab(s.ja, s.vocab)
+                      : <Text style={drawerStyles.sentenceJa}>{s.ja}</Text>
+                    }
+                  </Text>
+                  <Text style={drawerStyles.sentenceEn}>{s.en}</Text>
+                </View>
+              ))}
             </DrawerSection>
           )}
 
@@ -543,47 +494,14 @@ const drawerStyles = StyleSheet.create({
   refRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
   refLabel: { ...typography.bodySmall, color: colors.textMuted },
   refValue: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
-  trigger: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 4, paddingVertical: spacing.sm, marginTop: spacing.xs,
-    borderTopWidth: 1, borderTopColor: colors.divider,
+  sentenceRow: {
+    gap: 3,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
   },
-  triggerText: { ...typography.caption, color: colors.textMuted },
-})
-
-// ─── StrokeOrderSection ───────────────────────────────────────────────────────
-
-function StrokeOrderSection({ character }: { character: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <View style={strokeStyles.container}>
-      <TouchableOpacity
-        style={strokeStyles.toggle}
-        onPress={() => setOpen((v) => !v)}
-        activeOpacity={0.7}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Ionicons name="pencil-outline" size={13} color={colors.textMuted} />
-        <Text style={strokeStyles.toggleLabel}>Stroke Order</Text>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textMuted} />
-      </TouchableOpacity>
-      {open && (
-        <View style={strokeStyles.body}>
-          <StrokeOrderAnimation character={character} width={280} height={220} />
-        </View>
-      )}
-    </View>
-  )
-}
-
-const strokeStyles = StyleSheet.create({
-  container: { width: '100%', marginTop: spacing.xs },
-  toggle: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 4, paddingVertical: spacing.xs,
-  },
-  toggleLabel: { ...typography.caption, color: colors.textMuted },
-  body: { alignItems: 'center', paddingTop: spacing.sm },
+  sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22 },
+  sentenceEn: { ...typography.caption, color: colors.textMuted, lineHeight: 16 },
 })
 
 // ─── SpeakButton ──────────────────────────────────────────────────────────────
@@ -613,148 +531,6 @@ function SpeakButton({
     </TouchableOpacity>
   )
 }
-
-// ─── ReferencesPanel ─────────────────────────────────────────────────────────
-
-function ReferencesPanel({ item }: { item: ReviewQueueItem }) {
-  const [open, setOpen] = useState(false)
-
-  const radicals = Array.isArray(item.radicals) ? item.radicals as string[] : []
-  const strokes = item.strokeCount as number | null | undefined
-  const nelsonC = item.nelsonClassic as number | null | undefined
-  const nelsonN = item.nelsonNew as number | null | undefined
-  const morIndex = item.morohashiIndex as number | null | undefined
-  const morVol = item.morohashiVolume as number | null | undefined
-  const morPage = item.morohashiPage as number | null | undefined
-
-  const morohashi = morIndex != null
-    ? morVol != null && morPage != null
-      ? `${morIndex} (vol. ${morVol}, p. ${morPage})`
-      : `${morIndex}`
-    : null
-
-  // Whether the API has sent us enriched data (fresh session, not cached)
-  const hasData = strokes != null || radicals.length > 0 || nelsonC != null || nelsonN != null || morohashi != null
-
-  // Always render the toggle — never return null so the panel is always discoverable.
-  // (On cached sessions the fields will be undefined; the expanded body explains this.)
-  return (
-    <View style={refStyles.container}>
-      <TouchableOpacity
-        style={refStyles.toggle}
-        onPress={() => setOpen((v) => !v)}
-        activeOpacity={0.7}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Ionicons name="book-outline" size={13} color={colors.textMuted} />
-        <Text style={refStyles.toggleLabel}>References</Text>
-        <Ionicons
-          name={open ? 'chevron-up' : 'chevron-down'}
-          size={13}
-          color={colors.textMuted}
-        />
-      </TouchableOpacity>
-
-      {open && (
-        <View style={refStyles.body}>
-          {!hasData ? (
-            <Text style={refStyles.noData}>
-              Reference data (stroke count, radicals, Nelson IDs) loads on your next fresh session.
-            </Text>
-          ) : (
-            <>
-              {strokes != null && (
-                <RefRow icon="pencil-outline" label="Strokes" value={String(strokes)} />
-              )}
-              {radicals.length > 0 && (
-                <View style={refStyles.row}>
-                  <Ionicons name="grid-outline" size={12} color={colors.textMuted} style={refStyles.rowIcon} />
-                  <Text style={refStyles.rowLabel}>Radicals</Text>
-                  <View style={refStyles.radicalPills}>
-                    {radicals.map((r, i) => {
-                      const name = getRadicalName(r)
-                      return (
-                        <View key={i} style={refStyles.radicalPill}>
-                          <Text style={refStyles.radicalChar}>{r}</Text>
-                          {name ? <Text style={refStyles.radicalName}>{name}</Text> : null}
-                        </View>
-                      )
-                    })}
-                  </View>
-                </View>
-              )}
-              {nelsonC != null && (
-                <RefRow icon="book-outline" label="Nelson Classic" value={`#${nelsonC}`} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(item.character)}%23kanji`)} />
-              )}
-              {nelsonN != null && (
-                <RefRow icon="book-outline" label="New Nelson" value={`#${nelsonN}`} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(item.character)}%23kanji`)} />
-              )}
-              {morohashi != null && (
-                <RefRow icon="library-outline" label="Morohashi" value={morohashi} />
-              )}
-              <Text style={refStyles.credit}>
-                Nelson: Andrew Nelson, "The Modern Reader's Japanese-English Character
-                Dictionary" (Classic 1962); Jack Halpern ed. (New Nelson, 1997).{'\n'}
-                Morohashi: Tetsuji Morohashi, "Dai Kan-Wa Jiten" (大漢和辞典), 1955–1960.
-              </Text>
-            </>
-          )}
-        </View>
-      )}
-    </View>
-  )
-}
-
-function RefRow({ icon, label, value, onPress }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; value: string; onPress?: () => void }) {
-  return (
-    <TouchableOpacity style={refStyles.row} onPress={onPress} disabled={!onPress} activeOpacity={0.7}>
-      <Ionicons name={icon} size={12} color={colors.textMuted} style={refStyles.rowIcon} />
-      <Text style={refStyles.rowLabel}>{label}</Text>
-      <Text style={[refStyles.rowValue, onPress != null && refStyles.rowValueLink]}>{value}</Text>
-      {onPress != null && <Ionicons name="open-outline" size={11} color={colors.primary} />}
-    </TouchableOpacity>
-  )
-}
-
-const refStyles = StyleSheet.create({
-  container: { width: '100%', marginTop: spacing.xs },
-  toggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: spacing.xs,
-  },
-  toggleLabel: { ...typography.caption, color: colors.textMuted },
-  body: {
-    backgroundColor: colors.bgElevated,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.sm,
-    gap: 6,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  rowIcon: { width: 16 },
-  rowLabel: { ...typography.caption, color: colors.textMuted, width: 96 },
-  rowValue: { ...typography.caption, color: colors.textSecondary, flex: 1 },
-  rowValueLink: { color: colors.primary },
-  radicalPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, flex: 1 },
-  radicalPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.bgElevated, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
-  radicalChar: { ...typography.caption, color: colors.textPrimary, fontWeight: '700' },
-  radicalName: { ...typography.caption, color: colors.textMuted },
-  noData: { ...typography.caption, color: colors.textMuted, fontStyle: 'italic', lineHeight: 18 },
-  credit: {
-    ...typography.caption,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-    lineHeight: 16,
-    marginTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-    paddingTop: spacing.xs,
-  },
-})
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -804,6 +580,12 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: radius.full,
     borderWidth: 1,
+  },
+  // Magnifying glass icon — absolute bottom-left of kanjiArea, fades in on reveal
+  detailsIcon: {
+    position: 'absolute',
+    bottom: spacing.md,
+    left: spacing.md,
   },
   jlptText: { ...typography.caption, fontWeight: '700' },
 

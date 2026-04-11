@@ -125,10 +125,10 @@ function StudySession() {
           swipeY.setValue(0)
         } else {
           if (gs.dy < -SWIPE_THRESHOLD) {
-            // Fly off top → Easy
+            // Fly off top → Good
             Animated.timing(swipeY, { toValue: -800, duration: 220, useNativeDriver: true }).start(() => {
               swipeY.setValue(0)
-              handleGradeRef.current(5)
+              handleGradeRef.current(4)
             })
           } else if (gs.dy > SWIPE_THRESHOLD) {
             // Fly off bottom → Hard
@@ -153,7 +153,7 @@ function StudySession() {
   const cardRotate = swipeX.interpolate({ inputRange: [-200, 0, 200], outputRange: ['-6deg', '0deg', '6deg'] })
   const easyOpacity = swipeX.interpolate({ inputRange: [0, SWIPE_THRESHOLD * 0.4, SWIPE_THRESHOLD], outputRange: [0, 0.6, 1], extrapolate: 'clamp' })
   const againOpacity = swipeX.interpolate({ inputRange: [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD * 0.4, 0], outputRange: [1, 0.6, 0], extrapolate: 'clamp' })
-  const upEasyOpacity = swipeY.interpolate({ inputRange: [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD * 0.4, 0], outputRange: [1, 0.6, 0], extrapolate: 'clamp' })
+  const upGoodOpacity = swipeY.interpolate({ inputRange: [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD * 0.4, 0], outputRange: [1, 0.6, 0], extrapolate: 'clamp' })
   const hardOpacity = swipeY.interpolate({ inputRange: [0, SWIPE_THRESHOLD * 0.4, SWIPE_THRESHOLD], outputRange: [0, 0.6, 1], extrapolate: 'clamp' })
 
   useEffect(() => {
@@ -430,9 +430,9 @@ function StudySession() {
           <Text style={styles.swipeBadgeText}>AGAIN ✗</Text>
         </Animated.View>
 
-        {/* "EASY" badge — appears on up swipe */}
-        <Animated.View style={[styles.swipeBadgeTop, { opacity: upEasyOpacity }]} pointerEvents="none">
-          <Text style={styles.swipeBadgeText}>EASY ✓</Text>
+        {/* "GOOD" badge — appears on up swipe */}
+        <Animated.View style={[styles.swipeBadgeTop, { opacity: upGoodOpacity }]} pointerEvents="none">
+          <Text style={styles.swipeBadgeText}>GOOD ✓</Text>
         </Animated.View>
 
         {/* "HARD" badge — appears on down swipe */}
@@ -463,7 +463,7 @@ function StudySession() {
         {isRevealed ? (
           <>
             <GradeButtons onGrade={handleGrade} />
-            <Text style={styles.swipeHint}>← Again · ↑ Easy · ↓ Hard</Text>
+            <Text style={styles.swipeHint}>← Again · ↑ Good · ↓ Hard</Text>
           </>
         ) : (
           <View style={styles.revealHint}>
@@ -495,7 +495,7 @@ function StudySession() {
             <View style={onboardStyles.section}>
               <Text style={onboardStyles.sectionTitle}>Swipe to grade quickly</Text>
               <Text style={onboardStyles.sectionBody}>
-                After revealing, swipe <Text style={{ fontWeight: '700', color: colors.accent }}>up for Easy</Text>, <Text style={{ fontWeight: '700', color: colors.error }}>left for Again</Text>, or <Text style={{ fontWeight: '700', color: colors.warning }}>down for Hard</Text>. Or tap the grade buttons below for all four options.
+                After revealing, swipe <Text style={{ fontWeight: '700', color: colors.success }}>up for Good</Text>, <Text style={{ fontWeight: '700', color: colors.error }}>left for Again</Text>, or <Text style={{ fontWeight: '700', color: colors.warning }}>down for Hard</Text>. Or tap the grade buttons below for all four options.
               </Text>
             </View>
             <View style={onboardStyles.section}>
@@ -605,8 +605,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    borderColor: colors.accent,
-    backgroundColor: colors.accent + '22',
+    borderColor: colors.success,
+    backgroundColor: colors.success + '22',
     transform: [{ rotate: '-8deg' }],
   },
   swipeBadgeBottom: {
