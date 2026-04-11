@@ -126,11 +126,14 @@ final class StudyViewModel: ObservableObject {
             }
             crumb("assigning_queue")
             queue = result.cards
-            crumb("caching_queue")
-            // Cache the raw server Data — avoids JSONEncoder which has the same
-            // watchOS 26.4 beta trap as JSONDecoder for complex nested structs.
-            cacheQueueData(result.rawData)
+            crumb("caching_queue_skipped")
+            // Queue caching disabled: UserDefaults.set(Data) with the large
+            // queue payload also triggers EXC_BREAKPOINT on watchOS 26.4 beta.
+            // Offline fallback is acceptable until OS is stable.
+            // cacheQueueData(result.rawData)
+            crumb("session_start_ms")
             sessionStartMs = currentMs()
+            crumb("results_clear")
             results = []
             crumb("setting_state_studying")
             state = .studying(index: 0, revealed: false)
