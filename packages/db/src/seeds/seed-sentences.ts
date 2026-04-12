@@ -138,8 +138,8 @@ No markdown, no extra text.`
       if (parsed.ja && parsed.en) {
         return [{ ja: parsed.ja, en: parsed.en, vocab: vocab.word }]
       }
-      process.stdout.write(`⚠️  Claude fallback for ${k.character}: unexpected response shape\n`)
-      return []
+      process.stdout.write(`⚠️  Claude fallback for ${k.character} (attempt ${attempt + 1}/${CLAUDE_RETRY_LIMIT}): unexpected response shape\n`)
+      continue
     } catch (err: any) {
       const isLast = attempt === CLAUDE_RETRY_LIMIT - 1
       process.stdout.write(
