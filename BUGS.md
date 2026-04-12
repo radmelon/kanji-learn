@@ -35,19 +35,6 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High]` `[Status: 🔧 Fix in Build 105, awaiting verification]`
 
-- [ ] **Example sentence seed produces sparse coverage** — The `seed-sentences.ts` script queries Tatoeba for each kanji's example vocab words but filters results to sentences ≤40 chars that contain the vocab word verbatim. Most Tatoeba results fail this filter (sentences too long or vocab not present exactly), and the Claude Haiku fallback only triggers when Tatoeba returns *zero* results — not when results exist but fail the filter. Early run (50/2294 processed) shows only 1 kanji received sentences; the vast majority log "no sentences found".
-
-  **Steps to reproduce:**
-  1. Run `pnpm --filter @kanji-learn/db seed:sentences`
-  2. Observe high rate of `⚠️ — no sentences found` warnings
-  3. Query DB: `SELECT COUNT(*) FILTER (WHERE example_sentences != '[]'::jsonb) FROM kanji`
-
-  **Suspected fix:** Trigger the Claude Haiku fallback when Tatoeba returns results that *fail* the filter (not just when it returns nothing), or relax `MAX_SENTENCE_JP_CHARS` from 40 to 60.
-
-  **Affected files:**
-  - `packages/db/src/seeds/seed-sentences.ts`
-
-  `[Effort: S]` `[Impact: High]` `[Status: 🐛 Active — seed running, coverage will be poor]`
 
 - [ ] **Rōmaji toggle button non-functional on study card** — Tapping the "Rōmaji" button on the revealed side of a KanjiCard has no visible effect. Readings do not display romanized transliterations despite the toggle state and `wanakana` conversion logic being present in the code.
 
@@ -85,6 +72,10 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 ---
 
 ## ✅ Fixed Bugs
+
+### Example sentence seed produces sparse coverage
+- **Root cause:** Per-query Tatoeba API approach was too slow (195 kanji/hr), filter too strict (≤40 chars), and Claude fallback silently swallowed rate limit errors. After 10+ hours the seed had only covered ~15% of kanji.
+- **Fix:** Rewrote seed to use Tatoeba bulk corpus download (jpn/eng TSV + links). Downloads once, indexes all 248k Japanese sentences in memory, matches all 2,294 kanji in a single local pass. Result: **2,116 / 2,294 kanji seeded in ~2 minutes with zero Claude API calls**. Confirmed visible in the app details drawer. (Build 106+)
 
 ### "Drill X missed card(s)" button does nothing on Session Complete screen
 - **Fix:** Resolved. (Effort: S, Impact: High)
