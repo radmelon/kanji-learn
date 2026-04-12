@@ -22,6 +22,7 @@ export interface LeaderboardEntry {
   userId: string
   displayName: string | null
   streak: number
+  dailyAverage: number
   totalReviewed: number
   totalBurned: number
   isMe: boolean
@@ -207,14 +208,18 @@ export class SocialService {
     const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p]))
 
     // Assemble leaderboard
-    const entries: LeaderboardEntry[] = targetIds.map((uid) => ({
-      userId: uid,
-      displayName: profileMap[uid]?.displayName ?? null,
-      streak: computeStreak(statsByUser[uid] ?? []),
-      totalReviewed: reviewedMap[uid] ?? 0,
-      totalBurned: burnedMap[uid] ?? 0,
-      isMe: uid === userId,
-    }))
+    const entries: LeaderboardEntry[] = targetIds.map((uid) => {
+      const userStats = statsByUser[uid] ?? []
+      return {
+        userId: uid,
+        displayName: profileMap[uid]?.displayName ?? null,
+        streak: computeStreak(userStats),
+        dailyAverage: computeDailyAverage(userStats),
+        totalReviewed: reviewedMap[uid] ?? 0,
+        totalBurned: burnedMap[uid] ?? 0,
+        isMe: uid === userId,
+      }
+    })
 
     return entries.sort((a, b) => b.streak - a.streak || b.totalReviewed - a.totalReviewed)
   }
@@ -245,6 +250,13 @@ export class SocialService {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+export function computeDailyAverage(stats: { date: string; reviewed: number }[]): number {
+  const activeDays = stats.filter((s) => s.reviewed > 0)
+  if (activeDays.length === 0) return 0
+  const total = activeDays.reduce((sum, s) => sum + s.reviewed, 0)
+  return Math.round(total / activeDays.length)
+}
 
 function computeStreak(stats: { date: string; reviewed: number }[]): number {
   const today = new Date().toISOString().slice(0, 10)
