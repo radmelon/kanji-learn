@@ -11,6 +11,8 @@ import { usePushNotifications } from '../src/hooks/usePushNotifications'
 import { useNetworkStatus } from '../src/hooks/useNetworkStatus'
 import { useReviewStore } from '../src/stores/review.store'
 import { colors } from '../src/theme'
+import { parseOAuthCallbackUrl } from '../src/lib/oauth'
+import { supabase } from '../src/lib/supabase'
 
 export default function RootLayout() {
   const { isInitialized, session, initialize } = useAuthStore()
@@ -68,6 +70,30 @@ export default function RootLayout() {
 
   useEffect(() => {
     initialize()
+  }, [])
+
+  // Handle OAuth callback deep links
+  useEffect(() => {
+    const handleUrl = async (event: { url: string }) => {
+      if (!event.url.includes('auth/callback')) return
+
+      const tokens = parseOAuthCallbackUrl(event.url)
+      if (tokens) {
+        await supabase.auth.setSession({
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+        })
+      }
+    }
+
+    // Handle URL that launched the app (cold start)
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl({ url })
+    })
+
+    // Handle URL while app is running (warm start)
+    const subscription = Linking.addEventListener('url', handleUrl)
+    return () => subscription.remove()
   }, [])
 
   useEffect(() => {
