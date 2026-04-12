@@ -5,13 +5,14 @@ import {
 } from 'react-native'
 import { Link, useRouter } from 'expo-router'
 import { useAuthStore } from '../../src/stores/auth.store'
+import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 export default function SignUp() {
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const { signUp, isLoading } = useAuthStore()
+  const { signUp, isLoading, socialLoading } = useAuthStore()
   const router = useRouter()
 
   const handleSignUp = async () => {
@@ -40,6 +41,14 @@ export default function SignUp() {
         <Text style={styles.title}>Create account</Text>
         <Text style={styles.subtitle}>Start your kanji journey</Text>
 
+        <SocialAuthButtons mode="sign-up" disabled={isLoading} />
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
         <TextInput
           style={styles.input}
           placeholder="Display name"
@@ -66,9 +75,9 @@ export default function SignUp() {
         />
 
         <TouchableOpacity
-          style={[styles.button, isLoading && styles.buttonDisabled]}
+          style={[styles.button, (isLoading || socialLoading) && styles.buttonDisabled]}
           onPress={handleSignUp}
-          disabled={isLoading}
+          disabled={isLoading || socialLoading}
         >
           <Text style={styles.buttonText}>{isLoading ? 'Creating account…' : 'Sign up'}</Text>
         </TouchableOpacity>
@@ -109,4 +118,18 @@ const styles = StyleSheet.create({
   buttonText: { ...typography.h3, color: '#fff' },
   link: { alignItems: 'center', paddingVertical: spacing.sm },
   linkText: { ...typography.body, color: colors.accent },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
 })
