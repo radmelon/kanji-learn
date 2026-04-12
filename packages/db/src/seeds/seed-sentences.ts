@@ -34,11 +34,13 @@ import { kanji } from '../schema'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const CONCURRENCY = 4
+const CONCURRENCY = 2
 const TATOEBA_DELAY_MS = 300     // ~3 req/s to be polite
 const RETRY_LIMIT = 3
 const BASE_DELAY_MS = 1_500
-const MAX_SENTENCE_JP_CHARS = 40 // keep sentences short/learner-friendly
+const MAX_SENTENCE_JP_CHARS = 60 // 60 chars captures most learner-friendly sentences
+const CLAUDE_RETRY_LIMIT = 3
+const CLAUDE_BASE_DELAY_MS = 2_000
 const FORCE = process.argv.includes('--force')
 
 // ─── Clients ──────────────────────────────────────────────────────────────────
