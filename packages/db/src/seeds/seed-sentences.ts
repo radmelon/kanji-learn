@@ -5,27 +5,37 @@
  * Populates the `example_sentences` JSONB column on every kanji row using
  * sentences sourced from the Tatoeba CC-BY 2.0 corpus (tatoeba.org).
  *
- * Strategy:
- *   1. For each kanji, try each of its exampleVocab words as search queries
- *      against the Tatoeba search API.
- *   2. Score results: prefer short sentences (≤ 30 chars) where the vocab word
- *      appears verbatim in the Japanese text.
- *   3. Store up to 2 sentences as { ja, en, vocab } objects.
- *   4. If no Tatoeba hit is found, fall back to a simple sentence generated
- *      by Claude Haiku so every kanji gets coverage.
+ * Strategy (bulk download — much faster than the per-query API):
+ *   1. Download and cache three TSV files from Tatoeba exports:
+ *        jpn_sentences.tsv  — all Japanese sentences
+ *        eng_sentences.tsv  — all English sentences
+ *        links.tsv          — sentence-pair links (bidirectional)
+ *   2. Build in-memory lookup: jpnId → text, engId → text, jpnId → [engIds]
+ *   3. For each kanji, find every jpn sentence that contains the character.
+ *      Prefer sentences where one of the kanji's exampleVocab words also appears.
+ *      Score by length (shorter = better), cap at MAX_JP_CHARS.
+ *      Store up to SENTENCES_PER_KANJI results.
+ *   4. If no Tatoeba sentence is found, fall back to Claude Haiku.
  *
  * Usage:
  *   pnpm --filter @kanji-learn/db seed:sentences
+ *   pnpm --filter @kanji-learn/db seed:sentences --force   # re-seed all
+ *   pnpm --filter @kanji-learn/db seed:sentences --no-claude # skip fallback
+ *
+ * Cached files live in /tmp/tatoeba/ and are reused on subsequent runs.
+ * Delete that directory to force a fresh download.
  *
  * Prerequisites:
- *   DATABASE_URL      — Supabase Postgres connection string (direct, not pooler)
+ *   DATABASE_URL      — Supabase Postgres connection string
  *   ANTHROPIC_API_KEY — Only needed for the Claude fallback path
- *
- * Re-run safe: skips kanji that already have sentences unless --force is passed.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import 'dotenv/config'
+import fs from 'node:fs'
+import path from 'node:path'
+import readline from 'node:readline'
+import { execSync } from 'node:child_process'
 import postgres from 'postgres'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { eq, sql } from 'drizzle-orm'
@@ -34,14 +44,22 @@ import { kanji } from '../schema'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const CONCURRENCY = 2
-const TATOEBA_DELAY_MS = 300     // ~3 req/s to be polite
-const RETRY_LIMIT = 3
-const BASE_DELAY_MS = 1_500
-const MAX_SENTENCE_JP_CHARS = 60 // 60 chars captures most learner-friendly sentences
-const CLAUDE_RETRY_LIMIT = 3
-const CLAUDE_BASE_DELAY_MS = 2_000
-const FORCE = process.argv.includes('--force')
+const MAX_JP_CHARS        = 60   // max Japanese sentence length to accept
+const SENTENCES_PER_KANJI = 2    // how many sentences to store per kanji
+const CLAUDE_RETRY_LIMIT  = 3
+const CLAUDE_BASE_DELAY   = 2_000
+const DB_BATCH_SIZE       = 50   // kanji updated per DB round-trip
+const FORCE               = process.argv.includes('--force')
+const NO_CLAUDE           = process.argv.includes('--no-claude')
+
+const CACHE_DIR  = '/tmp/tatoeba'
+const JPN_FILE   = path.join(CACHE_DIR, 'jpn_sentences.tsv')
+const ENG_FILE   = path.join(CACHE_DIR, 'eng_sentences.tsv')
+const LINKS_FILE = path.join(CACHE_DIR, 'links.tsv')
+
+const JPN_URL   = 'https://downloads.tatoeba.org/exports/per_language/jpn/jpn_sentences.tsv.bz2'
+const ENG_URL   = 'https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2'
+const LINKS_URL = 'https://downloads.tatoeba.org/exports/links.tar.bz2'
 
 // ─── Clients ──────────────────────────────────────────────────────────────────
 
@@ -49,9 +67,9 @@ const dbUrl = process.env.DATABASE_URL
 if (!dbUrl) { console.error('❌  DATABASE_URL is not set'); process.exit(1) }
 
 const anthropicKey = process.env.ANTHROPIC_API_KEY
-const anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null
+const anthropic = (!NO_CLAUDE && anthropicKey) ? new Anthropic({ apiKey: anthropicKey }) : null
 
-const client = postgres(dbUrl, { max: 3 })
+const client = postgres(dbUrl, { max: 5 })
 const db = drizzle(client)
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -70,47 +88,135 @@ interface Sentence {
   vocab: string
 }
 
-// ─── Tatoeba ──────────────────────────────────────────────────────────────────
+// ─── Download helpers ─────────────────────────────────────────────────────────
 
-const TATOEBA_BASE = 'https://tatoeba.org/api_v0/search'
+function ensureCacheDir() {
+  if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true })
+}
 
-async function fetchTatoeba(query: string): Promise<{ ja: string; en: string }[]> {
-  const url = `${TATOEBA_BASE}?from=jpn&to=eng&query=${encodeURIComponent(query)}&sort=relevance&trans_filter=limit&trans_has_audio=no`
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'kanji-learn-seed/1.0 (github.com/radmelon/kanji-learn)' },
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!res.ok) throw new Error(`Tatoeba ${res.status}`)
-  const json: any = await res.json()
-  const results: { ja: string; en: string }[] = []
-  for (const result of json.results ?? []) {
-    const ja: string = result.text ?? ''
-    if (!ja) continue
-    // Find the English translation
-    const trans = (result.translations ?? []).flat()
-    const en: string = trans.find((t: any) => t.lang === 'eng')?.text ?? ''
-    if (!en) continue
-    results.push({ ja, en })
+function download(url: string, dest: string, label: string) {
+  if (fs.existsSync(dest)) {
+    console.log(`   ✓ ${label} — cached`)
+    return
   }
-  return results
+  process.stdout.write(`   ↓ ${label} — downloading… `)
+  if (url.endsWith('.tar.bz2')) {
+    // tar.bz2: extract the single file inside and pipe to dest
+    execSync(`curl -fsSL "${url}" | tar -xjO > "${dest}"`, { stdio: ['ignore', 'pipe', 'inherit'] })
+  } else {
+    // plain .bz2
+    execSync(`curl -fsSL "${url}" | bzip2 -d > "${dest}"`, { stdio: ['ignore', 'pipe', 'inherit'] })
+  }
+  const mb = (fs.statSync(dest).size / 1_048_576).toFixed(1)
+  console.log(`done (${mb} MB)`)
+}
+
+// ─── TSV parsers ──────────────────────────────────────────────────────────────
+
+/** Parse a Tatoeba per-language sentence file → Map<id, text> */
+async function parseSentences(file: string): Promise<Map<number, string>> {
+  const map = new Map<number, string>()
+  const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity })
+  for await (const line of rl) {
+    const tab1 = line.indexOf('\t')
+    const tab2 = line.indexOf('\t', tab1 + 1)
+    if (tab1 < 0 || tab2 < 0) continue
+    const id   = parseInt(line.slice(0, tab1), 10)
+    const text = line.slice(tab2 + 1)
+    if (!isNaN(id) && text) map.set(id, text)
+  }
+  return map
 }
 
 /**
- * Pick the best 1–2 sentences from Tatoeba results for a given vocab word.
- * Scoring: shorter sentences score higher; must contain vocab verbatim.
+ * Parse links.tsv → Map<jpnId, engId[]>
+ * The links file is bidirectional so we check both orderings.
  */
-function pickSentences(
-  results: { ja: string; en: string }[],
-  vocabWord: string,
-  max = 2
-): { ja: string; en: string }[] {
-  const hits = results
-    .filter((r) => r.ja.includes(vocabWord) && r.ja.length <= MAX_SENTENCE_JP_CHARS)
-    .sort((a, b) => a.ja.length - b.ja.length)
-  return hits.slice(0, max)
+async function parseLinks(
+  file: string,
+  jpnIds: Set<number>,
+  engIds: Set<number>
+): Promise<Map<number, number[]>> {
+  const map = new Map<number, number[]>()
+  const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity })
+  for await (const line of rl) {
+    const tab = line.indexOf('\t')
+    if (tab < 0) continue
+    const a = parseInt(line.slice(0, tab), 10)
+    const b = parseInt(line.slice(tab + 1), 10)
+    if (isNaN(a) || isNaN(b)) continue
+
+    if (jpnIds.has(a) && engIds.has(b)) {
+      const arr = map.get(a)
+      if (arr) arr.push(b)
+      else map.set(a, [b])
+    } else if (jpnIds.has(b) && engIds.has(a)) {
+      const arr = map.get(b)
+      if (arr) arr.push(a)
+      else map.set(b, [a])
+    }
+  }
+  return map
+}
+
+// ─── Sentence selection ───────────────────────────────────────────────────────
+
+/**
+ * From the full Tatoeba corpus (already in memory), pick the best sentences
+ * for a given kanji character.
+ *
+ * Scoring priority:
+ *   1. Contains a vocab word from exampleVocab (preferred)
+ *   2. Shorter is better
+ *   3. Must be ≤ MAX_JP_CHARS
+ */
+function pickFromCorpus(
+  character: string,
+  vocabWords: string[],
+  jpnBySentence: Map<number, number[]>,  // jpnId → [engId]
+  jpnText: Map<number, string>,
+  engText: Map<number, string>,
+  charIndex: Map<string, number[]>        // char → [jpnIds]
+): Sentence[] {
+  const candidateIds = charIndex.get(character) ?? []
+  if (candidateIds.length === 0) return []
+
+  interface Scored { ja: string; en: string; vocab: string; score: number }
+  const scored: Scored[] = []
+
+  for (const jpnId of candidateIds) {
+    const ja = jpnText.get(jpnId)
+    if (!ja || ja.length > MAX_JP_CHARS) continue
+    const engIds = jpnBySentence.get(jpnId)
+    if (!engIds || engIds.length === 0) continue
+    const en = engText.get(engIds[0]!)
+    if (!en) continue
+
+    // Tag with matching vocab word, or fall back to the kanji character itself
+    const matchedVocab = vocabWords.find((w) => ja.includes(w)) ?? character
+    const vocabBonus = matchedVocab !== character ? 1000 : 0
+
+    scored.push({ ja, en, vocab: matchedVocab, score: vocabBonus - ja.length })
+  }
+
+  // Sort descending by score (higher = better vocab match + shorter)
+  scored.sort((a, b) => b.score - a.score)
+
+  // Deduplicate by ja text
+  const seen = new Set<string>()
+  const result: Sentence[] = []
+  for (const s of scored) {
+    if (seen.has(s.ja)) continue
+    seen.add(s.ja)
+    result.push({ ja: s.ja, en: s.en, vocab: s.vocab })
+    if (result.length >= SENTENCES_PER_KANJI) break
+  }
+  return result
 }
 
 // ─── Claude fallback ──────────────────────────────────────────────────────────
+
+function sleep(ms: number) { return new Promise<void>((r) => setTimeout(r, ms)) }
 
 async function generateFallback(k: KanjiRow): Promise<Sentence[]> {
   if (!anthropic) return []
@@ -138,81 +244,64 @@ No markdown, no extra text.`
       if (parsed.ja && parsed.en) {
         return [{ ja: parsed.ja, en: parsed.en, vocab: vocab.word }]
       }
-      process.stdout.write(`⚠️  Claude fallback for ${k.character} (attempt ${attempt + 1}/${CLAUDE_RETRY_LIMIT}): unexpected response shape\n`)
-      continue
+      process.stdout.write(`⚠️  Claude for ${k.character} attempt ${attempt + 1}: unexpected shape\n`)
     } catch (err: any) {
       const isLast = attempt === CLAUDE_RETRY_LIMIT - 1
-      process.stdout.write(
-        `⚠️  Claude fallback for ${k.character} (attempt ${attempt + 1}/${CLAUDE_RETRY_LIMIT}): ${err?.message ?? err}\n`
-      )
-      if (!isLast) await sleep(CLAUDE_BASE_DELAY_MS * 2 ** attempt)
+      process.stdout.write(`⚠️  Claude for ${k.character} attempt ${attempt + 1}: ${err?.message ?? err}\n`)
+      if (!isLast) await sleep(CLAUDE_BASE_DELAY * 2 ** attempt)
     }
   }
   return []
 }
 
-// ─── Per-kanji processing ─────────────────────────────────────────────────────
-
-async function processKanji(k: KanjiRow): Promise<Sentence[]> {
-  const sentences: Sentence[] = []
-  const seen = new Set<string>()
-
-  for (const vocab of k.exampleVocab.slice(0, 4)) {
-    if (sentences.length >= 2) break
-    await sleep(TATOEBA_DELAY_MS)
-
-    let results: { ja: string; en: string }[] = []
-    for (let attempt = 0; attempt < RETRY_LIMIT; attempt++) {
-      try {
-        results = await fetchTatoeba(vocab.word)
-        break
-      } catch (err: any) {
-        if (attempt < RETRY_LIMIT - 1) {
-          await sleep(BASE_DELAY_MS * 2 ** attempt)
-        }
-      }
-    }
-
-    const picked = pickSentences(results, vocab.word, 2 - sentences.length)
-    for (const p of picked) {
-      if (!seen.has(p.ja)) {
-        seen.add(p.ja)
-        sentences.push({ ...p, vocab: vocab.word })
-      }
-    }
-  }
-
-  // Fall back to Claude Haiku if Tatoeba gave us nothing
-  if (sentences.length === 0) {
-    const fallback = await generateFallback(k)
-    sentences.push(...fallback)
-  }
-
-  return sentences
-}
-
-// ─── Concurrency helper ───────────────────────────────────────────────────────
-
-function sleep(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms))
-}
-
-async function runPool<T>(items: T[], fn: (item: T) => Promise<void>, concurrency: number) {
-  const queue = [...items]
-  const workers = Array.from({ length: concurrency }, async () => {
-    while (queue.length > 0) {
-      const item = queue.shift()!
-      await fn(item)
-    }
-  })
-  await Promise.all(workers)
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('\n📚  seed-sentences — sourcing example sentences from Tatoeba\n')
+  console.log('\n📚  seed-sentences (bulk) — sourcing from Tatoeba corpus\n')
 
+  // ── Step 1: Download corpus files ─────────────────────────────────────────
+  console.log('📥  Checking Tatoeba corpus cache…')
+  ensureCacheDir()
+  download(JPN_URL,   JPN_FILE,   'jpn_sentences.tsv')
+  download(ENG_URL,   ENG_FILE,   'eng_sentences.tsv')
+  download(LINKS_URL, LINKS_FILE, 'links.tsv        ')
+
+  // ── Step 2: Parse into memory ──────────────────────────────────────────────
+  console.log('\n🔍  Parsing corpus into memory…')
+  process.stdout.write('   jpn sentences… ')
+  const jpnText = await parseSentences(JPN_FILE)
+  console.log(`${jpnText.size.toLocaleString()} sentences`)
+
+  process.stdout.write('   eng sentences… ')
+  const engText = await parseSentences(ENG_FILE)
+  console.log(`${engText.size.toLocaleString()} sentences`)
+
+  const jpnIds = new Set(jpnText.keys())
+  const engIds = new Set(engText.keys())
+
+  process.stdout.write('   links… ')
+  const jpnToEng = await parseLinks(LINKS_FILE, jpnIds, engIds)
+  console.log(`${jpnToEng.size.toLocaleString()} jpn→eng pairs`)
+
+  // ── Step 3: Build character index ─────────────────────────────────────────
+  process.stdout.write('   building character index… ')
+  const charIndex = new Map<string, number[]>()
+  for (const [id, text] of jpnText) {
+    // Only index sentences we actually have English translations for
+    if (!jpnToEng.has(id)) continue
+    // Index every CJK character in this sentence
+    for (const ch of text) {
+      if (ch >= '\u4e00' && ch <= '\u9fff') {
+        const arr = charIndex.get(ch)
+        if (arr) arr.push(id)
+        else charIndex.set(ch, [id])
+      }
+    }
+  }
+  console.log(`${charIndex.size.toLocaleString()} unique kanji indexed`)
+
+  // ── Step 4: Load kanji from DB ────────────────────────────────────────────
+  console.log('\n📖  Loading kanji from database…')
   const allKanji = await db.select({
     id: kanji.id,
     character: kanji.character,
@@ -233,40 +322,70 @@ async function main() {
     return
   }
 
-  let done = 0
-  let tatoeba = 0
-  let fallback = 0
-  let skipped = 0
+  // ── Step 5: Match + write ─────────────────────────────────────────────────
+  console.log('\n✍️   Matching sentences and writing to DB…\n')
 
-  await runPool(todo as KanjiRow[], async (k) => {
-    try {
-      const sentences = await processKanji(k)
-      if (sentences.length === 0) {
-        skipped++
-        process.stdout.write(`⚠️  ${k.character} — no sentences found\n`)
-      } else {
-        const source = sentences.some((s) => s.ja && s.en) ? 'tatoeba' : 'claude'
-        if (source === 'tatoeba') tatoeba++ ; else fallback++
-        await db.update(kanji)
-          .set({ exampleSentences: sentences })
-          .where(eq(kanji.id, k.id))
-      }
-    } catch (err: any) {
-      skipped++
-      process.stdout.write(`❌  ${k.character} — ${err?.message ?? err}\n`)
-    }
-    done++
-    if (done % 50 === 0 || done === todo.length) {
-      process.stdout.write(`   Progress: ${done}/${todo.length}\n`)
-    }
-  }, CONCURRENCY)
+  let tataoebaCount  = 0
+  let claudeCount    = 0
+  let skippedCount   = 0
+  const updates: { id: number; sentences: Sentence[] }[] = []
 
-  // Summary
-  const [countRow] = await db.select({ total: sql<number>`count(*) filter (where jsonb_array_length(example_sentences) > 0)::int` }).from(kanji)
-  console.log(`\n✅  Done`)
-  console.log(`   Tatoeba sentences : ${tatoeba}`)
-  console.log(`   Claude fallback   : ${fallback}`)
-  console.log(`   Skipped/failed    : ${skipped}`)
+  async function flushBatch() {
+    if (updates.length === 0) return
+    // Use sql cast to prevent Drizzle double-serializing the array into a JSONB string
+    await Promise.all(updates.map(({ id, sentences }) =>
+      db.update(kanji)
+        .set({ exampleSentences: sql`${JSON.stringify(sentences)}::jsonb` as any })
+        .where(eq(kanji.id, id))
+    ))
+    updates.length = 0
+  }
+
+  for (let i = 0; i < todo.length; i++) {
+    const k = todo[i] as KanjiRow
+    const vocabWords = (Array.isArray(k.exampleVocab) ? k.exampleVocab : []).map((v) => v.word)
+
+    let sentences = pickFromCorpus(
+      k.character,
+      vocabWords,
+      jpnToEng,
+      jpnText,
+      engText,
+      charIndex,
+    )
+
+    if (sentences.length > 0) {
+      tataoebaCount++
+    } else {
+      // Claude fallback
+      sentences = await generateFallback(k)
+      if (sentences.length > 0) claudeCount++
+      else skippedCount++
+    }
+
+    if (sentences.length > 0) {
+      updates.push({ id: k.id, sentences })
+    }
+
+    if (updates.length >= DB_BATCH_SIZE) await flushBatch()
+
+    if ((i + 1) % 100 === 0 || i + 1 === todo.length) {
+      const pct = (((i + 1) / todo.length) * 100).toFixed(1)
+      process.stdout.write(`   ${i + 1}/${todo.length} (${pct}%) — tatoeba:${tataoebaCount} claude:${claudeCount} skipped:${skippedCount}\n`)
+    }
+  }
+
+  await flushBatch()
+
+  // ── Step 6: Summary ───────────────────────────────────────────────────────
+  const [countRow] = await db
+    .select({ total: sql<number>`count(*) filter (where jsonb_typeof(example_sentences) = 'array' and jsonb_array_length(example_sentences) > 0)::int` })
+    .from(kanji)
+
+  console.log(`\n✅  Done!`)
+  console.log(`   Tatoeba sentences : ${tataoebaCount}`)
+  console.log(`   Claude fallback   : ${claudeCount}`)
+  console.log(`   No sentences found: ${skippedCount}`)
   console.log(`   Total with data   : ${countRow?.total ?? '?'} / ${allKanji.length}\n`)
 
   await client.end()
