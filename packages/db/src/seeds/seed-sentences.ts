@@ -126,19 +126,27 @@ Return ONLY a JSON object with exactly these keys:
 }
 No markdown, no extra text.`
 
-  try {
-    const msg = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      messages: [{ role: 'user', content: prompt }],
-    })
-    const text = (msg.content[0] as any).text?.trim() ?? ''
-    const parsed = JSON.parse(text)
-    if (parsed.ja && parsed.en) {
-      return [{ ja: parsed.ja, en: parsed.en, vocab: vocab.word }]
+  for (let attempt = 0; attempt < CLAUDE_RETRY_LIMIT; attempt++) {
+    try {
+      const msg = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 200,
+        messages: [{ role: 'user', content: prompt }],
+      })
+      const text = (msg.content[0] as any).text?.trim() ?? ''
+      const parsed = JSON.parse(text)
+      if (parsed.ja && parsed.en) {
+        return [{ ja: parsed.ja, en: parsed.en, vocab: vocab.word }]
+      }
+      process.stdout.write(`⚠️  Claude fallback for ${k.character}: unexpected response shape\n`)
+      return []
+    } catch (err: any) {
+      const isLast = attempt === CLAUDE_RETRY_LIMIT - 1
+      process.stdout.write(
+        `⚠️  Claude fallback for ${k.character} (attempt ${attempt + 1}/${CLAUDE_RETRY_LIMIT}): ${err?.message ?? err}\n`
+      )
+      if (!isLast) await sleep(CLAUDE_BASE_DELAY_MS * 2 ** attempt)
     }
-  } catch {
-    // non-fatal
   }
   return []
 }
