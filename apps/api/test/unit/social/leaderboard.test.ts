@@ -32,10 +32,9 @@ describe('computeDailyAverage', () => {
   it('rounds to nearest integer', () => {
     const stats = [
       { date: '2026-04-11', reviewed: 10 },
-      { date: '2026-04-10', reviewed: 11 },
-      { date: '2026-04-09', reviewed: 12 },
+      { date: '2026-04-10', reviewed: 13 },
     ]
-    // (10 + 11 + 12) / 3 = 11
-    expect(computeDailyAverage(stats)).toBe(11)
+    // (10 + 13) / 2 = 11.5 → rounds to 12
+    expect(computeDailyAverage(stats)).toBe(12)
   })
 })

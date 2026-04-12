@@ -14,7 +14,6 @@ import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { JlptProgressGrid } from '../../src/components/ui/JlptProgressGrid'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { DailyStats } from '@kanji-learn/shared'
-import { JLPT_LEVELS, JLPT_KANJI_COUNTS } from '@kanji-learn/shared'
 import { computeMilestones } from '../../src/constants/milestones'
 
 type Period = '7d' | '30d' | '90d'
