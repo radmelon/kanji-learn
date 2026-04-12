@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../../stores/auth.store'
 import { colors, spacing, radius, typography } from '../../theme'
@@ -20,7 +20,7 @@ export function SocialAuthButtons({ mode, disabled }: Props) {
     try {
       await signInWithApple()
     } catch (err: any) {
-      // Error toast handled by caller or ignored (user cancelled)
+      Alert.alert('Sign in failed', err.message ?? "Couldn't connect. Please try again.")
     }
   }
 
@@ -28,7 +28,7 @@ export function SocialAuthButtons({ mode, disabled }: Props) {
     try {
       await signInWithGoogle()
     } catch (err: any) {
-      // Error toast handled by caller or ignored (user cancelled)
+      Alert.alert('Sign in failed', err.message ?? "Couldn't connect. Please try again.")
     }
   }
 
