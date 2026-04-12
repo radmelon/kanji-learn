@@ -155,8 +155,8 @@ const INFO_LEADERBOARD: InfoSection[] = [
     body: 'Rankings compare study activity across all users of the app, or within your study group if you\'ve connected with friends. Position is determined by total kanji reviewed and burned since account creation.',
   },
   {
-    title: 'Reviewed',
-    body: 'Total Spaced Repetition System (SRS) review answers submitted. Each answer is a flashcard graded during a daily review session. A high review count reflects sustained, long-term study effort — though it\'s possible to inflate this number by grinding easy cards.',
+    title: 'Avg / Day',
+    body: 'Average reviews per active day over the last 30 days. Reflects sustainable pace.',
   },
   {
     title: 'Burned 🔥',
@@ -545,13 +545,7 @@ export default function Dashboard() {
                     {i === 0 ? ' · Top Performer' : ''}
                   </Text>
                   <Text style={styles.lbStats}>
-                    {entry.totalReviewed.toLocaleString()} reviewed · {entry.totalBurned.toLocaleString()} burned
-                  </Text>
-                </View>
-                <View style={styles.lbStreak}>
-                  <Ionicons name="flame" size={14} color={entry.streak > 0 ? colors.accent : colors.textMuted} />
-                  <Text style={[styles.lbStreakText, { color: entry.streak > 0 ? colors.accent : colors.textMuted }]}>
-                    {entry.streak}
+                    {entry.dailyAverage}/day · {entry.totalBurned.toLocaleString()} mastered · {entry.streak}d streak
                   </Text>
                 </View>
               </View>
@@ -770,6 +764,4 @@ const styles = StyleSheet.create({
   lbName: { ...typography.body, color: colors.textPrimary },
   lbNameMe: { color: colors.primary, fontWeight: '600' },
   lbStats: { ...typography.caption, color: colors.textMuted },
-  lbStreak: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  lbStreakText: { ...typography.bodySmall, fontWeight: '700' },
 })
