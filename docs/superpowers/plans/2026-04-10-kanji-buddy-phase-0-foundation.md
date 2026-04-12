@@ -254,16 +254,19 @@ export const learnerStateCache = pgTable(
     userId: uuid('user_id')
       .primaryKey()
       .references(() => userProfiles.id, { onDelete: 'cascade' }),
-    computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
-    currentStreak: integer('current_streak').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    currentStreakDays: integer('current_streak_days').notNull().default(0),
+    longestStreakDays: integer('longest_streak_days').notNull().default(0),
     velocityTrend: velocityTrendEnum('velocity_trend').notNull().default('inactive'),
-    totalSeen: integer('total_seen').notNull().default(0),
-    totalBurned: integer('total_burned').notNull().default(0),
-    activeLeeches: integer('active_leeches').notNull().default(0),
+    totalKanjiSeen: integer('total_kanji_seen').notNull().default(0),
+    totalKanjiBurned: integer('total_kanji_burned').notNull().default(0),
+    activeLeechCount: integer('active_leech_count').notNull().default(0),
     leechKanjiIds: jsonb('leech_kanji_ids').$type<number[]>().notNull().default([]),
-    weakestModality: weakestModalityEnum('weakest_modality'),
+    weakestModality: weakestModalityEnum('weakest_modality').notNull().default('meaning'),
     strongestJlptLevel: jlptLevelEnum('strongest_jlpt_level'),
     currentFocusLevel: jlptLevelEnum('current_focus_level'),
+    recentAccuracy: real('recent_accuracy').notNull().default(0),
+    lastSessionAt: timestamp('last_session_at', { withTimezone: true }),
     avgDailyReviews: real('avg_daily_reviews').notNull().default(0),
     avgSessionDurationMs: integer('avg_session_duration_ms').notNull().default(0),
     daysSinceLastSession: integer('days_since_last_session').notNull().default(0),
@@ -289,7 +292,8 @@ export const learnerStateCache = pgTable(
       .default({ avgSessionsPerDay: 0, weekendVsWeekdayRatio: 1 }),
     nextRecommendedActivity: text('next_recommended_activity'),
     buddyMood: buddyMoodEnum('buddy_mood').notNull().default('supportive'),
-    scaffoldLevel: smallint('scaffold_level').notNull().default(1),
+    // 'heavy' | 'medium' | 'light' — mirrors ScaffoldLevel in api/src/services/buddy/constants.ts
+    scaffoldLevel: text('scaffold_level').notNull().default('medium'),
     friendsCount: integer('friends_count').notNull().default(0),
     activeFriendsToday: integer('active_friends_today').notNull().default(0),
     friendsAheadOnBurn: jsonb('friends_ahead_on_burn')
@@ -313,11 +317,10 @@ export const learnerStateCache = pgTable(
       .notNull()
       .default({}),
     groupMomentum: text('group_momentum'), // 'rising' | 'steady' | 'falling'
-  },
-  (t) => ({
-    computedIdx: index('learner_state_computed_idx').on(t.userId, t.computedAt),
-  })
+  }
 )
+// No secondary index: userId is PK, so all lookups are already point-lookups.
+// If a cache-staleness job is added later, add `index(...).on(t.updatedAt)`.
 ```
 
 - [ ] **Step 2: Append buddy_conversations table**
@@ -434,16 +437,23 @@ export const studyPlans = pgTable(
   })
 )
 
-export const studyPlanEvents = pgTable('study_plan_events', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  planId: uuid('plan_id')
-    .notNull()
-    .references(() => studyPlans.id, { onDelete: 'cascade' }),
-  activityIndex: smallint('activity_index').notNull(),
-  event: text('event').notNull(), // 'started' | 'completed' | 'skipped' | 'navigated_away'
-  eventAt: timestamp('event_at', { withTimezone: true }).notNull().defaultNow(),
-  deviceType: deviceTypeEnum('device_type'),
-})
+export const studyPlanEvents = pgTable(
+  'study_plan_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    planId: uuid('plan_id')
+      .notNull()
+      .references(() => studyPlans.id, { onDelete: 'cascade' }),
+    activityIndex: smallint('activity_index').notNull(),
+    event: text('event').notNull(), // 'started' | 'completed' | 'skipped' | 'navigated_away'
+    eventAt: timestamp('event_at', { withTimezone: true }).notNull().defaultNow(),
+    deviceType: deviceTypeEnum('device_type'),
+  },
+  (t) => ({
+    // Postgres does not auto-index FKs; "all events for plan X" is the core read.
+    planIdx: index('study_plan_events_plan_idx').on(t.planId),
+  })
+)
 ```
 
 - [ ] **Step 2: Append study_log_entries**
@@ -520,7 +530,9 @@ export const sharedGoals = pgTable(
 // App-agnostic projection of learner state. Subjects are namespaced (e.g. "kanji:持").
 
 export const learnerIdentity = pgTable('learner_identity', {
-  id: uuid('id').primaryKey(), // matches user_profiles.id
+  // PK is named learnerId (not id) so every other UKG table can reference
+  // `learnerIdentity.learnerId` with the same name they use for their own FK.
+  learnerId: uuid('learner_id').primaryKey(), // matches user_profiles.id
   displayName: text('display_name'),
   email: text('email'),
   nativeLanguage: text('native_language'),
@@ -532,12 +544,14 @@ export const learnerIdentity = pgTable('learner_identity', {
 export const learnerProfileUniversal = pgTable('learner_profile_universal', {
   learnerId: uuid('learner_id')
     .primaryKey()
-    .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+    .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
   interests: jsonb('interests').$type<string[]>().notNull().default([]),
   reasonsForLearning: jsonb('reasons_for_learning').$type<string[]>().notNull().default([]),
   preferredLearningStyles: jsonb('preferred_learning_styles').$type<string[]>().notNull().default([]),
   goals: jsonb('goals').$type<string[]>().notNull().default([]),
   studyHabits: jsonb('study_habits').$type<Record<string, unknown>>().notNull().default({}),
+  // buddyPersonalityEnum is Kanji-Buddy-specific vocabulary ('encouraging' | 'direct' | 'playful').
+  // If a second app joins the UKG and needs a different vocabulary, relax this to plain text.
   buddyPersonalityPref: buddyPersonalityEnum('buddy_personality_pref').notNull().default('encouraging'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -548,15 +562,17 @@ export const learnerConnections = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     learnerIdA: uuid('learner_id_a')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     learnerIdB: uuid('learner_id_b')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     relationship: text('relationship').notNull().default('friend'),
     sharedApps: jsonb('shared_apps').$type<string[]>().notNull().default(['kanji_buddy']),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    // Callers MUST normalize so learnerIdA < learnerIdB before insert; otherwise
+    // (alice, bob) and (bob, alice) will both be accepted as distinct connections.
     pairIdx: uniqueIndex('learner_connections_pair_idx').on(t.learnerIdA, t.learnerIdB),
   })
 )
@@ -567,13 +583,13 @@ export const learnerMemoryArtifacts = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     learnerId: uuid('learner_id')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     subject: text('subject').notNull(), // e.g. "kanji:持"
     artifactType: text('artifact_type').notNull(), // 'mnemonic' | 'note' | 'sentence' | 'photo' | 'audio'
     content: jsonb('content').$type<Record<string, unknown>>().notNull(),
     context: jsonb('context').$type<Record<string, unknown>>().notNull().default({}),
     effectivenessScore: real('effectiveness_score').notNull().default(0.5),
-    sourceApp: text('source_app').notNull(),
+    appSource: text('app_source').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -587,14 +603,16 @@ export const learnerKnowledgeState = pgTable(
   {
     learnerId: uuid('learner_id')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     subject: text('subject').notNull(),
     masteryLevel: real('mastery_level').notNull().default(0),
     status: text('status').notNull().default('unseen'), // 'unseen' | 'learning' | 'reviewing' | 'mastered'
+    reviewCount: integer('review_count').notNull().default(0),
     firstSeenAt: timestamp('first_seen_at', { withTimezone: true }),
-    lastReinforcedAt: timestamp('last_reinforced_at', { withTimezone: true }),
-    sourceApp: text('source_app').notNull(),
+    lastReviewedAt: timestamp('last_reviewed_at', { withTimezone: true }),
+    appSource: text('app_source').notNull(),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.learnerId, t.subject] }),
@@ -607,7 +625,7 @@ export const learnerAppGrants = pgTable(
   {
     learnerId: uuid('learner_id')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     appId: text('app_id').notNull(),
     scopes: jsonb('scopes').$type<string[]>().notNull().default([]),
     grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
@@ -625,11 +643,11 @@ export const learnerTimelineEvents = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     learnerId: uuid('learner_id')
       .notNull()
-      .references(() => learnerIdentity.id, { onDelete: 'cascade' }),
+      .references(() => learnerIdentity.learnerId, { onDelete: 'cascade' }),
     eventType: text('event_type').notNull(),
     subject: text('subject'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
-    sourceApp: text('source_app').notNull(),
+    appSource: text('app_source').notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -688,11 +706,14 @@ In the existing `mnemonics` definition, add before the closing brace of the colu
 ```typescript
     generationMethod: mnemonicGenerationMethodEnum('generation_method').notNull().default('system'),
     locationType: text('location_type'),
+    // Nullable jsonb — Drizzle already infers `T | null` from the missing .notNull().
     cocreationContext: jsonb('cocreation_context').$type<{
       questions: string[]
       answers: string[]
       timeOfDay?: string
-    } | null>(),
+    }>(),
+    // effectivenessScore is only meaningful once reinforcementCount > 0;
+    // the 0.5 default is a placeholder for freshly-created mnemonics.
     effectivenessScore: real('effectiveness_score').notNull().default(0.5),
     lastReinforcedAt: timestamp('last_reinforced_at', { withTimezone: true }),
     reinforcementCount: integer('reinforcement_count').notNull().default(0),
@@ -838,8 +859,17 @@ git commit -m "feat(db): generate phase 0 foundation migration"
 
 ```typescript
 // packages/shared/src/buddy-types.ts
-// All Buddy domain types shared between API and mobile app.
-// Matches the columns defined in schema.ts Buddy tables — keep in sync.
+// Buddy domain types shared between API and mobile app.
+//
+// Most of these mirror columns in the Buddy tables in packages/db/src/schema.ts
+// (camelCase here, snake_case in the DB via Drizzle column mappings). A few
+// exceptions are called out inline:
+//   - LearnerStateCache matches the `learner_state_cache` row shape.
+//   - StudyPlan.scaffoldLevel uses the string form; the DB column is a
+//     smallint encoding — see the comment on StudyPlan.
+//   - CoCreationSession is an in-memory session shape used during
+//     co-created mnemonic flows. It is not persisted directly; the final
+//     result is stored on `mnemonics.cocreation_context` (jsonb).
 
 export type BuddyScreen =
   | 'dashboard'
@@ -882,7 +912,12 @@ export type WeakestModality =
   | 'voice'
   | 'compound'
 
-export type ScaffoldLevel = 1 | 2 | 3
+// Canonical scaffold level. Matches `learner_state_cache.scaffold_level` (text)
+// and the API-internal ScaffoldLevel declared in
+// apps/api/src/services/buddy/constants.ts (Task 15). The `study_plans`
+// table stores this as a smallint encoding — the mapping lives in the
+// StudyPlanService mapper (Phase 1).
+export type ScaffoldLevel = 'heavy' | 'medium' | 'light'
 
 export type BuddyPersonalityPref = 'encouraging' | 'direct' | 'playful'
 
@@ -900,6 +935,16 @@ export type NudgeActionType =
   | 'generate_mnemonic'
   | 'dismiss'
   | 'none'
+
+export type ActivityType =
+  | 'flashcard_review'
+  | 'new_kanji'
+  | 'quiz'
+  | 'writing'
+  | 'voice'
+  | 'leech_drill'
+  | 'mnemonic_review'
+  | 'confused_pair_drill'
 
 export interface FriendComparison {
   friendId: string
@@ -921,18 +966,29 @@ export interface StudyPatterns {
   weekendVsWeekdayRatio: number
 }
 
+// Mirrors `learner_state_cache` in packages/db/src/schema.ts. Field names
+// match the Drizzle table one-to-one so the service layer can pass rows
+// through with minimal mapping. Keep in sync with the DB.
+//
+// Note: the transient `ComputedLearnerState` produced by LearnerStateService
+// (Task 16) uses `computedAt` as its own field name and maps it to
+// `updatedAt` on write. The two types intentionally serve different layers —
+// do not unify them.
 export interface LearnerStateCache {
   userId: string
-  computedAt: Date
-  currentStreak: number
+  updatedAt: Date
+  currentStreakDays: number
+  longestStreakDays: number
   velocityTrend: VelocityTrend
-  totalSeen: number
-  totalBurned: number
-  activeLeeches: number
+  totalKanjiSeen: number
+  totalKanjiBurned: number
+  activeLeechCount: number
   leechKanjiIds: number[]
-  weakestModality?: WeakestModality
+  weakestModality: WeakestModality
   strongestJlptLevel?: 'N5' | 'N4' | 'N3' | 'N2' | 'N1'
   currentFocusLevel?: 'N5' | 'N4' | 'N3' | 'N2' | 'N1'
+  recentAccuracy: number // 0–1, average across modalities
+  lastSessionAt?: Date
   avgDailyReviews: number
   avgSessionDurationMs: number
   daysSinceLastSession: number
@@ -977,16 +1033,6 @@ export interface BuddyNudge {
   createdAt: Date
 }
 
-export type ActivityType =
-  | 'flashcard_review'
-  | 'new_kanji'
-  | 'quiz'
-  | 'writing'
-  | 'voice'
-  | 'leech_drill'
-  | 'mnemonic_review'
-  | 'confused_pair_drill'
-
 export interface StudyActivity {
   order: number
   type: ActivityType
@@ -999,6 +1045,9 @@ export interface StudyActivity {
   skipped: boolean
 }
 
+// Domain shape for a study plan. The DB column `study_plans.scaffold_level`
+// is a smallint; the mapping between that integer and the string
+// ScaffoldLevel lives in the StudyPlanService mapper (Phase 1).
 export interface StudyPlan {
   id: string
   userId: string
@@ -1034,6 +1083,10 @@ export interface StudyLogEntry {
   lastViewedAt?: Date
 }
 
+// In-memory shape tracked by the Buddy co-creation flow while a user
+// builds a personal mnemonic. Not a DB row: the finished mnemonic is
+// written to `mnemonics.cocreation_context` (jsonb). Phase 0 defines
+// the type so API/mobile stay aligned when the flow is implemented.
 export interface CoCreationSession {
   id: string
   userId: string
@@ -1113,6 +1166,9 @@ export interface ToolCall {
   input: Record<string, unknown>
 }
 
+// Phase 0 never constructs a ToolResult — tool-result round-trips come
+// in Phase 1. The type exists so the Message union is shape-complete,
+// but provider adapters in Tasks 11–13 drop `role: 'tool'` messages.
 export interface ToolResult {
   toolCallId: string
   content: string | Record<string, unknown>
@@ -1137,7 +1193,12 @@ export interface CompletionRequest {
 export type FinishReason = 'stop' | 'length' | 'tool_use' | 'safety'
 
 export interface CompletionResult {
-  content: string
+  /**
+   * Assistant text. Optional because a pure tool-call response (finishReason
+   * === 'tool_use') carries no text. Providers MAY emit `''` instead of
+   * omitting the field; both are valid.
+   */
+  content?: string
   toolCalls?: ToolCall[]
   finishReason: FinishReason
   inputTokens: number
@@ -1150,8 +1211,11 @@ export interface LLMProvider {
   readonly name: string
   readonly supportsToolCalling: boolean
   readonly maxContextTokens: number
+  /** Expected p50 latency for a ~500-token completion, in milliseconds. */
   readonly estimatedLatencyMs: number
+  /** Cost per input token in USD (e.g. 0.000003 for $3 / 1M tokens). */
   readonly costPerInputToken: number
+  /** Cost per output token in USD (e.g. 0.000015 for $15 / 1M tokens). */
   readonly costPerOutputToken: number
 
   generateCompletion(request: CompletionRequest): Promise<CompletionResult>
@@ -1233,12 +1297,16 @@ export default defineConfig({
 
 import { config } from 'dotenv'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// `apps/api` is ESM, so __dirname is not available — reconstruct it.
+const __dirname = resolve(fileURLToPath(import.meta.url), '..')
 
 config({ path: resolve(__dirname, '../.env.test') })
 
 if (!process.env.TEST_DATABASE_URL) {
   throw new Error(
-    'TEST_DATABASE_URL must be set in apps/api/.env.test before running tests'
+    'TEST_DATABASE_URL is not set. Copy apps/api/.env.test.example to apps/api/.env.test and fill in TEST_DATABASE_URL.'
   )
 }
 
@@ -1250,7 +1318,9 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL
 
 ```
 # Copy to apps/api/.env.test and fill in values.
-TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/kanji_learn_test
+# Matches the local dev Postgres in docker-compose.yml (user kanji,
+# password kanji, host port 5433, dedicated test database).
+TEST_DATABASE_URL=postgres://kanji:kanji@localhost:5433/kanji_buddy_test
 GROQ_API_KEY=test-fake-key
 GEMINI_API_KEY=test-fake-key
 ANTHROPIC_API_KEY=test-fake-key
@@ -1258,6 +1328,16 @@ LLM_PRIMARY_TIER2_PROVIDER=groq
 BUDDY_TIER2_DAILY_CAP_PER_USER=50
 BUDDY_TIER3_DAILY_CAP_PER_USER=2
 ```
+
+> Note: `.env.test` contains credentials (even if they are local dev fakes)
+> and must not be committed. Ensure it is covered by `.gitignore` — in this
+> repo the root `.gitignore` explicitly lists `.env.test`. Only the
+> `.env.test.example` template goes into git.
+>
+> `apps/api/tsconfig.json` must include the `test` directory so
+> `pnpm --filter @kanji-learn/api typecheck` catches type errors in tests.
+> Keep `apps/api/tsconfig.build.json` scoped to `src` so test files do not
+> land in `dist/`.
 
 - [ ] **Step 6: Create a sanity test to prove the runner works**
 
@@ -1314,13 +1394,20 @@ describe('BuddyLLMError', () => {
     expect(err.cause).toBe(cause)
     expect(err.name).toBe('BuddyLLMError')
   })
+
+  it('sets cause as a non-enumerable property (matches native Error.cause)', () => {
+    const cause = new Error('boom')
+    const err = new BuddyLLMError('wrap', cause)
+    const descriptor = Object.getOwnPropertyDescriptor(err, 'cause')
+    expect(descriptor?.enumerable).toBe(false)
+    expect(JSON.stringify(err)).not.toContain('cause')
+  })
 })
 
 describe('classifyTier', () => {
   const base: BuddyRequest = {
     context: 'encouragement',
     userId: 'u1',
-    systemPrompt: '',
     messages: [],
   }
 
@@ -1342,6 +1429,21 @@ describe('classifyTier', () => {
     expect(classifyTier({ ...base, context: 'mnemonic_question_generation' })).toBe(2)
     expect(classifyTier({ ...base, context: 'mnemonic_assembly' })).toBe(2)
     expect(classifyTier({ ...base, context: 'social_nudge' })).toBe(2)
+  })
+
+  it('preferredTier overrides context-based classification', () => {
+    // context would classify as tier 1, but preferredTier forces 3
+    expect(
+      classifyTier({ ...base, context: 'encouragement', preferredTier: 3 })
+    ).toBe(3)
+    // context would classify as tier 3, but preferredTier forces 1
+    expect(
+      classifyTier({ ...base, context: 'deep_diagnostic', preferredTier: 1 })
+    ).toBe(1)
+    // tier-2 override on a tier-1 context
+    expect(
+      classifyTier({ ...base, context: 'session_summary', preferredTier: 2 })
+    ).toBe(2)
   })
 })
 ```
@@ -1374,8 +1476,17 @@ export type RequestContext =
 export interface BuddyRequest {
   context: RequestContext
   userId: string
-  systemPrompt: string
-  messages: Message[]
+  /**
+   * Optional to mirror CompletionRequest.systemPrompt in @kanji-learn/shared.
+   * Callers that don't need a system prompt should omit this rather than
+   * passing ''. The router decides whether to forward a system turn.
+   */
+  systemPrompt?: string
+  /**
+   * `readonly` so the router (Task 14) must copy before truncating —
+   * prevents accidental in-place mutation of the caller's array.
+   */
+  messages: readonly Message[]
   tools?: ToolDefinition[]
   preferredTier?: 1 | 2 | 3
   userOptedInPremium?: boolean
@@ -1384,12 +1495,13 @@ export interface BuddyRequest {
 }
 
 export class BuddyLLMError extends Error {
-  public readonly cause?: unknown
-
   constructor(message: string, cause?: unknown) {
-    super(message)
+    // Forward to the ES2022 Error constructor so `.cause` is stored as the
+    // native non-enumerable own property. Declaring our own `cause` field
+    // would shadow the native slot with an enumerable property and leak
+    // the chain into JSON.stringify/structured loggers.
+    super(message, { cause })
     this.name = 'BuddyLLMError'
-    this.cause = cause
   }
 }
 
@@ -1416,7 +1528,7 @@ export function classifyTier(request: BuddyRequest): 1 | 2 | 3 {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `pnpm --filter @kanji-learn/api test -- llm/types`
-Expected: PASS — 2 test files, 4 tests passing.
+Expected: PASS — 1 test file, 6 tests passing.
 
 - [ ] **Step 5: Commit**
 
@@ -1504,6 +1616,21 @@ describe('RateLimiter', () => {
     await limiter.tryConsume(TEST_USER, 2)
     expect(await limiter.remainingForTier(TEST_USER, 2)).toBe(3)
   })
+
+  it('concurrent bursts at the cap boundary never over-consume', async () => {
+    // Regression test for the atomic DO UPDATE WHERE pattern.
+    const cap = 5
+    const limiter = new RateLimiter(db, { tier2DailyCap: cap, tier3DailyCap: 1 })
+    const burst = 25
+    const results = await Promise.all(
+      Array.from({ length: burst }, () => limiter.tryConsume(TEST_USER, 2))
+    )
+    const allowed = results.filter((r) => r === true).length
+    expect(allowed).toBe(cap)
+
+    const remaining = await limiter.remainingForTier(TEST_USER, 2)
+    expect(remaining).toBe(0)
+  })
 })
 ```
 
@@ -1524,13 +1651,25 @@ export interface RateLimiterOptions {
   tier3DailyCap: number
 }
 
+/**
+ * Per-user daily LLM rate limiter backed by the `buddy_llm_usage` table.
+ *
+ * **Day boundary:** all "days" are UTC. This is an intentional Phase 0
+ * simplification — per-user-timezone day boundaries are deferred until we
+ * plumb `userProfiles.timezone` through the router in a later phase.
+ *
+ * **Error policy:** `tryConsume` propagates db errors. The caller
+ * (`BuddyLLMRouter`) owns fail-open vs. fail-closed policy.
+ */
 export class RateLimiter {
   constructor(private db: Db, private options: RateLimiterOptions) {}
 
   /**
    * Atomically increments usage for the given (user, tier, today) row.
-   * Returns true if the call is allowed, false if it would exceed the cap.
-   * Tier 1 is never limited — returns true without touching the db.
+   * Uses a single `INSERT ... ON CONFLICT DO UPDATE ... WHERE call_count < cap`
+   * so the cap is enforced in one round-trip with no compensating write.
+   * When the WHERE suppresses the update, RETURNING emits zero rows — the
+   * "blocked" signal. Tier 1 is never limited.
    */
   async tryConsume(userId: string, tier: 1 | 2 | 3): Promise<boolean> {
     if (tier === 1) return true
@@ -1540,7 +1679,6 @@ export class RateLimiter {
     const today = this.todayIsoDate()
     const tierStr = `tier${tier}` as 'tier2' | 'tier3'
 
-    // Upsert + increment atomically, then check result.
     const rows = await this.db
       .insert(buddyLlmUsage)
       .values({ userId, usageDate: today, tier: tierStr, callCount: 1 })
@@ -1548,27 +1686,13 @@ export class RateLimiter {
         target: [buddyLlmUsage.userId, buddyLlmUsage.usageDate, buddyLlmUsage.tier],
         set: {
           callCount: sql`${buddyLlmUsage.callCount} + 1`,
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         },
+        where: sql`${buddyLlmUsage.callCount} < ${cap}`,
       })
       .returning({ callCount: buddyLlmUsage.callCount })
 
-    const newCount = rows[0]?.callCount ?? 0
-    if (newCount > cap) {
-      // Roll back the increment so the cap is never breached across concurrent calls.
-      await this.db
-        .update(buddyLlmUsage)
-        .set({ callCount: sql`${buddyLlmUsage.callCount} - 1` })
-        .where(
-          and(
-            eq(buddyLlmUsage.userId, userId),
-            eq(buddyLlmUsage.usageDate, today),
-            eq(buddyLlmUsage.tier, tierStr)
-          )
-        )
-      return false
-    }
-    return true
+    return rows.length > 0
   }
 
   async remainingForTier(userId: string, tier: 2 | 3): Promise<number> {
@@ -1595,7 +1719,7 @@ export class RateLimiter {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm --filter @kanji-learn/api test -- llm/rate-limit`
-Expected: PASS — 5 tests passing.
+Expected: PASS — 6 tests passing.
 
 - [ ] **Step 5: Commit**
 
@@ -1626,13 +1750,16 @@ Create `apps/api/test/unit/llm/providers/groq.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GroqProvider } from '../../../../src/services/llm/providers/groq'
 
-// Mock the groq-sdk module
+// Mock the groq-sdk module.
+// Note: the default export must be a function expression (not an arrow
+// function) because the implementation calls `new Groq(...)` and vitest 4
+// uses Reflect.construct on the mock — arrow functions aren't constructors.
 vi.mock('groq-sdk', () => {
   const createMock = vi.fn()
   return {
-    default: vi.fn().mockImplementation(() => ({
-      chat: { completions: { create: createMock } },
-    })),
+    default: vi.fn().mockImplementation(function () {
+      return { chat: { completions: { create: createMock } } }
+    }),
     __createMock: createMock,
   }
 })
@@ -1721,13 +1848,12 @@ Expected: FAIL — module not found.
 - [ ] **Step 4: Create `apps/api/src/services/llm/providers/groq.ts`**
 
 ```typescript
-import Groq from 'groq-sdk'
+import Groq, { APIError } from 'groq-sdk'
 import type {
   CompletionRequest,
   CompletionResult,
   FinishReason,
   LLMProvider,
-  Message,
 } from '@kanji-learn/shared'
 import { BuddyLLMError } from '../types'
 
@@ -1738,20 +1864,35 @@ export interface GroqProviderOptions {
 
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile'
 
+/**
+ * Tier 1 provider: Llama-3.3-70b-versatile via Groq.
+ *
+ * **Latency semantics:** latencyMs reflects the successful call's wall-clock
+ * time. On error, the router (Task 14) owns latency timing for telemetry.
+ *
+ * **Tool calling:** supportsToolCalling is true but Phase 0 does not parse
+ * tool_calls into CompletionResult.toolCalls. Callers that send tools will
+ * receive finishReason 'tool_use' with no tool calls populated. Tool-call
+ * round-trips are Phase 1 work.
+ */
 export class GroqProvider implements LLMProvider {
   readonly name = 'groq'
   readonly supportsToolCalling = true
   readonly maxContextTokens = 128_000
+  /** ~p50 for a 500-token Llama-3.3-70b completion on Groq free tier. */
   readonly estimatedLatencyMs = 400
   readonly costPerInputToken = 0
   readonly costPerOutputToken = 0
 
-  private client: Groq
+  private client: Groq | undefined
   private model: string
 
   constructor(private options: GroqProviderOptions) {
-    this.client = new Groq({ apiKey: options.apiKey })
     this.model = options.model ?? DEFAULT_MODEL
+    // Defer SDK construction: the Groq SDK throws synchronously when apiKey
+    // is undefined, which would bypass BuddyLLMError wrapping. Lazy init
+    // means an un-configured provider can still be constructed and rejected
+    // cleanly via isAvailable().
   }
 
   async isAvailable(): Promise<boolean> {
@@ -1761,25 +1902,32 @@ export class GroqProvider implements LLMProvider {
   async generateCompletion(request: CompletionRequest): Promise<CompletionResult> {
     const start = Date.now()
     try {
+      const client = this.getClient()
       const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = []
       if (request.systemPrompt) {
         messages.push({ role: 'system', content: request.systemPrompt })
       }
       for (const m of request.messages) {
-        if (m.role === 'tool') continue // Groq tool-result messages handled in a later phase
-        messages.push({ role: m.role, content: m.content as string })
+        if (m.role === 'tool') continue // Phase 1 will handle tool-result round-trips
+        messages.push({ role: m.role, content: m.content })
       }
 
-      const response = await this.client.chat.completions.create({
+      const response = await client.chat.completions.create({
         model: this.model,
         messages,
         max_tokens: request.maxTokens,
         temperature: request.temperature,
       })
 
+      if (!response.choices || response.choices.length === 0) {
+        throw new BuddyLLMError('Groq returned no choices')
+      }
+
       const choice = response.choices[0]
       return {
-        content: (choice?.message?.content as string | null) ?? '',
+        // Preserve the distinction between "empty string" and "no text at all"
+        // (e.g., a pure tool-call response has null content).
+        content: choice?.message?.content ?? undefined,
         finishReason: this.mapFinishReason(choice?.finish_reason ?? null),
         inputTokens: response.usage?.prompt_tokens ?? 0,
         outputTokens: response.usage?.completion_tokens ?? 0,
@@ -1787,8 +1935,21 @@ export class GroqProvider implements LLMProvider {
         latencyMs: Date.now() - start,
       }
     } catch (err) {
-      throw new BuddyLLMError('Groq request failed', err)
+      if (err instanceof BuddyLLMError) throw err
+      const status = err instanceof APIError ? err.status : undefined
+      const suffix = status !== undefined ? ` (HTTP ${status})` : ''
+      throw new BuddyLLMError(`Groq request failed${suffix}`, err)
     }
+  }
+
+  private getClient(): Groq {
+    if (!this.client) {
+      if (!this.options.apiKey) {
+        throw new BuddyLLMError('Groq request failed: api key is missing')
+      }
+      this.client = new Groq({ apiKey: this.options.apiKey })
+    }
+    return this.client
   }
 
   private mapFinishReason(raw: string | null): FinishReason {
@@ -1842,13 +2003,16 @@ Create `apps/api/test/unit/llm/providers/gemini.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GeminiProvider } from '../../../../src/services/llm/providers/gemini'
 
+// Note: GoogleGenerativeAI is invoked with `new ...` in the impl, so the
+// mock must be a function expression (not an arrow) — vitest 4 uses
+// Reflect.construct on the mock and arrow functions aren't constructors.
 vi.mock('@google/generative-ai', () => {
   const generateContentMock = vi.fn()
   const getGenerativeModelMock = vi.fn(() => ({ generateContent: generateContentMock }))
   return {
-    GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-      getGenerativeModel: getGenerativeModelMock,
-    })),
+    GoogleGenerativeAI: vi.fn().mockImplementation(function () {
+      return { getGenerativeModel: getGenerativeModelMock }
+    }),
     __generateContentMock: generateContentMock,
   }
 })
@@ -2035,10 +2199,15 @@ Create `apps/api/test/unit/llm/providers/claude.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ClaudeProvider } from '../../../../src/services/llm/providers/claude'
 
+// Note: the default export must be a function expression (not an arrow)
+// because the impl calls `new Anthropic(...)` — vitest 4 uses
+// Reflect.construct and arrow functions aren't constructors.
 vi.mock('@anthropic-ai/sdk', () => {
   const createMock = vi.fn()
   return {
-    default: vi.fn().mockImplementation(() => ({ messages: { create: createMock } })),
+    default: vi.fn().mockImplementation(function () {
+      return { messages: { create: createMock } }
+    }),
     __createMock: createMock,
   }
 })

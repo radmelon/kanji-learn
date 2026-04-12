@@ -8,13 +8,17 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
     "@fastify/cors": "^9.0.0",
     "@fastify/jwt": "^8.0.0",
     "@fastify/rate-limit": "^9.1.0",
+    "@google/generative-ai": "^0.24.1",
     "@kanji-learn/db": "workspace:*",
     "@kanji-learn/shared": "workspace:*",
     "dotenv": "^16.4.5",
@@ -22,6 +26,7 @@
     "expo-server-sdk": "^6.1.0",
     "fastify": "^4.28.0",
     "fastify-plugin": "^4.5.1",
+    "groq-sdk": "^1.1.2",
     "node-cron": "^4.2.1",
     "pino-pretty": "^11.0.0",
     "tsx": "^4.21.0",
@@ -32,6 +37,9 @@
     "@types/node": "^20.0.0",
     "@types/node-cron": "^3.0.11",
     "@types/wanakana": "^5.3.0",
-    "typescript": "^5.5.0"
+    "@vitest/ui": "^4.1.4",
+    "postgres": "^3.4.3",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.4"
   }
 }

@@ -17,6 +17,10 @@ expo-env.d.ts
 .env
 .env.local
 .env.*.local
+# Ad-hoc local env files for prod read-only claude_readonly audits, etc.
+# NEVER commit — contain database credentials.
+.env.prod.readonly
+.env.*.readonly
 
 # ── Turbo cache ───────────────────────────────────────────────────────────────
 .turbo/
@@ -48,6 +52,7 @@ pnpm-debug.log*
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 coverage/
+.env.test
 
 # ── Xcode (apps/watch/) ───────────────────────────────────────────────────────
 apps/watch/**/*.xcuserstate
