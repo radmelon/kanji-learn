@@ -16,6 +16,7 @@ import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { StatCard } from '../../src/components/ui/StatCard'
 import { InterventionBanner } from '../../src/components/ui/InterventionBanner'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
+import { JlptProgressGrid } from '../../src/components/ui/JlptProgressGrid'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 // ─── Info panel content ───────────────────────────────────────────────────────
@@ -428,7 +429,7 @@ export default function Dashboard() {
             </View>
 
             {/* ── JLPT Progress ── */}
-            {summary.velocity.levelProjections.length > 0 && (
+            {summary.jlptProgress && (
               <View style={styles.card}>
                 <View style={styles.cardRow}>
                   <Text style={styles.cardTitle}>JLPT Progress</Text>
@@ -437,46 +438,7 @@ export default function Dashboard() {
 
                 {activeInfo === 'jlpt' && <InfoPanel sections={INFO_JLPT_PROGRESS} />}
 
-                <View style={styles.jlptRows}>
-                  {summary.velocity.levelProjections.map((proj) => {
-                    const levelKey = proj.level.toLowerCase() as keyof typeof colors
-                    const levelColor = colors[levelKey] ?? colors.textMuted
-                    const bd = summary.jlptProgress?.[proj.level] ?? { learning: 0, reviewing: 0, remembered: 0, burned: 0 }
-                    const totalActive = bd.learning + bd.reviewing + bd.remembered + bd.burned
-                    const pct = proj.total > 0 ? Math.round((bd.burned / proj.total) * 100) : 0
-                    return (
-                      <View key={proj.level} style={styles.jlptRow}>
-                        {/* Level badge */}
-                        <View style={[styles.jlptBadge, { backgroundColor: levelColor + '22', borderColor: levelColor + '66' }]}>
-                          <Text style={[styles.jlptBadgeText, { color: levelColor }]}>{proj.level}</Text>
-                        </View>
-
-                        {/* Progress bar + numbers */}
-                        <View style={styles.jlptBarCol}>
-                          <View style={[styles.jlptBarTrack, { flexDirection: 'row' }]}>
-                            {bd.learning > 0 && <View style={{ width: `${(bd.learning / proj.total) * 100}%`, height: '100%', backgroundColor: colors.learning }} />}
-                            {bd.reviewing > 0 && <View style={{ width: `${(bd.reviewing / proj.total) * 100}%`, height: '100%', backgroundColor: colors.reviewing }} />}
-                            {bd.remembered > 0 && <View style={{ width: `${(bd.remembered / proj.total) * 100}%`, height: '100%', backgroundColor: colors.remembered }} />}
-                            {bd.burned > 0 && <View style={{ width: `${(bd.burned / proj.total) * 100}%`, height: '100%', backgroundColor: colors.burned }} />}
-                          </View>
-                          <View style={styles.jlptBarLabels}>
-                            <Text style={styles.jlptCount}>
-                              {totalActive}/{proj.total}
-                              <Text style={styles.jlptPct}> · {pct}% mastered</Text>
-                            </Text>
-                            {proj.projectedDate ? (
-                              <Text style={styles.jlptDate}>
-                                {new Date(proj.projectedDate).toLocaleDateString('en', { year: 'numeric', month: 'short' })}
-                              </Text>
-                            ) : pct === 100 ? (
-                              <Text style={[styles.jlptDate, { color: colors.success }]}>Complete ✓</Text>
-                            ) : null}
-                          </View>
-                        </View>
-                      </View>
-                    )
-                  })}
-                </View>
+                <JlptProgressGrid jlptProgress={summary.jlptProgress} />
               </View>
             )}
 
@@ -764,30 +726,6 @@ const styles = StyleSheet.create({
   quizStatItem: { alignItems: 'center', gap: 2 },
   quizStatValue: { ...typography.h3, color: colors.textPrimary },
   quizStatLabel: { ...typography.caption, color: colors.textMuted },
-
-  // JLPT Progress
-  jlptRows: { gap: spacing.sm, marginTop: spacing.xs },
-  jlptRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  jlptBadge: {
-    width: 36, height: 24,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  jlptBadgeText: { ...typography.caption, fontWeight: '800', letterSpacing: 0.5 },
-  jlptBarCol: { flex: 1, gap: 3 },
-  jlptBarTrack: {
-    height: 6,
-    backgroundColor: colors.bgSurface,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-  },
-  jlptBarFill: { height: '100%', borderRadius: radius.full },
-  jlptBarLabels: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  jlptCount: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
-  jlptPct: { ...typography.caption, color: colors.textMuted, fontWeight: '400' },
-  jlptDate: { ...typography.caption, color: colors.textMuted },
 
   // Accuracy by Type
   accTypeRows: { gap: spacing.sm, marginTop: spacing.xs },
