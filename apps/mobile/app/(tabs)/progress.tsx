@@ -11,6 +11,7 @@ import { useAnalytics } from '../../src/hooks/useAnalytics'
 import { useQuizAnalytics } from '../../src/hooks/useQuizAnalytics'
 import { useSessionHistory } from '../../src/hooks/useSessionHistory'
 import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
+import { JlptProgressGrid } from '../../src/components/ui/JlptProgressGrid'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { DailyStats } from '@kanji-learn/shared'
 import { JLPT_LEVELS, JLPT_KANJI_COUNTS } from '@kanji-learn/shared'
@@ -268,7 +269,7 @@ export default function ProgressScreen() {
             >
               {activeInfo === 'breakdown' && <InfoPanel sections={INFO_BREAKDOWN} />}
               <SrsStatusBar counts={summary.statusCounts} />
-              <JlptGrid jlptProgress={summary.jlptProgress} />
+              <JlptProgressGrid jlptProgress={summary.jlptProgress} />
             </Section>
 
             {/* Milestones */}
@@ -693,43 +694,6 @@ const chartStyles = StyleSheet.create({
   legend: { flexDirection: 'row', gap: spacing.md },
 })
 
-interface JlptBreakdown { learning: number; reviewing: number; remembered: number; burned: number }
-
-function JlptGrid({ jlptProgress }: { jlptProgress: Record<string, JlptBreakdown | number> }) {
-  return (
-    <View style={jlptStyles.grid}>
-      {JLPT_LEVELS.map((level) => {
-        const levelTotal = JLPT_KANJI_COUNTS[level]
-        const raw = jlptProgress[level]
-        const bd: JlptBreakdown = typeof raw === 'number'
-          ? { learning: 0, reviewing: 0, remembered: 0, burned: raw }
-          : raw ?? { learning: 0, reviewing: 0, remembered: 0, burned: 0 }
-        const total = bd.learning + bd.reviewing + bd.remembered + bd.burned
-        return (
-          <View key={level} style={jlptStyles.row}>
-            <Text style={jlptStyles.level}>{level}</Text>
-            <View style={jlptStyles.track}>
-              {bd.learning > 0 && <View style={[jlptStyles.seg, { width: `${(bd.learning / levelTotal) * 100}%`, backgroundColor: colors.learning }]} />}
-              {bd.reviewing > 0 && <View style={[jlptStyles.seg, { width: `${(bd.reviewing / levelTotal) * 100}%`, backgroundColor: colors.reviewing }]} />}
-              {bd.remembered > 0 && <View style={[jlptStyles.seg, { width: `${(bd.remembered / levelTotal) * 100}%`, backgroundColor: colors.remembered }]} />}
-              {bd.burned > 0 && <View style={[jlptStyles.seg, { width: `${(bd.burned / levelTotal) * 100}%`, backgroundColor: colors.burned }]} />}
-            </View>
-            <Text style={jlptStyles.count}>{total}/{levelTotal}</Text>
-          </View>
-        )
-      })}
-    </View>
-  )
-}
-
-const jlptStyles = StyleSheet.create({
-  grid: { gap: spacing.xs },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  level: { ...typography.caption, color: colors.textMuted, width: 24, fontWeight: '700' },
-  track: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden', flexDirection: 'row' },
-  seg: { height: '100%' },
-  count: { ...typography.caption, color: colors.textMuted, width: 64, textAlign: 'right' },
-})
 
 function AccuracyRow({ label, value, isCount }: { label: string; value: number; isCount?: boolean }) {
   return (
