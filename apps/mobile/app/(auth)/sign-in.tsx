@@ -12,11 +12,12 @@ import {
 import { Link } from 'expo-router'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { colors, spacing, radius, typography } from '../../src/theme'
+import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons'
 
 export default function SignIn() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const { signIn, isLoading } = useAuthStore()
+  const { signIn, isLoading, socialLoading } = useAuthStore()
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -40,6 +41,14 @@ export default function SignIn() {
         <Text style={styles.title}>Kanji Learn</Text>
         <Text style={styles.subtitle}>Master 2,136 Jōyō kanji</Text>
 
+        <SocialAuthButtons mode="sign-in" disabled={isLoading} />
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
         <TextInput
           style={styles.input}
           placeholder="Email"
@@ -59,9 +68,9 @@ export default function SignIn() {
         />
 
         <TouchableOpacity
-          style={[styles.button, isLoading && styles.buttonDisabled]}
+          style={[styles.button, (isLoading || socialLoading) && styles.buttonDisabled]}
           onPress={handleSignIn}
-          disabled={isLoading}
+          disabled={isLoading || socialLoading}
         >
           <Text style={styles.buttonText}>{isLoading ? 'Signing in…' : 'Sign in'}</Text>
         </TouchableOpacity>
@@ -113,4 +122,18 @@ const styles = StyleSheet.create({
   buttonText: { ...typography.h3, color: '#fff' },
   link: { alignItems: 'center', paddingVertical: spacing.sm },
   linkText: { ...typography.body, color: colors.accent },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
 })
