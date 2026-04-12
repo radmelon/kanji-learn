@@ -25,15 +25,15 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 
 ---
 
-## Phase 1 — Quick Wins (all S effort)
-*Polish and consistency fixes that touch existing code with minimal risk.*
+## Phase 1 — Quick Wins ✅ COMPLETE
+*Deployed 2026-04-11.*
 
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
-| 1 | Dashboard JLPT Bars: Match Progress Page Style | Med | No | Pending |
-| 2 | Swipe Up/Down Grading (Watch Parity) | Med | No | Pending |
-| 3 | Study Group: Top Performer Badge | Med | Yes | Pending |
-| 4 | Study Group: Expanded Shared Stats | Med | Yes | Pending |
+| 1 | Dashboard JLPT Bars: Match Progress Page Style | Med | No | ✅ Done |
+| 2 | Swipe Up/Down Grading (Watch Parity) | Med | No | ✅ Done (pre-existing) |
+| 3 | Study Group: Top Performer Badge | Med | Yes | ✅ Done |
+| 4 | Study Group: Expanded Shared Stats | Med | Yes | ✅ Done |
 
 **Why first:** Immediate visible improvements, low risk, builds on shipped features. Items 3 & 4 share the same social service code and should be done together.
 
