@@ -532,12 +532,17 @@ export default function Dashboard() {
             {activeInfo === 'leaderboard' && <InfoPanel sections={INFO_LEADERBOARD} />}
 
             {leaderboard.map((entry, i) => (
-              <View key={entry.userId} style={[styles.lbRow, entry.isMe && styles.lbRowMe]}>
-                <Text style={styles.lbRank}>{i + 1}</Text>
+              <View key={entry.userId} style={[styles.lbRow, i === 0 && styles.lbRowTop, entry.isMe && styles.lbRowMe]}>
+                {i === 0 ? (
+                  <Ionicons name="trophy" size={16} color={colors.accent} style={styles.lbRank} />
+                ) : (
+                  <Text style={styles.lbRank}>{i + 1}</Text>
+                )}
                 <View style={styles.lbInfo}>
                   <Text style={[styles.lbName, entry.isMe && styles.lbNameMe]} numberOfLines={1}>
                     {entry.displayName ?? 'Unknown'}
                     {entry.isMe ? ' (you)' : ''}
+                    {i === 0 ? ' · Top Performer' : ''}
                   </Text>
                   <Text style={styles.lbStats}>
                     {entry.totalReviewed.toLocaleString()} reviewed · {entry.totalBurned.toLocaleString()} burned
@@ -752,6 +757,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  lbRowTop: {
+    backgroundColor: colors.accent + '11',
+    borderRadius: radius.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.accent,
   },
   lbRowMe: { backgroundColor: colors.primary + '11', borderRadius: radius.sm, paddingHorizontal: spacing.xs },
   lbRank: { ...typography.bodySmall, color: colors.textMuted, fontWeight: '700', width: 20, textAlign: 'center' },
