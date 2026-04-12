@@ -16,11 +16,13 @@ export function SocialAuthButtons({ mode, disabled }: Props) {
 
   const isDisabled = disabled || socialLoading
 
+  const errorTitle = mode === 'sign-in' ? 'Sign in failed' : 'Sign up failed'
+
   const handleApple = async () => {
     try {
       await signInWithApple()
     } catch (err: any) {
-      Alert.alert('Sign in failed', err.message ?? "Couldn't connect. Please try again.")
+      Alert.alert(errorTitle, err.message ?? "Couldn't connect. Please try again.")
     }
   }
 
@@ -28,7 +30,7 @@ export function SocialAuthButtons({ mode, disabled }: Props) {
     try {
       await signInWithGoogle()
     } catch (err: any) {
-      Alert.alert('Sign in failed', err.message ?? "Couldn't connect. Please try again.")
+      Alert.alert(errorTitle, err.message ?? "Couldn't connect. Please try again.")
     }
   }
 

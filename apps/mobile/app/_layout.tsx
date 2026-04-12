@@ -79,17 +79,18 @@ export default function RootLayout() {
 
       const tokens = parseOAuthCallbackUrl(event.url)
       if (tokens) {
-        await supabase.auth.setSession({
+        const { error } = await supabase.auth.setSession({
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
         })
+        if (error) console.warn('[OAuth] setSession failed:', error.message)
       }
     }
 
     // Handle URL that launched the app (cold start)
-    Linking.getInitialURL().then((url) => {
-      if (url) handleUrl({ url })
-    })
+    Linking.getInitialURL()
+      .then((url) => { if (url) handleUrl({ url }) })
+      .catch((e) => console.warn('[OAuth] getInitialURL failed:', e))
 
     // Handle URL while app is running (warm start)
     const subscription = Linking.addEventListener('url', handleUrl)
