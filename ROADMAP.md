@@ -83,6 +83,7 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 | 14 | Adaptive Daily Goal | Med | Yes | Pending |
 | 15 | Data Export (CSV / JSON) | Med | Yes | Pending |
 | 16 | Pitch Accent Indicator | Med | Yes | Pending |
+| 16b | Speaking: Vocab Words Instead of Single Kanji Readings | Med | Yes | Pending |
 
 **Why grouped:**
 - Custom session builder is the natural extension of leech mode + cram mode from Phase 3 — all three share "filtered study session" infrastructure
