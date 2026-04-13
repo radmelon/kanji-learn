@@ -16,6 +16,7 @@ import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { StatCard } from '../../src/components/ui/StatCard'
 import { InterventionBanner } from '../../src/components/ui/InterventionBanner'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
+import { JlptProgressGrid } from '../../src/components/ui/JlptProgressGrid'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 // ─── Info panel content ───────────────────────────────────────────────────────
@@ -154,8 +155,8 @@ const INFO_LEADERBOARD: InfoSection[] = [
     body: 'Rankings compare study activity across all users of the app, or within your study group if you\'ve connected with friends. Position is determined by total kanji reviewed and burned since account creation.',
   },
   {
-    title: 'Reviewed',
-    body: 'Total Spaced Repetition System (SRS) review answers submitted. Each answer is a flashcard graded during a daily review session. A high review count reflects sustained, long-term study effort — though it\'s possible to inflate this number by grinding easy cards.',
+    title: 'Avg / Day',
+    body: 'Average reviews per active day over the last 30 days. Reflects sustainable pace.',
   },
   {
     title: 'Burned 🔥',
@@ -428,7 +429,7 @@ export default function Dashboard() {
             </View>
 
             {/* ── JLPT Progress ── */}
-            {summary.velocity.levelProjections.length > 0 && (
+            {summary.jlptProgress && (
               <View style={styles.card}>
                 <View style={styles.cardRow}>
                   <Text style={styles.cardTitle}>JLPT Progress</Text>
@@ -437,46 +438,7 @@ export default function Dashboard() {
 
                 {activeInfo === 'jlpt' && <InfoPanel sections={INFO_JLPT_PROGRESS} />}
 
-                <View style={styles.jlptRows}>
-                  {summary.velocity.levelProjections.map((proj) => {
-                    const levelKey = proj.level.toLowerCase() as keyof typeof colors
-                    const levelColor = colors[levelKey] ?? colors.textMuted
-                    const bd = summary.jlptProgress?.[proj.level] ?? { learning: 0, reviewing: 0, remembered: 0, burned: 0 }
-                    const totalActive = bd.learning + bd.reviewing + bd.remembered + bd.burned
-                    const pct = proj.total > 0 ? Math.round((bd.burned / proj.total) * 100) : 0
-                    return (
-                      <View key={proj.level} style={styles.jlptRow}>
-                        {/* Level badge */}
-                        <View style={[styles.jlptBadge, { backgroundColor: levelColor + '22', borderColor: levelColor + '66' }]}>
-                          <Text style={[styles.jlptBadgeText, { color: levelColor }]}>{proj.level}</Text>
-                        </View>
-
-                        {/* Progress bar + numbers */}
-                        <View style={styles.jlptBarCol}>
-                          <View style={[styles.jlptBarTrack, { flexDirection: 'row' }]}>
-                            {bd.learning > 0 && <View style={{ width: `${(bd.learning / proj.total) * 100}%`, height: '100%', backgroundColor: colors.learning }} />}
-                            {bd.reviewing > 0 && <View style={{ width: `${(bd.reviewing / proj.total) * 100}%`, height: '100%', backgroundColor: colors.reviewing }} />}
-                            {bd.remembered > 0 && <View style={{ width: `${(bd.remembered / proj.total) * 100}%`, height: '100%', backgroundColor: colors.remembered }} />}
-                            {bd.burned > 0 && <View style={{ width: `${(bd.burned / proj.total) * 100}%`, height: '100%', backgroundColor: colors.burned }} />}
-                          </View>
-                          <View style={styles.jlptBarLabels}>
-                            <Text style={styles.jlptCount}>
-                              {totalActive}/{proj.total}
-                              <Text style={styles.jlptPct}> · {pct}% mastered</Text>
-                            </Text>
-                            {proj.projectedDate ? (
-                              <Text style={styles.jlptDate}>
-                                {new Date(proj.projectedDate).toLocaleDateString('en', { year: 'numeric', month: 'short' })}
-                              </Text>
-                            ) : pct === 100 ? (
-                              <Text style={[styles.jlptDate, { color: colors.success }]}>Complete ✓</Text>
-                            ) : null}
-                          </View>
-                        </View>
-                      </View>
-                    )
-                  })}
-                </View>
+                <JlptProgressGrid jlptProgress={summary.jlptProgress} />
               </View>
             )}
 
@@ -570,21 +532,20 @@ export default function Dashboard() {
             {activeInfo === 'leaderboard' && <InfoPanel sections={INFO_LEADERBOARD} />}
 
             {leaderboard.map((entry, i) => (
-              <View key={entry.userId} style={[styles.lbRow, entry.isMe && styles.lbRowMe]}>
-                <Text style={styles.lbRank}>{i + 1}</Text>
+              <View key={entry.userId} style={[styles.lbRow, i === 0 && styles.lbRowTop, entry.isMe && styles.lbRowMe]}>
+                {i === 0 ? (
+                  <Ionicons name="trophy" size={16} color={colors.accent} style={styles.lbRank} />
+                ) : (
+                  <Text style={styles.lbRank}>{i + 1}</Text>
+                )}
                 <View style={styles.lbInfo}>
                   <Text style={[styles.lbName, entry.isMe && styles.lbNameMe]} numberOfLines={1}>
                     {entry.displayName ?? 'Unknown'}
                     {entry.isMe ? ' (you)' : ''}
+                    {i === 0 ? ' · Top Performer' : ''}
                   </Text>
                   <Text style={styles.lbStats}>
-                    {entry.totalReviewed.toLocaleString()} reviewed · {entry.totalBurned.toLocaleString()} burned
-                  </Text>
-                </View>
-                <View style={styles.lbStreak}>
-                  <Ionicons name="flame" size={14} color={entry.streak > 0 ? colors.accent : colors.textMuted} />
-                  <Text style={[styles.lbStreakText, { color: entry.streak > 0 ? colors.accent : colors.textMuted }]}>
-                    {entry.streak}
+                    {entry.dailyAverage}/day · {entry.totalBurned.toLocaleString()} mastered · {entry.streak}d streak
                   </Text>
                 </View>
               </View>
@@ -765,30 +726,6 @@ const styles = StyleSheet.create({
   quizStatValue: { ...typography.h3, color: colors.textPrimary },
   quizStatLabel: { ...typography.caption, color: colors.textMuted },
 
-  // JLPT Progress
-  jlptRows: { gap: spacing.sm, marginTop: spacing.xs },
-  jlptRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  jlptBadge: {
-    width: 36, height: 24,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  jlptBadgeText: { ...typography.caption, fontWeight: '800', letterSpacing: 0.5 },
-  jlptBarCol: { flex: 1, gap: 3 },
-  jlptBarTrack: {
-    height: 6,
-    backgroundColor: colors.bgSurface,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-  },
-  jlptBarFill: { height: '100%', borderRadius: radius.full },
-  jlptBarLabels: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  jlptCount: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
-  jlptPct: { ...typography.caption, color: colors.textMuted, fontWeight: '400' },
-  jlptDate: { ...typography.caption, color: colors.textMuted },
-
   // Accuracy by Type
   accTypeRows: { gap: spacing.sm, marginTop: spacing.xs },
   accTypeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -815,12 +752,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  lbRowTop: {
+    backgroundColor: colors.accent + '11',
+    borderRadius: radius.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.accent,
+  },
   lbRowMe: { backgroundColor: colors.primary + '11', borderRadius: radius.sm, paddingHorizontal: spacing.xs },
   lbRank: { ...typography.bodySmall, color: colors.textMuted, fontWeight: '700', width: 20, textAlign: 'center' },
   lbInfo: { flex: 1, gap: 1 },
   lbName: { ...typography.body, color: colors.textPrimary },
   lbNameMe: { color: colors.primary, fontWeight: '600' },
   lbStats: { ...typography.caption, color: colors.textMuted },
-  lbStreak: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  lbStreakText: { ...typography.bodySmall, fontWeight: '700' },
 })

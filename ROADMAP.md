@@ -25,15 +25,15 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 
 ---
 
-## Phase 1 — Quick Wins (all S effort)
-*Polish and consistency fixes that touch existing code with minimal risk.*
+## Phase 1 — Quick Wins ✅ COMPLETE
+*Deployed 2026-04-11.*
 
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
-| 1 | Dashboard JLPT Bars: Match Progress Page Style | Med | No | Pending |
-| 2 | Swipe Up/Down Grading (Watch Parity) | Med | No | Pending |
-| 3 | Study Group: Top Performer Badge | Med | Yes | Pending |
-| 4 | Study Group: Expanded Shared Stats | Med | Yes | Pending |
+| 1 | Dashboard JLPT Bars: Match Progress Page Style | Med | No | ✅ Done |
+| 2 | Swipe Up/Down Grading (Watch Parity) | Med | No | ✅ Done (pre-existing) |
+| 3 | Study Group: Top Performer Badge | Med | Yes | ✅ Done |
+| 4 | Study Group: Expanded Shared Stats | Med | Yes | ✅ Done |
 
 **Why first:** Immediate visible improvements, low risk, builds on shipped features. Items 3 & 4 share the same social service code and should be done together.
 
@@ -44,16 +44,20 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
-| 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | Pending |
-| 6 | Onboarding Tutorial | High | No | Pending |
+| 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ✅ Done — Apple + Google verified on TestFlight build 111 |
+| 6 | Onboarding Tutorial + User Questionnaire | High | Yes | Pending |
 | 7 | Dark / Light Theme Toggle | High | No | Pending |
 | 8 | Heatmap Calendar View | High | No | Pending |
+| 9 | Splash Screen Polish: solid bg color, longer display duration, branding imagery | Med | No | Pending |
+| 10 | About/Credits Page: add app branding imagery and credits | Low | No | Pending |
+| 11 | Rebrand: Kanji Learn → Kanji Buddy | Med | No | Pending |
 
 **Why this order:**
 - OAuth first — App Store requires Sign in with Apple if you offer any social login, and it's the #1 sign-up friction reducer
-- Onboarding right after — new OAuth users need guidance
+- Onboarding right after — new OAuth users need guidance. Includes user questionnaire (interests, reasons for learning, country) to populate the existing JSONB profile columns and personalize the AI Buddy experience later (Phase 6)
 - Theme toggle — highly requested, affects the entire UI (better to do before building more screens)
 - Heatmap — strong retention/motivation feature, purely frontend
+- Rebrand last in Phase 2 — ship the new name alongside onboarding + social login as a clean "v2 launch" moment. Touches app.json, App Store listing, sign-in/sign-up headers, Watch app name, all hardcoded strings
 
 ---
 
@@ -83,6 +87,7 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 | 14 | Adaptive Daily Goal | Med | Yes | Pending |
 | 15 | Data Export (CSV / JSON) | Med | Yes | Pending |
 | 16 | Pitch Accent Indicator | Med | Yes | Pending |
+| 16b | Speaking: Vocab Words Instead of Single Kanji Readings | Med | Yes | Pending |
 
 **Why grouped:**
 - Custom session builder is the natural extension of leech mode + cram mode from Phase 3 — all three share "filtered study session" infrastructure
@@ -120,6 +125,21 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 - Multiple decks is an architectural change (schema, SRS service, all UI) — highest risk
 - Reading passages are a new product surface, not an improvement to an existing one
 - AI study plan benefits from leech data (Phase 3) and session builder infrastructure (Phase 4)
+
+---
+
+## Known Bugs
+*Tracked issues to fix. Prioritize before new feature work.*
+
+| # | Severity | Issue | Location |
+|---|----------|-------|----------|
+| B1 | Critical | Push notifications never arrive — APNs key not configured in Expo project | Apple Developer Console / expo.dev credentials |
+| B2 | Critical | Watch UserDefaults key mismatch: writes `kl_rest_day`, reads `kl_rest_day_raw` | `BackgroundRefreshHandler.swift:50` |
+| B3 | High | `watchEnabled` flag never sent from iPhone to Watch | `auth.store.ts` / `pushToWatch()` |
+| B4 | High | Accuracy metric on Dashboard may be inaccurate | Dashboard / API |
+| B5 | High | Kanji card reveal: hint text under eval buttons missing "Easy" and right arrow | Review card component |
+| B6 | Medium | Text/background contrast too low across the app | `theme/index.ts` |
+| B7 | Medium | Romaji toggle on kanji cards in study section does nothing | Review card component |
 
 ---
 

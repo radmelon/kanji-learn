@@ -11,6 +11,8 @@ import { usePushNotifications } from '../src/hooks/usePushNotifications'
 import { useNetworkStatus } from '../src/hooks/useNetworkStatus'
 import { useReviewStore } from '../src/stores/review.store'
 import { colors } from '../src/theme'
+import { parseOAuthCallbackUrl } from '../src/lib/oauth'
+import { supabase } from '../src/lib/supabase'
 
 export default function RootLayout() {
   const { isInitialized, session, initialize } = useAuthStore()
@@ -68,6 +70,36 @@ export default function RootLayout() {
 
   useEffect(() => {
     initialize()
+  }, [])
+
+  // Handle OAuth callback deep links
+  useEffect(() => {
+    const handleUrl = async (event: { url: string }) => {
+      if (!event.url.includes('auth/callback')) return
+
+      const parsed = parseOAuthCallbackUrl(event.url)
+      if (!parsed) return
+
+      if ('code' in parsed) {
+        const { error } = await supabase.auth.exchangeCodeForSession(parsed.code)
+        if (error) console.warn('[OAuth] exchangeCodeForSession failed:', error.message)
+      } else {
+        const { error } = await supabase.auth.setSession({
+          access_token: parsed.access_token,
+          refresh_token: parsed.refresh_token,
+        })
+        if (error) console.warn('[OAuth] setSession failed:', error.message)
+      }
+    }
+
+    // Handle URL that launched the app (cold start)
+    Linking.getInitialURL()
+      .then((url) => { if (url) handleUrl({ url }) })
+      .catch((e) => console.warn('[OAuth] getInitialURL failed:', e))
+
+    // Handle URL while app is running (warm start)
+    const subscription = Linking.addEventListener('url', handleUrl)
+    return () => subscription.remove()
   }, [])
 
   useEffect(() => {

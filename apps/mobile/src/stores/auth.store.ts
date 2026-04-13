@@ -3,6 +3,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { NativeModules, Platform } from 'react-native'
 import { supabase } from '../lib/supabase'
 import { storage } from '../lib/storage'
+import { startOAuthFlow } from '../lib/oauth'
 
 // ─── WatchConnectivity native bridge ─────────────────────────────────────────
 
@@ -76,9 +77,12 @@ interface AuthState {
   session: Session | null
   user: User | null
   isLoading: boolean
+  socialLoading: boolean
   isInitialized: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, displayName: string) => Promise<void>
+  signInWithApple: () => Promise<void>
+  signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   setSession: (session: Session | null) => void
   initialize: () => Promise<void>
@@ -92,6 +96,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   user: null,
   isLoading: false,
+  socialLoading: false,
   isInitialized: false,
 
   initialize: async () => {
@@ -137,6 +142,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ session: data.session, user: data.user })
     } finally {
       set({ isLoading: false })
+    }
+  },
+
+  signInWithApple: async () => {
+    set({ socialLoading: true })
+    try {
+      await startOAuthFlow('apple')
+      // Session is set via onAuthStateChange listener in initialize()
+    } finally {
+      set({ socialLoading: false })
+    }
+  },
+
+  signInWithGoogle: async () => {
+    set({ socialLoading: true })
+    try {
+      await startOAuthFlow('google')
+      // Session is set via onAuthStateChange listener in initialize()
+    } finally {
+      set({ socialLoading: false })
     }
   },
 
