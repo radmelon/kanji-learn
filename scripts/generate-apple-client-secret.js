@@ -48,9 +48,11 @@ const privateKey = fs.readFileSync(keyFile, 'utf8')
 
 // ── Build JWT ────────────────────────────────────────────────────────────────
 
-function base64url(obj) {
-  const str = typeof obj === 'string' ? obj : JSON.stringify(obj)
-  return Buffer.from(str)
+function base64url(input) {
+  const buf = Buffer.isBuffer(input)
+    ? input
+    : Buffer.from(typeof input === 'string' ? input : JSON.stringify(input))
+  return buf
     .toString('base64')
     .replace(/=/g, '')
     .replace(/\+/g, '-')
@@ -99,7 +101,7 @@ function derToRaw(derSig) {
 }
 
 const rawSig = derToRaw(signature)
-const jwt = signingInput + '.' + base64url(rawSig.toString('binary'))
+const jwt = signingInput + '.' + base64url(rawSig)
 
 // ── Output ───────────────────────────────────────────────────────────────────
 
