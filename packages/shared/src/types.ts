@@ -198,3 +198,49 @@ export interface PlacementResult {
   kanjiId: number
   passed: boolean
 }
+
+// ─── Tutor Sharing ───────────────────────────────────────────────────────
+
+export type TutorShareStatus = 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired'
+
+export interface TutorShare {
+  id: string
+  userId: string
+  teacherEmail: string
+  status: TutorShareStatus
+  termsAcceptedAt: string | null
+  declinedAt: string | null
+  expiresAt: string
+  revokedAt: string | null
+  createdAt: string
+}
+
+export interface TutorNote {
+  id: string
+  shareId: string
+  noteText: string
+  createdAt: string
+}
+
+export interface TutorAnalysis {
+  strengths: string[]
+  areasForImprovement: string[]
+  recommendations: string[]
+  observations: string[]
+  generatedAt: string
+}
+
+// ─── Placement Persistence ───────────────────────────────────────────────
+
+export interface PlacementSummary {
+  passedByLevel: Partial<Record<JlptLevel, number>>
+  totalByLevel: Partial<Record<JlptLevel, number>>
+}
+
+export interface PlacementSessionRecord {
+  id: string
+  startedAt: string
+  completedAt: string | null
+  inferredLevel: string | null
+  summaryJson: PlacementSummary | null
+}
