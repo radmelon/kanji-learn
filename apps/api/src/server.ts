@@ -18,6 +18,7 @@ import { placementRoutes } from './routes/placement.js'
 import { testRoutes } from './routes/test.js'
 import { socialRoutes } from './routes/social.js'
 import { internalRoutes } from './routes/internal.js'
+import { learnerProfileRoutes } from './routes/learner-profile.js'
 
 // ── Buddy layer: LLM router + buddy services ────────────────────────────────
 import { GroqProvider } from './services/llm/providers/groq.js'
@@ -115,6 +116,7 @@ export async function buildServer() {
 
   await server.register(healthRoutes)
   await server.register(userRoutes, { prefix: '/v1/user' })
+  await server.register(learnerProfileRoutes, { prefix: '/v1/user' })
   await server.register(reviewRoutes, { prefix: '/v1/review' })
   await server.register(mnemonicRoutes, { prefix: '/v1/mnemonics' })
   await server.register(analyticsRoutes, { prefix: '/v1/analytics' })

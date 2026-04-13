@@ -10,7 +10,7 @@ export const JLPT_KANJI_COUNTS = {
   N1: 1308,
 } as const
 
-export const TOTAL_JOUYOU_KANJI = 2294
+export const TOTAL_JOUYOU_KANJI = 2136 // 2010 Jōyō list — does not include Jinmeiyō
 
 // ─── SRS ──────────────────────────────────────────────────────────────────────
 

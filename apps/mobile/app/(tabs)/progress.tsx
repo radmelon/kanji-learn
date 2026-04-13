@@ -14,6 +14,7 @@ import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { JlptProgressGrid } from '../../src/components/ui/JlptProgressGrid'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { DailyStats } from '@kanji-learn/shared'
+import { TOTAL_JOUYOU_KANJI } from '@kanji-learn/shared'
 import { computeMilestones } from '../../src/constants/milestones'
 
 type Period = '7d' | '30d' | '90d'
@@ -244,7 +245,7 @@ export default function ProgressScreen() {
               <HeroStat
                 icon="library"
                 iconColor={colors.primary}
-                value={`${Math.round((summary.totalSeen / 2294) * 100)}%`}
+                value={`${Math.round((summary.totalSeen / TOTAL_JOUYOU_KANJI) * 100)}%`}
                 label="Seen"
               />
               <HeroStat
