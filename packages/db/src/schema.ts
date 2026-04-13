@@ -869,6 +869,103 @@ export const buddyLlmUsage = pgTable(
   })
 )
 
+// ─── Tutor Sharing ───────────────────────────────────────────────────────
+
+export const tutorShareStatusEnum = pgEnum('tutor_share_status', [
+  'pending', 'accepted', 'declined', 'revoked', 'expired',
+])
+
+export const tutorShares = pgTable(
+  'tutor_shares',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    teacherEmail: text('teacher_email').notNull(),
+    token: text('token').notNull(),
+    status: tutorShareStatusEnum('status').notNull().default('pending'),
+    termsAcceptedAt: timestamp('terms_accepted_at', { withTimezone: true }),
+    declinedAt: timestamp('declined_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenUnique: uniqueIndex('tutor_share_token_idx').on(t.token),
+    userIdx: index('tutor_share_user_idx').on(t.userId),
+    userStatusIdx: index('tutor_share_user_status_idx').on(t.userId, t.status),
+  })
+)
+
+export const tutorNotes = pgTable(
+  'tutor_notes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    shareId: uuid('share_id')
+      .notNull()
+      .references(() => tutorShares.id, { onDelete: 'cascade' }),
+    noteText: text('note_text').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    shareIdx: index('tutor_notes_share_idx').on(t.shareId),
+  })
+)
+
+export const tutorAnalysisCache = pgTable(
+  'tutor_analysis_cache',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    analysisJson: jsonb('analysis_json').notNull(),
+    generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdx: uniqueIndex('tutor_analysis_user_idx').on(t.userId),
+  })
+)
+
+// ─── Placement Persistence ───────────────────────────────────────────────
+
+export const placementSessions = pgTable(
+  'placement_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    inferredLevel: text('inferred_level'),
+    summaryJson: jsonb('summary_json'),
+  },
+  (t) => ({
+    userIdx: index('placement_session_user_idx').on(t.userId, t.startedAt),
+  })
+)
+
+export const placementResults = pgTable(
+  'placement_results',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => placementSessions.id, { onDelete: 'cascade' }),
+    kanjiId: integer('kanji_id')
+      .notNull()
+      .references(() => kanji.id, { onDelete: 'cascade' }),
+    jlptLevel: text('jlpt_level').notNull(),
+    passed: boolean('passed').notNull(),
+  },
+  (t) => ({
+    sessionIdx: index('placement_result_session_idx').on(t.sessionId),
+  })
+)
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const kanjiRelations = relations(kanji, ({ many }) => ({
@@ -938,4 +1035,23 @@ export const testResultsRelations = relations(testResults, ({ one }) => ({
   session: one(testSessions, { fields: [testResults.testSessionId], references: [testSessions.id] }),
   user: one(userProfiles, { fields: [testResults.userId], references: [userProfiles.id] }),
   kanji: one(kanji, { fields: [testResults.kanjiId], references: [kanji.id] }),
+}))
+
+export const tutorSharesRelations = relations(tutorShares, ({ one, many }) => ({
+  user: one(userProfiles, { fields: [tutorShares.userId], references: [userProfiles.id] }),
+  notes: many(tutorNotes),
+}))
+
+export const tutorNotesRelations = relations(tutorNotes, ({ one }) => ({
+  share: one(tutorShares, { fields: [tutorNotes.shareId], references: [tutorShares.id] }),
+}))
+
+export const placementSessionsRelations = relations(placementSessions, ({ one, many }) => ({
+  user: one(userProfiles, { fields: [placementSessions.userId], references: [userProfiles.id] }),
+  results: many(placementResults),
+}))
+
+export const placementResultsRelations = relations(placementResults, ({ one }) => ({
+  session: one(placementSessions, { fields: [placementResults.sessionId], references: [placementSessions.id] }),
+  kanji: one(kanji, { fields: [placementResults.kanjiId], references: [kanji.id] }),
 }))
