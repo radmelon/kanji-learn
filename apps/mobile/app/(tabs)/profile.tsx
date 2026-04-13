@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Switch, ActivityIndicator, Alert, RefreshControl, Share,
+  FlatList, Modal,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -13,6 +14,8 @@ import { useNetworkStatus } from '../../src/hooks/useNetworkStatus'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { useSocial } from '../../src/hooks/useSocial'
 import type { SearchResult } from '../../src/hooks/useSocial'
+import { useLearnerProfile } from '../../src/hooks/useLearnerProfile'
+import { COUNTRIES, ONBOARDING_CONTENT } from '../../src/config/onboarding-content'
 
 const PROFILE_CACHE_KEY = 'kl:profile_cache'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -97,6 +100,23 @@ export default function ProfileScreen() {
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
 
+  // ─── Learning profile ─────────────────────────────────────────────────────────
+  const { learnerProfile, update: updateLearnerProfile } = useLearnerProfile()
+
+  const [lpCountry, setLpCountry] = useState<string | null>(null)
+  const [lpReasons, setLpReasons] = useState<string[]>([])
+  const [lpInterests, setLpInterests] = useState<string[]>([])
+  const [lpDirty, setLpDirty] = useState(false)
+  const [lpSaving, setLpSaving] = useState(false)
+  const [lpError, setLpError] = useState<string | null>(null)
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false)
+  const [lpCountrySearch, setLpCountrySearch] = useState('')
+
+  const INTEREST_OPTIONS = [
+    'Manga', 'Anime', 'Gaming', 'Literature', 'Film',
+    'Travel', 'Business', 'History', 'Technology', 'Other',
+  ]
+
   // ── Load profile ─────────────────────────────────────────────────────────
 
   const applyProfile = useCallback((data: UserProfile) => {
@@ -143,6 +163,13 @@ export default function ProfileScreen() {
       if (v) loadWatchStatus()
     })
   }, [loadProfile, loadWatchStatus])
+
+  useEffect(() => {
+    if (!learnerProfile) return
+    setLpCountry(learnerProfile.country)
+    setLpReasons(learnerProfile.reasonsForLearning)
+    setLpInterests(learnerProfile.interests)
+  }, [learnerProfile])
 
   // ── Save helpers ─────────────────────────────────────────────────────────
 
@@ -246,6 +273,38 @@ export default function ProfileScreen() {
       ]
     )
   }, [signOut])
+
+  const toggleLpReason = useCallback((chip: string) => {
+    setLpReasons((prev) => {
+      const next = prev.includes(chip) ? prev.filter((r) => r !== chip) : [...prev, chip]
+      setLpDirty(true)
+      return next
+    })
+  }, [])
+
+  const toggleLpInterest = useCallback((chip: string) => {
+    setLpInterests((prev) => {
+      const next = prev.includes(chip) ? prev.filter((r) => r !== chip) : [...prev, chip]
+      setLpDirty(true)
+      return next
+    })
+  }, [])
+
+  const handleLpSave = useCallback(async () => {
+    setLpSaving(true)
+    setLpError(null)
+    const ok = await updateLearnerProfile({
+      country: lpCountry,
+      reasonsForLearning: lpReasons,
+      interests: lpInterests,
+    })
+    if (ok) {
+      setLpDirty(false)
+    } else {
+      setLpError('Failed to save. Please try again.')
+    }
+    setLpSaving(false)
+  }, [lpCountry, lpReasons, lpInterests, updateLearnerProfile])
 
   // ── Loading ───────────────────────────────────────────────────────────────
 
@@ -445,6 +504,90 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </Section>
 
+        {/* Learning Profile */}
+        <Section title="Learning Profile">
+          {/* Country */}
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => setCountryPickerVisible(true)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="globe-outline" size={20} color={colors.textSecondary} />
+              <View>
+                <Text style={styles.rowLabel}>Country</Text>
+                <Text style={styles.rowSub}>
+                  {lpCountry
+                    ? (COUNTRIES.find((c) => c.code === lpCountry)?.name ?? lpCountry)
+                    : 'Not set'}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          {/* Focus / reasons for learning */}
+          <View style={[styles.row, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
+            <Text style={styles.rowLabel}>What I'm focused on right now</Text>
+            <View style={lpStyles.chipsWrap}>
+              {ONBOARDING_CONTENT.focus.chips.map((chip) => {
+                const selected = lpReasons.includes(chip)
+                return (
+                  <TouchableOpacity
+                    key={chip}
+                    style={[lpStyles.chip, selected && lpStyles.chipSelected]}
+                    onPress={() => toggleLpReason(chip)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[lpStyles.chipText, selected && lpStyles.chipTextSelected]}>
+                      {chip}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </View>
+
+          {/* Interests */}
+          <View style={[styles.row, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
+            <Text style={styles.rowLabel}>My interests</Text>
+            <View style={lpStyles.chipsWrap}>
+              {INTEREST_OPTIONS.map((chip) => {
+                const selected = lpInterests.includes(chip)
+                return (
+                  <TouchableOpacity
+                    key={chip}
+                    style={[lpStyles.chip, selected && lpStyles.chipSelected]}
+                    onPress={() => toggleLpInterest(chip)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[lpStyles.chipText, selected && lpStyles.chipTextSelected]}>
+                      {chip}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </View>
+
+          {/* Save button (dirty only) */}
+          {lpDirty && (
+            <View style={lpStyles.saveRow}>
+              {lpError && <Text style={lpStyles.errorText}>{lpError}</Text>}
+              <TouchableOpacity
+                style={[lpStyles.saveBtn, lpSaving && lpStyles.saveBtnDisabled]}
+                onPress={handleLpSave}
+                disabled={lpSaving}
+                activeOpacity={0.8}
+              >
+                {lpSaving
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={lpStyles.saveBtnText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          )}
+        </Section>
+
         {/* Study Mates */}
         <Section title="Study Mates">
           {/* Search */}
@@ -569,9 +712,117 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
       </ScrollView>
+
+      {/* Country picker modal for Learning Profile */}
+      <Modal
+        visible={countryPickerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setCountryPickerVisible(false); setLpCountrySearch('') }}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
+          <View style={[styles.row, { borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: spacing.md }]}>
+            <Text style={[styles.rowLabel, { flex: 1, fontSize: 17 }]}>Select Country</Text>
+            <TouchableOpacity onPress={() => { setCountryPickerVisible(false); setLpCountrySearch('') }}>
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            style={[styles.textInput, { margin: spacing.md, borderRadius: radius.md }]}
+            placeholder="Search…"
+            placeholderTextColor={colors.textMuted}
+            value={lpCountrySearch}
+            onChangeText={setLpCountrySearch}
+            autoFocus
+          />
+          <FlatList
+            data={
+              lpCountrySearch.trim()
+                ? COUNTRIES.filter((c) => c.name.toLowerCase().includes(lpCountrySearch.toLowerCase()))
+                : COUNTRIES
+            }
+            keyExtractor={(item) => item.code}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[styles.row, { paddingHorizontal: spacing.md }]}
+                onPress={() => {
+                  setLpCountry(item.code)
+                  setLpDirty(true)
+                  setCountryPickerVisible(false)
+                  setLpCountrySearch('')
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.rowLabel}>{item.name}</Text>
+                {lpCountry === item.code && (
+                  <Ionicons name="checkmark" size={18} color={colors.primary} />
+                )}
+              </TouchableOpacity>
+            )}
+            ItemSeparatorComponent={() => (
+              <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: spacing.lg }} />
+            )}
+            keyboardShouldPersistTaps="handled"
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }
+
+// ─── Learning Profile styles ──────────────────────────────────────────────────
+
+const lpStyles = StyleSheet.create({
+  chipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  chipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  chipTextSelected: {
+    color: '#0F0F1A',
+  },
+  saveRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  saveBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveBtnText: {
+    fontWeight: '700',
+    color: '#0F0F1A',
+    fontSize: 15,
+  },
+  errorText: {
+    fontSize: 13,
+    color: colors.error,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+})
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
