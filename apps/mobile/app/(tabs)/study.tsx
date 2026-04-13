@@ -465,7 +465,7 @@ function StudySession() {
         {isRevealed ? (
           <>
             <GradeButtons onGrade={handleGrade} />
-            <Text style={styles.swipeHint}>← Again · ↑ Good · ↓ Hard</Text>
+            <Text style={styles.swipeHint}>← Again · ↑ Good · ↓ Hard · → Easy</Text>
           </>
         ) : (
           <View style={styles.revealHint}>

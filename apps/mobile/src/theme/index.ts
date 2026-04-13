@@ -30,7 +30,7 @@ export const colors = {
   // Text
   textPrimary: '#F0F0F5',
   textSecondary: '#A0A0B0',
-  textMuted: '#5A5A70',
+  textMuted: '#6E6E8A',
 
   // UI
   border: '#2A2A3E',

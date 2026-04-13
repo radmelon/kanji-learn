@@ -34,10 +34,8 @@ async function pushToWatch(session: Session, force = false): Promise<PushResult 
   if (!WatchConnectivity) return null
 
   try {
-    if (!force) {
-      const isEnabled = await storage.getItem<boolean>(WATCH_ENABLED_KEY)
-      if (!isEnabled) return null
-    }
+    const watchEnabled = (await storage.getItem<boolean>(WATCH_ENABLED_KEY)) ?? false
+    if (!force && !watchEnabled) return null
 
     // Read cached profile for settings needed by Watch encouragement messages
     const profile = await storage.getItem<{
@@ -60,6 +58,7 @@ async function pushToWatch(session: Session, force = false): Promise<PushResult 
       expiresAt,
       supabaseURL,
       apiBaseURL,
+      watchEnabled,
       profile?.dailyGoal ?? 20,
       profile?.reminderHour ?? 20,
       profile?.restDay ?? -1,  // -1 = no rest day

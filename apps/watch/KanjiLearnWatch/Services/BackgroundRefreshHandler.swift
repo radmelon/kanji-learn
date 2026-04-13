@@ -47,7 +47,7 @@ final class BackgroundRefreshHandler {
         let defaults = UserDefaults.standard
         let reminderHourRaw = defaults.integer(forKey: "kl_reminder_hour")
         let reminderHour = reminderHourRaw == 0 ? 20 : reminderHourRaw
-        let restDayRaw = defaults.integer(forKey: "kl_rest_day_raw") // -1 = no rest day
+        let restDayRaw = defaults.integer(forKey: "kl_rest_day") // -1 = no rest day
 
         let cal = Calendar.current
         let now = Date()
