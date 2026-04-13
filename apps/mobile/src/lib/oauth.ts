@@ -61,6 +61,8 @@ export function parseOAuthCallbackUrl(
  * Returns silently if the user cancels.
  */
 export async function startOAuthFlow(provider: Provider): Promise<void> {
+  console.log('[OAuth] Redirect URI:', OAUTH_REDIRECT_URI)
+
   // 1. Get the OAuth URL from Supabase
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
@@ -79,10 +81,14 @@ export async function startOAuthFlow(provider: Provider): Promise<void> {
   // 3. Handle cancel
   if (result.type !== 'success') return
 
+  // DEBUG: Log the callback URL to diagnose Apple OAuth issues
+  console.log('[OAuth] Callback URL:', result.url)
+
   // 4. Parse tokens or auth code from callback URL
   const parsed = parseOAuthCallbackUrl(result.url)
   if (!parsed) {
-    throw new Error('Failed to parse authentication tokens from callback')
+    // Include the URL in the error so we can see what Apple actually returned
+    throw new Error(`OAuth callback parse failed. URL: ${result.url}`)
   }
 
   // 5. Complete the auth flow
