@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { storage } from '../lib/storage'
 import { startOAuthFlow } from '../lib/oauth'
 import { clearProfileCache } from '../hooks/useProfile'
+import { clearLearnerProfileCache } from '../hooks/useLearnerProfile'
 
 // ─── WatchConnectivity native bridge ─────────────────────────────────────────
 
@@ -167,6 +168,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     clearProfileCache()
+    clearLearnerProfileCache()
     await supabase.auth.signOut()
     set({ session: null, user: null })
   },
