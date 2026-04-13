@@ -4,7 +4,7 @@ import { userProfiles } from '@kanji-learn/db'
 import { z } from 'zod'
 
 const updateProfileSchema = z.object({
-  displayName: z.string().min(1).max(50).optional(),
+  displayName: z.string().min(1).max(50).nullable().optional(),
   dailyGoal: z.number().int().min(5).max(200).optional(),
   notificationsEnabled: z.boolean().optional(),
   pushToken: z.string().max(200).nullable().optional(),

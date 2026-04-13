@@ -59,7 +59,7 @@ export function useLearnerProfile() {
 
   const update = useCallback(async (fields: Partial<LearnerProfile>): Promise<boolean> => {
     try {
-      await api.patch<LearnerProfile>('/v1/user/learner-profile', fields)
+      await api.patch<void>('/v1/user/learner-profile', fields)
       const next: LearnerProfile = {
         country: 'country' in fields ? (fields.country ?? null) : (_cache?.country ?? null),
         reasonsForLearning: fields.reasonsForLearning ?? _cache?.reasonsForLearning ?? [],

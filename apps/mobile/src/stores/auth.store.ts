@@ -16,6 +16,7 @@ const WatchConnectivity: {
     expiresAt: number,
     supabaseURL: string,
     apiBaseURL: string,
+    watchEnabled: boolean,
     dailyGoal: number,
     reminderHour: number,
     restDay: number,

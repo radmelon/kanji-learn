@@ -117,7 +117,7 @@ export default function RootLayout() {
 
     // Logged in, in auth group — decide where to go (wait for profile first)
     if (session && inAuthGroup) {
-      if (profileLoading) return
+      if (profileLoading || profile === null) return  // wait for load or hold on fetch error
       if (profile && !profile.onboardingCompletedAt) {
         router.replace('/onboarding')
       } else {
@@ -128,7 +128,7 @@ export default function RootLayout() {
 
     // Logged in, NOT in auth group — check onboarding gate
     if (session && !inAuthGroup) {
-      if (profileLoading) return
+      if (profileLoading || profile === null) return
       if (profile && !profile.onboardingCompletedAt) {
         const inOnboarding = segments[0] === 'onboarding'
         if (!inOnboarding) router.replace('/onboarding')
