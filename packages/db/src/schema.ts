@@ -445,6 +445,7 @@ export const learnerProfiles = pgTable('learner_profiles', {
   userId: uuid('user_id')
     .primaryKey()
     .references(() => userProfiles.id, { onDelete: 'cascade' }),
+  country: text('country'),
   nativeLanguage: text('native_language'),
   reasonsForLearning: jsonb('reasons_for_learning').$type<string[]>().notNull().default([]),
   interests: jsonb('interests').$type<string[]>().notNull().default([]),
