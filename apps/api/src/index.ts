@@ -9,7 +9,7 @@ loadEnv({ path: join(__dirname, '../.env') })
 
 // These dynamic imports happen after env is loaded, so DATABASE_URL etc. are set.
 const { buildServer } = await import('./server.js')
-const { scheduleDailyReminders } = await import('./cron.js')
+const { scheduleDailyReminders, scheduleTutorAnalysis } = await import('./cron.js')
 const { db } = await import('@kanji-learn/db')
 
 const port = Number(process.env.PORT ?? 3000)
@@ -19,6 +19,7 @@ const server = await buildServer()
 
 // Start background jobs
 scheduleDailyReminders(db)
+scheduleTutorAnalysis(db, server.buddyLLM)
 
 try {
   await server.listen({ port, host })
