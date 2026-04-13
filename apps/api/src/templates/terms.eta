@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Learning Report — Terms of Use</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f4f4f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      max-width: 560px;
+      width: 100%;
+      overflow: hidden;
+    }
+    .card-header {
+      background: #0F0F1A;
+      padding: 20px 28px;
+    }
+    .card-header h1 {
+      color: #F0F0F5;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .card-header p {
+      color: #9090a8;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .card-body {
+      padding: 28px;
+    }
+    .card-body h2 {
+      font-size: 20px;
+      color: #0F0F1A;
+      margin-bottom: 8px;
+    }
+    .card-body .student-name {
+      color: #E84855;
+      font-weight: 700;
+    }
+    .card-body .subtitle {
+      color: #555;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .terms-box {
+      background: #f8f8fb;
+      border: 1px solid #e0e0ea;
+      border-radius: 8px;
+      padding: 16px;
+      height: 220px;
+      overflow-y: auto;
+      font-size: 13px;
+      color: #444;
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+    .terms-box h3 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0F0F1A;
+      margin: 14px 0 4px;
+    }
+    .terms-box h3:first-child { margin-top: 0; }
+    .terms-box p { margin-bottom: 8px; }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-direction: column;
+    }
+    form { margin: 0; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.88; }
+    .btn-primary {
+      background: #E84855;
+      color: #fff;
+    }
+    .btn-secondary {
+      background: #f0f0f5;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="card-header">
+      <h1>Kanji Buddy</h1>
+      <p>Learning Analytics Report</p>
+    </div>
+    <div class="card-body">
+      <h2>You've been invited by<br><span class="student-name"><%= it.studentName %></span></h2>
+      <p class="subtitle">Before viewing this student's learning data, please review and accept the terms below.</p>
+
+      <div class="terms-box">
+        <h3>1. Data Use &amp; Confidentiality</h3>
+        <p>The learning analytics shared through this link are confidential and intended solely for the named recipient. You agree not to share, publish, or distribute this data to any third party without the student's explicit consent.</p>
+
+        <h3>2. Scope of Data</h3>
+        <p>This report includes kanji learning progress, review accuracy, session habits, AI-generated analysis, and placement history. This data is provided to help you better support the student's Japanese language studies.</p>
+
+        <h3>3. Access Duration</h3>
+        <p>Your access to this report is valid for 90 days from the date of acceptance. After this period, the link will expire. The student may revoke your access at any time, for any reason, without notice.</p>
+
+        <h3>4. Notes &amp; Feedback</h3>
+        <p>Any notes you submit through this portal will be stored and made visible to the student. Please ensure your feedback is constructive, professional, and appropriate.</p>
+
+        <h3>5. No Redistribution</h3>
+        <p>You may not copy, screenshot, scrape, or otherwise extract data from this report for use outside of direct student coaching or tutoring.</p>
+
+        <h3>6. Limitation of Liability</h3>
+        <p>Kanji Buddy provides this data in good faith. We make no warranty as to its completeness or fitness for any particular purpose. The student retains full ownership of their data.</p>
+      </div>
+
+      <div class="actions">
+        <form method="POST" action="/report/<%= it.token %>/accept">
+          <button type="submit" class="btn btn-primary">Accept &amp; View Report</button>
+        </form>
+        <form method="POST" action="/report/<%= it.token %>/decline">
+          <button type="submit" class="btn btn-secondary">Decline</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

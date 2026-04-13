@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Learning Report — <%= it.student.displayName ?? 'Student' %></title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #E84855;
+      --bg: #f4f4f8;
+      --dark: #0F0F1A;
+      --text: #1a1a2e;
+      --muted: #666;
+      --border: #e0e0ea;
+      --sidebar-w: 220px;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────── */
+    .layout {
+      display: flex;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: var(--sidebar-w);
+      background: var(--dark);
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      overflow-y: auto;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-logo {
+      padding: 20px 20px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .sidebar-logo h1 {
+      color: #F0F0F5;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .sidebar-logo p {
+      color: #9090a8;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+    .sidebar-student {
+      padding: 14px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .sidebar-student .label {
+      color: #9090a8;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .sidebar-student .name {
+      color: #F0F0F5;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 3px;
+    }
+    nav {
+      padding: 12px 0;
+      flex: 1;
+    }
+    nav a {
+      display: block;
+      padding: 9px 20px;
+      color: #9090a8;
+      text-decoration: none;
+      font-size: 13px;
+      transition: color 0.15s, background 0.15s;
+      border-left: 3px solid transparent;
+    }
+    nav a:hover, nav a.active {
+      color: #F0F0F5;
+      background: rgba(255,255,255,0.05);
+      border-left-color: var(--primary);
+    }
+    .main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      padding: 32px 40px;
+      max-width: 960px;
+    }
+
+    /* ── Section headings ─────────────────────────────────────────── */
+    .section {
+      margin-bottom: 48px;
+    }
+    .section-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    /* ── Cards ────────────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .stat-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 16px 20px;
+    }
+    .stat-card .stat-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .stat-card .stat-value {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--dark);
+      line-height: 1.1;
+    }
+    .stat-card .stat-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ── Chart containers ─────────────────────────────────────────── */
+    .chart-wrap {
+      position: relative;
+      height: 260px;
+    }
+    .chart-wrap-tall {
+      position: relative;
+      height: 320px;
+    }
+    .chart-wrap-sm {
+      position: relative;
+      height: 200px;
+    }
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    /* ── Placement history table ──────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #f0f0f5;
+      color: var(--dark);
+    }
+    .badge-primary {
+      background: rgba(232,72,85,0.12);
+      color: var(--primary);
+    }
+
+    /* ── Leech list ───────────────────────────────────────────────── */
+    .leech-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .leech-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff0f1;
+      border: 1px solid #fdd;
+      border-radius: 8px;
+      padding: 6px 12px;
+    }
+    .leech-char {
+      font-size: 22px;
+      color: var(--dark);
+    }
+    .leech-fail {
+      font-size: 11px;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* ── Analysis section ─────────────────────────────────────────── */
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .analysis-card h3 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .analysis-card ul {
+      list-style: none;
+      padding: 0;
+    }
+    .analysis-card li {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.5;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .analysis-card li:last-child { border-bottom: none; }
+    .analysis-card li::before {
+      content: '→ ';
+      color: var(--primary);
+      font-weight: 700;
+    }
+    .empty-state {
+      color: var(--muted);
+      font-size: 13px;
+      font-style: italic;
+    }
+    .analysis-meta {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 16px;
+    }
+    .btn-refresh {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--dark);
+      color: #F0F0F5;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      margin-top: 16px;
+    }
+    .btn-refresh:hover { opacity: 0.85; }
+    .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Notes section ────────────────────────────────────────────── */
+    .notes-list {
+      margin-bottom: 20px;
+    }
+    .note-item {
+      border-left: 3px solid var(--primary);
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      background: #fff;
+      border-radius: 0 8px 8px 0;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--primary);
+    }
+    .note-text {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .note-date {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+    .notes-form label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--dark);
+      margin-bottom: 6px;
+    }
+    .notes-form textarea {
+      width: 100%;
+      min-height: 100px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text);
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .notes-form textarea:focus { border-color: var(--primary); }
+    .btn-submit {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: opacity 0.15s;
+    }
+    .btn-submit:hover { opacity: 0.88; }
+
+    /* ── Progress bars ─────────────────────────────────────────────── */
+    .progress-bar-wrap {
+      background: #f0f0f5;
+      border-radius: 99px;
+      height: 8px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--primary);
+      transition: width 0.5s;
+    }
+
+    /* ── Trend badge ─────────────────────────────────────────────── */
+    .trend-up { color: #22c55e; font-weight: 700; }
+    .trend-down { color: var(--primary); font-weight: 700; }
+    .trend-stable { color: #888; font-weight: 700; }
+
+    /* ── Responsive ──────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 20px 16px; }
+      .chart-grid { grid-template-columns: 1fr; }
+      .analysis-grid { grid-template-columns: 1fr; }
+      .card-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 480px) {
+      .card-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1>Kanji Buddy</h1>
+      <p>Tutor Analytics Report</p>
+    </div>
+    <div class="sidebar-student">
+      <div class="label">Student</div>
+      <div class="name"><%= it.student.displayName ?? 'Unknown' %></div>
+    </div>
+    <nav>
+      <a href="#overview">Overview</a>
+      <a href="#placement">Placement History</a>
+      <a href="#progress">Progress Snapshot</a>
+      <a href="#effort">Effort &amp; Habits</a>
+      <a href="#velocity">Learning Velocity</a>
+      <a href="#accuracy">Accuracy &amp; Modality</a>
+      <a href="#analysis">AI Analysis</a>
+      <a href="#notes">Teacher Notes</a>
+    </nav>
+  </aside>
+
+  <!-- ── Main content ─────────────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- ── 1. Student Overview ─────────────────────────────────────── -->
+    <section id="overview" class="section">
+      <h2 class="section-title">Student Overview</h2>
+      <div class="card-grid">
+        <div class="stat-card">
+          <div class="stat-label">Student</div>
+          <div class="stat-value" style="font-size:18px"><%= it.student.displayName ?? '—' %></div>
+          <div class="stat-sub"><%= it.student.email ?? '' %></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Member Since</div>
+          <div class="stat-value" style="font-size:18px"><%= new Date(it.student.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) %></div>
+          <div class="stat-sub">Daily goal: <%= it.student.dailyGoal %> reviews</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Country</div>
+          <div class="stat-value" style="font-size:18px"><%= it.student.country ?? '—' %></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Reasons for Learning</div>
+          <div class="stat-value" style="font-size:13px;font-weight:400;margin-top:4px">
+            <% if (it.student.reasonsForLearning && it.student.reasonsForLearning.length > 0) { %>
+              <%= it.student.reasonsForLearning.join(', ') %>
+            <% } else { %>
+              —
+            <% } %>
+          </div>
+        </div>
+      </div>
+      <% if (it.student.interests && it.student.interests.length > 0) { %>
+      <div class="card">
+        <div class="stat-label">Interests</div>
+        <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+          <% for (const interest of it.student.interests) { %>
+            <span class="badge"><%= interest %></span>
+          <% } %>
+        </div>
+      </div>
+      <% } %>
+    </section>
+
+    <!-- ── 2. Placement History ────────────────────────────────────── -->
+    <section id="placement" class="section">
+      <h2 class="section-title">Placement History</h2>
+      <div class="card" style="padding:0;overflow:hidden">
+        <% if (it.placement.sessions.length === 0) { %>
+          <p class="empty-state" style="padding:20px 24px">No placement sessions on record.</p>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Completed</th>
+                <th>Inferred Level</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% for (let i = 0; i < it.placement.sessions.length; i++) { %>
+                <% const s = it.placement.sessions[i] %>
+                <tr>
+                  <td><%= i + 1 %></td>
+                  <td><%= s.completedAt ? new Date(s.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Incomplete' %></td>
+                  <td>
+                    <% if (s.inferredLevel) { %>
+                      <span class="badge badge-primary"><%= s.inferredLevel %></span>
+                    <% } else { %>
+                      <span class="badge">—</span>
+                    <% } %>
+                  </td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    </section>
+
+    <!-- ── 3. Progress Snapshot ────────────────────────────────────── -->
+    <section id="progress" class="section">
+      <h2 class="section-title">Progress Snapshot</h2>
+      <div class="card-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Seen</div>
+          <div class="stat-value"><%= it.progress.totalSeen %></div>
+          <div class="stat-sub">of 2,136 Jōyō</div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" style="width:<%= it.progress.completionPct %>%"></div>
+          </div>
+          <div class="stat-sub" style="margin-top:4px"><%= it.progress.completionPct %>% complete</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Solidly Remembered</div>
+          <div class="stat-value"><%= it.progress.rememberedCount %></div>
+          <div class="stat-sub">5+ correct reviews over 14+ days</div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="max-width:280px;margin:0 auto">
+          <div class="chart-wrap-sm">
+            <canvas id="progressDonut"></canvas>
+          </div>
+        </div>
+        <div id="progressLegend" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px;font-size:12px"></div>
+      </div>
+    </section>
+
+    <!-- ── 4. Effort & Habits ──────────────────────────────────────── -->
+    <section id="effort" class="section">
+      <h2 class="section-title">Effort &amp; Habits</h2>
+      <div class="card-grid">
+        <div class="stat-card">
+          <div class="stat-label">Avg Sessions / Day</div>
+          <div class="stat-value"><%= it.effort.avgSessionsPerDay %></div>
+          <div class="stat-sub">last 30 days</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Weekend vs Weekday</div>
+          <div class="stat-value"><%= it.effort.weekendVsWeekdayRatio %>x</div>
+          <div class="stat-sub">reviews: weekend avg / weekday avg</div>
+        </div>
+      </div>
+      <div class="chart-grid">
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px">DAILY REVIEWS (30 DAYS)</div>
+          <div class="chart-wrap">
+            <canvas id="effortBar"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px">STUDY TIME MS / DAY (90 DAYS)</div>
+          <div class="chart-wrap">
+            <canvas id="effortLine"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 5. Learning Velocity ────────────────────────────────────── -->
+    <section id="velocity" class="section">
+      <h2 class="section-title">Learning Velocity</h2>
+      <div class="card-grid">
+        <div class="stat-card">
+          <div class="stat-label">Daily Avg (30d)</div>
+          <div class="stat-value"><%= it.velocity.dailyAvg %></div>
+          <div class="stat-sub">reviews per day</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Weekly Avg (7d)</div>
+          <div class="stat-value"><%= it.velocity.weeklyAvg %></div>
+          <div class="stat-sub">reviews per day</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Trend</div>
+          <div class="stat-value" style="font-size:18px">
+            <% if (it.velocity.trend === 'accelerating') { %>
+              <span class="trend-up">↑ Accelerating</span>
+            <% } else if (it.velocity.trend === 'decelerating') { %>
+              <span class="trend-down">↓ Decelerating</span>
+            <% } else { %>
+              <span class="trend-stable">→ Stable</span>
+            <% } %>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Current Streak</div>
+          <div class="stat-value"><%= it.velocity.currentStreak %> <span style="font-size:16px;font-weight:400">days</span></div>
+          <div class="stat-sub">Longest: <%= it.velocity.longestStreak %> days</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 6. Accuracy & Modality ──────────────────────────────────── -->
+    <section id="accuracy" class="section">
+      <h2 class="section-title">Accuracy &amp; Modality</h2>
+      <div class="card-grid">
+        <div class="stat-card">
+          <div class="stat-label">Weakest Modality</div>
+          <div class="stat-value" style="font-size:18px"><%= it.accuracy.weakestModality ?? '—' %></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Leeches (last 30d)</div>
+          <div class="stat-value"><%= it.accuracy.leechCount %></div>
+          <div class="stat-sub">kanji failed 3+ times</div>
+        </div>
+      </div>
+      <div class="chart-grid">
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px">ACCURACY BY TYPE (RADAR)</div>
+          <div class="chart-wrap">
+            <canvas id="accuracyRadar"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px">REVIEW VOLUME BY TYPE</div>
+          <div class="chart-wrap">
+            <canvas id="accuracyVolume"></canvas>
+          </div>
+        </div>
+      </div>
+      <% if (it.accuracy.topLeeches && it.accuracy.topLeeches.length > 0) { %>
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">TOP LEECHES</div>
+          <div class="leech-list">
+            <% for (const leech of it.accuracy.topLeeches) { %>
+              <div class="leech-item">
+                <span class="leech-char"><%= leech.character %></span>
+                <span class="leech-fail"><%= leech.failCount %> fails</span>
+              </div>
+            <% } %>
+          </div>
+        </div>
+      <% } %>
+    </section>
+
+    <!-- ── 7. AI Analysis ─────────────────────────────────────────── -->
+    <section id="analysis" class="section">
+      <h2 class="section-title">AI Analysis</h2>
+      <% if (it.analysis) { %>
+        <div class="analysis-grid">
+          <div class="card analysis-card">
+            <h3>Strengths</h3>
+            <% if (it.analysis.strengths.length > 0) { %>
+              <ul>
+                <% for (const item of it.analysis.strengths) { %>
+                  <li><%= item %></li>
+                <% } %>
+              </ul>
+            <% } else { %>
+              <p class="empty-state">No strengths identified yet.</p>
+            <% } %>
+          </div>
+          <div class="card analysis-card">
+            <h3>Areas for Improvement</h3>
+            <% if (it.analysis.areasForImprovement.length > 0) { %>
+              <ul>
+                <% for (const item of it.analysis.areasForImprovement) { %>
+                  <li><%= item %></li>
+                <% } %>
+              </ul>
+            <% } else { %>
+              <p class="empty-state">None identified.</p>
+            <% } %>
+          </div>
+          <div class="card analysis-card">
+            <h3>Recommendations</h3>
+            <% if (it.analysis.recommendations.length > 0) { %>
+              <ul>
+                <% for (const item of it.analysis.recommendations) { %>
+                  <li><%= item %></li>
+                <% } %>
+              </ul>
+            <% } else { %>
+              <p class="empty-state">None at this time.</p>
+            <% } %>
+          </div>
+          <div class="card analysis-card">
+            <h3>Observations</h3>
+            <% if (it.analysis.observations.length > 0) { %>
+              <ul>
+                <% for (const item of it.analysis.observations) { %>
+                  <li><%= item %></li>
+                <% } %>
+              </ul>
+            <% } else { %>
+              <p class="empty-state">No observations.</p>
+            <% } %>
+          </div>
+        </div>
+        <p class="analysis-meta">Generated <%= new Date(it.analysis.generatedAt).toLocaleString() %></p>
+      <% } else { %>
+        <div class="card">
+          <p class="empty-state">No AI analysis has been generated yet. Click below to run the analysis.</p>
+        </div>
+      <% } %>
+      <button class="btn-refresh" id="refreshBtn" onclick="refreshAnalysis()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        Refresh AI Analysis
+      </button>
+    </section>
+
+    <!-- ── 8. Teacher Notes ───────────────────────────────────────── -->
+    <section id="notes" class="section">
+      <h2 class="section-title">Teacher Notes</h2>
+      <% if (it.notes && it.notes.length > 0) { %>
+        <div class="notes-list">
+          <% for (const note of it.notes) { %>
+            <div class="note-item">
+              <div class="note-text"><%= note.noteText %></div>
+              <div class="note-date"><%= new Date(note.createdAt).toLocaleString() %></div>
+            </div>
+          <% } %>
+        </div>
+      <% } else { %>
+        <p class="empty-state" style="margin-bottom:20px">No notes yet. Use the form below to add your first note.</p>
+      <% } %>
+      <div class="card notes-form">
+        <form method="POST" action="/report/<%= it.token %>/notes">
+          <label for="noteText">Add a Note</label>
+          <textarea id="noteText" name="noteText" placeholder="Write guidance, observations, or encouragement for the student..."></textarea>
+          <button type="submit" class="btn-submit">Save Note</button>
+        </form>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // ── Chart data (injected server-side) ─────────────────────────────
+  const reportData = <%~ JSON.stringify({
+    progress: it.progress,
+    effort: it.effort,
+    accuracy: it.accuracy,
+    velocity: it.velocity,
+  }) %>
+
+  // ── Progress donut ─────────────────────────────────────────────────
+  ;(function () {
+    const statusColors = {
+      new: '#a78bfa',
+      learning: '#60a5fa',
+      review: '#34d399',
+      relearning: '#fbbf24',
+      mastered: '#E84855',
+      unseen: '#e5e7eb',
+    }
+    const sc = reportData.progress.statusCounts
+    const labels = Object.keys(sc)
+    const values = labels.map(k => sc[k])
+    const colors = labels.map(k => statusColors[k] || '#ccc')
+
+    new Chart(document.getElementById('progressDonut'), {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+      options: {
+        plugins: { legend: { display: false } },
+        cutout: '65%',
+        responsive: true,
+        maintainAspectRatio: false,
+      }
+    })
+
+    const legend = document.getElementById('progressLegend')
+    labels.forEach((label, i) => {
+      const el = document.createElement('div')
+      el.style.cssText = 'display:flex;align-items:center;gap:4px'
+      el.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${colors[i]};display:inline-block"></span><span>${label} (${values[i]})</span>`
+      legend.appendChild(el)
+    })
+  })()
+
+  // ── Effort bar chart ───────────────────────────────────────────────
+  ;(function () {
+    const stats = reportData.effort.dailyStats30
+    new Chart(document.getElementById('effortBar'), {
+      type: 'bar',
+      data: {
+        labels: stats.map(d => d.date.slice(5)),
+        datasets: [
+          { label: 'Reviewed', data: stats.map(d => d.reviewed), backgroundColor: 'rgba(232,72,85,0.7)', borderRadius: 3 },
+          { label: 'Correct', data: stats.map(d => d.correct), backgroundColor: 'rgba(52,211,153,0.7)', borderRadius: 3 },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { font: { size: 11 } } } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8, font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { font: { size: 10 } } }
+        }
+      }
+    })
+  })()
+
+  // ── Effort line chart (90d study time) ────────────────────────────
+  ;(function () {
+    const stats = reportData.effort.dailyStats90
+    new Chart(document.getElementById('effortLine'), {
+      type: 'line',
+      data: {
+        labels: stats.map(d => d.date.slice(5)),
+        datasets: [{
+          label: 'Study Time (ms)',
+          data: stats.map(d => d.studyTimeMs),
+          borderColor: '#E84855',
+          backgroundColor: 'rgba(232,72,85,0.08)',
+          borderWidth: 2,
+          pointRadius: 2,
+          fill: true,
+          tension: 0.3,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { font: { size: 11 } } } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8, font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { font: { size: 10 } } }
+        }
+      }
+    })
+  })()
+
+  // ── Accuracy radar ────────────────────────────────────────────────
+  ;(function () {
+    const byType = reportData.accuracy.byType
+    const labels = Object.keys(byType)
+    if (labels.length === 0) return
+    new Chart(document.getElementById('accuracyRadar'), {
+      type: 'radar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Accuracy %',
+          data: labels.map(k => byType[k].pct),
+          backgroundColor: 'rgba(232,72,85,0.15)',
+          borderColor: '#E84855',
+          borderWidth: 2,
+          pointBackgroundColor: '#E84855',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { font: { size: 11 } } } },
+        scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, font: { size: 10 } } } }
+      }
+    })
+  })()
+
+  // ── Accuracy volume bar ───────────────────────────────────────────
+  ;(function () {
+    const byType = reportData.accuracy.byType
+    const labels = Object.keys(byType)
+    if (labels.length === 0) return
+    new Chart(document.getElementById('accuracyVolume'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Total Reviews',
+          data: labels.map(k => byType[k].total),
+          backgroundColor: 'rgba(96,165,250,0.7)',
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { font: { size: 11 } } } },
+        scales: {
+          x: { ticks: { font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { font: { size: 10 } } }
+        }
+      }
+    })
+  })()
+
+  // ── Active nav link on scroll ─────────────────────────────────────
+  const sections = document.querySelectorAll('section[id]')
+  const navLinks = document.querySelectorAll('nav a')
+  window.addEventListener('scroll', () => {
+    let current = ''
+    sections.forEach(s => {
+      if (window.scrollY >= s.offsetTop - 80) current = s.id
+    })
+    navLinks.forEach(a => {
+      a.classList.toggle('active', a.getAttribute('href') === '#' + current)
+    })
+  }, { passive: true })
+
+  // ── Refresh AI analysis ───────────────────────────────────────────
+  async function refreshAnalysis() {
+    const btn = document.getElementById('refreshBtn')
+    btn.disabled = true
+    btn.textContent = 'Refreshing...'
+    try {
+      const res = await fetch('/report/<%= it.token %>/refresh-analysis', { method: 'POST' })
+      const json = await res.json()
+      if (json.ok) {
+        window.location.reload()
+      } else {
+        alert(json.error || 'Failed to refresh analysis. Please try again.')
+        btn.disabled = false
+        btn.innerHTML = 'Refresh AI Analysis'
+      }
+    } catch (e) {
+      alert('Network error. Please try again.')
+      btn.disabled = false
+      btn.innerHTML = 'Refresh AI Analysis'
+    }
+  }
+</script>
+</body>
+</html>
