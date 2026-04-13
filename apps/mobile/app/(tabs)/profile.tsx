@@ -14,6 +14,7 @@ import { useNetworkStatus } from '../../src/hooks/useNetworkStatus'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { useSocial } from '../../src/hooks/useSocial'
 import type { SearchResult } from '../../src/hooks/useSocial'
+import { useTutorSharing } from '../../src/hooks/useTutorSharing'
 import { useLearnerProfile } from '../../src/hooks/useLearnerProfile'
 import { COUNTRIES, ONBOARDING_CONTENT } from '../../src/config/onboarding-content'
 
@@ -98,6 +99,14 @@ export default function ProfileScreen() {
   const { friends, pendingRequests, isSearching, loadAll, searchByEmail, sendRequest, respondToRequest, removeFriend } = useSocial()
   const [friendSearch, setFriendSearch] = useState('')
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+
+  // Tutor sharing
+  const {
+    share: tutorShare, noteCount: tutorNoteCount, notes: tutorNotes,
+    isLoading: tutorLoading, isSending: tutorSending, error: tutorError,
+    sendInvite, revoke: revokeShare,
+  } = useTutorSharing()
+  const [teacherEmail, setTeacherEmail] = useState('')
   const [searchError, setSearchError] = useState<string | null>(null)
 
   // ─── Learning profile ─────────────────────────────────────────────────────────
@@ -705,6 +714,156 @@ export default function ProfileScreen() {
           )}
         </Section>
 
+        {/* Share with Tutor */}
+        <Section title="Share with Tutor" subtitle="Let your teacher view your learning analytics">
+          {tutorLoading ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : !tutorShare || tutorShare.status === 'revoked' || tutorShare.status === 'expired' ? (
+            <View style={{ gap: spacing.sm }}>
+              <TextInput
+                style={styles.textInput}
+                value={teacherEmail}
+                onChangeText={setTeacherEmail}
+                placeholder="Teacher's email address"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                returnKeyType="send"
+                onSubmitEditing={() => {
+                  const email = teacherEmail.trim()
+                  if (email) sendInvite(email).then((ok) => { if (ok) setTeacherEmail('') })
+                }}
+              />
+              {tutorError && <Text style={tutorStyles.errorText}>{tutorError}</Text>}
+              <TouchableOpacity
+                style={[tutorStyles.primaryBtn, tutorSending && tutorStyles.btnDisabled]}
+                onPress={() => {
+                  const email = teacherEmail.trim()
+                  if (email) sendInvite(email).then((ok) => { if (ok) setTeacherEmail('') })
+                }}
+                disabled={tutorSending || !teacherEmail.trim()}
+                activeOpacity={0.8}
+              >
+                {tutorSending
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={tutorStyles.primaryBtnText}>Send Invite</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          ) : tutorShare.status === 'pending' ? (
+            <View style={{ gap: spacing.sm }}>
+              <View style={styles.searchResultCard}>
+                <View style={styles.rowLeft}>
+                  <Ionicons name="hourglass-outline" size={20} color={colors.warning} />
+                  <View>
+                    <Text style={styles.rowLabel}>Invite sent to</Text>
+                    <Text style={styles.rowSub}>{tutorShare.teacherEmail}</Text>
+                  </View>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[tutorStyles.dangerBtn, tutorSending && tutorStyles.btnDisabled]}
+                onPress={() => Alert.alert(
+                  'Cancel Invite',
+                  'Are you sure you want to cancel the invite?',
+                  [
+                    { text: 'Keep Invite', style: 'cancel' },
+                    { text: 'Cancel Invite', style: 'destructive', onPress: revokeShare },
+                  ]
+                )}
+                disabled={tutorSending}
+                activeOpacity={0.8}
+              >
+                {tutorSending
+                  ? <ActivityIndicator size="small" color={colors.error} />
+                  : <Text style={tutorStyles.dangerBtnText}>Cancel Invite</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          ) : tutorShare.status === 'declined' ? (
+            <View style={{ gap: spacing.sm }}>
+              <View style={styles.searchResultCard}>
+                <View style={styles.rowLeft}>
+                  <Ionicons name="close-circle-outline" size={20} color={colors.error} />
+                  <Text style={styles.rowLabel}>Your teacher declined the invite</Text>
+                </View>
+              </View>
+              <TextInput
+                style={styles.textInput}
+                value={teacherEmail}
+                onChangeText={setTeacherEmail}
+                placeholder="Teacher's email address"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                returnKeyType="send"
+              />
+              {tutorError && <Text style={tutorStyles.errorText}>{tutorError}</Text>}
+              <TouchableOpacity
+                style={[tutorStyles.primaryBtn, tutorSending && tutorStyles.btnDisabled]}
+                onPress={() => {
+                  const email = teacherEmail.trim()
+                  if (email) sendInvite(email).then((ok) => { if (ok) setTeacherEmail('') })
+                }}
+                disabled={tutorSending || !teacherEmail.trim()}
+                activeOpacity={0.8}
+              >
+                {tutorSending
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={tutorStyles.primaryBtnText}>Send New Invite</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          ) : /* accepted */ (
+            <View style={{ gap: spacing.sm }}>
+              <View style={styles.searchResultCard}>
+                <View style={styles.rowLeft}>
+                  <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                  <View>
+                    <Text style={styles.rowLabel}>Connected to</Text>
+                    <Text style={styles.rowSub}>{tutorShare.teacherEmail}</Text>
+                  </View>
+                </View>
+                <View style={tutorStyles.noteBadge}>
+                  <Text style={tutorStyles.noteBadgeText}>{tutorNoteCount}</Text>
+                  <Text style={tutorStyles.noteBadgeLabel}> notes</Text>
+                </View>
+              </View>
+              {tutorNotes.length > 0 && (
+                <View style={{ gap: spacing.xs }}>
+                  <Text style={styles.subSectionTitle}>Teacher Notes</Text>
+                  {tutorNotes.map((note) => (
+                    <View key={note.id} style={tutorStyles.noteCard}>
+                      <Text style={tutorStyles.noteText}>{note.noteText}</Text>
+                      <Text style={tutorStyles.noteDate}>
+                        {new Date(note.createdAt).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <TouchableOpacity
+                style={[tutorStyles.dangerBtn, tutorSending && tutorStyles.btnDisabled]}
+                onPress={() => Alert.alert(
+                  'Revoke Access',
+                  'Your teacher will no longer be able to view your progress.',
+                  [
+                    { text: 'Keep Access', style: 'cancel' },
+                    { text: 'Revoke', style: 'destructive', onPress: revokeShare },
+                  ]
+                )}
+                disabled={tutorSending}
+                activeOpacity={0.8}
+              >
+                {tutorSending
+                  ? <ActivityIndicator size="small" color={colors.error} />
+                  : <Text style={tutorStyles.dangerBtnText}>Revoke Access</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          )}
+        </Section>
+
         {/* Sign out */}
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} activeOpacity={0.8}>
           <Ionicons name="log-out-outline" size={18} color={colors.error} />
@@ -821,6 +980,77 @@ const lpStyles = StyleSheet.create({
     color: colors.error,
     marginBottom: 6,
     textAlign: 'center',
+  },
+})
+
+// ─── Tutor sharing styles ─────────────────────────────────────────────────────
+
+const tutorStyles = StyleSheet.create({
+  primaryBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  primaryBtnText: {
+    fontWeight: '700',
+    color: '#0F0F1A',
+    fontSize: 15,
+  },
+  dangerBtn: {
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.error + '55',
+    backgroundColor: colors.error + '11',
+  },
+  dangerBtnText: {
+    fontWeight: '600',
+    color: colors.error,
+    fontSize: 15,
+  },
+  btnDisabled: {
+    opacity: 0.6,
+  },
+  errorText: {
+    fontSize: 13,
+    color: colors.error,
+    textAlign: 'center',
+  },
+  noteBadge: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    backgroundColor: colors.primary + '22',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  noteBadgeText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  noteBadgeLabel: {
+    fontSize: 12,
+    color: colors.primary,
+  },
+  noteCard: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  noteText: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    lineHeight: 20,
+  },
+  noteDate: {
+    fontSize: 11,
+    color: colors.textMuted,
   },
 })
 
