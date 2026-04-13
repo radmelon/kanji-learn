@@ -10,24 +10,42 @@ export const OAUTH_REDIRECT_URI = makeRedirectUri({
 })
 
 /**
- * Parse the OAuth callback URL and extract tokens from the hash fragment.
- * Returns null if the URL doesn't contain valid tokens.
+ * Parse the OAuth callback URL and extract tokens.
+ *
+ * Supports two flows:
+ * - **Implicit grant:** tokens in hash fragment (`#access_token=...&refresh_token=...`)
+ * - **PKCE:** authorization code in query params (`?code=...`)
+ *
+ * Returns null if the URL doesn't contain valid tokens or a code.
  */
 export function parseOAuthCallbackUrl(
   url: string,
-): { access_token: string; refresh_token: string } | null {
+): { access_token: string; refresh_token: string } | { code: string } | null {
+  // Try hash fragment first (implicit grant — used by Google)
   const hashIndex = url.indexOf('#')
-  if (hashIndex === -1) return null
+  if (hashIndex !== -1) {
+    const fragment = url.substring(hashIndex + 1)
+    const params = new URLSearchParams(fragment)
+    const access_token = params.get('access_token')
+    const refresh_token = params.get('refresh_token')
+    if (access_token && refresh_token) {
+      return { access_token, refresh_token }
+    }
+  }
 
-  const fragment = url.substring(hashIndex + 1)
-  const params = new URLSearchParams(fragment)
+  // Try query params (PKCE flow — used by Apple)
+  const queryIndex = url.indexOf('?')
+  if (queryIndex !== -1) {
+    const query = url.substring(queryIndex + 1)
+    const params = new URLSearchParams(query)
+    const code = params.get('code')
+    if (code) {
+      return { code }
+    }
+  }
 
-  const access_token = params.get('access_token')
-  const refresh_token = params.get('refresh_token')
-
-  if (!access_token || !refresh_token) return null
-
-  return { access_token, refresh_token }
+  console.warn('[OAuth] Could not parse callback URL:', url)
+  return null
 }
 
 /**
@@ -61,17 +79,23 @@ export async function startOAuthFlow(provider: Provider): Promise<void> {
   // 3. Handle cancel
   if (result.type !== 'success') return
 
-  // 4. Parse tokens from callback URL
-  const tokens = parseOAuthCallbackUrl(result.url)
-  if (!tokens) {
+  // 4. Parse tokens or auth code from callback URL
+  const parsed = parseOAuthCallbackUrl(result.url)
+  if (!parsed) {
     throw new Error('Failed to parse authentication tokens from callback')
   }
 
-  // 5. Set session in Supabase — triggers onAuthStateChange
-  const { error: sessionError } = await supabase.auth.setSession({
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
-  })
-
-  if (sessionError) throw sessionError
+  // 5. Complete the auth flow
+  if ('code' in parsed) {
+    // PKCE flow (Apple): exchange the authorization code for a session
+    const { error: codeError } = await supabase.auth.exchangeCodeForSession(parsed.code)
+    if (codeError) throw codeError
+  } else {
+    // Implicit flow (Google): set session directly from tokens
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: parsed.access_token,
+      refresh_token: parsed.refresh_token,
+    })
+    if (sessionError) throw sessionError
+  }
 }

@@ -77,11 +77,16 @@ export default function RootLayout() {
     const handleUrl = async (event: { url: string }) => {
       if (!event.url.includes('auth/callback')) return
 
-      const tokens = parseOAuthCallbackUrl(event.url)
-      if (tokens) {
+      const parsed = parseOAuthCallbackUrl(event.url)
+      if (!parsed) return
+
+      if ('code' in parsed) {
+        const { error } = await supabase.auth.exchangeCodeForSession(parsed.code)
+        if (error) console.warn('[OAuth] exchangeCodeForSession failed:', error.message)
+      } else {
         const { error } = await supabase.auth.setSession({
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
+          access_token: parsed.access_token,
+          refresh_token: parsed.refresh_token,
         })
         if (error) console.warn('[OAuth] setSession failed:', error.message)
       }
