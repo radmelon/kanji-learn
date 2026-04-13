@@ -116,16 +116,28 @@ In `_layout.tsx`, add a `useEffect` that listens for incoming URLs:
 
 ```typescript
 useEffect(() => {
-  const subscription = Linking.addEventListener('url', async ({ url }) => {
-    if (url.includes('auth/callback')) {
-      await supabase.auth.getSessionFromUrl(url)
+  const handleUrl = async (event: { url: string }) => {
+    if (!event.url.includes('auth/callback')) return
+    const tokens = parseOAuthCallbackUrl(event.url)
+    if (tokens) {
+      const { error } = await supabase.auth.setSession({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+      })
+      if (error) console.warn('[OAuth] setSession failed:', error.message)
     }
-  })
+  }
+
+  Linking.getInitialURL()
+    .then((url) => { if (url) handleUrl({ url }) })
+    .catch((e) => console.warn('[OAuth] getInitialURL failed:', e))
+
+  const subscription = Linking.addEventListener('url', handleUrl)
   return () => subscription.remove()
 }, [])
 ```
 
-This handles the redirect after OAuth completes. The Supabase client parses the tokens from the URL fragment and updates the session, which triggers the auth store's `onAuthStateChange` listener.
+This handles the redirect after OAuth completes for both cold start (`getInitialURL`) and warm start (`addEventListener`). The `parseOAuthCallbackUrl` helper extracts `access_token` and `refresh_token` from the URL hash fragment, then `setSession` updates the Supabase client, triggering the auth store's `onAuthStateChange` listener.
 
 ## Sign-In / Sign-Up Screen Layout
 
