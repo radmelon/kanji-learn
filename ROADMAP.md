@@ -48,7 +48,9 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 | 6 | Onboarding Tutorial + User Questionnaire | High | Yes | Pending |
 | 7 | Dark / Light Theme Toggle | High | No | Pending |
 | 8 | Heatmap Calendar View | High | No | Pending |
-| 9 | Rebrand: Kanji Learn → Kanji Buddy | Med | No | Pending |
+| 9 | Splash Screen Polish: solid bg color, longer display duration, branding imagery | Med | No | Pending |
+| 10 | About/Credits Page: add app branding imagery and credits | Low | No | Pending |
+| 11 | Rebrand: Kanji Learn → Kanji Buddy | Med | No | Pending |
 
 **Why this order:**
 - OAuth first — App Store requires Sign in with Apple if you offer any social login, and it's the #1 sign-up friction reducer
