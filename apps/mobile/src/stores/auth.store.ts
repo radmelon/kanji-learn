@@ -4,6 +4,7 @@ import { NativeModules, Platform } from 'react-native'
 import { supabase } from '../lib/supabase'
 import { storage } from '../lib/storage'
 import { startOAuthFlow } from '../lib/oauth'
+import { clearProfileCache } from '../hooks/useProfile'
 
 // ─── WatchConnectivity native bridge ─────────────────────────────────────────
 
@@ -165,6 +166,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
+    clearProfileCache()
     await supabase.auth.signOut()
     set({ session: null, user: null })
   },
