@@ -124,6 +124,20 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 
 ---
 
+## Known Bugs
+*Tracked issues to fix. Prioritize before new feature work.*
+
+| # | Severity | Issue | Location |
+|---|----------|-------|----------|
+| B1 | Critical | Push notifications never arrive — APNs key not configured in Expo project | Apple Developer Console / expo.dev credentials |
+| B2 | Critical | Watch UserDefaults key mismatch: writes `kl_rest_day`, reads `kl_rest_day_raw` | `BackgroundRefreshHandler.swift:50` |
+| B3 | High | `watchEnabled` flag never sent from iPhone to Watch | `auth.store.ts` / `pushToWatch()` |
+| B4 | High | Accuracy metric on Dashboard may be inaccurate | Dashboard / API |
+| B5 | High | Kanji card reveal: hint text under eval buttons missing "Easy" and right arrow | Review card component |
+| B6 | Medium | Text/background contrast too low across the app | `theme/index.ts` |
+
+---
+
 ## Deprioritized
 *Not forgotten — revisit when demand justifies the effort.*
 
