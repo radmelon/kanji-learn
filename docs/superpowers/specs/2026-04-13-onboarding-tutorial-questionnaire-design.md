@@ -47,6 +47,9 @@ New users currently land on the Dashboard immediately after sign-up with no guid
 |------|--------|
 | `apps/mobile/app/_layout.tsx` | Add onboarding gate: session + no `onboardingCompletedAt` → `/onboarding` |
 | `apps/mobile/app/(tabs)/profile.tsx` | New "Learning Profile" section (country, focus, interests) |
+| `apps/mobile/app/(tabs)/journal.tsx` | Add top-level ⓘ `InfoButton` + `InfoPanel` (mnemonics / refresh explained) |
+| `apps/mobile/app/(tabs)/writing.tsx` | Add top-level ⓘ `InfoButton` + `InfoPanel` (stroke-order scoring explained) |
+| `apps/mobile/app/(tabs)/voice.tsx` | Add top-level ⓘ `InfoButton` + `InfoPanel` (difficulty levels explained) |
 | `apps/api/src/routes/user.ts` | Expose `onboardingCompletedAt` in both `GET` and `PATCH /v1/user/profile` schemas — the layout gate reads it from the GET response |
 | `apps/api/src/index.ts` (or router registration file) | Register new `learner-profile` routes |
 | `packages/db/supabase/migrations/` | New migration: backfill `onboardingCompletedAt` for existing users |
@@ -160,12 +163,17 @@ Single screen managing a `currentStep: 0–4` state. Steps transition with a hor
 ### Step 1 — Help is here
 
 - Headline: "Help is always one tap away"
-- Three info cards, each showing an ⓘ icon + location name + one-line description:
-  - **Study screen** — "Tap ⓘ next to the grade buttons to see what Again / Good / Easy mean"
+- Six info cards (scrollable), each showing an ⓘ icon + tab name + one-line description:
+  - **Study** — "Tap ⓘ next to the grade buttons to see what Again / Good / Easy mean"
   - **Dashboard** — "Each stat card has an ⓘ explaining what the number means"
-  - **Progress tab** — "Tap ⓘ on any chart or section for a full explanation"
+  - **Progress** — "Tap ⓘ on any chart or section for a full explanation"
+  - **Journal** — "Tap ⓘ to learn how AI-generated mnemonics work and when to refresh them"
+  - **Write** — "Tap ⓘ to understand how stroke-order scoring works"
+  - **Speak** — "Tap ⓘ to see how reading evaluation difficulty levels work"
 - Footer note: "You don't need to memorise any of this now."
 - Button: "Got it →"
+
+**Note:** Journal, Write, and Speak currently have no ⓘ info buttons. Adding a top-level ⓘ button (same `InfoButton` + `InfoPanel` pattern as Dashboard/Progress) to each of those three screens is in scope for this feature so the onboarding slide isn't misleading.
 
 ### Step 2 — About you
 
@@ -223,9 +231,12 @@ export const ONBOARDING_CONTENT = {
   findHelp: {
     headline: 'Help is always one tap away',
     items: [
-      { location: 'Study screen', description: 'Tap ⓘ next to the grade buttons to see what Again / Good / Easy mean' },
+      { location: 'Study', description: 'Tap ⓘ next to the grade buttons to see what Again / Good / Easy mean' },
       { location: 'Dashboard', description: 'Each stat card has an ⓘ explaining what the number means' },
-      { location: 'Progress tab', description: 'Tap ⓘ on any chart or section for a full explanation' },
+      { location: 'Progress', description: 'Tap ⓘ on any chart or section for a full explanation' },
+      { location: 'Journal', description: 'Tap ⓘ to learn how AI-generated mnemonics work and when to refresh them' },
+      { location: 'Write', description: 'Tap ⓘ to understand how stroke-order scoring works' },
+      { location: 'Speak', description: 'Tap ⓘ to see how reading evaluation difficulty levels work' },
     ],
     footer: "You don't need to memorise any of this now.",
     cta: 'Got it',
