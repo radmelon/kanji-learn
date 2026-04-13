@@ -54,6 +54,21 @@ function pickReading(item: ReadingQueueItem): { reading: string; label: string }
   return { reading: clean(item.onReadings[0]), label: 'on reading' }
 }
 
+// ─── Info content ─────────────────────────────────────────────────────────────
+
+const INFO_VOICE = [
+  {
+    title: 'Difficulty levels',
+    body: "Easy: individual kanji readings. Medium: short compounds. Hard: full sentences with multiple kanji. Higher difficulties award more XP.",
+  },
+  {
+    title: 'How evaluation works',
+    body: "Your spoken reading is transcribed and compared to the expected reading. Partial credit is given for close answers — accents and minor pitch differences are not penalised.",
+  },
+]
+
+const INFO_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 }
+
 // ─── Voice Reading Session Screen ─────────────────────────────────────────────
 
 export default function VoiceSession() {
@@ -67,6 +82,11 @@ export default function VoiceSession() {
   const [evaluated, setEvaluated] = useState(false)
   const [difficulty, setDifficulty] = useState<Difficulty>(1)
   const [showDifficultyPicker, setShowDifficultyPicker] = useState(false)
+  const [activeInfo, setActiveInfo] = useState<string | null>(null)
+
+  const toggleInfo = useCallback((id: string) => {
+    setActiveInfo((prev) => (prev === id ? null : id))
+  }, [])
 
   useEffect(() => {
     loadQueue()
@@ -215,7 +235,13 @@ export default function VoiceSession() {
           <Text style={styles.diffBadgeText}>{DIFFICULTY_LABELS[difficulty]}</Text>
           <Ionicons name={showDifficultyPicker ? 'chevron-up' : 'chevron-down'} size={12} color={colors.textMuted} />
         </TouchableOpacity>
+        <InfoButton id="voice" activeInfo={activeInfo} onToggle={toggleInfo} />
       </View>
+      {activeInfo === 'voice' && (
+        <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}>
+          <InfoPanel sections={INFO_VOICE} />
+        </View>
+      )}
 
       {/* Difficulty picker */}
       {showDifficultyPicker && (
@@ -481,4 +507,71 @@ const styles = StyleSheet.create({
   statBlock: { alignItems: 'center', gap: 4 },
   statValue: { ...typography.h1, color: colors.textPrimary },
   statLabel: { ...typography.caption, color: colors.textMuted },
+})
+
+// ─── InfoButton ───────────────────────────────────────────────────────────────
+
+interface InfoSection { title?: string; body: string }
+
+function InfoButton({
+  id,
+  activeInfo,
+  onToggle,
+}: {
+  id: string
+  activeInfo: string | null
+  onToggle: (id: string) => void
+}) {
+  const isOpen = activeInfo === id
+  return (
+    <TouchableOpacity onPress={() => onToggle(id)} hitSlop={INFO_HIT_SLOP} activeOpacity={0.7}>
+      <Ionicons
+        name={isOpen ? 'chevron-up-circle-outline' : 'information-circle-outline'}
+        size={18}
+        color={isOpen ? colors.info : colors.textMuted}
+      />
+    </TouchableOpacity>
+  )
+}
+
+// ─── InfoPanel ────────────────────────────────────────────────────────────────
+
+function InfoPanel({ sections }: { sections: InfoSection[] }) {
+  return (
+    <View style={infoStyles.panel}>
+      {sections.map((s, i) => (
+        <View key={i} style={[infoStyles.section, i > 0 && infoStyles.sectionSpaced]}>
+          {s.title !== undefined && (
+            <Text style={infoStyles.sectionTitle}>{s.title}</Text>
+          )}
+          <Text style={infoStyles.sectionBody}>{s.body}</Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+const infoStyles = StyleSheet.create({
+  panel: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.info + '44',
+    padding: spacing.md,
+  },
+  section: {},
+  sectionSpaced: { marginTop: spacing.sm },
+  sectionTitle: {
+    ...typography.caption,
+    color: colors.info,
+    fontWeight: '700',
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sectionBody: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
 })

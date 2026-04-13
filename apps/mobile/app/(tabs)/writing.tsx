@@ -28,6 +28,21 @@ interface Result {
   passed: boolean
 }
 
+// ─── Info content ─────────────────────────────────────────────────────────────
+
+const INFO_WRITING = [
+  {
+    title: 'Stroke order scoring',
+    body: "Your writing is compared stroke-by-stroke against the correct stroke order. The score reflects accuracy of stroke direction, sequence, and proportion.",
+  },
+  {
+    title: 'Improving your score',
+    body: "Focus on the starting point and direction of each stroke. The order shown matches the standard taught in Japanese schools.",
+  },
+]
+
+const INFO_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 }
+
 // ─── Writing Session Screen ───────────────────────────────────────────────────
 
 export default function WritingSession() {
@@ -39,6 +54,11 @@ export default function WritingSession() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [scrollEnabled, setScrollEnabled] = useState(true)
+  const [activeInfo, setActiveInfo] = useState<string | null>(null)
+
+  const toggleInfo = useCallback((id: string) => {
+    setActiveInfo((prev) => (prev === id ? null : id))
+  }, [])
 
   const handleDrawingChange = useCallback((isDrawing: boolean) => {
     setScrollEnabled(!isDrawing)
@@ -172,7 +192,13 @@ export default function WritingSession() {
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
+        <InfoButton id="writing" activeInfo={activeInfo} onToggle={toggleInfo} />
       </View>
+      {activeInfo === 'writing' && (
+        <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}>
+          <InfoPanel sections={INFO_WRITING} />
+        </View>
+      )}
 
       {/* ScrollView lets the user reach the controls when content is tall.
           The canvas PanResponder uses capture-phase so it won't be stolen. */}
@@ -278,4 +304,71 @@ const styles = StyleSheet.create({
   statBlock: { alignItems: 'center', gap: 4 },
   statValue: { ...typography.h1, color: colors.textPrimary },
   statLabel: { ...typography.caption, color: colors.textMuted },
+})
+
+// ─── InfoButton ───────────────────────────────────────────────────────────────
+
+interface InfoSection { title?: string; body: string }
+
+function InfoButton({
+  id,
+  activeInfo,
+  onToggle,
+}: {
+  id: string
+  activeInfo: string | null
+  onToggle: (id: string) => void
+}) {
+  const isOpen = activeInfo === id
+  return (
+    <TouchableOpacity onPress={() => onToggle(id)} hitSlop={INFO_HIT_SLOP} activeOpacity={0.7}>
+      <Ionicons
+        name={isOpen ? 'chevron-up-circle-outline' : 'information-circle-outline'}
+        size={18}
+        color={isOpen ? colors.info : colors.textMuted}
+      />
+    </TouchableOpacity>
+  )
+}
+
+// ─── InfoPanel ────────────────────────────────────────────────────────────────
+
+function InfoPanel({ sections }: { sections: InfoSection[] }) {
+  return (
+    <View style={infoStyles.panel}>
+      {sections.map((s, i) => (
+        <View key={i} style={[infoStyles.section, i > 0 && infoStyles.sectionSpaced]}>
+          {s.title !== undefined && (
+            <Text style={infoStyles.sectionTitle}>{s.title}</Text>
+          )}
+          <Text style={infoStyles.sectionBody}>{s.body}</Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+const infoStyles = StyleSheet.create({
+  panel: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.info + '44',
+    padding: spacing.md,
+  },
+  section: {},
+  sectionSpaced: { marginTop: spacing.sm },
+  sectionTitle: {
+    ...typography.caption,
+    color: colors.info,
+    fontWeight: '700',
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sectionBody: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
 })
