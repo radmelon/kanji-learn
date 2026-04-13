@@ -135,6 +135,7 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 | B4 | High | Accuracy metric on Dashboard may be inaccurate | Dashboard / API |
 | B5 | High | Kanji card reveal: hint text under eval buttons missing "Easy" and right arrow | Review card component |
 | B6 | Medium | Text/background contrast too low across the app | `theme/index.ts` |
+| B7 | Medium | Romaji toggle on kanji cards in study section does nothing | Review card component |
 
 ---
 
