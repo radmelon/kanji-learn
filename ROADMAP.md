@@ -44,7 +44,7 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
-| 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ✅ Code complete, in TestFlight |
+| 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ✅ Done — Apple + Google verified on TestFlight build 111 |
 | 6 | Onboarding Tutorial + User Questionnaire | High | Yes | Pending |
 | 7 | Dark / Light Theme Toggle | High | No | Pending |
 | 8 | Heatmap Calendar View | High | No | Pending |
