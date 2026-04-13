@@ -64,7 +64,7 @@ export default function OnboardingScreen() {
         useNativeDriver: true,
       }).start(() => {
         // Snap to opposite side, update step
-        translateX.setValue(direction * SCREEN_WIDTH)
+        translateX.setValue(-direction * SCREEN_WIDTH)
         setCurrentStep(nextStep)
 
         // Slide new content in
@@ -116,7 +116,7 @@ export default function OnboardingScreen() {
     ])
 
     if (!profileOk || !learnerOk) {
-      setSaveError('Something went wrong. Please try again.')
+      setSaveError(ONBOARDING_CONTENT.dailyTarget.saveError)
       setIsSaving(false)
       return
     }
@@ -124,20 +124,7 @@ export default function OnboardingScreen() {
     router.replace('/placement')
   }
 
-  // ── Progress dots ─────────────────────────────────────────────────────────
-  const ProgressDots = () => (
-    <View style={styles.dotsRow}>
-      {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.dot,
-            i === currentStep ? styles.dotActive : styles.dotInactive,
-          ]}
-        />
-      ))}
-    </View>
-  )
+  // ── Progress dots (inlined in return to avoid remount) ───────────────────
 
   // ── Step renderers ────────────────────────────────────────────────────────
 
@@ -306,77 +293,21 @@ export default function OnboardingScreen() {
 
   const steps = [renderWelcome, renderFindHelp, renderAboutYou, renderFocus, renderDailyTarget]
 
-  // ── Country Picker Modal ──────────────────────────────────────────────────
-  const CountryPickerModal = () => (
-    <Modal
-      visible={countryPickerVisible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => setCountryPickerVisible(false)}
-    >
-      <SafeAreaView style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Select Country</Text>
-          <TouchableOpacity
-            style={styles.modalCloseButton}
-            onPress={() => {
-              setCountryPickerVisible(false)
-              setCountrySearch('')
-            }}
-          >
-            <Text style={styles.modalCloseText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-        <TextInput
-          style={styles.modalSearchInput}
-          value={countrySearch}
-          onChangeText={setCountrySearch}
-          placeholder="Search countries…"
-          placeholderTextColor={colors.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          clearButtonMode="while-editing"
-        />
-        <FlatList
-          data={filteredCountries}
-          keyExtractor={(item) => item.code}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[
-                styles.countryItem,
-                item.code === country && styles.countryItemSelected,
-              ]}
-              onPress={() => {
-                setCountry(item.code)
-                setCountryPickerVisible(false)
-                setCountrySearch('')
-              }}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.countryItemText,
-                  item.code === country && styles.countryItemTextSelected,
-                ]}
-              >
-                {item.name}
-              </Text>
-              {item.code === country && (
-                <Text style={styles.countryItemCheck}>✓</Text>
-              )}
-            </TouchableOpacity>
-          )}
-          ItemSeparatorComponent={() => <View style={styles.divider} />}
-          keyboardShouldPersistTaps="handled"
-        />
-      </SafeAreaView>
-    </Modal>
-  )
-
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.root}>
-      <ProgressDots />
+      {/* Progress dots — inlined to avoid remount */}
+      <View style={styles.dotsRow}>
+        {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.dot,
+              i === currentStep ? styles.dotActive : styles.dotInactive,
+            ]}
+          />
+        ))}
+      </View>
 
       {/* Back button — visible on steps 2–4 */}
       {currentStep >= 2 && (
@@ -395,7 +326,70 @@ export default function OnboardingScreen() {
         {steps[currentStep]()}
       </Animated.View>
 
-      <CountryPickerModal />
+      {/* Country Picker Modal — inlined to avoid remount resetting search input */}
+      <Modal
+        visible={countryPickerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setCountryPickerVisible(false); setCountrySearch('') }}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{ONBOARDING_CONTENT.aboutYou.countryPickerTitle}</Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => {
+                setCountryPickerVisible(false)
+                setCountrySearch('')
+              }}
+            >
+              <Text style={styles.modalCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            style={styles.modalSearchInput}
+            value={countrySearch}
+            onChangeText={setCountrySearch}
+            placeholder={ONBOARDING_CONTENT.aboutYou.countryPickerSearchPlaceholder}
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+          />
+          <FlatList
+            data={filteredCountries}
+            keyExtractor={(item) => item.code}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.countryItem,
+                  item.code === country && styles.countryItemSelected,
+                ]}
+                onPress={() => {
+                  setCountry(item.code)
+                  setCountryPickerVisible(false)
+                  setCountrySearch('')
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.countryItemText,
+                    item.code === country && styles.countryItemTextSelected,
+                  ]}
+                >
+                  {item.name}
+                </Text>
+                {item.code === country && (
+                  <Text style={styles.countryItemCheck}>✓</Text>
+                )}
+              </TouchableOpacity>
+            )}
+            ItemSeparatorComponent={() => <View style={styles.divider} />}
+            keyboardShouldPersistTaps="handled"
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }

@@ -56,6 +56,8 @@ export const ONBOARDING_CONTENT = {
     headline: 'About you',
     namePlaceholder: 'Your name',
     countryPlaceholder: 'Country (optional)',
+    countryPickerTitle: 'Select Country',
+    countryPickerSearchPlaceholder: 'Search…',
     cta: 'Next',
   },
 
@@ -79,6 +81,7 @@ export const ONBOARDING_CONTENT = {
     options: [5, 10, 15, 20, 30, 50] as number[],
     defaultOption: 20,
     cta: "Let's go",
+    saveError: 'Something went wrong. Please try again.',
   },
 } as const
 
