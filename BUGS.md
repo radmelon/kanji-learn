@@ -69,6 +69,16 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: M]` `[Impact: High]` `[Status: 🐛 Active — regression confirmed Build 103]`
 
+- [ ] **`TOTAL_JOUYOU_KANJI` constant is wrong — set to 2,294 instead of 2,136** — `packages/shared/src/constants.ts` exports `TOTAL_JOUYOU_KANJI = 2294`, but the official Jōyō kanji list contains 2,136 characters (2010 revision). The inflated value understates completion percentages on the Dashboard and anywhere else the constant is used.
+
+  **Root cause:** Constant was set to 2,294 (Jōyō 2,136 + Jinmeiyō 158) instead of Jōyō-only. The README, sign-in screen subtitle, and DB migration comment all correctly say 2,136.
+
+  **Affected files:**
+  - `packages/shared/src/constants.ts` — change `2294` → `2136`
+  - Downstream consumers (`analytics.service.ts`, `SrsStatusBar.tsx`) import the constant and need no change once it's fixed.
+
+  `[Effort: XS]` `[Impact: Medium]` `[Status: 🐛 Active]`
+
 ---
 
 ## ✅ Fixed Bugs
