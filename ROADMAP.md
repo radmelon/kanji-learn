@@ -45,13 +45,13 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
 | 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ✅ Code complete, in TestFlight |
-| 6 | Onboarding Tutorial | High | No | Pending |
+| 6 | Onboarding Tutorial + User Questionnaire | High | Yes | Pending |
 | 7 | Dark / Light Theme Toggle | High | No | Pending |
 | 8 | Heatmap Calendar View | High | No | Pending |
 
 **Why this order:**
 - OAuth first — App Store requires Sign in with Apple if you offer any social login, and it's the #1 sign-up friction reducer
-- Onboarding right after — new OAuth users need guidance
+- Onboarding right after — new OAuth users need guidance. Includes user questionnaire (interests, reasons for learning, country) to populate the existing JSONB profile columns and personalize the AI Buddy experience later (Phase 6)
 - Theme toggle — highly requested, affects the entire UI (better to do before building more screens)
 - Heatmap — strong retention/motivation feature, purely frontend
 
