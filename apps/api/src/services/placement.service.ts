@@ -1,5 +1,5 @@
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
-import { kanji, userKanjiProgress, userProfiles } from '@kanji-learn/db'
+import { kanji, placementResults, placementSessions, userKanjiProgress, userProfiles } from '@kanji-learn/db'
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
@@ -132,6 +132,69 @@ export async function applyPlacementResults(
   userId: string,
   results: { kanjiId: number; passed: boolean }[]
 ): Promise<{ applied: number; skipped: number }> {
+  // ── Placement persistence ────────────────────────────────────────────────
+  if (results.length > 0) {
+    const allKanjiIds = results.map((r) => r.kanjiId)
+
+    // Fetch JLPT levels for all tested kanji
+    const kanjiRows = await db
+      .select({ id: kanji.id, jlptLevel: kanji.jlptLevel })
+      .from(kanji)
+      .where(inArray(kanji.id, allKanjiIds))
+
+    const levelMap = new Map<number, string>(kanjiRows.map((r: any) => [r.id as number, r.jlptLevel as string]))
+
+    // Build per-level pass/total counts
+    const passedByLevel: Record<string, number> = {}
+    const totalByLevel: Record<string, number> = {}
+
+    for (const r of results) {
+      const level = levelMap.get(r.kanjiId)
+      if (!level) continue
+      totalByLevel[level] = (totalByLevel[level] ?? 0) + 1
+      if (r.passed) passedByLevel[level] = (passedByLevel[level] ?? 0) + 1
+    }
+
+    // Infer placement level: highest JLPT level where accuracy >= 60%
+    // Walk N5 → N4 → N3 → N2 → N1, break on first failure
+    const jlptOrder = ['N5', 'N4', 'N3', 'N2', 'N1']
+    let inferredLevel: string | null = null
+    for (const lvl of jlptOrder) {
+      const total = totalByLevel[lvl] ?? 0
+      if (total === 0) continue
+      const passed = passedByLevel[lvl] ?? 0
+      if (passed / total >= 0.6) {
+        inferredLevel = lvl
+      } else {
+        break
+      }
+    }
+
+    // Insert placement session
+    const [session] = await db
+      .insert(placementSessions)
+      .values({
+        userId,
+        completedAt: new Date(),
+        inferredLevel,
+        summaryJson: { passedByLevel, totalByLevel },
+      })
+      .returning({ id: placementSessions.id })
+
+    // Bulk-insert individual placement results
+    const resultRows = results.map((r) => ({
+      sessionId: session.id,
+      kanjiId: r.kanjiId,
+      jlptLevel: levelMap.get(r.kanjiId) ?? 'N5',
+      passed: r.passed,
+    }))
+
+    if (resultRows.length > 0) {
+      await db.insert(placementResults).values(resultRows)
+    }
+  }
+  // ── End placement persistence ─────────────────────────────────────────────
+
   const passedIds = results.filter((r) => r.passed).map((r) => r.kanjiId)
   if (passedIds.length === 0) return { applied: 0, skipped: 0 }
 
