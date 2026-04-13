@@ -11,6 +11,7 @@ const updateProfileSchema = z.object({
   timezone: z.string().optional(),
   reminderHour: z.number().int().min(0).max(23).optional(),
   restDay: z.number().int().min(0).max(6).nullable().optional(),
+  onboardingCompletedAt: z.coerce.date().optional(),
 })
 
 export async function userRoutes(server: FastifyInstance) {
