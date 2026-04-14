@@ -1,7 +1,7 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses'
 import { buildInviteEmailHtml } from '../templates/email-invite.js'
 
-const SENDER = process.env.SES_SENDER_EMAIL ?? 'noreply@kanjibuddy.app'
+const SENDER = process.env.SES_SENDER_EMAIL ?? 'noreply@kanjibuddy.org'
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3000'
 
 export class EmailService {
