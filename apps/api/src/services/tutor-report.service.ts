@@ -10,6 +10,8 @@ import {
   tutorAnalysisCache,
   tutorNotes,
   kanji,
+  testResults,
+  writingAttempts,
 } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 
@@ -21,6 +23,7 @@ export interface ReportData {
     email: string | null
     createdAt: Date
     dailyGoal: number
+    restDay: number | null
     country: string | null
     reasonsForLearning: string[]
     interests: string[]
@@ -48,11 +51,20 @@ export interface ReportData {
     currentStreak: number
     longestStreak: number
   }
-  accuracy: {
+  quizAccuracy: {
     byType: Record<string, { total: number; correct: number; pct: number }>
     weakestModality: string | null
     leechCount: number
     topLeeches: { kanjiId: number; character: string; failCount: number }[]
+  }
+  confidence: {
+    byType: Record<string, { total: number; correct: number; pct: number }>
+  }
+  writing: {
+    totalAttempts: number
+    avgScore: number
+    passRate: number
+    worstKanji: { kanjiId: number; character: string; avgScore: number }[]
   }
   analysis: {
     strengths: string[]
@@ -74,7 +86,7 @@ export class TutorReportService {
   // ── Main entry point ───────────────────────────────────────────────────────
 
   async buildReport(userId: string, shareId: string): Promise<ReportData> {
-    const [student, learner, placement, progress, effort, velocity, accuracy, analysis, notes] =
+    const [student, learner, placement, progress, effort, velocity, quizAccuracy, confidence, writing, analysis, notes] =
       await Promise.all([
         this.getStudent(userId),
         this.getLearner(userId),
@@ -82,11 +94,13 @@ export class TutorReportService {
         this.getProgress(userId),
         this.getEffort(userId),
         this.getVelocity(userId),
-        this.getAccuracy(userId),
+        this.getQuizAccuracy(userId),
+        this.getConfidence(userId),
+        this.getWriting(userId),
         this.getAnalysis(userId),
         this.getNotes(shareId),
       ])
-    return { student: { ...student, ...learner }, placement, progress, effort, velocity, accuracy, analysis, notes }
+    return { student: { ...student, ...learner }, placement, progress, effort, velocity, quizAccuracy, confidence, writing, analysis, notes }
   }
 
   // ── Student profile ────────────────────────────────────────────────────────
@@ -100,6 +114,7 @@ export class TutorReportService {
       email: row?.email ?? null,
       createdAt: row?.createdAt ?? new Date(),
       dailyGoal: row?.dailyGoal ?? 20,
+      restDay: row?.restDay ?? null,
     }
   }
 
@@ -400,24 +415,24 @@ export class TutorReportService {
     return { dailyAvg, weeklyAvg, trend, currentStreak, longestStreak }
   }
 
-  // ── Accuracy ───────────────────────────────────────────────────────────────
+  // ── Quiz Accuracy (from test results) ──────────────────────────────────────
 
-  private async getAccuracy(userId: string) {
+  private async getQuizAccuracy(userId: string) {
     const since30 = new Date()
     since30.setDate(since30.getDate() - 30)
 
     const [typeRows, leechRows] = await Promise.all([
       this.db
         .select({
-          reviewType: reviewLogs.reviewType,
+          questionType: testResults.questionType,
           total: sql<number>`count(*)::int`,
-          correct: sql<number>`count(*) filter (where ${reviewLogs.quality} >= 3)::int`,
+          correct: sql<number>`count(*) filter (where ${testResults.correct} = true)::int`,
         })
-        .from(reviewLogs)
-        .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, since30)))
-        .groupBy(reviewLogs.reviewType),
+        .from(testResults)
+        .where(and(eq(testResults.userId, userId), gte(testResults.createdAt, since30)))
+        .groupBy(testResults.questionType),
 
-      // Top leeches: kanji with >= 3 failures (quality < 3) in last 30 days
+      // Top leeches: kanji with >= 3 failures (quality < 3) in last 30 days (still from review_logs)
       this.db.execute(sql`
         SELECT
           rl.kanji_id AS "kanjiId",
@@ -438,7 +453,7 @@ export class TutorReportService {
     for (const row of typeRows) {
       const total = Number(row.total)
       const correct = Number(row.correct)
-      byType[row.reviewType] = { total, correct, pct: total > 0 ? Math.round((correct / total) * 100) : 0 }
+      byType[row.questionType] = { total, correct, pct: total > 0 ? Math.round((correct / total) * 100) : 0 }
     }
 
     // Weakest modality = lowest accuracy among types with >= 10 total
@@ -462,6 +477,73 @@ export class TutorReportService {
       weakestModality,
       leechCount: topLeeches.length,
       topLeeches,
+    }
+  }
+
+  // ── Review Confidence (from SRS review_logs) ─────────────────────────────
+
+  private async getConfidence(userId: string) {
+    const since30 = new Date()
+    since30.setDate(since30.getDate() - 30)
+
+    const typeRows = await this.db
+      .select({
+        reviewType: reviewLogs.reviewType,
+        total: sql<number>`count(*)::int`,
+        correct: sql<number>`count(*) filter (where ${reviewLogs.quality} >= 4)::int`,
+      })
+      .from(reviewLogs)
+      .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, since30)))
+      .groupBy(reviewLogs.reviewType)
+
+    const byType: Record<string, { total: number; correct: number; pct: number }> = {}
+    for (const row of typeRows) {
+      const total = Number(row.total)
+      const correct = Number(row.correct)
+      byType[row.reviewType] = { total, correct, pct: total > 0 ? Math.round((correct / total) * 100) : 0 }
+    }
+
+    return { byType }
+  }
+
+  // ── Writing Performance ───────────────────────────────────────────────────
+
+  private async getWriting(userId: string) {
+    const [statsRows, worstRows] = await Promise.all([
+      this.db
+        .select({
+          totalAttempts: sql<number>`count(*)::int`,
+          avgScore: sql<number>`ROUND(AVG(${writingAttempts.score})::numeric * 100, 1)`,
+          passRate: sql<number>`ROUND(COUNT(*) FILTER (WHERE ${writingAttempts.score} >= 0.7)::numeric / NULLIF(COUNT(*), 0) * 100, 1)`,
+        })
+        .from(writingAttempts)
+        .where(eq(writingAttempts.userId, userId)),
+
+      this.db
+        .select({
+          kanjiId: writingAttempts.kanjiId,
+          character: kanji.character,
+          avgScore: sql<number>`ROUND(AVG(${writingAttempts.score})::numeric * 100, 1)`,
+        })
+        .from(writingAttempts)
+        .innerJoin(kanji, eq(writingAttempts.kanjiId, kanji.id))
+        .where(eq(writingAttempts.userId, userId))
+        .groupBy(writingAttempts.kanjiId, kanji.character)
+        .having(sql`COUNT(*) >= 2`)
+        .orderBy(sql`AVG(${writingAttempts.score}) ASC`)
+        .limit(5),
+    ])
+
+    const stats = statsRows[0]
+    return {
+      totalAttempts: Number(stats?.totalAttempts ?? 0),
+      avgScore: Number(stats?.avgScore ?? 0),
+      passRate: Number(stats?.passRate ?? 0),
+      worstKanji: worstRows.map((r) => ({
+        kanjiId: Number(r.kanjiId),
+        character: r.character,
+        avgScore: Number(r.avgScore),
+      })),
     }
   }
 

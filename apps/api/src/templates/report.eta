@@ -399,7 +399,9 @@
       <a href="#progress">Progress Snapshot</a>
       <a href="#effort">Effort &amp; Habits</a>
       <a href="#velocity">Learning Velocity</a>
-      <a href="#accuracy">Accuracy &amp; Modality</a>
+      <a href="#accuracy">Quiz Accuracy</a>
+      <a href="#confidence">Confidence by Stage</a>
+      <a href="#writing">Writing Performance</a>
       <a href="#analysis">AI Analysis</a>
       <a href="#notes">Teacher Notes</a>
     </nav>
@@ -537,7 +539,12 @@
           </div>
         </div>
         <div class="card">
-          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px">STUDY TIME MS / DAY (90 DAYS)</div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">STUDY TIME (MIN) / DAY (90 DAYS)</div>
+          <% if (it.student.restDay !== null && it.student.restDay !== undefined) { %>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Rest day: <%= ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][it.student.restDay] %> (shown as 🔵)</div>
+          <% } else { %>
+            <div style="margin-bottom:8px"></div>
+          <% } %>
           <div class="chart-wrap">
             <canvas id="effortLine"></canvas>
           </div>
@@ -579,45 +586,106 @@
       </div>
     </section>
 
-    <!-- ── 6. Accuracy & Modality ──────────────────────────────────── -->
+    <!-- ── 6. Quiz Accuracy ─────────────────────────────────────────── -->
     <section id="accuracy" class="section">
-      <h2 class="section-title">Accuracy &amp; Modality</h2>
+      <h2 class="section-title">Quiz Accuracy</h2>
       <div class="card-grid">
         <div class="stat-card">
           <div class="stat-label">Weakest Modality</div>
-          <div class="stat-value" style="font-size:18px"><%= it.accuracy.weakestModality ?? '—' %></div>
+          <div class="stat-value" style="font-size:18px"><%= it.quizAccuracy.weakestModality ?? '—' %></div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Leeches (last 30d)</div>
-          <div class="stat-value"><%= it.accuracy.leechCount %></div>
+          <div class="stat-value"><%= it.quizAccuracy.leechCount %></div>
           <div class="stat-sub">kanji failed 3+ times</div>
         </div>
       </div>
       <div class="chart-grid">
         <div class="card">
-          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px">ACCURACY BY TYPE (RADAR)</div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px">QUIZ ACCURACY BY TYPE (RADAR)</div>
           <div class="chart-wrap">
             <canvas id="accuracyRadar"></canvas>
           </div>
         </div>
         <div class="card">
-          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px">REVIEW VOLUME BY TYPE</div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px">CORRECT vs INCORRECT BY TYPE</div>
           <div class="chart-wrap">
             <canvas id="accuracyVolume"></canvas>
           </div>
         </div>
       </div>
-      <% if (it.accuracy.topLeeches && it.accuracy.topLeeches.length > 0) { %>
+      <% if (it.quizAccuracy.topLeeches && it.quizAccuracy.topLeeches.length > 0) { %>
         <div class="card">
           <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">TOP LEECHES</div>
           <div class="leech-list">
-            <% for (const leech of it.accuracy.topLeeches) { %>
+            <% for (const leech of it.quizAccuracy.topLeeches) { %>
               <div class="leech-item">
                 <span class="leech-char"><%= leech.character %></span>
                 <span class="leech-fail"><%= leech.failCount %> fails</span>
               </div>
             <% } %>
           </div>
+        </div>
+      <% } %>
+    </section>
+
+    <!-- ── 6b. Review Confidence by SRS Stage ────────────────────────── -->
+    <section id="confidence" class="section">
+      <h2 class="section-title">Review Confidence by SRS Stage</h2>
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">CONFIDENCE BY STAGE</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Self-assessed recall quality at each SRS progression stage (Good/Easy = confident). Stages unlock as the student advances through the SRS system.</div>
+        <div class="chart-wrap">
+          <canvas id="confidenceBar"></canvas>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:12px;line-height:1.6">
+          <strong>Stages:</strong>
+          <strong>Meaning</strong> — "What does this mean?" (new &amp; learning cards) →
+          <strong>Reading</strong> — "How do you read this?" (reviewing stage) →
+          <strong>Writing</strong> — "Write this kanji" (remembered stage) →
+          <strong>Compound</strong> — "Meaning + all readings" (mastered stage).
+          Greyed-out bars indicate stages not yet reached. Faded bars have fewer than 5 reviews — too few for a reliable measure.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 6c. Writing Performance ────────────────────────────────────── -->
+    <section id="writing" class="section">
+      <h2 class="section-title">Writing Performance</h2>
+      <div class="card-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Attempts</div>
+          <div class="stat-value"><%= it.writing.totalAttempts %></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Average Score</div>
+          <div class="stat-value"><%= it.writing.avgScore %>%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Pass Rate</div>
+          <div class="stat-value"><%= it.writing.passRate %>%</div>
+          <div class="stat-sub">score >= 70%</div>
+        </div>
+      </div>
+      <% if (it.writing.worstKanji && it.writing.worstKanji.length > 0) { %>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);padding:16px 24px 8px">KANJI NEEDING PRACTICE</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Character</th>
+                <th>Avg Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% for (const k of it.writing.worstKanji) { %>
+                <tr>
+                  <td style="font-size:22px"><%= k.character %></td>
+                  <td><%= k.avgScore %>%</td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
         </div>
       <% } %>
     </section>
@@ -676,7 +744,7 @@
             <% } %>
           </div>
         </div>
-        <p class="analysis-meta">Generated <%= new Date(it.analysis.generatedAt).toLocaleString() %></p>
+        <p class="analysis-meta">Generated <span class="utc-timestamp" data-utc="<%= it.analysis.generatedAt %>"><%= it.analysis.generatedAt %> UTC</span></p>
       <% } else { %>
         <div class="card">
           <p class="empty-state">No AI analysis has been generated yet. Click below to run the analysis.</p>
@@ -696,7 +764,7 @@
           <% for (const note of it.notes) { %>
             <div class="note-item">
               <div class="note-text"><%= note.noteText %></div>
-              <div class="note-date"><%= new Date(note.createdAt).toLocaleString() %></div>
+              <div class="note-date"><span class="utc-timestamp" data-utc="<%= new Date(note.createdAt).toISOString() %>"><%= new Date(note.createdAt).toISOString() %> UTC</span></div>
             </div>
           <% } %>
         </div>
@@ -704,9 +772,9 @@
         <p class="empty-state" style="margin-bottom:20px">No notes yet. Use the form below to add your first note.</p>
       <% } %>
       <div class="card notes-form">
-        <form method="POST" action="/report/<%= it.token %>/notes">
+        <form method="POST" action="/report/<%= it.token %>/notes" accept-charset="UTF-8">
           <label for="noteText">Add a Note</label>
-          <textarea id="noteText" name="noteText" placeholder="Write guidance, observations, or encouragement for the student..."></textarea>
+          <textarea id="noteText" name="noteText" placeholder="Write guidance, observations, or encouragement for the student... &#10;日本語でもメモを書けます。"></textarea>
           <button type="submit" class="btn-submit">Save Note</button>
         </form>
       </div>
@@ -717,10 +785,15 @@
 
 <script>
   // ── Chart data (injected server-side) ─────────────────────────────
+  const restDay = <%= it.student.restDay !== null && it.student.restDay !== undefined ? it.student.restDay : 'null' %> // 0=Sun…6=Sat
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
   const reportData = <%~ JSON.stringify({
     progress: it.progress,
     effort: it.effort,
-    accuracy: it.accuracy,
+    quizAccuracy: it.quizAccuracy,
+    confidence: it.confidence,
+    writing: it.writing,
     velocity: it.velocity,
   }) %>
 
@@ -786,17 +859,29 @@
   // ── Effort line chart (90d study time) ────────────────────────────
   ;(function () {
     const stats = reportData.effort.dailyStats90
+    // Highlight rest day points
+    const pointColors = stats.map(d => {
+      if (restDay === null) return '#E84855'
+      const dow = new Date(d.date).getUTCDay()
+      return dow === restDay ? '#60a5fa' : '#E84855'
+    })
+    const pointRadii = stats.map(d => {
+      if (restDay === null) return 2
+      const dow = new Date(d.date).getUTCDay()
+      return dow === restDay ? 5 : 2
+    })
     new Chart(document.getElementById('effortLine'), {
       type: 'line',
       data: {
         labels: stats.map(d => d.date.slice(5)),
         datasets: [{
-          label: 'Study Time (ms)',
-          data: stats.map(d => d.studyTimeMs),
+          label: restDay !== null ? `Study Time (min) — 🔵 = rest day (${DAY_NAMES[restDay]})` : 'Study Time (min)',
+          data: stats.map(d => Math.round(d.studyTimeMs / 60000 * 10) / 10),
           borderColor: '#E84855',
           backgroundColor: 'rgba(232,72,85,0.08)',
           borderWidth: 2,
-          pointRadius: 2,
+          pointRadius: pointRadii,
+          pointBackgroundColor: pointColors,
           fill: true,
           tension: 0.3,
         }]
@@ -813,18 +898,21 @@
     })
   })()
 
-  // ── Accuracy radar ────────────────────────────────────────────────
+  // ── Quiz accuracy radar ────────────────────────────────────────────
   ;(function () {
-    const byType = reportData.accuracy.byType
-    const labels = Object.keys(byType)
-    if (labels.length === 0) return
+    const byType = reportData.quizAccuracy.byType
+    // Show all quiz question types for a meaningful radar shape
+    const allTypes = ['meaning_recall', 'kanji_from_meaning', 'reading_recall', 'vocab_reading', 'vocab_from_definition']
+    // Use data keys + any missing standard types
+    const labels = [...new Set([...Object.keys(byType), ...allTypes])]
+    if (Object.keys(byType).length === 0) return
     new Chart(document.getElementById('accuracyRadar'), {
       type: 'radar',
       data: {
-        labels,
+        labels: labels.map(l => l.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())),
         datasets: [{
           label: 'Accuracy %',
-          data: labels.map(k => byType[k].pct),
+          data: labels.map(k => byType[k]?.pct ?? 0),
           backgroundColor: 'rgba(232,72,85,0.15)',
           borderColor: '#E84855',
           borderWidth: 2,
@@ -840,31 +928,161 @@
     })
   })()
 
-  // ── Accuracy volume bar ───────────────────────────────────────────
+  // ── Quiz accuracy volume bar (stacked: correct vs incorrect) ───────
   ;(function () {
-    const byType = reportData.accuracy.byType
+    const byType = reportData.quizAccuracy.byType
     const labels = Object.keys(byType)
     if (labels.length === 0) return
     new Chart(document.getElementById('accuracyVolume'), {
       type: 'bar',
       data: {
-        labels,
+        labels: labels.map(l => l.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())),
+        datasets: [
+          {
+            label: 'Correct',
+            data: labels.map(k => byType[k].correct),
+            backgroundColor: 'rgba(52,211,153,0.75)',
+            borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 4, bottomRight: 4 },
+          },
+          {
+            label: 'Incorrect',
+            data: labels.map(k => byType[k].total - byType[k].correct),
+            backgroundColor: 'rgba(232,72,85,0.55)',
+            borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              afterBody: function (items) {
+                const idx = items[0].dataIndex
+                const key = labels[idx]
+                const stats = byType[key]
+                return `Total: ${stats.total}  ·  Accuracy: ${stats.pct}%`
+              }
+            }
+          }
+        },
+        scales: {
+          x: { stacked: true, ticks: { font: { size: 10 } } },
+          y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 } },
+            title: { display: true, text: 'Questions', font: { size: 11 } }
+          }
+        }
+      }
+    })
+  })()
+
+  // ── Confidence bar chart (all 4 SRS stages) ────────────────────────
+  ;(function () {
+    const byType = reportData.confidence.byType
+    const allStages = ['meaning', 'reading', 'writing', 'compound']
+    const stageLabels = ['Meaning', 'Reading', 'Writing', 'Compound']
+    const stageSubtitles = [
+      '"What does this mean?"',
+      '"How do you read this?"',
+      '"Write this kanji"',
+      '"Meaning + all readings"',
+    ]
+    const MIN_REVIEWS = 5 // Minimum reviews for a stage to be considered meaningful
+
+    const stageInfo = allStages.map(s => {
+      const stats = byType[s]
+      if (!stats) return { status: 'none', pct: 0, total: 0, correct: 0 }
+      if (stats.total < MIN_REVIEWS) return { status: 'insufficient', pct: stats.pct, total: stats.total, correct: stats.correct }
+      return { status: 'solid', pct: stats.pct, total: stats.total, correct: stats.correct }
+    })
+
+    const displayData = stageInfo.map(s => s.status === 'none' ? 0 : s.pct)
+    const barColors = stageInfo.map(s => {
+      if (s.status === 'solid') return 'rgba(167,139,250,0.75)'
+      if (s.status === 'insufficient') return 'rgba(167,139,250,0.25)'
+      return 'rgba(200,200,210,0.15)'
+    })
+    const borderColors = stageInfo.map(s => {
+      if (s.status === 'solid') return 'rgba(167,139,250,1)'
+      if (s.status === 'insufficient') return 'rgba(167,139,250,0.4)'
+      return 'rgba(200,200,210,0.4)'
+    })
+    const borderDash = stageInfo.map(s => s.status === 'insufficient' ? [4, 4] : [])
+
+    new Chart(document.getElementById('confidenceBar'), {
+      type: 'bar',
+      data: {
+        labels: stageLabels,
         datasets: [{
-          label: 'Total Reviews',
-          data: labels.map(k => byType[k].total),
-          backgroundColor: 'rgba(96,165,250,0.7)',
+          label: 'Confidence %',
+          data: displayData,
+          backgroundColor: barColors,
+          borderColor: borderColors,
+          borderWidth: 1,
           borderRadius: 4,
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { labels: { font: { size: 11 } } } },
+        plugins: {
+          legend: { labels: { font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                const idx = ctx.dataIndex
+                const info = stageInfo[idx]
+                if (info.status === 'none') return ' Not yet reached'
+                if (info.status === 'insufficient') return ` ${info.pct}% (${info.correct}/${info.total} reviews — too few for reliable measure)`
+                return ` ${info.pct}% confident (${info.correct}/${info.total} reviews)`
+              },
+              afterLabel: function (ctx) {
+                return stageSubtitles[ctx.dataIndex]
+              }
+            }
+          }
+        },
         scales: {
-          x: { ticks: { font: { size: 10 } } },
-          y: { beginAtZero: true, ticks: { font: { size: 10 } } }
+          x: { ticks: { font: { size: 11 } } },
+          y: {
+            beginAtZero: true, max: 100,
+            ticks: { font: { size: 10 }, callback: v => v + '%' },
+            title: { display: true, text: 'Confidence', font: { size: 11 } }
+          }
         }
-      }
+      },
+      plugins: [{
+        // Draw labels on/above each bar: count + status
+        id: 'barLabels',
+        afterDraw: function (chart) {
+          const meta = chart.getDatasetMeta(0)
+          const ctx = chart.ctx
+          ctx.save()
+          ctx.textAlign = 'center'
+          meta.data.forEach((bar, i) => {
+            const info = stageInfo[i]
+            if (info.status === 'none') {
+              ctx.font = '11px system-ui, sans-serif'
+              ctx.fillStyle = '#999'
+              ctx.fillText('N/A', bar.x, bar.y - 6)
+            } else if (info.status === 'insufficient') {
+              ctx.font = '10px system-ui, sans-serif'
+              ctx.fillStyle = '#999'
+              ctx.fillText(`${info.total} review${info.total === 1 ? '' : 's'}`, bar.x, bar.y - 6)
+            } else {
+              ctx.font = 'bold 11px system-ui, sans-serif'
+              ctx.fillStyle = '#555'
+              ctx.fillText(`${info.pct}%`, bar.x, bar.y - 6)
+              ctx.font = '10px system-ui, sans-serif'
+              ctx.fillStyle = '#999'
+              ctx.fillText(`(${info.total})`, bar.x, bar.y - 18)
+            }
+          })
+          ctx.restore()
+        }
+      }]
     })
   })()
 
@@ -880,6 +1098,27 @@
       a.classList.toggle('active', a.getAttribute('href') === '#' + current)
     })
   }, { passive: true })
+
+  // ── Localize UTC timestamps to browser timezone ────────────────────
+  ;(function () {
+    document.querySelectorAll('.utc-timestamp').forEach(el => {
+      const utcStr = el.dataset.utc
+      if (!utcStr) return
+      const d = new Date(utcStr)
+      if (isNaN(d.getTime())) return
+      const offsetMin = d.getTimezoneOffset()
+      const sign = offsetMin <= 0 ? '+' : '-'
+      const absH = Math.floor(Math.abs(offsetMin) / 60)
+      const absM = Math.abs(offsetMin) % 60
+      const offsetLabel = `UTC${sign}${String(absH).padStart(2, '0')}:${String(absM).padStart(2, '0')}`
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+      const localStr = d.toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+      el.textContent = `${localStr} (${offsetLabel}${tz ? ' · ' + tz : ''})`
+    })
+  })()
 
   // ── Refresh AI analysis ───────────────────────────────────────────
   async function refreshAnalysis() {

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { api } from '../lib/api'
+import { api, ApiError } from '../lib/api'
 
 interface TutorShareInfo {
   id: string
@@ -60,8 +60,14 @@ export function useTutorSharing() {
       await api.post('/v1/tutor-sharing/invite', { teacherEmail: email })
       await loadStatus()
       return true
-    } catch {
-      setError('Failed to send invite. Please try again.')
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'SHARE_ALREADY_EXISTS') {
+        setError('You already have a pending or active share. Revoke it first to invite a new tutor.')
+      } else if (err instanceof ApiError && err.code === 'SELF_INVITE_NOT_ALLOWED') {
+        setError('You cannot invite yourself.')
+      } else {
+        setError('Failed to send invite. Please try again.')
+      }
       return false
     } finally {
       setIsSending(false)

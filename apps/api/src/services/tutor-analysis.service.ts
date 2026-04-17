@@ -71,6 +71,7 @@ export class TutorAnalysisService {
       const result = await this.llm.route({
         context: 'deep_diagnostic',
         userId,
+        userOptedInPremium: true, // System-initiated analysis — bypass premium gate for Claude (tier 3)
         systemPrompt,
         messages: [{ role: 'user', content: prompt }],
         preferredTier,
@@ -78,7 +79,19 @@ export class TutorAnalysisService {
         temperature: 0.3,
       })
 
-      const parsed = JSON.parse(result.content)
+      // Strip markdown code fences if the LLM wraps the JSON (e.g. ```json ... ```)
+      let raw = result.content.trim()
+      // Try to extract JSON from inside code fences first
+      const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/)
+      if (fenceMatch) {
+        raw = fenceMatch[1].trim()
+      }
+      // Fallback: extract first { ... } block if still not valid JSON
+      if (!raw.startsWith('{')) {
+        const braceMatch = raw.match(/\{[\s\S]*\}/)
+        if (braceMatch) raw = braceMatch[0]
+      }
+      const parsed = JSON.parse(raw)
       analysis = {
         strengths: parsed.strengths ?? [],
         areasForImprovement: parsed.areasForImprovement ?? [],
@@ -119,7 +132,7 @@ export class TutorAnalysisService {
   // ── Build the analysis prompt from report data ─────────────────────────────
 
   private buildAnalysisPrompt(data: ReportData): string {
-    const { student, progress, velocity, accuracy, effort, placement } = data
+    const { student, progress, velocity, quizAccuracy, effort, placement } = data
 
     // Student profile
     const learnerSince = student.createdAt
@@ -135,15 +148,15 @@ export class TutorAnalysisService {
       .map(([status, count]) => `  ${status}: ${count}`)
       .join('\n')
 
-    // Accuracy by type
-    const accuracyLines = Object.entries(accuracy.byType)
-      .map(([type, stats]) => `  ${type}: ${stats.correct}/${stats.total} (${stats.pct}%)`)
+    // Quiz accuracy by type
+    const accuracyLines = Object.entries(quizAccuracy.byType)
+      .map(([type, stats]: [string, { correct: number; total: number; pct: number }]) => `  ${type}: ${stats.correct}/${stats.total} (${stats.pct}%)`)
       .join('\n')
 
     // Leeches
-    const leechLines = accuracy.topLeeches.length > 0
-      ? accuracy.topLeeches
-          .map((l) => `  ${l.character} (${l.failCount} failures)`)
+    const leechLines = quizAccuracy.topLeeches.length > 0
+      ? quizAccuracy.topLeeches
+          .map((l: { character: string; failCount: number }) => `  ${l.character} (${l.failCount} failures)`)
           .join('\n')
       : '  none'
 
@@ -183,10 +196,10 @@ Trend: ${velocity.trend}
 Current streak: ${velocity.currentStreak} days
 Longest streak: ${velocity.longestStreak} days
 
-=== ACCURACY BY REVIEW TYPE (last 30 days) ===
+=== QUIZ ACCURACY BY TYPE (last 30 days) ===
 ${accuracyLines || '  no review data'}
-Weakest modality: ${accuracy.weakestModality ?? 'none identified'}
-Total leeches (kanji failed ≥3 times): ${accuracy.leechCount}
+Weakest modality: ${quizAccuracy.weakestModality ?? 'none identified'}
+Total leeches (kanji failed ≥3 times): ${quizAccuracy.leechCount}
 Top leeches:
 ${leechLines}
 

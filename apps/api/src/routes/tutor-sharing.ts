@@ -37,7 +37,7 @@ export async function tutorSharingRoutes(server: FastifyInstance) {
     { preHandler: [server.authenticate] },
     async (req, reply) => {
       const data = await service.getStatus(req.userId!)
-      return reply.send({ ok: true, data })
+      return reply.send({ ok: true, data: { share: data, noteCount: data?.noteCount ?? 0 } })
     }
   )
 

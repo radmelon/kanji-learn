@@ -6,6 +6,10 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [x] **Tutor Report: AI analysis fails with "Both tier 2 providers failed"** — ~~FIXED~~. Root cause: `TutorAnalysisService.computeForUser()` called `this.llm.route()` without `userOptedInPremium: true`, so the LLM router's tier 3 gate (`if (request.userOptedInPremium === true)`) skipped Claude and fell through to tier 2 providers (Groq/Gemini) which had no API keys on App Runner. Fix: added `userOptedInPremium: true` to the route call in `tutor-analysis.service.ts`.
+
+  `[Effort: XS]` `[Impact: High]` `[Status: ✅ Fixed]`
+
 - [ ] **Scrolling down on reveal card triggers swipe-down "Hard" grade** — After a card is revealed, the answer area is a `ScrollView` containing readings and vocab. Attempting to scroll down to read the content fires the swipe-down gesture, grading the card as "Hard" instead of scrolling.
 
   **Steps to reproduce:**

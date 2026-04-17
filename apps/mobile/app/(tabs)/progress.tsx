@@ -72,21 +72,21 @@ const INFO_ACTIVITY: InfoSection[] = [
   },
 ]
 
-const INFO_ACCURACY: InfoSection[] = [
+const INFO_CONFIDENCE: InfoSection[] = [
   {
-    body: 'Your overall SRS review accuracy over the last 30 days — the percentage of flashcard answers graded Good or Easy out of all answers submitted.',
+    body: 'Your self-assessed SRS recall confidence over the last 30 days — the percentage of flashcard reviews where you graded yourself Good or Easy (confident) out of all reviews submitted.',
   },
   {
-    title: 'How accuracy is graded',
-    body: 'After revealing a card you self-grade using 4 buttons:\n\n• Again — you forgot it; resets the card\'s interval (incorrect)\n• Hard — you remembered with difficulty (incorrect for accuracy; interval still advances)\n• Good — solid recall (correct)\n• Easy — effortless recall; boosts the next interval (correct)\n\nAgain and Hard both count against your accuracy score.',
+    title: 'How confidence is measured',
+    body: 'After revealing a card you self-grade using 4 buttons:\n\n• Again — you forgot it; resets the card\'s interval (not confident)\n• Hard — you remembered with difficulty (not confident; interval still advances)\n• Good — solid recall (confident)\n• Easy — effortless recall; boosts the next interval (confident)\n\nGood and Easy count as confident; Again and Hard count as not confident.',
   },
   {
-    title: 'What is a good accuracy?',
+    title: 'What is a good confidence level?',
     body: 'Aim for 70–85%. Below 70% suggests cards are advancing too fast or you need more time with new material. Above 90% may mean your daily goal is too conservative — you could handle a faster pace.',
   },
   {
-    title: 'Accuracy vs retention',
-    body: 'A high accuracy today doesn\'t mean permanent retention. The SRS confirms retention by making you recall a kanji again at 1 month, 3 months, 6 months. Only confident recall (Good/Easy) across all those intervals earns a burn.',
+    title: 'Confidence vs retention',
+    body: 'High confidence today doesn\'t mean permanent retention. The SRS confirms retention by making you recall a kanji again at 1 month, 3 months, 6 months. Only confident recall (Good/Easy) across all those intervals earns a burn.',
   },
 ]
 
@@ -297,19 +297,19 @@ export default function ProgressScreen() {
               />
             </Section>
 
-            {/* Accuracy card */}
+            {/* Confidence card */}
             <Section
-              title="Accuracy"
-              right={<InfoButton id="accuracy" activeInfo={activeInfo} onToggle={toggleInfo} />}
+              title="Confidence"
+              right={<InfoButton id="confidence" activeInfo={activeInfo} onToggle={toggleInfo} />}
             >
-              {activeInfo === 'accuracy' && <InfoPanel sections={INFO_ACCURACY} />}
+              {activeInfo === 'confidence' && <InfoPanel sections={INFO_CONFIDENCE} />}
               <View style={styles.accuracyRow}>
                 <View style={styles.accuracyCircle}>
-                  <Text style={styles.accuracyPct}>{summary.accuracy}%</Text>
-                  <Text style={styles.accuracyLabel}>correct</Text>
+                  <Text style={styles.accuracyPct}>{summary.confidence}%</Text>
+                  <Text style={styles.accuracyLabel}>confident</Text>
                 </View>
                 <View style={styles.accuracyDetails}>
-                  <AccuracyRow label="Last 7 days" value={summary.accuracy} />
+                  <AccuracyRow label="Last 7 days" value={summary.confidence} />
                   <AccuracyRow label="Total reviewed" value={summary.statusCounts.learning + summary.statusCounts.reviewing + summary.statusCounts.remembered + summary.statusCounts.burned} isCount />
                   <AccuracyRow label="Burned" value={summary.statusCounts.burned} isCount />
                 </View>
