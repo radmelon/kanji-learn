@@ -45,12 +45,13 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
 | 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ✅ Done — Apple + Google verified on TestFlight build 111 |
-| 6 | Onboarding Tutorial + User Questionnaire | High | Yes | Pending |
+| 6 | Onboarding Tutorial + User Questionnaire | High | Yes | ✅ Done — PR #4, TestFlight build 108 |
 | 7 | Dark / Light Theme Toggle | High | No | Pending |
 | 8 | Heatmap Calendar View | High | No | Pending |
 | 9 | Splash Screen Polish: solid bg color, longer display duration, branding imagery | Med | No | Pending |
 | 10 | About/Credits Page: add app branding imagery and credits | Low | No | Pending |
 | 11 | Rebrand: Kanji Learn → Kanji Buddy | Med | No | Pending |
+| 12 | Delete Account ⚠️ App Store compliance | High | Yes | Pending — required before public App Store release (App Store Review Guideline 5.1.1: apps that support account creation must provide in-app account deletion). UI in Profile tab; backend calls Supabase `admin.deleteUser()` which cascades all user data via FK. |
 
 **Why this order:**
 - OAuth first — App Store requires Sign in with Apple if you offer any social login, and it's the #1 sign-up friction reducer
@@ -58,6 +59,7 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 - Theme toggle — highly requested, affects the entire UI (better to do before building more screens)
 - Heatmap — strong retention/motivation feature, purely frontend
 - Rebrand last in Phase 2 — ship the new name alongside onboarding + social login as a clean "v2 launch" moment. Touches app.json, App Store listing, sign-in/sign-up headers, Watch app name, all hardcoded strings
+- Delete Account (#12) must ship before the App Store public release — pair with Rebrand as a single "production-ready" commit
 
 ---
 
