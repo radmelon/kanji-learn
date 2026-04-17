@@ -128,25 +128,25 @@ const INFO_JLPT_PROGRESS: InfoSection[] = [
   },
 ]
 
-const INFO_ACCURACY_BY_TYPE: InfoSection[] = [
+const INFO_CONFIDENCE_BY_TYPE: InfoSection[] = [
   {
-    body: 'Accuracy broken down by the four SRS card types over the last 30 days. Each type tests a different dimension of kanji knowledge — weakness in one area is a clear signal of where to focus.',
+    body: 'Your self-assessed confidence broken down by the four SRS card types over the last 30 days. When you grade a card Good or Easy, it counts as confident; Hard or Again counts as not confident. This reflects your subjective recall quality, not objective quiz scores.',
   },
   {
     title: 'Meaning',
-    body: 'You see the kanji and must recall its English meaning. Tests visual recognition — the most common starting point and usually the highest-accuracy type.',
+    body: 'You see the kanji and must recall its English meaning. Tests visual recognition — the most common starting point and usually the highest-confidence type.',
   },
   {
     title: 'Reading',
-    body: 'You see the kanji and must produce its On\'yomi or Kun\'yomi reading. Reading recall is typically the hardest type — a low score here is normal and means you\'re working on the most challenging skill.',
+    body: 'You see the kanji and must produce its On\'yomi or Kun\'yomi reading. Reading recall is typically the hardest type — low confidence here is normal and means you\'re working on the most challenging skill.',
   },
   {
     title: 'Writing',
-    body: 'You are prompted for the kanji and must draw it stroke by stroke. Stroke order and accuracy are both evaluated. Improves spatial memory and prevents confusing similar-looking characters.',
+    body: 'You are prompted for the kanji and must draw it stroke by stroke. Stroke order and form are both evaluated. Improves spatial memory and prevents confusing similar-looking characters.',
   },
   {
     title: 'Compound',
-    body: 'You see a multi-kanji word and must identify meaning or reading. Compounds test real-world vocabulary and contextual understanding — high compound accuracy indicates practical reading ability.',
+    body: 'You see a multi-kanji word and must identify meaning or reading. Compounds test real-world vocabulary and contextual understanding — high compound confidence indicates practical reading ability.',
   },
 ]
 
@@ -283,8 +283,8 @@ export default function Dashboard() {
             {/* Stats row */}
             <View style={styles.statsRow}>
               <StatCard
-                label="Accuracy"
-                value={`${summary.accuracy}%`}
+                label="Confidence"
+                value={`${summary.confidence}%`}
                 subtitle="last 30 days"
                 accentColor={colors.success}
               />
@@ -442,19 +442,19 @@ export default function Dashboard() {
               </View>
             )}
 
-            {/* ── Review Accuracy by Type ── */}
-            {summary.accuracyByType && Object.keys(summary.accuracyByType).length > 0 && (
+            {/* ── Review Confidence by Type ── */}
+            {summary.confidenceByType && Object.keys(summary.confidenceByType).length > 0 && (
               <View style={styles.card}>
                 <View style={styles.cardRow}>
-                  <Text style={styles.cardTitle}>Review Accuracy</Text>
-                  <InfoButton id="accuracyByType" activeInfo={activeInfo} onToggle={toggleInfo} />
+                  <Text style={styles.cardTitle}>Review Confidence</Text>
+                  <InfoButton id="confidenceByType" activeInfo={activeInfo} onToggle={toggleInfo} />
                 </View>
 
-                {activeInfo === 'accuracyByType' && <InfoPanel sections={INFO_ACCURACY_BY_TYPE} />}
+                {activeInfo === 'confidenceByType' && <InfoPanel sections={INFO_CONFIDENCE_BY_TYPE} />}
 
                 <View style={styles.accTypeRows}>
                   {(['meaning', 'reading', 'writing', 'compound'] as const).map((type) => {
-                    const stat = summary.accuracyByType[type]
+                    const stat = summary.confidenceByType[type]
                     if (!stat || stat.total === 0) return null
                     const label = type.charAt(0).toUpperCase() + type.slice(1)
                     const pct = stat.pct

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Switch, ActivityIndicator, Alert, RefreshControl, Share,
+  FlatList, Modal,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -13,6 +14,9 @@ import { useNetworkStatus } from '../../src/hooks/useNetworkStatus'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { useSocial } from '../../src/hooks/useSocial'
 import type { SearchResult } from '../../src/hooks/useSocial'
+import { useTutorSharing } from '../../src/hooks/useTutorSharing'
+import { useLearnerProfile } from '../../src/hooks/useLearnerProfile'
+import { COUNTRIES, ONBOARDING_CONTENT } from '../../src/config/onboarding-content'
 
 const PROFILE_CACHE_KEY = 'kl:profile_cache'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -95,7 +99,32 @@ export default function ProfileScreen() {
   const { friends, pendingRequests, isSearching, loadAll, searchByEmail, sendRequest, respondToRequest, removeFriend } = useSocial()
   const [friendSearch, setFriendSearch] = useState('')
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+
+  // Tutor sharing
+  const {
+    share: tutorShare, noteCount: tutorNoteCount, notes: tutorNotes,
+    isLoading: tutorLoading, isSending: tutorSending, error: tutorError,
+    sendInvite, revoke: revokeShare,
+  } = useTutorSharing()
+  const [teacherEmail, setTeacherEmail] = useState('')
   const [searchError, setSearchError] = useState<string | null>(null)
+
+  // ─── Learning profile ─────────────────────────────────────────────────────────
+  const { learnerProfile, update: updateLearnerProfile } = useLearnerProfile()
+
+  const [lpCountry, setLpCountry] = useState<string | null>(null)
+  const [lpReasons, setLpReasons] = useState<string[]>([])
+  const [lpInterests, setLpInterests] = useState<string[]>([])
+  const [lpDirty, setLpDirty] = useState(false)
+  const [lpSaving, setLpSaving] = useState(false)
+  const [lpError, setLpError] = useState<string | null>(null)
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false)
+  const [lpCountrySearch, setLpCountrySearch] = useState('')
+
+  const INTEREST_OPTIONS = [
+    'Manga', 'Anime', 'Gaming', 'Literature', 'Film',
+    'Travel', 'Business', 'History', 'Technology', 'Other',
+  ]
 
   // ── Load profile ─────────────────────────────────────────────────────────
 
@@ -143,6 +172,13 @@ export default function ProfileScreen() {
       if (v) loadWatchStatus()
     })
   }, [loadProfile, loadWatchStatus])
+
+  useEffect(() => {
+    if (!learnerProfile) return
+    setLpCountry(learnerProfile.country)
+    setLpReasons(learnerProfile.reasonsForLearning)
+    setLpInterests(learnerProfile.interests)
+  }, [learnerProfile])
 
   // ── Save helpers ─────────────────────────────────────────────────────────
 
@@ -246,6 +282,38 @@ export default function ProfileScreen() {
       ]
     )
   }, [signOut])
+
+  const toggleLpReason = useCallback((chip: string) => {
+    setLpReasons((prev) => {
+      const next = prev.includes(chip) ? prev.filter((r) => r !== chip) : [...prev, chip]
+      setLpDirty(true)
+      return next
+    })
+  }, [])
+
+  const toggleLpInterest = useCallback((chip: string) => {
+    setLpInterests((prev) => {
+      const next = prev.includes(chip) ? prev.filter((r) => r !== chip) : [...prev, chip]
+      setLpDirty(true)
+      return next
+    })
+  }, [])
+
+  const handleLpSave = useCallback(async () => {
+    setLpSaving(true)
+    setLpError(null)
+    const ok = await updateLearnerProfile({
+      country: lpCountry,
+      reasonsForLearning: lpReasons,
+      interests: lpInterests,
+    })
+    if (ok) {
+      setLpDirty(false)
+    } else {
+      setLpError('Failed to save. Please try again.')
+    }
+    setLpSaving(false)
+  }, [lpCountry, lpReasons, lpInterests, updateLearnerProfile])
 
   // ── Loading ───────────────────────────────────────────────────────────────
 
@@ -445,6 +513,90 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </Section>
 
+        {/* Learning Profile */}
+        <Section title="Learning Profile">
+          {/* Country */}
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => setCountryPickerVisible(true)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="globe-outline" size={20} color={colors.textSecondary} />
+              <View>
+                <Text style={styles.rowLabel}>Country</Text>
+                <Text style={styles.rowSub}>
+                  {lpCountry
+                    ? (COUNTRIES.find((c) => c.code === lpCountry)?.name ?? lpCountry)
+                    : 'Not set'}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          {/* Focus / reasons for learning */}
+          <View style={[styles.row, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
+            <Text style={styles.rowLabel}>What I'm focused on right now</Text>
+            <View style={lpStyles.chipsWrap}>
+              {ONBOARDING_CONTENT.focus.chips.map((chip) => {
+                const selected = lpReasons.includes(chip)
+                return (
+                  <TouchableOpacity
+                    key={chip}
+                    style={[lpStyles.chip, selected && lpStyles.chipSelected]}
+                    onPress={() => toggleLpReason(chip)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[lpStyles.chipText, selected && lpStyles.chipTextSelected]}>
+                      {chip}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </View>
+
+          {/* Interests */}
+          <View style={[styles.row, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
+            <Text style={styles.rowLabel}>My interests</Text>
+            <View style={lpStyles.chipsWrap}>
+              {INTEREST_OPTIONS.map((chip) => {
+                const selected = lpInterests.includes(chip)
+                return (
+                  <TouchableOpacity
+                    key={chip}
+                    style={[lpStyles.chip, selected && lpStyles.chipSelected]}
+                    onPress={() => toggleLpInterest(chip)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[lpStyles.chipText, selected && lpStyles.chipTextSelected]}>
+                      {chip}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </View>
+
+          {/* Save button (dirty only) */}
+          {lpDirty && (
+            <View style={lpStyles.saveRow}>
+              {lpError && <Text style={lpStyles.errorText}>{lpError}</Text>}
+              <TouchableOpacity
+                style={[lpStyles.saveBtn, lpSaving && lpStyles.saveBtnDisabled]}
+                onPress={handleLpSave}
+                disabled={lpSaving}
+                activeOpacity={0.8}
+              >
+                {lpSaving
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={lpStyles.saveBtnText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          )}
+        </Section>
+
         {/* Study Mates */}
         <Section title="Study Mates">
           {/* Search */}
@@ -562,6 +714,156 @@ export default function ProfileScreen() {
           )}
         </Section>
 
+        {/* Share with Tutor */}
+        <Section title="Share with Tutor" subtitle="Let your teacher view your learning analytics">
+          {tutorLoading ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : !tutorShare || tutorShare.status === 'revoked' || tutorShare.status === 'expired' ? (
+            <View style={{ gap: spacing.sm }}>
+              <TextInput
+                style={styles.textInput}
+                value={teacherEmail}
+                onChangeText={setTeacherEmail}
+                placeholder="Teacher's email address"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                returnKeyType="send"
+                onSubmitEditing={() => {
+                  const email = teacherEmail.trim()
+                  if (email) sendInvite(email).then((ok) => { if (ok) setTeacherEmail('') })
+                }}
+              />
+              {tutorError && <Text style={tutorStyles.errorText}>{tutorError}</Text>}
+              <TouchableOpacity
+                style={[tutorStyles.primaryBtn, tutorSending && tutorStyles.btnDisabled]}
+                onPress={() => {
+                  const email = teacherEmail.trim()
+                  if (email) sendInvite(email).then((ok) => { if (ok) setTeacherEmail('') })
+                }}
+                disabled={tutorSending || !teacherEmail.trim()}
+                activeOpacity={0.8}
+              >
+                {tutorSending
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={tutorStyles.primaryBtnText}>Send Invite</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          ) : tutorShare.status === 'pending' ? (
+            <View style={{ gap: spacing.sm }}>
+              <View style={styles.searchResultCard}>
+                <View style={styles.rowLeft}>
+                  <Ionicons name="hourglass-outline" size={20} color={colors.warning} />
+                  <View>
+                    <Text style={styles.rowLabel}>Invite sent to</Text>
+                    <Text style={styles.rowSub}>{tutorShare.teacherEmail}</Text>
+                  </View>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[tutorStyles.dangerBtn, tutorSending && tutorStyles.btnDisabled]}
+                onPress={() => Alert.alert(
+                  'Cancel Invite',
+                  'Are you sure you want to cancel the invite?',
+                  [
+                    { text: 'Keep Invite', style: 'cancel' },
+                    { text: 'Cancel Invite', style: 'destructive', onPress: revokeShare },
+                  ]
+                )}
+                disabled={tutorSending}
+                activeOpacity={0.8}
+              >
+                {tutorSending
+                  ? <ActivityIndicator size="small" color={colors.error} />
+                  : <Text style={tutorStyles.dangerBtnText}>Cancel Invite</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          ) : tutorShare.status === 'declined' ? (
+            <View style={{ gap: spacing.sm }}>
+              <View style={styles.searchResultCard}>
+                <View style={styles.rowLeft}>
+                  <Ionicons name="close-circle-outline" size={20} color={colors.error} />
+                  <Text style={styles.rowLabel}>Your teacher declined the invite</Text>
+                </View>
+              </View>
+              <TextInput
+                style={styles.textInput}
+                value={teacherEmail}
+                onChangeText={setTeacherEmail}
+                placeholder="Teacher's email address"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                returnKeyType="send"
+              />
+              {tutorError && <Text style={tutorStyles.errorText}>{tutorError}</Text>}
+              <TouchableOpacity
+                style={[tutorStyles.primaryBtn, tutorSending && tutorStyles.btnDisabled]}
+                onPress={() => {
+                  const email = teacherEmail.trim()
+                  if (email) sendInvite(email).then((ok) => { if (ok) setTeacherEmail('') })
+                }}
+                disabled={tutorSending || !teacherEmail.trim()}
+                activeOpacity={0.8}
+              >
+                {tutorSending
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={tutorStyles.primaryBtnText}>Send New Invite</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          ) : /* accepted */ (
+            <View style={{ gap: spacing.sm }}>
+              <View style={styles.searchResultCard}>
+                <View style={styles.rowLeft}>
+                  <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                  <View>
+                    <Text style={styles.rowLabel}>Connected to</Text>
+                    <Text style={styles.rowSub}>{tutorShare.teacherEmail}</Text>
+                  </View>
+                </View>
+                <View style={tutorStyles.noteBadge}>
+                  <Text style={tutorStyles.noteBadgeText}>{tutorNoteCount}</Text>
+                  <Text style={tutorStyles.noteBadgeLabel}> notes</Text>
+                </View>
+              </View>
+              {tutorNotes.length > 0 && (
+                <View style={{ gap: spacing.xs }}>
+                  <Text style={styles.subSectionTitle}>Teacher Notes</Text>
+                  {tutorNotes.map((note) => (
+                    <View key={note.id} style={tutorStyles.noteCard}>
+                      <Text style={tutorStyles.noteText}>{note.noteText}</Text>
+                      <Text style={tutorStyles.noteDate}>
+                        {new Date(note.createdAt).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <TouchableOpacity
+                style={[tutorStyles.dangerBtn, tutorSending && tutorStyles.btnDisabled]}
+                onPress={() => Alert.alert(
+                  'Revoke Access',
+                  'Your teacher will no longer be able to view your progress.',
+                  [
+                    { text: 'Keep Access', style: 'cancel' },
+                    { text: 'Revoke', style: 'destructive', onPress: revokeShare },
+                  ]
+                )}
+                disabled={tutorSending}
+                activeOpacity={0.8}
+              >
+                {tutorSending
+                  ? <ActivityIndicator size="small" color={colors.error} />
+                  : <Text style={tutorStyles.dangerBtnText}>Revoke Access</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          )}
+        </Section>
+
         {/* Sign out */}
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} activeOpacity={0.8}>
           <Ionicons name="log-out-outline" size={18} color={colors.error} />
@@ -569,9 +871,188 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
       </ScrollView>
+
+      {/* Country picker modal for Learning Profile */}
+      <Modal
+        visible={countryPickerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setCountryPickerVisible(false); setLpCountrySearch('') }}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
+          <View style={[styles.row, { borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: spacing.md }]}>
+            <Text style={[styles.rowLabel, { flex: 1, fontSize: 17 }]}>Select Country</Text>
+            <TouchableOpacity onPress={() => { setCountryPickerVisible(false); setLpCountrySearch('') }}>
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            style={[styles.textInput, { margin: spacing.md, borderRadius: radius.md }]}
+            placeholder="Search…"
+            placeholderTextColor={colors.textMuted}
+            value={lpCountrySearch}
+            onChangeText={setLpCountrySearch}
+            autoFocus
+          />
+          <FlatList
+            data={
+              lpCountrySearch.trim()
+                ? COUNTRIES.filter((c) => c.name.toLowerCase().includes(lpCountrySearch.toLowerCase()))
+                : COUNTRIES
+            }
+            keyExtractor={(item) => item.code}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[styles.row, { paddingHorizontal: spacing.md }]}
+                onPress={() => {
+                  setLpCountry(item.code)
+                  setLpDirty(true)
+                  setCountryPickerVisible(false)
+                  setLpCountrySearch('')
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.rowLabel}>{item.name}</Text>
+                {lpCountry === item.code && (
+                  <Ionicons name="checkmark" size={18} color={colors.primary} />
+                )}
+              </TouchableOpacity>
+            )}
+            ItemSeparatorComponent={() => (
+              <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: spacing.lg }} />
+            )}
+            keyboardShouldPersistTaps="handled"
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }
+
+// ─── Learning Profile styles ──────────────────────────────────────────────────
+
+const lpStyles = StyleSheet.create({
+  chipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  chipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  chipTextSelected: {
+    color: '#0F0F1A',
+  },
+  saveRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  saveBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveBtnText: {
+    fontWeight: '700',
+    color: '#0F0F1A',
+    fontSize: 15,
+  },
+  errorText: {
+    fontSize: 13,
+    color: colors.error,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+})
+
+// ─── Tutor sharing styles ─────────────────────────────────────────────────────
+
+const tutorStyles = StyleSheet.create({
+  primaryBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  primaryBtnText: {
+    fontWeight: '700',
+    color: '#0F0F1A',
+    fontSize: 15,
+  },
+  dangerBtn: {
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.error + '55',
+    backgroundColor: colors.error + '11',
+  },
+  dangerBtnText: {
+    fontWeight: '600',
+    color: colors.error,
+    fontSize: 15,
+  },
+  btnDisabled: {
+    opacity: 0.6,
+  },
+  errorText: {
+    fontSize: 13,
+    color: colors.error,
+    textAlign: 'center',
+  },
+  noteBadge: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    backgroundColor: colors.primary + '22',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  noteBadgeText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  noteBadgeLabel: {
+    fontSize: 12,
+    color: colors.primary,
+  },
+  noteCard: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  noteText: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    lineHeight: 20,
+  },
+  noteDate: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+})
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 

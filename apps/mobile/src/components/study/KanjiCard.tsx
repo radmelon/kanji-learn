@@ -609,9 +609,11 @@ const styles = StyleSheet.create({
   },
   jlptText: { ...typography.caption, fontWeight: '700' },
 
-  // Rōmaji toggle — top-left corner
+  // Rōmaji toggle — top-left corner. zIndex:1 ensures it sits above the normal-flow
+  // kanjiArea View (which renders later in JSX and would otherwise win touch events).
   romajiToggle: {
     position: 'absolute',
+    zIndex: 1,
     top: spacing.md,
     left: spacing.md,
     paddingHorizontal: spacing.sm,

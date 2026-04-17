@@ -6,6 +6,31 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **Google and Apple Sign-In broken — blocks new user onboarding** ⚠️ **HIGH PRIORITY** — Social login flows (Sign in with Google, Sign in with Apple) are not functioning, which prevents new testers from creating accounts and getting into the app. This is a blocker for broader TestFlight testing and public launch. Needs investigation of the native auth configuration (GoogleSignin SDK, Apple Authentication Services), Supabase OAuth provider settings, redirect URIs, and iOS/Android entitlements.
+
+  **Affected files (likely):**
+  - `apps/mobile/src/lib/auth.ts` / `apps/mobile/src/hooks/useAuth.ts`
+  - `apps/mobile/app/(auth)/` screens
+  - `apps/mobile/app.json` (URL schemes, entitlements, `expo-apple-authentication` config)
+  - Supabase dashboard: Authentication → Providers (Google client ID, Apple service ID)
+  - `GoogleService-Info.plist` / Google Cloud OAuth consent screen
+
+  **Investigation steps:**
+  1. Reproduce in TestFlight; capture console/device logs
+  2. Check Supabase auth logs for failed OAuth exchanges
+  3. Verify redirect URI matches between Supabase + provider console
+  4. Confirm bundle ID in Apple Developer matches what's registered for Sign in with Apple
+
+  `[Effort: M]` `[Impact: High]` `[Status: 🐛 Active — blocking]`
+
+- [ ] **Study Time Timer Doesn't Pause When App Backgrounds** — The mobile review store records session study time as `Date.now() - studyStartMs`. If the user backgrounds the app mid-session and returns later to finish, the wall-clock difference includes all idle time. Observed a 29-review session that reported 16.8 hours of study time on one user. A server-side cap (30s/item, 60min hard max) was added in `srs.service.ts::submitReview` to protect the daily_stats rollup, but the mobile client should also pause the timer on `AppState` change to 'background' and resume on 'active'. Fix location: `apps/mobile/src/stores/review.store.ts` — wrap the timer in a pause/resume pattern keyed off `AppState`. Also wipe the elapsed time on session restore from offline queue.
+
+  `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
+
+- [x] **Tutor Report: AI analysis fails with "Both tier 2 providers failed"** — ~~FIXED~~. Root cause: `TutorAnalysisService.computeForUser()` called `this.llm.route()` without `userOptedInPremium: true`, so the LLM router's tier 3 gate (`if (request.userOptedInPremium === true)`) skipped Claude and fell through to tier 2 providers (Groq/Gemini) which had no API keys on App Runner. Fix: added `userOptedInPremium: true` to the route call in `tutor-analysis.service.ts`.
+
+  `[Effort: XS]` `[Impact: High]` `[Status: ✅ Fixed]`
+
 - [ ] **Scrolling down on reveal card triggers swipe-down "Hard" grade** — After a card is revealed, the answer area is a `ScrollView` containing readings and vocab. Attempting to scroll down to read the content fires the swipe-down gesture, grading the card as "Hard" instead of scrolling.
 
   **Steps to reproduce:**
@@ -36,20 +61,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   `[Effort: S]` `[Impact: High]` `[Status: 🔧 Fix in Build 105, awaiting verification]`
 
 
-- [ ] **Rōmaji toggle button non-functional on study card** — Tapping the "Rōmaji" button on the revealed side of a KanjiCard has no visible effect. Readings do not display romanized transliterations despite the toggle state and `wanakana` conversion logic being present in the code.
+- [x] **Rōmaji toggle button non-functional on study card** — ~~FIXED~~ in Build 113/114. Verified by user on 2026-04-17: tapping the "Rōmaji" button on a revealed card now properly displays romanized transliterations below each kana reading.
 
-  **Steps to reproduce:**
-  1. Start a study session and reveal a card.
-  2. Tap the "Rōmaji" button (top-left of card, revealed side only).
-  3. Kun/on readings remain in kana — no rōmaji appears below them.
-
-  **Suspected root cause:** Unknown — `showRomaji` state and `toRomaji()` calls exist in `KanjiCard.tsx` but the conditional render may be gated incorrectly or the state is not reaching the component as expected.
-
-  **Affected files:**
-  - `apps/mobile/src/components/study/KanjiCard.tsx`
-  - `apps/mobile/app/(tabs)/study.tsx`
-
-  `[Effort: S]` `[Impact: Low]` `[Status: 🐛 Active]`
+  `[Effort: S]` `[Impact: Low]` `[Status: ✅ Fixed]`
 
 - [ ] **Daily push notifications not firing** — Users with notifications enabled and a reminder time set never receive daily reminder push notifications.
 
@@ -68,6 +82,16 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   - API route: `POST /internal/daily-reminders`
 
   `[Effort: M]` `[Impact: High]` `[Status: 🐛 Active — regression confirmed Build 103]`
+
+- [ ] **`TOTAL_JOUYOU_KANJI` constant is wrong — set to 2,294 instead of 2,136** — `packages/shared/src/constants.ts` exports `TOTAL_JOUYOU_KANJI = 2294`, but the official Jōyō kanji list contains 2,136 characters (2010 revision). The inflated value understates completion percentages on the Dashboard and anywhere else the constant is used.
+
+  **Root cause:** Constant was set to 2,294 (Jōyō 2,136 + Jinmeiyō 158) instead of Jōyō-only. The README, sign-in screen subtitle, and DB migration comment all correctly say 2,136.
+
+  **Affected files:**
+  - `packages/shared/src/constants.ts` — change `2294` → `2136`
+  - Downstream consumers (`analytics.service.ts`, `SrsStatusBar.tsx`) import the constant and need no change once it's fixed.
+
+  `[Effort: XS]` `[Impact: Medium]` `[Status: 🐛 Active]`
 
 ---
 

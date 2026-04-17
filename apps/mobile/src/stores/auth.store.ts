@@ -4,6 +4,8 @@ import { NativeModules, Platform } from 'react-native'
 import { supabase } from '../lib/supabase'
 import { storage } from '../lib/storage'
 import { startOAuthFlow } from '../lib/oauth'
+import { clearProfileCache } from '../hooks/useProfile'
+import { clearLearnerProfileCache } from '../hooks/useLearnerProfile'
 
 // ─── WatchConnectivity native bridge ─────────────────────────────────────────
 
@@ -14,6 +16,7 @@ const WatchConnectivity: {
     expiresAt: number,
     supabaseURL: string,
     apiBaseURL: string,
+    watchEnabled: boolean,
     dailyGoal: number,
     reminderHour: number,
     restDay: number,
@@ -34,10 +37,8 @@ async function pushToWatch(session: Session, force = false): Promise<PushResult 
   if (!WatchConnectivity) return null
 
   try {
-    if (!force) {
-      const isEnabled = await storage.getItem<boolean>(WATCH_ENABLED_KEY)
-      if (!isEnabled) return null
-    }
+    const watchEnabled = (await storage.getItem<boolean>(WATCH_ENABLED_KEY)) ?? false
+    if (!force && !watchEnabled) return null
 
     // Read cached profile for settings needed by Watch encouragement messages
     const profile = await storage.getItem<{
@@ -60,6 +61,7 @@ async function pushToWatch(session: Session, force = false): Promise<PushResult 
       expiresAt,
       supabaseURL,
       apiBaseURL,
+      watchEnabled,
       profile?.dailyGoal ?? 20,
       profile?.reminderHour ?? 20,
       profile?.restDay ?? -1,  // -1 = no rest day
@@ -166,6 +168,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
+    clearProfileCache()
+    clearLearnerProfileCache()
     await supabase.auth.signOut()
     set({ session: null, user: null })
   },

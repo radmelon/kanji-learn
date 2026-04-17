@@ -13,9 +13,11 @@ import { useReviewStore } from '../src/stores/review.store'
 import { colors } from '../src/theme'
 import { parseOAuthCallbackUrl } from '../src/lib/oauth'
 import { supabase } from '../src/lib/supabase'
+import { useProfile } from '../src/hooks/useProfile'
 
 export default function RootLayout() {
   const { isInitialized, session, initialize } = useAuthStore()
+  const { profile, isLoading: profileLoading } = useProfile()
   const router = useRouter()
   const segments = useSegments()
   const { isOnline } = useNetworkStatus()
@@ -106,12 +108,33 @@ export default function RootLayout() {
     if (!isInitialized) return
 
     const inAuthGroup = segments[0] === '(auth)'
+
+    // Not logged in → send to sign-in
     if (!session && !inAuthGroup) {
       router.replace('/(auth)/sign-in')
-    } else if (session && inAuthGroup) {
-      router.replace('/(tabs)')
+      return
     }
-  }, [isInitialized, session, segments])
+
+    // Logged in, in auth group — decide where to go (wait for profile first)
+    if (session && inAuthGroup) {
+      if (profileLoading || profile === null) return  // wait for load or hold on fetch error
+      if (profile && !profile.onboardingCompletedAt) {
+        router.replace('/onboarding')
+      } else {
+        router.replace('/(tabs)')
+      }
+      return
+    }
+
+    // Logged in, NOT in auth group — check onboarding gate
+    if (session && !inAuthGroup) {
+      if (profileLoading || profile === null) return
+      if (profile && !profile.onboardingCompletedAt) {
+        const inOnboarding = segments[0] === 'onboarding'
+        if (!inOnboarding) router.replace('/onboarding')
+      }
+    }
+  }, [isInitialized, session, segments, profile, profileLoading])
 
   if (!isInitialized) return null
 
@@ -125,6 +148,7 @@ export default function RootLayout() {
         <Stack.Screen name="browse" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="about" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="placement" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       </Stack>
     </GestureHandlerRootView>
   )

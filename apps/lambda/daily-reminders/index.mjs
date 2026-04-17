@@ -56,5 +56,18 @@ export async function handler(event) {
   }
 
   console.log(`[daily-reminders] Success (${res.status}):`, body)
+
+  // Trigger tutor analysis
+  try {
+    const analysisRes = await fetch(`${apiUrl.replace(/\/$/, '')}/internal/tutor-analysis`, {
+      method: 'POST',
+      headers: { 'X-Internal-Secret': secret },
+    })
+    const analysisBody = await analysisRes.json()
+    console.log('Tutor analysis result:', analysisBody)
+  } catch (err) {
+    console.error('Tutor analysis call failed:', err)
+  }
+
   return { statusCode: res.status, body }
 }

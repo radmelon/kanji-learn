@@ -17,7 +17,11 @@ import { kanjiRoutes } from './routes/kanji.js'
 import { placementRoutes } from './routes/placement.js'
 import { testRoutes } from './routes/test.js'
 import { socialRoutes } from './routes/social.js'
+import { tutorSharingRoutes } from './routes/tutor-sharing.js'
 import { internalRoutes } from './routes/internal.js'
+import { learnerProfileRoutes } from './routes/learner-profile.js'
+import { reportRoutes } from './routes/report.js'
+import formbody from '@fastify/formbody'
 
 // ── Buddy layer: LLM router + buddy services ────────────────────────────────
 import { GroqProvider } from './services/llm/providers/groq.js'
@@ -53,6 +57,8 @@ export async function buildServer() {
     timeWindow: '1 minute',
     keyGenerator: (req) => req.headers['x-user-id'] as string ?? req.ip,
   })
+
+  await server.register(formbody)
 
   await server.register(authPlugin)
 
@@ -115,6 +121,7 @@ export async function buildServer() {
 
   await server.register(healthRoutes)
   await server.register(userRoutes, { prefix: '/v1/user' })
+  await server.register(learnerProfileRoutes, { prefix: '/v1/user' })
   await server.register(reviewRoutes, { prefix: '/v1/review' })
   await server.register(mnemonicRoutes, { prefix: '/v1/mnemonics' })
   await server.register(analyticsRoutes, { prefix: '/v1/analytics' })
@@ -123,7 +130,9 @@ export async function buildServer() {
   await server.register(placementRoutes, { prefix: '/v1/placement' })
   await server.register(testRoutes, { prefix: '/v1/tests' })
   await server.register(socialRoutes, { prefix: '/v1/social' })
+  await server.register(tutorSharingRoutes, { prefix: '/v1/tutor-sharing' })
   await server.register(internalRoutes, { prefix: '/internal' })
+  await server.register(reportRoutes, { prefix: '/report' })
 
   return server
 }

@@ -1,5 +1,5 @@
 import { and, eq, gte, desc, sql, lte } from 'drizzle-orm'
-import { dailyStats, reviewLogs, reviewSessions, userKanjiProgress, kanji, writingAttempts, voiceAttempts } from '@kanji-learn/db'
+import { dailyStats, reviewLogs, reviewSessions, userKanjiProgress, kanji, writingAttempts, voiceAttempts, testResults } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import type { DailyStats, VelocityMetrics, JlptLevelProjection } from '@kanji-learn/shared'
 import {
@@ -141,9 +141,9 @@ export class AnalyticsService {
     return { dailyAverage, weeklyAverage, burnedPerDay, trend, projectedCompletion, levelProjections, nextMilestone }
   }
 
-  // ── Accuracy breakdown by review type ─────────────────────────────────────
+  // ── Confidence breakdown by review type (SRS quality grades) ───────────────
 
-  async getAccuracyByType(userId: string, days = 30): Promise<Record<string, { total: number; correct: number; pct: number }>> {
+  async getConfidenceByType(userId: string, days = 30): Promise<Record<string, { total: number; correct: number; pct: number }>> {
     const since = new Date()
     since.setDate(since.getDate() - days)
 
@@ -167,9 +167,9 @@ export class AnalyticsService {
     return result
   }
 
-  // ── Accuracy rate over last N days ─────────────────────────────────────────
+  // ── Confidence rate over last N days (SRS quality grades) ──────────────────
 
-  async getAccuracyRate(userId: string, days = 30): Promise<number> {
+  async getConfidenceRate(userId: string, days = 30): Promise<number> {
     const since = new Date()
     since.setDate(since.getDate() - days)
     const sinceStr = since.toISOString().slice(0, 10)
@@ -187,14 +187,55 @@ export class AnalyticsService {
     return total > 0 ? Math.round((correct / total) * 100) : 0
   }
 
+  // ── Quiz accuracy (from kl_test_results) ───────────────────────────────────
+
+  async getQuizAccuracy(userId: string, days = 30): Promise<{ overall: number; byType: Record<string, { total: number; correct: number; pct: number }> }> {
+    const since = new Date()
+    since.setDate(since.getDate() - days)
+
+    // Overall accuracy
+    const [overall] = await this.db
+      .select({
+        total: sql<number>`count(*)::int`,
+        correct: sql<number>`count(*) filter (where correct = true)::int`,
+      })
+      .from(testResults)
+      .where(and(eq(testResults.userId, userId), gte(testResults.createdAt, since)))
+
+    // By question type
+    const typeRows = await this.db
+      .select({
+        questionType: testResults.questionType,
+        total: sql<number>`count(*)::int`,
+        correct: sql<number>`count(*) filter (where correct = true)::int`,
+      })
+      .from(testResults)
+      .where(and(eq(testResults.userId, userId), gte(testResults.createdAt, since)))
+      .groupBy(testResults.questionType)
+
+    const totalAll = Number(overall?.total ?? 0)
+    const correctAll = Number(overall?.correct ?? 0)
+    const overallPct = totalAll > 0 ? Math.round((correctAll / totalAll) * 100) : 0
+
+    const byType: Record<string, { total: number; correct: number; pct: number }> = {}
+    for (const row of typeRows) {
+      const t = Number(row.total)
+      const c = Number(row.correct)
+      byType[row.questionType] = { total: t, correct: c, pct: t > 0 ? Math.round((c / t) * 100) : 0 }
+    }
+
+    return { overall: overallPct, byType }
+  }
+
   // ── Full summary for dashboard ──────────────────────────────────────────────
 
   async getSummary(userId: string) {
-    const [velocity, accuracy, accuracyByType, statusCounts, streakDays, recentStats, jlptProgress, writing, voice] =
+    const [velocity, confidence, confidenceByType, quizAccuracy, statusCounts, streakDays, recentStats, jlptProgress, writing, voice] =
       await Promise.all([
         this.getVelocityMetrics(userId),
-        this.getAccuracyRate(userId),
-        this.getAccuracyByType(userId),
+        this.getConfidenceRate(userId),
+        this.getConfidenceByType(userId),
+        this.getQuizAccuracy(userId),
         this.getStatusCounts(userId),
         this.getStreakDays(userId),
         this.getDailyStats(userId, 90), // fetch 90d so chart period selector works client-side
@@ -208,8 +249,9 @@ export class AnalyticsService {
 
     return {
       velocity,
-      accuracy,
-      accuracyByType,
+      confidence,
+      confidenceByType,
+      quizAccuracy,
       statusCounts,
       jlptProgress,
       streakDays,

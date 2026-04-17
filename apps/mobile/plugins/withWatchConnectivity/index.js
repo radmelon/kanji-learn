@@ -59,6 +59,7 @@ class WatchConnectivityModule: NSObject, WCSessionDelegate {
     expiresAt: Double,
     supabaseURL: String,
     apiBaseURL: String,
+    watchEnabled: Bool,
     dailyGoal: Int,
     reminderHour: Int,
     restDay: Int,   // -1 = no rest day
@@ -79,6 +80,7 @@ class WatchConnectivityModule: NSObject, WCSessionDelegate {
       "expiresAt":    expiresAt,
       "supabaseURL":  supabaseURL,
       "apiBaseURL":   apiBaseURL,
+      "watchEnabled": watchEnabled,
       "dailyGoal":    dailyGoal,
       "reminderHour": reminderHour,
     ]
@@ -139,6 +141,7 @@ RCT_EXTERN_METHOD(
   expiresAt:(double)expiresAt
   supabaseURL:(NSString *)supabaseURL
   apiBaseURL:(NSString *)apiBaseURL
+  watchEnabled:(BOOL)watchEnabled
   dailyGoal:(NSInteger)dailyGoal
   reminderHour:(NSInteger)reminderHour
   restDay:(NSInteger)restDay

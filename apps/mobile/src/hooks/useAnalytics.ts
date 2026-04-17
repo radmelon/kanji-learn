@@ -18,10 +18,16 @@ interface AccuracyTypeStat {
   pct: number
 }
 
+interface QuizAccuracy {
+  overall: number
+  byType: Record<string, AccuracyTypeStat>
+}
+
 interface AnalyticsSummary {
   velocity: VelocityMetrics
-  accuracy: number
-  accuracyByType: Record<string, AccuracyTypeStat>
+  confidence: number
+  confidenceByType: Record<string, AccuracyTypeStat>
+  quizAccuracy: QuizAccuracy
   statusCounts: {
     unseen: number
     learning: number

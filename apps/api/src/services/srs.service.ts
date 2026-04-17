@@ -223,6 +223,19 @@ export class SrsService {
     let burned = 0
     let correctItems = 0
 
+    // Cap study time per session to protect against client-side timer bugs
+    // (e.g. app backgrounded mid-session and clock kept running). Clamp to
+    // 30 seconds per reviewed item with a hard ceiling of 60 min. Legitimate
+    // study almost never exceeds ~10s/card; this cap only kicks in on outliers.
+    const MAX_MS_PER_ITEM = 30_000
+    const MAX_SESSION_MS = 60 * 60_000 // 60 minutes
+    const perItemCap = Math.max(results.length, 1) * MAX_MS_PER_ITEM
+    const cap = Math.min(perItemCap, MAX_SESSION_MS)
+    if (studyTimeMs > cap) {
+      console.warn(`[srs.submitReview] capping studyTimeMs for userId=${userId}: ${studyTimeMs}ms → ${cap}ms (${results.length} items)`)
+      studyTimeMs = cap
+    }
+
     // Ensure user profile row exists (created on first review submission)
     await this.db
       .insert(userProfiles)
