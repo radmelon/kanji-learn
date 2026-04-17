@@ -107,7 +107,100 @@
       margin-bottom: 20px;
       padding-bottom: 10px;
       border-bottom: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+
+    /* ── Info tooltip ─────────────────────────────────────────────── */
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #e0e0ea;
+      color: #555;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: Georgia, serif;
+      font-style: italic;
+      cursor: help;
+      position: relative;
+      flex-shrink: 0;
+      vertical-align: middle;
+    }
+    .info-icon:hover { background: var(--primary); color: #fff; }
+    .info-icon .info-tip {
+      visibility: hidden;
+      opacity: 0;
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1a1a2e;
+      color: #f0f0f5;
+      font-size: 12px;
+      font-weight: 400;
+      font-style: normal;
+      font-family: system-ui, sans-serif;
+      text-align: left;
+      padding: 8px 12px;
+      border-radius: 6px;
+      width: 260px;
+      line-height: 1.4;
+      z-index: 1000;
+      transition: opacity 0.15s;
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .info-icon .info-tip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #1a1a2e;
+    }
+    .info-icon:hover .info-tip { visibility: visible; opacity: 1; }
+    .stat-label .info-icon { margin-left: 4px; font-size: 10px; width: 13px; height: 13px; }
+    /* Flip tooltip to the right for icons near the viewport edge */
+    .info-icon.tip-right .info-tip { left: 0; transform: translateX(0); }
+    .info-icon.tip-right .info-tip::after { left: 12px; transform: translateX(0); }
+
+    /* ── Intro / glossary card ───────────────────────────────────── */
+    .intro-card {
+      background: linear-gradient(135deg, #fff 0%, #fef6f7 100%);
+      border: 1px solid #fdd;
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text);
+    }
+    .intro-card strong { color: var(--primary); }
+    .intro-card details { margin-top: 8px; }
+    .intro-card summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--primary);
+      font-size: 12px;
+    }
+    .intro-card details[open] summary { margin-bottom: 8px; }
+    .intro-card .glossary-term {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 8px;
+      padding: 4px 0;
+      border-bottom: 1px dashed var(--border);
+      font-size: 12px;
+    }
+    .intro-card .glossary-term:last-child { border-bottom: none; }
+    .intro-card .glossary-term dt { font-weight: 600; color: var(--dark); }
+    .intro-card .glossary-term dd { color: var(--muted); margin: 0; }
 
     /* ── Cards ────────────────────────────────────────────────────── */
     .card {
@@ -410,6 +503,27 @@
   <!-- ── Main content ─────────────────────────────────────────────── -->
   <main class="main">
 
+    <!-- ── Intro / Glossary ───────────────────────────────────────── -->
+    <div class="intro-card">
+      <strong>About this report</strong> — Kanji Buddy uses a <strong>Spaced Repetition System (SRS)</strong> that schedules each kanji review based on how well the student remembers it. Easy cards reappear less often; difficult cards reappear sooner. The sections below summarize the student's progress, habits, quiz accuracy, and AI-generated observations. Hover any <span class="info-icon" style="position:relative;display:inline-flex">i</span> icon for an explanation.
+      <details>
+        <summary>Glossary of terms</summary>
+        <dl style="margin-top:10px">
+          <div class="glossary-term"><dt>SRS</dt><dd>Spaced Repetition System — review intervals grow longer as mastery increases.</dd></div>
+          <div class="glossary-term"><dt>Status: Learning</dt><dd>Recently introduced card, still in short intervals.</dd></div>
+          <div class="glossary-term"><dt>Status: Reviewing</dt><dd>Past the initial learning phase, in active rotation.</dd></div>
+          <div class="glossary-term"><dt>Status: Remembered</dt><dd>Consistently recalled at longer intervals.</dd></div>
+          <div class="glossary-term"><dt>Status: Burned</dt><dd>Long-term mastery; card reappears only at very long intervals.</dd></div>
+          <div class="glossary-term"><dt>Durably Retained</dt><dd>Last 5 reviews all correct, spanning at least 14 days. A retention check independent of SRS status.</dd></div>
+          <div class="glossary-term"><dt>Confidence</dt><dd>Self-reported recall quality on SRS reviews (Good/Easy = confident).</dd></div>
+          <div class="glossary-term"><dt>Quiz Accuracy</dt><dd>Objective % correct on quiz questions — distinct from confidence.</dd></div>
+          <div class="glossary-term"><dt>Velocity</dt><dd>Rate of reviews per day; trend compares the first half vs second half of the last 30 days.</dd></div>
+          <div class="glossary-term"><dt>Leech</dt><dd>A kanji the student has failed 3+ times in the last 30 days — a candidate for focused intervention.</dd></div>
+          <div class="glossary-term"><dt>Review Types</dt><dd>As a card advances it cycles through stages: Meaning → Reading → Writing → Compound.</dd></div>
+        </dl>
+      </details>
+    </div>
+
     <!-- ── 1. Student Overview ─────────────────────────────────────── -->
     <section id="overview" class="section">
       <h2 class="section-title">Student Overview</h2>
@@ -489,7 +603,7 @@
 
     <!-- ── 3. Progress Snapshot ────────────────────────────────────── -->
     <section id="progress" class="section">
-      <h2 class="section-title">Progress Snapshot</h2>
+      <h2 class="section-title">Progress Snapshot<span class="info-icon tip-right">i<span class="info-tip">Distribution of all studied kanji across SRS status categories, plus a retention check. The donut shows where each card sits in the SRS pipeline.</span></span></h2>
       <div class="card-grid">
         <div class="stat-card">
           <div class="stat-label">Total Seen</div>
@@ -501,7 +615,7 @@
           <div class="stat-sub" style="margin-top:4px"><%= it.progress.completionPct %>% complete</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Solidly Remembered</div>
+          <div class="stat-label">Durably Retained<span class="info-icon">i<span class="info-tip">A retention metric: kanji whose last 5 reviews were all correct (quality ≥ 3) and spanned at least 14 days. Distinct from the "Remembered" SRS status — this measures confirmed retention over time rather than SRS progression.</span></span></div>
           <div class="stat-value"><%= it.progress.rememberedCount %></div>
           <div class="stat-sub">5+ correct reviews over 14+ days</div>
         </div>
@@ -518,7 +632,7 @@
 
     <!-- ── 4. Effort & Habits ──────────────────────────────────────── -->
     <section id="effort" class="section">
-      <h2 class="section-title">Effort &amp; Habits</h2>
+      <h2 class="section-title">Effort &amp; Habits<span class="info-icon tip-right">i<span class="info-tip">Frequency of study and time spent. The weekend-vs-weekday ratio highlights whether the student's pace shifts on days off. Rest day (if configured) is marked on the study time chart.</span></span></h2>
       <div class="card-grid">
         <div class="stat-card">
           <div class="stat-label">Avg Sessions / Day</div>
@@ -526,7 +640,7 @@
           <div class="stat-sub">last 30 days</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Weekend vs Weekday</div>
+          <div class="stat-label">Weekend vs Weekday<span class="info-icon">i<span class="info-tip">Ratio of weekend to weekday average daily reviews. 1.0 = balanced; &gt;1 = more study on weekends; &lt;1 = weekday-focused. Helps identify whether the student treats study as part of their weekly routine or reserves it for free time.</span></span></div>
           <div class="stat-value"><%= it.effort.weekendVsWeekdayRatio %>x</div>
           <div class="stat-sub">reviews: weekend avg / weekday avg</div>
         </div>
@@ -554,7 +668,7 @@
 
     <!-- ── 5. Learning Velocity ────────────────────────────────────── -->
     <section id="velocity" class="section">
-      <h2 class="section-title">Learning Velocity</h2>
+      <h2 class="section-title">Learning Velocity<span class="info-icon tip-right">i<span class="info-tip">How fast the student is progressing. Daily/weekly averages are review counts per day. The "Trend" compares the first 15 days vs the last 15 days of the 30-day window — Accelerating = &gt;20% faster, Decelerating = &gt;20% slower. Streak counts consecutive days with at least one review.</span></span></h2>
       <div class="card-grid">
         <div class="stat-card">
           <div class="stat-label">Daily Avg (30d)</div>
@@ -588,14 +702,14 @@
 
     <!-- ── 6. Quiz Accuracy ─────────────────────────────────────────── -->
     <section id="accuracy" class="section">
-      <h2 class="section-title">Quiz Accuracy</h2>
+      <h2 class="section-title">Quiz Accuracy<span class="info-icon tip-right">i<span class="info-tip">Objective performance on quiz questions from the "Take a Quiz" feature — distinct from self-reported SRS confidence. Broken down by question type (meaning recall, reading recall, vocab, etc.). "Leeches" are kanji the student has failed 3+ times recently and may benefit from focused attention.</span></span></h2>
       <div class="card-grid">
         <div class="stat-card">
           <div class="stat-label">Weakest Modality</div>
           <div class="stat-value" style="font-size:18px"><%= it.quizAccuracy.weakestModality ?? '—' %></div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Leeches (last 30d)</div>
+          <div class="stat-label">Leeches (last 30d)<span class="info-icon">i<span class="info-tip">Kanji the student has failed 3 or more times in the last 30 days. These are strong candidates for focused remedial attention — alternative mnemonics, writing practice, or breaking down the radicals.</span></span></div>
           <div class="stat-value"><%= it.quizAccuracy.leechCount %></div>
           <div class="stat-sub">kanji failed 3+ times</div>
         </div>
@@ -631,7 +745,7 @@
 
     <!-- ── 6b. Review Confidence by SRS Stage ────────────────────────── -->
     <section id="confidence" class="section">
-      <h2 class="section-title">Review Confidence by SRS Stage</h2>
+      <h2 class="section-title">Review Confidence by SRS Stage<span class="info-icon tip-right">i<span class="info-tip">Self-reported confidence when grading SRS reviews. As a card advances, it cycles through four stages testing different skills. Each bar reflects the student's confidence at that stage; greyed/faded bars indicate stages with insufficient data.</span></span></h2>
       <div class="card">
         <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">CONFIDENCE BY STAGE</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Self-assessed recall quality at each SRS progression stage (Good/Easy = confident). Stages unlock as the student advances through the SRS system.</div>
@@ -651,7 +765,7 @@
 
     <!-- ── 6c. Writing Performance ────────────────────────────────────── -->
     <section id="writing" class="section">
-      <h2 class="section-title">Writing Performance</h2>
+      <h2 class="section-title">Writing Performance<span class="info-icon tip-right">i<span class="info-tip">Results from handwritten kanji practice. Each attempt is scored 0–100% based on stroke accuracy; a pass is 70%+. Low-scoring kanji bubble up as candidates for writing practice sessions.</span></span></h2>
       <div class="card-grid">
         <div class="stat-card">
           <div class="stat-label">Total Attempts</div>
@@ -692,7 +806,7 @@
 
     <!-- ── 7. AI Analysis ─────────────────────────────────────────── -->
     <section id="analysis" class="section">
-      <h2 class="section-title">AI Analysis</h2>
+      <h2 class="section-title">AI Analysis<span class="info-icon tip-right">i<span class="info-tip">An AI-generated synthesis of the student's data into strengths, areas for improvement, recommendations, and observations. Regenerate with the button below to incorporate the latest activity.</span></span></h2>
       <% if (it.analysis) { %>
         <div class="analysis-grid">
           <div class="card analysis-card">
@@ -799,13 +913,13 @@
 
   // ── Progress donut ─────────────────────────────────────────────────
   ;(function () {
+    // Status colors MUST match the mobile app (apps/mobile/src/theme/index.ts)
     const statusColors = {
-      new: '#a78bfa',
-      learning: '#60a5fa',
-      review: '#34d399',
-      relearning: '#fbbf24',
-      mastered: '#E84855',
-      unseen: '#e5e7eb',
+      unseen: '#6B7280',      // grey
+      learning: '#3B82F6',    // blue
+      reviewing: '#F59E0B',   // amber
+      remembered: '#10B981',  // green
+      burned: '#EF4444',      // red
     }
     const sc = reportData.progress.statusCounts
     const labels = Object.keys(sc)
@@ -823,16 +937,25 @@
       }
     })
 
+    const statusDescriptions = {
+      unseen: 'Not yet studied',
+      learning: 'Being introduced',
+      reviewing: 'In active SRS rotation',
+      remembered: 'Consistently recalled',
+      burned: 'Long-term mastery',
+    }
     const legend = document.getElementById('progressLegend')
+    const ucFirst = s => s.charAt(0).toUpperCase() + s.slice(1)
     labels.forEach((label, i) => {
       const el = document.createElement('div')
-      el.style.cssText = 'display:flex;align-items:center;gap:4px'
-      el.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${colors[i]};display:inline-block"></span><span>${label} (${values[i]})</span>`
+      el.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 6px'
+      const desc = statusDescriptions[label] ? ` — ${statusDescriptions[label]}` : ''
+      el.innerHTML = `<span style="width:11px;height:11px;border-radius:50%;background:${colors[i]};display:inline-block;flex-shrink:0"></span><span><strong>${ucFirst(label)}</strong> (${values[i]})<span style="color:#666">${desc}</span></span>`
       legend.appendChild(el)
     })
   })()
 
-  // ── Effort bar chart ───────────────────────────────────────────────
+  // ── Effort bar chart (stacked correct/incorrect) ─────────────────────
   ;(function () {
     const stats = reportData.effort.dailyStats30
     new Chart(document.getElementById('effortBar'), {
@@ -840,17 +963,42 @@
       data: {
         labels: stats.map(d => d.date.slice(5)),
         datasets: [
-          { label: 'Reviewed', data: stats.map(d => d.reviewed), backgroundColor: 'rgba(232,72,85,0.7)', borderRadius: 3 },
-          { label: 'Correct', data: stats.map(d => d.correct), backgroundColor: 'rgba(52,211,153,0.7)', borderRadius: 3 },
+          {
+            label: 'Correct',
+            data: stats.map(d => d.correct),
+            backgroundColor: 'rgba(52,211,153,0.75)',
+            borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 3, bottomRight: 3 },
+          },
+          {
+            label: 'Incorrect',
+            data: stats.map(d => Math.max(0, d.reviewed - d.correct)),
+            backgroundColor: 'rgba(232,72,85,0.55)',
+            borderRadius: { topLeft: 3, topRight: 3, bottomLeft: 0, bottomRight: 0 },
+          },
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { labels: { font: { size: 11 } } } },
+        plugins: {
+          legend: { labels: { font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              afterBody: function (items) {
+                const idx = items[0].dataIndex
+                const total = stats[idx].reviewed
+                const correct = stats[idx].correct
+                const pct = total > 0 ? Math.round((correct / total) * 100) : 0
+                return `Total: ${total}  ·  Accuracy: ${pct}%`
+              }
+            }
+          }
+        },
         scales: {
-          x: { ticks: { maxTicksLimit: 8, font: { size: 10 } } },
-          y: { beginAtZero: true, ticks: { font: { size: 10 } } }
+          x: { stacked: true, ticks: { maxTicksLimit: 8, font: { size: 10 } } },
+          y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 } },
+            title: { display: true, text: 'Reviews', font: { size: 11 } }
+          }
         }
       }
     })

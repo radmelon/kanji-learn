@@ -6,6 +6,10 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **Study Time Timer Doesn't Pause When App Backgrounds** — The mobile review store records session study time as `Date.now() - studyStartMs`. If the user backgrounds the app mid-session and returns later to finish, the wall-clock difference includes all idle time. Observed a 29-review session that reported 16.8 hours of study time on one user. A server-side cap (30s/item, 60min hard max) was added in `srs.service.ts::submitReview` to protect the daily_stats rollup, but the mobile client should also pause the timer on `AppState` change to 'background' and resume on 'active'. Fix location: `apps/mobile/src/stores/review.store.ts` — wrap the timer in a pause/resume pattern keyed off `AppState`. Also wipe the elapsed time on session restore from offline queue.
+
+  `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
+
 - [x] **Tutor Report: AI analysis fails with "Both tier 2 providers failed"** — ~~FIXED~~. Root cause: `TutorAnalysisService.computeForUser()` called `this.llm.route()` without `userOptedInPremium: true`, so the LLM router's tier 3 gate (`if (request.userOptedInPremium === true)`) skipped Claude and fell through to tier 2 providers (Groq/Gemini) which had no API keys on App Runner. Fix: added `userOptedInPremium: true` to the route call in `tutor-analysis.service.ts`.
 
   `[Effort: XS]` `[Impact: High]` `[Status: ✅ Fixed]`

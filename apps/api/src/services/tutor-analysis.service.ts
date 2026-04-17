@@ -185,7 +185,7 @@ Reasons for learning: ${reasons}
 
 === PROGRESS ===
 Total kanji seen: ${progress.totalSeen} of 2136 Jōyō (${progress.completionPct}%)
-Remembered count (solidly retained): ${progress.rememberedCount}
+Durably retained (last 5 reviews correct over ≥14 days): ${progress.rememberedCount}
 Status breakdown:
 ${statusLines}
 
