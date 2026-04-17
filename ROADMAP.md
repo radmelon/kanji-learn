@@ -44,22 +44,28 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
-| 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ✅ Done — Apple + Google verified on TestFlight build 111 |
-| 6 | Onboarding Tutorial + User Questionnaire | High | Yes | ✅ Done — PR #4, TestFlight build 108 |
-| 7 | Dark / Light Theme Toggle | High | No | Pending |
-| 8 | Heatmap Calendar View | High | No | Pending |
+| # | Enhancement | Impact | Backend | Status |
+|---|------------|--------|---------|--------|
+| 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ⚠️ **Regressed** — previously working in B111, broken as of B116 (2026-04-17). Blocks new user onboarding; tracked as high-priority bug in BUGS.md. |
+| 6 | Onboarding Tutorial + User Questionnaire | High | Yes | ✅ Done — merged into main via PR #6 |
+| 12 | Delete Account ⚠️ App Store compliance | High | Yes | Pending — required before public App Store release (App Store Review Guideline 5.1.1: apps that support account creation must provide in-app account deletion). UI in Profile tab; backend calls Supabase `admin.deleteUser()` which cascades all user data via FK. |
+| 11 | Rebrand: Kanji Learn → Kanji Buddy | Med | No | Pending |
 | 9 | Splash Screen Polish: solid bg color, longer display duration, branding imagery | Med | No | Pending |
 | 10 | About/Credits Page: add app branding imagery and credits | Low | No | Pending |
-| 11 | Rebrand: Kanji Learn → Kanji Buddy | Med | No | Pending |
-| 12 | Delete Account ⚠️ App Store compliance | High | Yes | Pending — required before public App Store release (App Store Review Guideline 5.1.1: apps that support account creation must provide in-app account deletion). UI in Profile tab; backend calls Supabase `admin.deleteUser()` which cascades all user data via FK. |
+| 7 | Dark / Light Theme Toggle | High | No | Pending |
+| 8 | Heatmap Calendar View | High | No | Pending |
 
-**Why this order:**
-- OAuth first — App Store requires Sign in with Apple if you offer any social login, and it's the #1 sign-up friction reducer
-- Onboarding right after — new OAuth users need guidance. Includes user questionnaire (interests, reasons for learning, country) to populate the existing JSONB profile columns and personalize the AI Buddy experience later (Phase 6)
-- Theme toggle — highly requested, affects the entire UI (better to do before building more screens)
-- Heatmap — strong retention/motivation feature, purely frontend
-- Rebrand last in Phase 2 — ship the new name alongside onboarding + social login as a clean "v2 launch" moment. Touches app.json, App Store listing, sign-in/sign-up headers, Watch app name, all hardcoded strings
-- Delete Account (#12) must ship before the App Store public release — pair with Rebrand as a single "production-ready" commit
+**Why this order (reshuffled 2026-04-17 after OAuth regression + tutor analytics merge):**
+- **OAuth regression first** — new testers cannot sign up at all, blocking broader TestFlight distribution. This must be diagnosed and fixed before anything else in Phase 2.
+- **Delete Account (#12)** — App Store compliance blocker for public launch; no point polishing the app until this ships.
+- **Rebrand (#11)** — big v2 naming moment; should land together with the splash polish and about/credits page as a coordinated "Kanji Buddy 1.0" release.
+- **Splash polish (#9) + About/Credits (#10)** — natural companions to the rebrand; share branding imagery and messaging.
+- **Theme toggle (#7)** — highly requested UX polish; touches every screen, better before adding more screens.
+- **Heatmap (#8)** — retention/motivation feature, purely frontend.
+
+**Prior context:**
+- #5 was marked ✅ Done on 2026-04-13 after Apple + Google Sign-In were verified on TestFlight B111. Regression was reported on 2026-04-17 after B116 testing — root cause unknown. Check Supabase auth logs, OAuth provider settings, callback URLs, and bundle ID matches. Commit `a63ffd0` ("fix: fix JWT signature corruption in Apple client secret generator") is recent and worth examining.
+- #6 shipped via onboarding branch, which was merged into tutor-analytics-sharing and ultimately landed on main via PR #6 on 2026-04-17.
 
 ---
 
