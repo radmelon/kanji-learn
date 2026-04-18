@@ -16,6 +16,7 @@ import { useProfile } from '../../src/hooks/useProfile'
 import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { StatCard } from '../../src/components/ui/StatCard'
 import { InterventionBanner } from '../../src/components/ui/InterventionBanner'
+import { InviteMateBanner } from '../../src/components/ui/InviteMateBanner'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { JlptProgressGrid } from '../../src/components/ui/JlptProgressGrid'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -182,7 +183,7 @@ export default function Dashboard() {
   const { summary, isLoading, isStale, refresh } = useAnalytics()
   const { data: quizData, refresh: refreshQuiz } = useQuizAnalytics()
   const { interventions, dismiss, refresh: refreshInterventions } = useInterventions()
-  const { leaderboard, loadAll: refreshSocial } = useSocial()
+  const { friends, leaderboard, loadAll: refreshSocial } = useSocial()
 
   useFocusEffect(
     useCallback(() => {
@@ -263,6 +264,11 @@ export default function Dashboard() {
         {interventions.map((i) => (
           <InterventionBanner key={i.id} intervention={i} onDismiss={() => dismiss(i.id)} />
         ))}
+
+        <InviteMateBanner
+          mateCount={friends.length}
+          onInvite={() => router.push('/(tabs)/profile')}
+        />
 
         {/* Offline / stale data banner */}
         {isStale && <OfflineBanner message="Showing cached data" staleLabel="Offline" />}
