@@ -6,28 +6,42 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
-- [ ] **Save session latency ~45s (observed B121, 2026-04-18)** — User reports that completing a study session (tapping the last grade → seeing Session Complete → landing on Dashboard) takes ~45s in B121. Feels slower than before. Needs instrumentation before we can pin the root cause.
+- [ ] **Study queue ignores `profile.dailyGoal` — hardcoded to 20** — A new user sets daily goal = 5 in onboarding (`app/onboarding.tsx:111` writes `dailyGoal` to the learner profile via the API), but tapping Study starts a 20-card session. Reproduced on a fresh account in B121 TestFlight (2026-04-18).
 
-  **Suspected contributors (ranked by likelihood):**
-  1. **Cross-region DB latency.** API runs in `us-east-1` (App Runner), Supabase runs in `ap-southeast-2` (Sydney). Baseline RTT is ~250ms one-way, ~500ms with TLS. `POST /v1/reviews/submit` does multiple sequential writes (`review_logs` insert per card, `user_kanji_progress` upserts, `daily_stats` rollup, `review_sessions` upsert). A waterfall of ~15 queries at 500ms each would already produce a 7–8s save. 45s suggests either more queries than expected or a contention stall. Migration to us-east-1 is tracked as a Pre-Launch item in ENHANCEMENTS.md.
-  2. **Dashboard auto-refresh (new in B121).** The Dashboard `useFocusEffect` added in the B121 commit `d03cfad` fires 5 refresh callbacks on tab focus (`useAnalytics`, `useProfile`, `useQuizAnalytics`, `useInterventions`, `useSocial`). If the user is timing from "tap last grade" to "Dashboard metrics visible," this adds 5 parallel (but cross-region) API calls AFTER the submit finishes. Could account for a sizable chunk of the 45s if the analytics summary endpoint is slow.
-  3. **New weighted-confidence SQL (B121 commit `aaa874a`).** `WEIGHTED_CONFIDENCE_SQL` aggregates `SUM(CASE … END)::numeric / NULLIF(COUNT(*) * 3, 0) * 100` over `review_logs` filtered by `userId` + `reviewedAt >= since`. Runs in `getConfidenceRate` (30-day window) and `getConfidenceByType` (default 7-day window). This runs on Dashboard load, not on submit — but contributes to #2 above. Needs index check: confirm `review_logs` has a composite index on `(user_id, reviewed_at)` or the scan could be slow on a hot user with thousands of reviews.
-  4. **App Runner cold start after the B121 deploy.** The API was redeployed at 2026-04-18 ~14:40. First request after a deploy typically takes 5–15s while the container warms up. If the 45s observation was on the very first post-deploy session, this accounts for part of the delay — but subsequent sessions should be faster.
-  5. **Client-side offline queue or retry.** `review.store.ts::finishSession` wraps the submit in try/catch with offline queue handling. A timeout/retry loop could magnify a single slow call into a 45s stall. Check whether a retry path is firing.
+  **Root cause:** [apps/mobile/app/(tabs)/study.tsx:165](apps/mobile/app/(tabs)/study.tsx:165) calls `loadQueue(20)` with a hardcoded literal, never reading `profile.dailyGoal` from `useProfile()`. Same hardcoded 20 is also used by the offline-retry path on line 334. `useReviewStore.loadQueue` accepts a `limit` parameter but it's never populated from the user's preference.
+
+  **Fix plan:** In `study.tsx`, destructure `dailyGoal` from `useProfile()` and pass it to `loadQueue(dailyGoal)` (and the offline-retry button). Fall back to 20 only if the profile hasn't loaded yet. Mobile-only change; no API or schema work. Also review `loadWeakQueue(20)` to confirm it's intentional or similarly should use the goal.
+
+  **Affected files:**
+  - `apps/mobile/app/(tabs)/study.tsx` (lines 165, 334)
+  - No API change — `loadQueue` already takes a limit.
+
+  Found B121 fresh-account verification 2026-04-18.
+
+  `[Effort: XS]` `[Impact: High]` `[Status: 🐛 Active]`
+
+- [ ] **Save session latency ~45s (observed B121, 2026-04-18) — narrowed to submit path** — User reports that tapping the last grade kicks off a ~45s "Saving session…" spinner before Session Complete appears. Once Dashboard loads after, its auto-refresh takes only ~2–3 seconds. This narrows the bottleneck to the **submit path** (`POST /v1/reviews/submit` and the mobile `finishSession` wrapper), NOT the Dashboard useFocusEffect fan-out (which was suspected earlier but is now ruled out).
+
+  **Suspected contributors (ranked by likelihood, updated 2026-04-18 with new telemetry):**
+  1. **Cross-region sequential-write waterfall in submit loop.** API runs in `us-east-1` (App Runner), Supabase in `ap-southeast-2` (Sydney). Baseline DB RTT ~500ms with TLS. `srs.service.ts::submitReview` likely processes each review sequentially: `review_logs` insert + `user_kanji_progress` SRS upsert + session-summary update. For a 20-card session at 3–5 queries each = 60–100 queries × 500ms = **30–50s**, matching the observed 45s exactly. This is very likely the dominant cause. Migration to us-east-1 is queued as a Pre-Launch item in ENHANCEMENTS.md; even without migration, batching the submit into a single transaction with bulk inserts would collapse the waterfall.
+  2. **Client-side offline-queue retry.** `review.store.ts::finishSession` wraps the submit in try/catch with offline queue handling. A silent timeout/retry loop could multiply a single slow call. Worth ruling out by checking network logs for one submit call vs. many.
+  3. **App Runner cold start.** First request after the 2026-04-18 ~14:40 redeploy could add 5–15s. If a second consecutive session is also ~45s, cold start is ruled out — cold start only affects the first post-deploy call.
+  4. **Missing index on `review_logs(user_id, reviewed_at)`.** Unlikely to matter for inserts but worth verifying while we're in the schema — the new weighted-confidence SQL reads with this filter pattern.
+
+  **Explicitly ruled OUT (2026-04-18 telemetry):**
+  - ~~Dashboard auto-refresh fan-out~~ — user confirmed Dashboard loaded in ~2–3s after Session Complete, so the `useFocusEffect` added in B121 is NOT the bottleneck.
+  - ~~Weighted-confidence SQL on analytics path~~ — not in the submit critical path; runs on Dashboard load, which is already confirmed fast.
 
   **Investigation steps:**
-  1. Run a second test session to rule out cold start (#4). If the 45s repeats, it's not cold start.
-  2. Enable App Runner request timing logs. Break down `POST /v1/reviews/submit` by DB query to find the waterfall bottleneck (#1).
-  3. Measure `GET /v1/analytics/summary` latency in isolation via the mobile network tab or a direct `curl`. If it's > 10s by itself, the confidence query is the culprit (#3).
-  4. Confirm the composite index on `review_logs(user_id, reviewed_at)` exists — likely at `packages/db/src/schema.ts` or a migration file. If missing, add one.
-  5. Compare Dashboard focus-refresh latency before/after the B121 commit. `git stash` the `useFocusEffect` block in `apps/mobile/app/(tabs)/index.tsx` lines 187–195 and retime to isolate that contribution.
+  1. Run two consecutive sessions. If the second is also ~45s, rule out cold start.
+  2. Enable App Runner request timing logs; break down `POST /v1/reviews/submit` by DB query to confirm the waterfall shape and count.
+  3. Check mobile network logs during save — is it ONE `POST /v1/reviews/submit` call or multiple retries?
+  4. If the submit service processes reviews in a loop with per-review queries, rewrite to a single `insert ... values (...), (...), ...` transaction + a bulk user_kanji_progress upsert. Target query count independent of session size.
 
   **Affected files (entry points to investigate):**
   - `apps/api/src/routes/review.ts` — submit handler
-  - `apps/api/src/services/srs.service.ts` — the `submitReview` logic (upserts)
-  - `apps/api/src/services/analytics.service.ts` — new weighted-confidence SQL
-  - `apps/mobile/src/stores/review.store.ts::finishSession`
-  - `apps/mobile/app/(tabs)/index.tsx` — useFocusEffect
+  - `apps/api/src/services/srs.service.ts::submitReview` — the per-review upsert logic
+  - `apps/mobile/src/stores/review.store.ts::finishSession` — client-side submit + retry
 
   Found B121 TestFlight verification, 2026-04-18.
 
