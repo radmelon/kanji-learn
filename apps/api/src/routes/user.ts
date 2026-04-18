@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { userProfiles } from '@kanji-learn/db'
 import { z } from 'zod'
+import { supabaseAdmin } from '../lib/supabase-admin.js'
 
 const updateProfileSchema = z.object({
   displayName: z.string().min(1).max(50).nullable().optional(),
@@ -64,5 +65,18 @@ export async function userRoutes(server: FastifyInstance) {
       .returning()
 
     return reply.send({ ok: true, data: updated })
+  })
+
+  // DELETE /v1/user/me — permanently delete account + all associated data.
+  // Cascades from auth.users -> user_profiles -> every user-keyed table.
+  server.delete('/me', { preHandler: [server.authenticate] }, async (req, reply) => {
+    const userId = req.userId!
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)
+    if (error) {
+      server.log.error({ userId, err: error }, 'account_delete_failed')
+      return reply.code(500).send({ ok: false, error: 'Deletion failed', code: 'DELETE_FAILED' })
+    }
+    server.log.info({ userId }, 'account_deleted')
+    return reply.send({ ok: true })
   })
 }
