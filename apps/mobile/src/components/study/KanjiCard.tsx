@@ -192,6 +192,13 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
     speakAt(0)
   }, [speakingGroup])
 
+  // Visual cue distinguishing meaning vs reading prompts. Writing/compound stay neutral.
+  const cueColor =
+    item.reviewType === 'meaning' ? colors.meaningCue :
+    item.reviewType === 'reading' ? colors.accent :
+    null
+  const cueTint = cueColor ? `${cueColor}14` : 'transparent' // ~8% opacity
+
   return (
     <Animated.View style={[styles.card, { transform: [{ perspective: 1200 }, { rotateY }] }]}>
       {/* JLPT badge — top right */}
@@ -214,7 +221,17 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       )}
 
       {/* Kanji character — always visible, centred in upper half */}
-      <View style={styles.kanjiArea}>
+      <View
+        style={[
+          styles.kanjiArea,
+          cueColor && {
+            borderWidth: 2,
+            borderColor: cueColor,
+            backgroundColor: cueTint,
+            borderRadius: radius.lg,
+          },
+        ]}
+      >
         <Text style={styles.kanji}>{item.character}</Text>
         <Text style={styles.prompt}>{PROMPT_LABELS[item.reviewType as keyof typeof PROMPT_LABELS]}</Text>
         {/* Full Details icon — fades in on reveal, bottom-left of kanji area */}

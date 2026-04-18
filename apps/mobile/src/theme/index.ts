@@ -6,6 +6,7 @@ export const colors = {
   primaryDark: '#B5313B',
   accent: '#F4A261',       // warm amber — encouragement
   accentDark: '#E07B2A',
+  meaningCue: '#7C3AED',   // violet — meaning-prompt cue (reading uses accent amber)
 
   // Backgrounds
   bg: '#0F0F1A',           // deep indigo-black
