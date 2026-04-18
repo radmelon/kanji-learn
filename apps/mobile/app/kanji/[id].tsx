@@ -20,6 +20,7 @@ import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { SrsStatus } from '@kanji-learn/shared'
 import { getRadicalName } from '../../src/constants/radicals'
+import { useMnemonics } from '../../src/hooks/useMnemonics'
 
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.9 }
 
@@ -118,6 +119,20 @@ export default function KanjiDetail() {
   const [related, setRelated] = useState<RelatedKanji[]>([])
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
   const speakingGroupRef = useRef<string | null>(null)
+
+  // Mnemonics — id from route params is a string; the hook needs a number
+  const kanjiId = Number(id)
+  const {
+    mnemonics,
+    isLoading: mnemonicLoading,
+    isGenerating,
+    load: loadMnemonics,
+    generate: generateMnemonic,
+  } = useMnemonics(kanjiId)
+
+  useEffect(() => {
+    if (Number.isFinite(kanjiId)) loadMnemonics()
+  }, [kanjiId, loadMnemonics])
 
   // Stop TTS and prevent callbacks from firing after the screen unmounts
   const isMountedRef = useRef(true)
@@ -328,6 +343,40 @@ export default function KanjiDetail() {
               )}
             </Card>
           )}
+
+          {/* Mnemonic */}
+          <Card title="Mnemonic">
+            {mnemonicLoading && mnemonics.length === 0 ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : mnemonics.length > 0 ? (
+              <>
+                <Text style={styles.mnemonicText}>{mnemonics[0].storyText}</Text>
+                <TouchableOpacity
+                  style={styles.mnemonicSecondaryButton}
+                  onPress={() => generateMnemonic('haiku')}
+                  disabled={isGenerating}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="refresh" size={16} color={colors.primary} />
+                  <Text style={styles.mnemonicSecondaryButtonText}>
+                    {isGenerating ? 'Regenerating…' : 'Regenerate'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.mnemonicPrimaryButton}
+                onPress={() => generateMnemonic('haiku')}
+                disabled={isGenerating}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="sparkles" size={16} color="#fff" />
+                <Text style={styles.mnemonicPrimaryButtonText}>
+                  {isGenerating ? 'Generating…' : 'Generate mnemonic'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </Card>
 
           {/* Example Vocabulary */}
           {kanji.exampleVocab.length > 0 && (
@@ -629,4 +678,40 @@ const styles = StyleSheet.create({
   relatedChar: { ...typography.h3, color: colors.textPrimary, minWidth: 24 },
   relatedLevel: { ...typography.caption, fontWeight: '700', minWidth: 20 },
   relatedMeaning: { ...typography.caption, color: colors.textMuted, flex: 1 },
+
+  // Mnemonic
+  mnemonicText: {
+    ...typography.body,
+    color: colors.textPrimary,
+    lineHeight: 22,
+    marginBottom: spacing.sm,
+  },
+  mnemonicPrimaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    alignSelf: 'flex-start',
+  },
+  mnemonicPrimaryButtonText: {
+    ...typography.body,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  mnemonicSecondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  mnemonicSecondaryButtonText: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '600',
+  },
 })
