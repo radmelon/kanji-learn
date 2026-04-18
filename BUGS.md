@@ -6,9 +6,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
-- [ ] **Delete Account flow — TestFlight verification pending** — Code complete in B120 (Profile tab → Danger zone → typed-DELETE confirmation modal → API admin delete → cascade through `auth.users → user_profiles → learner_identity` → farewell screen → sign-in). Blocked only on hands-on TestFlight test of the full flow against a throwaway account, plus a Supabase SQL spot-check that no orphan rows remain in `auth.users`, `user_profiles`, `learner_identity`, or any user-keyed table after deletion.
+- [ ] **Delete Account flow — Core flow verified B120; relational cascade still open** — The user-facing delete flow works end-to-end (confirmed B120, 2026-04-18): Profile → Danger zone → typed-DELETE → API admin delete → farewell → sign-up with the same email yields a fresh account. Verification also surfaced that rows pointing to the deleted user from OTHER users' perspectives (friendships, study-mates, leaderboard, tutor shares) don't cascade — tracked separately below as "Post-delete relational cascade". Close this entry once the relational cleanup ships.
 
-  `[Effort: 0 (verify only)]` `[Impact: High]` `[Status: 🚧 Awaiting verification]`
+  `[Effort: 0 (verify only)]` `[Impact: High]` `[Status: 🚧 Core verified; relational follow-up open]`
 
 - [ ] **Study Time Timer Doesn't Pause When App Backgrounds** — The mobile review store records session study time as `Date.now() - studyStartMs`. If the user backgrounds the app mid-session and returns later to finish, the wall-clock difference includes all idle time. Observed a 29-review session that reported 16.8 hours of study time on one user. A server-side cap (30s/item, 60min hard max) was added in `srs.service.ts::submitReview` to protect the daily_stats rollup, but the mobile client should also pause the timer on `AppState` change to 'background' and resume on 'active'. Fix location: `apps/mobile/src/stores/review.store.ts` — wrap the timer in a pause/resume pattern keyed off `AppState`. Also wipe the elapsed time on session restore from offline queue.
 
@@ -79,6 +79,52 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   - Downstream consumers (`analytics.service.ts`, `SrsStatusBar.tsx`) import the constant and need no change once it's fixed.
 
   `[Effort: XS]` `[Impact: Medium]` `[Status: 🐛 Active]`
+
+- [ ] **Dashboard doesn't refresh after a study session** — After completing a study session and returning to the Dashboard tab, metrics (remembered count, JLPT bars, streak, daily goal) don't update until the user performs a pull-to-refresh. Most users won't know to pull down.
+
+  **Root cause:** `useAnalytics` ([apps/mobile/src/hooks/useAnalytics.ts:89](apps/mobile/src/hooks/useAnalytics.ts:89)) fetches once on mount. The Dashboard component stays mounted when navigating between tabs, so the effect never re-fires. `RefreshControl` is the only refresh trigger today.
+
+  **Fix plan:** Add `useFocusEffect` on the Dashboard tab that calls `refresh()` across all data hooks (`useAnalytics`, `useQuizAnalytics`, `useInterventions`, `useSocial`, `useProfile`) whenever the tab regains focus. Cached data keeps rendering during the refetch — no loading flash.
+
+  Found B120.
+
+  `[Effort: S]` `[Impact: High]` `[Status: 🐛 Active]`
+
+- [ ] **Take Quiz empty state shows misleading "connection error" copy** — A brand-new user who has declined placement and has zero reviews taps "Take a Quiz" on the Dashboard and sees: `"No quiz questions available yet — Study more kanji first"` with subtext `"Couldn't load quiz questions. Check your connection and try again."` plus Retry / Go Back buttons. The subtext blames the network when the real issue is no review history; Retry loops on the same alert.
+
+  **Fix plan:** Rewrite the empty-state subtext to match reality (e.g. `"Complete a study session to unlock quizzes."`). Replace Retry with a "Start studying" CTA that navigates to the Study tab. No starter quiz — the quiz's value depends on the user's SRS history.
+
+  Found B120.
+
+  `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
+
+- [ ] **Session Complete screen labels confidence as "accuracy"** — The percentage ring on the Session Complete screen displays `"accuracy"` below the number, but the value is a confidence score derived from Easy/Good/Hard/Again self-grading, not raw accuracy. File: [apps/mobile/src/components/study/SessionComplete.tsx:59](apps/mobile/src/components/study/SessionComplete.tsx:59). Bundle with the broader accuracy→confidence audit enhancement.
+
+  Found B120.
+
+  `[Effort: XS]` `[Impact: Low]` `[Status: 🐛 Active]`
+
+- [ ] **Drill Weak Spots dialog (>65% path) says "accuracy" — should say "confidence"** — Tapping "Drill Weak Spots" on the Dashboard when the user is above the 65% confidence threshold shows: `"Great news — your accuracy is above 65% on all recently reviewed kanji. Keep it up!"` Flip `accuracy` → `confidence`. File: [apps/mobile/app/(tabs)/index.tsx:214](apps/mobile/app/(tabs)/index.tsx:214). Bundle with the broader audit.
+
+  Found B120.
+
+  `[Effort: XS]` `[Impact: Low]` `[Status: 🐛 Active]`
+
+- [ ] **Post-delete relational cascade — deleted user persists in mates + leaderboard** — After a test user deletes their account, other users who had invited or been invited by the deleted user still see them in the Leaderboard and Study Mates lists. Same issue likely exists for tutor shares.
+
+  **Steps to reproduce (B120):**
+  1. Create test user A. Add study data.
+  2. From A, invite user B as a study mate. Invite a tutor.
+  3. Delete account A.
+  4. Sign in as user B → A still appears in Leaderboard and Study Mates list.
+
+  **Suspected root cause:** Migration 0016 added `learner_identity → user_profiles` cascade, so A's own data is gone. But the relational tables that reference A *from other users* (`friendships` / study-mate rows / tutor_shares) don't have `ON DELETE CASCADE` FKs back to `auth.users` or `user_profiles`. Leaderboard may additionally cache stale user rows.
+
+  **Fix plan:** Audit every user-keyed relational table for missing `ON DELETE CASCADE` FKs. Add migration 0017 to fill the gaps. Cascade immediately on delete (no decay period — hard delete is already our model). Optionally send a one-time farewell push to affected friends at deletion time so the disappearance isn't silent.
+
+  Found B120 Delete Account verification pass.
+
+  `[Effort: M]` `[Impact: High]` `[Status: 🐛 Active]`
 
 ---
 

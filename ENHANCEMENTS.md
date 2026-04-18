@@ -44,6 +44,12 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Pitch Accent Indicator** — Display the pitch accent pattern (高低 pattern) for kun-yomi readings on the KanjiCard. Sourced from an open pitch accent dictionary (e.g., Wadoku or a bundled dataset). Particularly valuable for intermediate learners targeting natural spoken Japanese.
   `[Effort: L]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
+- [ ] **Distinguish Meaning vs Reading Prompts (Study Card)** — Users report that it's easy to blur what the card is asking for. Apply three complementary cues per prompt type: (1) colored border — violet (#7C3AED) for meaning prompts, amber (#F59E0B) for reading prompts, (2) a "Meaning" / "読み方" label below the kanji glyph using the spare whitespace, (3) a subtle 5–8% opacity background tint matching the border color. Reduces cognitive load at a glance.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+
+- [ ] **"Show Mnemonic" Button on Kanji Details Page** — Add a "Show mnemonic" button on the Kanji details page (reachable from Journal and the study card detail drawer). Default behavior: reveal the existing cached mnemonic for that kanji. If an AI mnemonic already exists, also surface a "Regenerate" option that requests a fresh one from the LLM. Keeps cost predictable (cached path is free); mirrors the Journal UX. Pairs with the mnemonic-trigger rework (mnemonics no longer auto-reveal on Hard — see Learning & SRS section) so users can still pull one up on demand.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+
 ---
 
 ## 📊 Analytics & Progress
@@ -78,6 +84,12 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Grade Level Equivalent (Kyouiku Kanji)** — Display the Japanese school grade level equivalent on the progress page based on the Kyouiku kanji list (教育漢字). Shows users where they stand relative to the Japanese elementary school curriculum (grades 1–6, ~1,026 kanji). Provides a tangible, alternative progress metric alongside JLPT levels.
   `[Effort: M]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
+- [ ] **JLPT Progress Panel: Add Color Legend** — The Dashboard JLPT info panel and the Progress tab both use a multi-segment stacked bar (learning / reviewing / remembered / burned), but the color-to-stage mapping is implicit. Add a compact legend (colored dots + labels on one row) beneath or alongside the bar so users can read the bar without guessing.
+  `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+
+- [ ] **Leaderboard: Add Days-Studied + Remembered-Count Columns** — Augment the Leaderboard with two new metrics: `totalDaysStudied` (lifetime count of days with ≥1 review) and `rememberedCount` (kanji at status `remembered` or `burned`). Keep existing columns. Single sort order with tiebreakers: streak days → total days studied → remembered count. Requires exposing the new fields in `GET /v1/social/leaderboard` and extending `LeaderboardEntry` in [apps/mobile/src/hooks/useSocial.ts](apps/mobile/src/hooks/useSocial.ts).
+  `[Effort: S]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
+
 ---
 
 ## 🧠 Learning & SRS
@@ -99,6 +111,12 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 - [ ] **Adaptive Daily Goal** — Automatically suggest a daily card goal adjustment when the user consistently finishes well under or far over their goal. Keeps the daily goal realistic and prevents review pile-up from over-ambitious targets.
   `[Effort: M]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
+
+- [ ] **Weighted Confidence Scoring (Easy=3 / Good=2 / Hard=1 / Again=0)** — Today the dashboard "confidence" metric treats grades binarily (Easy|Good = correct, Hard|Again = incorrect). Switch to a weighted average: normalized to `sum(score) / (3 × total) × 100`. Same 4 grade buttons — no new UI. Hard and Again still keep the card in the queue. Historical reviews stay under the old binary formula (no data backfill needed). The daily Quiz continues to use binary correct/incorrect. Ship together with the mnemonic-trigger rework below.
+  `[Effort: M]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
+
+- [ ] **Mnemonic Auto-Reveal: Only on "Again"** — Currently both Hard and Again auto-reveal the mnemonic after grading. Narrow this to Again-only — Hard returns the card to the queue without revealing. Users who want to see the mnemonic on a Hard or Good can reach it manually via the new "Show mnemonic" button on the Kanji details page (see Study Card Enhancements). Ship together with weighted confidence scoring.
+  `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
 
 ---
 
@@ -124,6 +142,12 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 - [x] **Card Flip Animation Polish** — Add a smooth 3D card-flip animation when revealing the answer side of a flashcard. A small UX detail that significantly improves the feel of the core study loop.
   `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
+
+- [ ] **Accuracy → Confidence Terminology Audit** — The app uses "confidence" to describe the self-graded SRS score (Easy/Good/Hard/Again) but still shows "accuracy" in several user-facing strings (e.g. Session Complete ring label, Drill Weak Spots dialog, Progress tab info panels "Avg accuracy" and "Accuracy colour coding", session history rows). Sweep every user-facing "accuracy" string and flip to "confidence" wherever the context is SRS. Writing and voice practice statistics remain "accuracy" (they're objective stroke / speech scores). Internal variable names don't need to change.
+  `[Effort: S]` `[Impact: Low]` `[Backend: No]` `[Status: 💡 Idea]`
+
+- [ ] **Onboarding findHelp Panel: Append Motivational Line** — Append the sentence `"Studying daily is the key to making progress."` to the existing footer on the onboarding findHelp panel (after `"You don't need to memorise any of this now."`). File: [apps/mobile/src/config/onboarding-content.ts](apps/mobile/src/config/onboarding-content.ts). OTA-updatable — no rebuild needed.
+  `[Effort: XS]` `[Impact: Low]` `[Backend: No]` `[Status: 💡 Idea]`
 
 ---
 
@@ -199,3 +223,9 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 - [ ] **AI-Powered Personalized Study Plan** — Use the user's error history, leech patterns, and JLPT target date to generate a week-by-week study roadmap. The plan dynamically adjusts based on actual performance and flags which radicals or reading patterns are causing the most failures.
   `[Effort: XL]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
+
+- [ ] **Dashboard "Invite a Study Mate" Banner** — When the user has zero study mates and hasn't dismissed the prompt in the past 7 days, show a dismissible banner on the Dashboard encouraging them to invite a friend. Tap → opens the existing invite flow. The X / dismiss button writes a `studyMateInviteDismissedAt` timestamp to `AsyncStorage` so the banner reappears after the cooldown. Distinct from the existing "Study Mate Invite Notifications" idea (which handles *receiving* invites).
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+
+- [ ] **Study Mate Nudge / "Poke"** — Add a tappable nudge action on each row of the Study Mates list. Rate-limited to one poke per sender → receiver per 24-hour window. On send: push notification to the receiver (`"{senderName} poked you — time to study!"`), with Apple Watch haptic if the Watch companion is paired. Each poker sends a separate push (not aggregated). The receiver's Study Mates list shows a "You were poked" indicator next to the sender's row until acknowledged. Requires a new `pokes` table, API endpoint, push delivery, mates-list UI, and Watch complication update.
+  `[Effort: L]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
