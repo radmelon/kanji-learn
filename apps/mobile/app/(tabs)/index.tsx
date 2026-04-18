@@ -12,6 +12,7 @@ import { useAnalytics } from '../../src/hooks/useAnalytics'
 import { useQuizAnalytics } from '../../src/hooks/useQuizAnalytics'
 import { useInterventions } from '../../src/hooks/useInterventions'
 import { useSocial } from '../../src/hooks/useSocial'
+import { useProfile } from '../../src/hooks/useProfile'
 import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { StatCard } from '../../src/components/ui/StatCard'
 import { InterventionBanner } from '../../src/components/ui/InterventionBanner'
@@ -177,6 +178,7 @@ const INFO_LEADERBOARD: InfoSection[] = [
 export default function Dashboard() {
   const router = useRouter()
   const { user } = useAuthStore()
+  const { profile } = useProfile()
   const { summary, isLoading, isStale, refresh } = useAnalytics()
   const { data: quizData } = useQuizAnalytics()
   const { interventions, dismiss } = useInterventions()
@@ -220,7 +222,10 @@ export default function Dashboard() {
     }
   }, [loadWeakQueue, router])
 
-  const displayName = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'Learner'
+  // Profile.displayName is the source of truth (editable in Profile tab + onboarding).
+  // user_metadata.display_name is a stale auth.users blob set once at signup and not
+  // updated when the user edits their name, so it would drift.
+  const displayName = profile?.displayName ?? user?.email?.split('@')[0] ?? 'Learner'
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
