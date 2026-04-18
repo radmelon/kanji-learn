@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 
 export interface Intervention {
@@ -12,16 +12,23 @@ export interface Intervention {
 export function useInterventions() {
   const [interventions, setInterventions] = useState<Intervention[]>([])
 
-  useEffect(() => {
-    api.get<Intervention[]>('/v1/interventions')
-      .then(setInterventions)
-      .catch(() => {})
+  const refresh = useCallback(async () => {
+    try {
+      const data = await api.get<Intervention[]>('/v1/interventions')
+      setInterventions(data)
+    } catch {
+      // Silently fail — banner is a non-critical UX hint.
+    }
   }, [])
 
-  const dismiss = async (id: string) => {
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  const dismiss = useCallback(async (id: string) => {
     await api.post(`/v1/interventions/${id}/resolve`)
     setInterventions((prev) => prev.filter((i) => i.id !== id))
-  }
+  }, [])
 
-  return { interventions, dismiss }
+  return { interventions, dismiss, refresh }
 }
