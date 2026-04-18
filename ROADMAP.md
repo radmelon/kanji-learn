@@ -155,10 +155,10 @@ Tracked in [BUGS.md](BUGS.md) — see that file for current open and recently-fi
 |-------|-------|-------------|-------|
 | **0** | **2** | **M** | **🚨 Security — RLS & sensitive data** |
 | 1 | 4 | S | Polish & consistency |
-| 2 | 4 | M | Onboarding & daily UX |
+| 2 | 8 | M | Onboarding & daily UX |
 | 3 | 4 | M | Smarter SRS & analytics |
-| 4 | 4 | M–L | Advanced study & data |
+| 4 | 5 | M–L | Advanced study & data |
 | 5 | 3 | M–L | Scale & multi-device |
 | 6 | 3 | XL | Transformative features |
 | D | 2 | M–XL | Deprioritized |
-| **Total** | **26** | | |
+| **Total** | **31** | | |
