@@ -107,23 +107,13 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: XS]` `[Impact: Medium]` `[Status: 🐛 Active]`
 
-- [ ] **Dashboard doesn't refresh after a study session** — After completing a study session and returning to the Dashboard tab, metrics (remembered count, JLPT bars, streak, daily goal) don't update until the user performs a pull-to-refresh. Most users won't know to pull down.
+- [x] **Dashboard doesn't refresh after a study session** — ~~FIXED~~ in B121 (commit `d03cfad`). Verified by user on 2026-04-18: returning to the Dashboard tab after a study session now auto-refreshes all metrics (remembered count, JLPT bars, streak, daily goal) without needing pull-to-refresh. Fix: `useFocusEffect` on the Dashboard calls `refresh()` across all 5 data hooks (`useAnalytics`, `useProfile`, `useQuizAnalytics`, `useInterventions`, and `loadAll` on `useSocial`) whenever the tab regains focus. Cached data keeps rendering during the refetch — no loading flash. Pull-to-refresh still works as before.
 
-  **Root cause:** `useAnalytics` ([apps/mobile/src/hooks/useAnalytics.ts:89](apps/mobile/src/hooks/useAnalytics.ts:89)) fetches once on mount. The Dashboard component stays mounted when navigating between tabs, so the effect never re-fires. `RefreshControl` is the only refresh trigger today.
+  `[Effort: S]` `[Impact: High]` `[Status: ✅ Fixed]`
 
-  **Fix plan:** Add `useFocusEffect` on the Dashboard tab that calls `refresh()` across all data hooks (`useAnalytics`, `useQuizAnalytics`, `useInterventions`, `useSocial`, `useProfile`) whenever the tab regains focus. Cached data keeps rendering during the refetch — no loading flash.
+- [x] **Take Quiz empty state shows misleading "connection error" copy** — ~~FIXED~~ in B121 (commit `63c464e`). Verified by user on 2026-04-18: a brand-new user tapping "Take a Quiz" with zero reviews now sees a dedicated empty state (`school-outline` icon, "Quizzes unlock once you've studied some kanji.", "Complete a study session to build a pool of questions based on what you've seen.") with a "Start studying" CTA that takes them straight to the Study tab via `router.replace('/(tabs)/study')`. The old "Check your connection" copy is no longer shown for the no-data case; the generic connection-error state still handles real network failures.
 
-  Found B120.
-
-  `[Effort: S]` `[Impact: High]` `[Status: 🐛 Active]`
-
-- [ ] **Take Quiz empty state shows misleading "connection error" copy** — A brand-new user who has declined placement and has zero reviews taps "Take a Quiz" on the Dashboard and sees: `"No quiz questions available yet — Study more kanji first"` with subtext `"Couldn't load quiz questions. Check your connection and try again."` plus Retry / Go Back buttons. The subtext blames the network when the real issue is no review history; Retry loops on the same alert.
-
-  **Fix plan:** Rewrite the empty-state subtext to match reality (e.g. `"Complete a study session to unlock quizzes."`). Replace Retry with a "Start studying" CTA that navigates to the Study tab. No starter quiz — the quiz's value depends on the user's SRS history.
-
-  Found B120.
-
-  `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
+  `[Effort: S]` `[Impact: Med]` `[Status: ✅ Fixed]`
 
 - [x] **Session Complete screen labels confidence as "accuracy"** — ~~FIXED~~ in B121 (commit `744dede`). Verified by user on 2026-04-18: the big percentage ring on Session Complete now reads "confidence" below the number. File: `apps/mobile/src/components/study/SessionComplete.tsx:59`.
 

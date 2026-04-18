@@ -158,8 +158,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Accuracy → Confidence Terminology Audit** — ~~SHIPPED~~ in B121 (commit `744dede`). Verified by user on 2026-04-18: Session Complete ring label, Drill Weak Spots dialog, and Progress tab "Confidence colour coding" info panel now read "confidence". Writing/voice practice stats correctly remain "accuracy" (objective scores). Internal variable names and style keys left untouched.
   `[Effort: S]` `[Impact: Low]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Onboarding findHelp Panel: Append Motivational Line** — Append the sentence `"Studying daily is the key to making progress."` to the existing footer on the onboarding findHelp panel (after `"You don't need to memorise any of this now."`). File: [apps/mobile/src/config/onboarding-content.ts](apps/mobile/src/config/onboarding-content.ts). OTA-updatable — no rebuild needed.
-  `[Effort: XS]` `[Impact: Low]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Onboarding findHelp Panel: Append Motivational Line** — ~~SHIPPED~~ in B121 (commit `378f85c`). Verified by user on 2026-04-18: onboarding findHelp panel footer now reads "You don't need to memorise any of this now. Studying daily is the key to making progress."
+  `[Effort: XS]` `[Impact: Low]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 ---
 
