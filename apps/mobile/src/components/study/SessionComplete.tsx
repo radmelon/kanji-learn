@@ -6,6 +6,7 @@ import { colors, spacing, radius, typography } from '../../theme'
 interface Props {
   totalItems: number
   correctItems: number
+  confidencePct: number
   newLearned: number
   burned: number
   studyTimeMs: number
@@ -32,8 +33,8 @@ function motivationalMessage(accuracy: number, burned: number): string {
   return 'Tough session — come back tomorrow and you\'ll improve.'
 }
 
-export function SessionComplete({ totalItems, correctItems, newLearned, burned, studyTimeMs, onDone, onReview }: Props) {
-  const accuracy = totalItems > 0 ? Math.round((correctItems / totalItems) * 100) : 0
+export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview }: Props) {
+  const accuracy = confidencePct
   const wrong = totalItems - correctItems
   const accColor = accuracy >= 80 ? colors.success : accuracy >= 60 ? colors.warning : colors.error
 

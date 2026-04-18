@@ -55,7 +55,7 @@ interface ReviewState {
   submitResult: (result: ReviewResult) => void
   undoLastResult: () => boolean
   loadWeakQueue: (limit?: number) => Promise<boolean>
-  finishSession: () => Promise<{ burned: number; studyTimeMs: number } | null>
+  finishSession: () => Promise<{ burned: number; studyTimeMs: number; confidencePct: number } | null>
   syncPendingSessions: () => Promise<void>
   loadMissedQueue: () => boolean
   reset: () => void
@@ -175,12 +175,27 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     if (results.length === 0) return null
     const studyTimeMs = Date.now() - studyStartMs
 
+    // Weighted confidence: Easy=3, Good=2, Hard=1, Again=0 (legacy quality 0/2 → 0)
+    const weightForQuality = (q: number): number => {
+      if (q === 5) return 3
+      if (q === 4) return 2
+      if (q === 3) return 1
+      return 0
+    }
+    const totalReviews = results.length
+    const confidencePct = totalReviews > 0
+      ? Math.round(
+          (results.reduce((sum, r) => sum + weightForQuality(r.quality), 0) /
+            (totalReviews * 3)) * 100
+        )
+      : 0
+
     try {
       const res = await api.post<{ sessionId: string; totalItems: number; correctItems: number; studyTimeMs: number; newLearned: number; burned: number }>(
         '/v1/review/submit', { results, studyTimeMs }
       )
       await storage.removeItem(KEY_PROGRESS)
-      return { burned: res.burned, studyTimeMs: res.studyTimeMs }
+      return { burned: res.burned, studyTimeMs: res.studyTimeMs, confidencePct }
     } catch {
       // Queue for later submission
       const pending = (await storage.getItem<PendingSession[]>(KEY_PENDING)) ?? []

@@ -55,7 +55,7 @@ function StudySession() {
   // so the correct kanji stays visible behind the sheet.
   const [pendingResult, setPendingResult] = useState<ReviewResult | null>(null)
   const [sessionSummary, setSessionSummary] = useState<{
-    totalItems: number; correctItems: number; newLearned: number; burned: number; studyTimeMs: number
+    totalItems: number; correctItems: number; confidencePct: number; newLearned: number; burned: number; studyTimeMs: number
   } | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [nudgeItem, setNudgeItem] = useState<{ kanjiId: number; character: string; meaning: string } | null>(null)
@@ -273,11 +273,25 @@ function StudySession() {
     }).length
     const clientStudyMs = Date.now() - useReviewStore.getState().studyStartMs
 
+    // Local fallback weighted-confidence — used if server returns nothing or throws.
+    // Mirrors the server formula: Easy=3, Good=2, Hard=1, Again=0; normalized 0–100.
+    const fallbackConfidence = results.length > 0
+      ? Math.round(
+          (results.reduce((sum, r) => {
+            if (r.quality === 5) return sum + 3
+            if (r.quality === 4) return sum + 2
+            if (r.quality === 3) return sum + 1
+            return sum
+          }, 0) / (results.length * 3)) * 100
+        )
+      : 0
+
     try {
       const serverData = await finishSession()
       setSessionSummary({
         totalItems: results.length,
         correctItems: correct,
+        confidencePct: serverData?.confidencePct ?? fallbackConfidence,
         newLearned,
         burned: serverData?.burned ?? 0,
         studyTimeMs: serverData?.studyTimeMs ?? clientStudyMs,
@@ -288,6 +302,7 @@ function StudySession() {
       setSessionSummary({
         totalItems: results.length,
         correctItems: correct,
+        confidencePct: fallbackConfidence,
         newLearned,
         burned: 0,
         studyTimeMs: clientStudyMs,
