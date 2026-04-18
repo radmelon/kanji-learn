@@ -53,6 +53,15 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Speak Button on Example Sentences (Kanji Details)** — The Kanji details page renders each example sentence (`exampleSentences` on `KanjiDetail`) as text-only today. Add a speak icon next to each sentence that plays the Japanese string via the existing Expo Speech TTS infra (`ja-JP`, rate ~0.9 — see `SPEECH_OPTS` in `apps/mobile/app/kanji/[id].tsx`). Mirrors the speak icons already on readings and vocab. Simple: one tap = play; disable icon while speaking to prevent overlap. Reuses existing `useTTS`/Expo Speech plumbing — no backend, no new data.
   `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
 
+- [ ] **Session Complete: High / Medium / Low / Missed Breakdown (replace "right vs wrong")** — `SessionComplete.tsx` currently shows a binary breakdown (`correct` vs `wrong`, where `wrong = totalItems - correctItems`). With the weighted 3/2/1/0 confidence metric shipped in B122, the binary breakdown no longer matches the percentage ring. Replace with a 4-tier count aligned to the grade buttons, all four summing to `totalItems`:
+  - **High** = Easy (`quality === 5`)
+  - **Medium** = Good (`quality === 4`)
+  - **Low** = Hard (`quality === 3`)
+  - **Missed** = Again (`quality === 1`)
+
+  Invariant: `high + medium + low + missed === totalItems`. Use distinct colors per tier (green / blue / amber / red, or similar — use existing theme tokens; no new palette). Implementation: derive per-grade counts in the review store alongside `confidencePct` (the `results: ReviewResult[]` array already carries each quality), pass as props into `SessionComplete`, render 4 breakdown boxes replacing the current pair. Retire the old `correctItems` and `wrong` variables once all usages are migrated. Files: `apps/mobile/src/stores/review.store.ts::finishSession`, `apps/mobile/src/components/study/SessionComplete.tsx`, `apps/mobile/app/(tabs)/study.tsx` (prop thread).
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+
 ---
 
 ## 📊 Analytics & Progress
