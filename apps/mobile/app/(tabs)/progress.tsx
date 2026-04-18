@@ -174,10 +174,10 @@ const INFO_SPEAKING: InfoSection[] = [
 
 const INFO_SESSION_HISTORY: InfoSection[] = [
   {
-    body: 'A log of your last 30 completed SRS review sessions. Each row shows when the session occurred, how many cards you reviewed, how long it took, and your accuracy for that session.',
+    body: 'A log of your last 30 completed SRS review sessions. Each row shows when the session occurred, how many cards you reviewed, how long it took, and your confidence for that session.',
   },
   {
-    title: 'Accuracy colour coding',
+    title: 'Confidence colour coding',
     body: 'Green = 80% or above (strong session). Amber = 60–79% (solid but room to improve). Red = below 60% (tough session — the cards you missed will reappear soon for reinforcement).',
   },
   {

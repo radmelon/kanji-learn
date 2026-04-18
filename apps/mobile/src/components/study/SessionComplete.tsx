@@ -56,7 +56,7 @@ export function SessionComplete({ totalItems, correctItems, newLearned, burned, 
           <View style={styles.accuracyRow}>
             <View style={styles.accuracyCircle}>
               <Text style={[styles.accuracyPct, { color: accColor }]}>{accuracy}%</Text>
-              <Text style={styles.accuracyLabel}>accuracy</Text>
+              <Text style={styles.accuracyLabel}>confidence</Text>
             </View>
             <View style={styles.accuracyBreakdown}>
               <View style={styles.breakdownItem}>

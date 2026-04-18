@@ -211,7 +211,7 @@ export default function Dashboard() {
       } else {
         Alert.alert(
           'No weak spots found',
-          'Great news — your accuracy is above 65% on all recently reviewed kanji. Keep it up!',
+          'Great news — your confidence is above 65% on all recently reviewed kanji. Keep it up!',
           [{ text: 'OK' }]
         )
       }
