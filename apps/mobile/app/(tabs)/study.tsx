@@ -218,7 +218,7 @@ function StudySession() {
           responseTimeMs: Date.now() - cardStartMs.current,
           reviewType: item.reviewType,
         }
-        if ((quality === 1 || quality === 3) && item.reviewType !== 'compound') {
+        if (quality === 1 && item.reviewType !== 'compound') {
           // Show mnemonic nudge — defer submitResult so the card doesn't advance
           // until the user dismisses the sheet (fixes "wrong kanji underneath" bug)
           setPendingResult(result)
