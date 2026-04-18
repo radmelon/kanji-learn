@@ -110,7 +110,7 @@ export default function RootLayout() {
     const inAuthGroup = segments[0] === '(auth)'
 
     // Not logged in → send to sign-in
-    if (!session && !inAuthGroup) {
+    if (!session && !inAuthGroup && segments[0] !== 'deleted') {
       router.replace('/(auth)/sign-in')
       return
     }
@@ -149,6 +149,7 @@ export default function RootLayout() {
         <Stack.Screen name="about" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="placement" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="deleted" options={{ headerShown: false, gestureEnabled: false }} />
       </Stack>
     </GestureHandlerRootView>
   )
