@@ -6,6 +6,27 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **Session Complete screen persists after returning to Study tab** — After completing a session and tapping "Done" (or navigating back to Dashboard and then tapping "Start Today's Reviews"), the Study tab still shows the previous Session Complete screen instead of loading a fresh queue. The user must force-quit the app to get out of the state.
+
+  **Root cause:** The Session Complete screen renders when the local `sessionSummary` state is non-null ([apps/mobile/app/(tabs)/study.tsx:371](apps/mobile/app/(tabs)/study.tsx:371)). `onDone` at line 375 just calls `router.replace('/(tabs)')` — it does NOT clear `sessionSummary` or call `reset()`. Because Expo Router tabs stay mounted when you navigate between them, the local React state + Zustand state survive, and the stale Session Complete renders again when the user re-enters the Study tab.
+
+  **Fix:** In `onDone`, before navigating, clear the local summary and reset the review store:
+  ```tsx
+  onDone={() => {
+    setSessionSummary(null)
+    reset()
+    router.replace('/(tabs)')
+  }}
+  ```
+  Alternative (more robust): use `useFocusEffect` on the Study tab so returning to focus with `isComplete: true` auto-triggers a fresh `loadQueue(limit)`.
+
+  **Affected files:**
+  - `apps/mobile/app/(tabs)/study.tsx` — `onDone`, lines 373–386
+
+  Found B121 fresh-account verification 2026-04-18 (also likely pre-existing, just surfaced by the tight test loop).
+
+  `[Effort: XS]` `[Impact: High]` `[Status: 🐛 Active]`
+
 - [ ] **Study queue ignores `profile.dailyGoal` — hardcoded to 20** — A new user sets daily goal = 5 in onboarding (`app/onboarding.tsx:111` writes `dailyGoal` to the learner profile via the API), but tapping Study starts a 20-card session. Reproduced on a fresh account in B121 TestFlight (2026-04-18).
 
   **Root cause:** [apps/mobile/app/(tabs)/study.tsx:165](apps/mobile/app/(tabs)/study.tsx:165) calls `loadQueue(20)` with a hardcoded literal, never reading `profile.dailyGoal` from `useProfile()`. Same hardcoded 20 is also used by the offline-retry path on line 334. `useReviewStore.loadQueue` accepts a `limit` parameter but it's never populated from the user's preference.
