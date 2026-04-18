@@ -9,7 +9,7 @@ import { colors, spacing, radius, typography } from '../src/theme'
 import { api } from '../src/lib/api'
 import type { TestQuestion, SubmitAnswer, TestResultSummary, QuestionType } from '@kanji-learn/shared'
 
-type ScreenStatus = 'loading' | 'question' | 'feedback' | 'complete' | 'error'
+type ScreenStatus = 'loading' | 'question' | 'feedback' | 'complete' | 'error' | 'empty'
 
 const JLPT_COLORS: Record<string, string> = {
   N5: colors.n5,
@@ -71,8 +71,8 @@ export default function TestScreen() {
     try {
       const data = await api.get<TestQuestion[]>(`/v1/tests/questions?limit=10&types=${typesParam}`)
       if (!data || data.length === 0) {
-        setLoadError('No quiz questions available yet — study more kanji first.')
-        setStatus('error')
+        setLoadError(null)
+        setStatus('empty')
         return
       }
       setQuestions(data)
@@ -155,6 +155,25 @@ export default function TestScreen() {
   }
 
   // ── Error state ───────────────────────────────────────────────────────────
+
+  if (status === 'empty') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centeredFull}>
+          <Ionicons name="school-outline" size={64} color={colors.primary} />
+          <Text style={styles.loadingText}>Quizzes unlock once you've studied some kanji.</Text>
+          <Text style={styles.errorDetail}>Complete a study session to build a pool of questions based on what you've seen.</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => router.replace('/(tabs)/study')}>
+            <Ionicons name="play" size={16} color="#fff" />
+            <Text style={styles.retryButtonText}>Start studying</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
+            <Text style={styles.closeButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    )
+  }
 
   if (status === 'error') {
     return (
