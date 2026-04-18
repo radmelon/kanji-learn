@@ -17,6 +17,7 @@ import type { SearchResult } from '../../src/hooks/useSocial'
 import { useTutorSharing } from '../../src/hooks/useTutorSharing'
 import { useLearnerProfile } from '../../src/hooks/useLearnerProfile'
 import { COUNTRIES, ONBOARDING_CONTENT } from '../../src/config/onboarding-content'
+import { DeleteAccountModal } from '../../src/components/profile/DeleteAccountModal'
 
 const PROFILE_CACHE_KEY = 'kl:profile_cache'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -59,6 +60,9 @@ export default function ProfileScreen() {
   // Apple Watch
   const [watchEnabled, setWatchEnabledLocal] = useState(false)
   const [watchStatus, setWatchStatus] = useState<string>('Checking...')
+
+  // Delete account modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   const loadWatchStatus = useCallback(async () => {
     const status = await getWatchConnectionStatus()
@@ -870,6 +874,23 @@ export default function ProfileScreen() {
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
 
+        <View style={styles.dangerZone}>
+          <Text style={styles.dangerLabel}>Danger zone</Text>
+          <TouchableOpacity
+            style={styles.deleteAccountBtn}
+            onPress={() => setShowDeleteModal(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="trash-outline" size={18} color={colors.error} />
+            <Text style={styles.deleteAccountText}>Delete account</Text>
+          </TouchableOpacity>
+        </View>
+
+        <DeleteAccountModal
+          visible={showDeleteModal}
+          onDismiss={() => setShowDeleteModal(false)}
+        />
+
       </ScrollView>
 
       {/* Country picker modal for Learning Profile */}
@@ -1277,4 +1298,31 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   signOutText: { ...typography.body, color: colors.error, fontWeight: '600' },
+
+  // Danger zone
+  dangerZone: {
+    marginTop: spacing.xl,
+    paddingTop: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    gap: spacing.sm,
+  },
+  dangerLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  deleteAccountBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  deleteAccountText: {
+    ...typography.body,
+    color: colors.error,
+    fontWeight: '600',
+  },
 })
