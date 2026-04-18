@@ -46,7 +46,7 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 |---|------------|--------|---------|--------|
 | 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ✅ Done — re-verified 2026-04-17 after B117/B118 fix bundle. The "regression" turned out to be a `useProfile` race + missing DB trigger, not OAuth itself. See BUGS.md. |
 | 6 | Onboarding Tutorial + User Questionnaire | High | Yes | ✅ Done — merged into main via PR #6 |
-| 12 | Delete Account ⚠️ App Store compliance | High | Yes | ✅ Code complete in B120 (2026-04-17). Awaiting hands-on TestFlight verification of the full delete flow + Supabase orphan check. |
+| 12 | Delete Account ⚠️ App Store compliance | High | Yes | 🟡 Core flow verified in B121 (2026-04-18). Relational cascade gap (friendships / leaderboard / tutor shares still reference deleted users from OTHER users' perspectives) confirmed reproducible — tracked in BUGS.md as "Post-delete relational cascade." Fix = migration 0017 + optional farewell push. |
 | 11 | Rebrand: Kanji Learn → Kanji Buddy | Med | No | **Next up.** Pending. |
 | 9 | Splash Screen Polish: solid bg color, longer display duration, branding imagery | Med | No | Pending — bundle with #11 |
 | 10 | About/Credits Page: add app branding imagery and credits | Low | No | Pending — bundle with #11 |
@@ -62,7 +62,9 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 **Prior context:**
 - #5 was originally marked ✅ Done on 2026-04-13 after TestFlight B111 verification, then suspected to have regressed in B116. Root cause was actually the new onboarding routing gate exposing a pre-existing `useProfile` race + a missing `on_auth_user_created` Postgres trigger; OAuth itself never broke. Re-verified clean after B117/B118.
 - #6 shipped via the onboarding branch, merged into tutor-analytics-sharing, landed on main via PR #6 on 2026-04-17.
-- #12 design spec at `docs/superpowers/specs/2026-04-17-delete-account-design.md`; implementation plan at `docs/superpowers/plans/2026-04-17-delete-account.md`. Cascade gap on `learner_identity` (no FK to `user_profiles`) caught in final code review and fixed via migration 0016.
+- #12 design spec at `docs/superpowers/specs/2026-04-17-delete-account-design.md`; implementation plan at `docs/superpowers/plans/2026-04-17-delete-account.md`. Initial cascade gap on `learner_identity` (no FK to `user_profiles`) caught in B120 code review and fixed via migration 0016. Second cascade gap (relational tables referencing the deleted user from other users' viewpoints) surfaced in B121 verification and is pending migration 0017 — see BUGS.md.
+
+**2026-04-18 session (B121):** Two bundled builds merged and shipped in a single TestFlight cut — see `docs/superpowers/plans/2026-04-18-b121-copy-and-ux-sweep.md` and `docs/superpowers/plans/2026-04-18-b122-study-loop-and-leaderboard.md`. No explicit Phase 2 items were closed, but a substantial refinement bundle shipped: accuracy→confidence terminology audit, Dashboard auto-refresh, Take Quiz empty state, JLPT color legend, weighted 3/2/1/0 confidence scoring (API + client, fully verified via controlled DB test), mnemonic trigger narrowed to Again only, "Show mnemonic" button on Kanji details page, meaning/reading visual cue on study cards, dismissible invite-a-mate banner, leaderboard days-studied + remembered columns, onboarding motivational footer. 12 of 14 verification items passed; 4 new bugs logged (45s save latency with documented fix plan, stale Session Complete state, daily goal hardcoded to 20, post-delete relational cascade confirmed); 3 new refinements logged (gesture mapping clarity, Session Complete breakdown, speak on sentences).
 
 ---
 
