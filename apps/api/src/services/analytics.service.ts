@@ -10,6 +10,24 @@ import {
   JLPT_KANJI_COUNTS,
 } from '@kanji-learn/shared'
 
+// Weighted confidence: Easy=3, Good=2, Hard=1, Again=0. Normalized 0–100.
+// quality 5/4/3/1 → weights 3/2/1/0. Quality 0 and 2 (legacy SM-2 edge cases) → 0.
+const WEIGHTED_CONFIDENCE_SQL = sql<number>`
+  COALESCE(
+    ROUND(
+      SUM(
+        CASE
+          WHEN ${reviewLogs.quality} = 5 THEN 3
+          WHEN ${reviewLogs.quality} = 4 THEN 2
+          WHEN ${reviewLogs.quality} = 3 THEN 1
+          ELSE 0
+        END
+      )::numeric / NULLIF(COUNT(*) * 3, 0) * 100
+    )::int,
+    0
+  )
+`
+
 // ─── Analytics Service ────────────────────────────────────────────────────────
 
 export class AnalyticsService {
@@ -151,8 +169,9 @@ export class AnalyticsService {
       .select({
         reviewType: reviewLogs.reviewType,
         total: sql<number>`count(*)::int`,
-        // quality >= 4 (Good/Easy) = confident recall; Hard (3) counts as reviewed but not "correct"
+        // "correct" is kept for callers that still want the Good+Easy raw count
         correct: sql<number>`count(*) filter (where ${reviewLogs.quality} >= 4)::int`,
+        confidence: WEIGHTED_CONFIDENCE_SQL,
       })
       .from(reviewLogs)
       .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, since)))
@@ -160,9 +179,11 @@ export class AnalyticsService {
 
     const result: Record<string, { total: number; correct: number; pct: number }> = {}
     for (const row of rows) {
-      const total = Number(row.total)
-      const correct = Number(row.correct)
-      result[row.reviewType] = { total, correct, pct: total > 0 ? Math.round((correct / total) * 100) : 0 }
+      result[row.reviewType] = {
+        total: Number(row.total),
+        correct: Number(row.correct),
+        pct: Number(row.confidence),
+      }
     }
     return result
   }
@@ -172,19 +193,16 @@ export class AnalyticsService {
   async getConfidenceRate(userId: string, days = 30): Promise<number> {
     const since = new Date()
     since.setDate(since.getDate() - days)
-    const sinceStr = since.toISOString().slice(0, 10)
 
-    const rows = await this.db
-      .select({
-        totalReviewed: sql<number>`SUM(reviewed)::int`,
-        totalCorrect: sql<number>`SUM(correct)::int`,
-      })
-      .from(dailyStats)
-      .where(and(eq(dailyStats.userId, userId), gte(dailyStats.date, sinceStr)))
+    const row = await this.db
+      .select({ confidence: WEIGHTED_CONFIDENCE_SQL })
+      .from(reviewLogs)
+      .where(and(
+        eq(reviewLogs.userId, userId),
+        gte(reviewLogs.reviewedAt, since),
+      ))
 
-    const total = Number(rows[0]?.totalReviewed ?? 0)
-    const correct = Number(rows[0]?.totalCorrect ?? 0)
-    return total > 0 ? Math.round((correct / total) * 100) : 0
+    return Number(row[0]?.confidence ?? 0)
   }
 
   // ── Quiz accuracy (from kl_test_results) ───────────────────────────────────
