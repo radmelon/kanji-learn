@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import fp from 'fastify-plugin'
 import jwt from '@fastify/jwt'
 import { createPublicKey } from 'node:crypto'
-import { env } from '../lib/env'
+import { env } from '../lib/env.js'
 
 // ─── Supabase JWT auth plugin ─────────────────────────────────────────────────
 // Supabase newer projects sign JWTs with ES256 (ECDSA P-256).
