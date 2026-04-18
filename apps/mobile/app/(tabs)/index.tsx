@@ -4,7 +4,7 @@ import {
   StyleSheet, RefreshControl, ActivityIndicator, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useRouter } from 'expo-router'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { useReviewStore } from '../../src/stores/review.store'
@@ -178,11 +178,21 @@ const INFO_LEADERBOARD: InfoSection[] = [
 export default function Dashboard() {
   const router = useRouter()
   const { user } = useAuthStore()
-  const { profile } = useProfile()
+  const { profile, refresh: refreshProfile } = useProfile()
   const { summary, isLoading, isStale, refresh } = useAnalytics()
-  const { data: quizData } = useQuizAnalytics()
-  const { interventions, dismiss } = useInterventions()
-  const { leaderboard } = useSocial()
+  const { data: quizData, refresh: refreshQuiz } = useQuizAnalytics()
+  const { interventions, dismiss, refresh: refreshInterventions } = useInterventions()
+  const { leaderboard, loadAll: refreshSocial } = useSocial()
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh()
+      refreshProfile()
+      refreshQuiz()
+      refreshInterventions()
+      refreshSocial()
+    }, [refresh, refreshProfile, refreshQuiz, refreshInterventions, refreshSocial])
+  )
 
   // Tracks which panel's info section is currently open (null = all closed)
   const [activeInfo, setActiveInfo] = useState<string | null>(null)
