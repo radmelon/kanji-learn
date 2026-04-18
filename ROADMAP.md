@@ -44,8 +44,6 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
-| # | Enhancement | Impact | Backend | Status |
-|---|------------|--------|---------|--------|
 | 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ✅ Done — re-verified 2026-04-17 after B117/B118 fix bundle. The "regression" turned out to be a `useProfile` race + missing DB trigger, not OAuth itself. See BUGS.md. |
 | 6 | Onboarding Tutorial + User Questionnaire | High | Yes | ✅ Done — merged into main via PR #6 |
 | 12 | Delete Account ⚠️ App Store compliance | High | Yes | ✅ Code complete in B120 (2026-04-17). Awaiting hands-on TestFlight verification of the full delete flow + Supabase orphan check. |
@@ -136,17 +134,8 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 ---
 
 ## Known Bugs
-*Tracked issues to fix. Prioritize before new feature work.*
 
-| # | Severity | Issue | Location |
-|---|----------|-------|----------|
-| B1 | Critical | Push notifications never arrive — APNs key not configured in Expo project | Apple Developer Console / expo.dev credentials |
-| B2 | Critical | Watch UserDefaults key mismatch: writes `kl_rest_day`, reads `kl_rest_day_raw` | `BackgroundRefreshHandler.swift:50` |
-| B3 | High | `watchEnabled` flag never sent from iPhone to Watch | `auth.store.ts` / `pushToWatch()` |
-| B4 | High | Accuracy metric on Dashboard may be inaccurate | Dashboard / API |
-| B5 | High | Kanji card reveal: hint text under eval buttons missing "Easy" and right arrow | Review card component |
-| B6 | Medium | Text/background contrast too low across the app | `theme/index.ts` |
-| B7 | Medium | Romaji toggle on kanji cards in study section does nothing | Review card component |
+Tracked in [BUGS.md](BUGS.md) — see that file for current open and recently-fixed issues. (This roadmap previously duplicated the list and drifted out of date; BUGS.md is now the single source of truth.)
 
 ---
 
