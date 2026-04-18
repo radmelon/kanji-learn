@@ -6,6 +6,33 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **Save session latency ~45s (observed B121, 2026-04-18)** — User reports that completing a study session (tapping the last grade → seeing Session Complete → landing on Dashboard) takes ~45s in B121. Feels slower than before. Needs instrumentation before we can pin the root cause.
+
+  **Suspected contributors (ranked by likelihood):**
+  1. **Cross-region DB latency.** API runs in `us-east-1` (App Runner), Supabase runs in `ap-southeast-2` (Sydney). Baseline RTT is ~250ms one-way, ~500ms with TLS. `POST /v1/reviews/submit` does multiple sequential writes (`review_logs` insert per card, `user_kanji_progress` upserts, `daily_stats` rollup, `review_sessions` upsert). A waterfall of ~15 queries at 500ms each would already produce a 7–8s save. 45s suggests either more queries than expected or a contention stall. Migration to us-east-1 is tracked as a Pre-Launch item in ENHANCEMENTS.md.
+  2. **Dashboard auto-refresh (new in B121).** The Dashboard `useFocusEffect` added in the B121 commit `d03cfad` fires 5 refresh callbacks on tab focus (`useAnalytics`, `useProfile`, `useQuizAnalytics`, `useInterventions`, `useSocial`). If the user is timing from "tap last grade" to "Dashboard metrics visible," this adds 5 parallel (but cross-region) API calls AFTER the submit finishes. Could account for a sizable chunk of the 45s if the analytics summary endpoint is slow.
+  3. **New weighted-confidence SQL (B121 commit `aaa874a`).** `WEIGHTED_CONFIDENCE_SQL` aggregates `SUM(CASE … END)::numeric / NULLIF(COUNT(*) * 3, 0) * 100` over `review_logs` filtered by `userId` + `reviewedAt >= since`. Runs in `getConfidenceRate` (30-day window) and `getConfidenceByType` (default 7-day window). This runs on Dashboard load, not on submit — but contributes to #2 above. Needs index check: confirm `review_logs` has a composite index on `(user_id, reviewed_at)` or the scan could be slow on a hot user with thousands of reviews.
+  4. **App Runner cold start after the B121 deploy.** The API was redeployed at 2026-04-18 ~14:40. First request after a deploy typically takes 5–15s while the container warms up. If the 45s observation was on the very first post-deploy session, this accounts for part of the delay — but subsequent sessions should be faster.
+  5. **Client-side offline queue or retry.** `review.store.ts::finishSession` wraps the submit in try/catch with offline queue handling. A timeout/retry loop could magnify a single slow call into a 45s stall. Check whether a retry path is firing.
+
+  **Investigation steps:**
+  1. Run a second test session to rule out cold start (#4). If the 45s repeats, it's not cold start.
+  2. Enable App Runner request timing logs. Break down `POST /v1/reviews/submit` by DB query to find the waterfall bottleneck (#1).
+  3. Measure `GET /v1/analytics/summary` latency in isolation via the mobile network tab or a direct `curl`. If it's > 10s by itself, the confidence query is the culprit (#3).
+  4. Confirm the composite index on `review_logs(user_id, reviewed_at)` exists — likely at `packages/db/src/schema.ts` or a migration file. If missing, add one.
+  5. Compare Dashboard focus-refresh latency before/after the B121 commit. `git stash` the `useFocusEffect` block in `apps/mobile/app/(tabs)/index.tsx` lines 187–195 and retime to isolate that contribution.
+
+  **Affected files (entry points to investigate):**
+  - `apps/api/src/routes/review.ts` — submit handler
+  - `apps/api/src/services/srs.service.ts` — the `submitReview` logic (upserts)
+  - `apps/api/src/services/analytics.service.ts` — new weighted-confidence SQL
+  - `apps/mobile/src/stores/review.store.ts::finishSession`
+  - `apps/mobile/app/(tabs)/index.tsx` — useFocusEffect
+
+  Found B121 TestFlight verification, 2026-04-18.
+
+  `[Effort: M (investigation first)]` `[Impact: High]` `[Status: 🔎 Needs investigation]`
+
 - [ ] **Delete Account flow — Core flow verified B120; relational cascade still open** — The user-facing delete flow works end-to-end (confirmed B120, 2026-04-18): Profile → Danger zone → typed-DELETE → API admin delete → farewell → sign-up with the same email yields a fresh account. Verification also surfaced that rows pointing to the deleted user from OTHER users' perspectives (friendships, study-mates, leaderboard, tutor shares) don't cascade — tracked separately below as "Post-delete relational cascade". Close this entry once the relational cleanup ships.
 
   `[Effort: 0 (verify only)]` `[Impact: High]` `[Status: 🚧 Core verified; relational follow-up open]`
