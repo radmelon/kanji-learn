@@ -46,26 +46,25 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 |---|------------|--------|---------|--------|
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
-| 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ⚠️ **Regressed** — previously working in B111, broken as of B116 (2026-04-17). Blocks new user onboarding; tracked as high-priority bug in BUGS.md. |
+| 5 | OAuth 2.0 Social Login (Apple, Google) | High | Yes | ✅ Done — re-verified 2026-04-17 after B117/B118 fix bundle. The "regression" turned out to be a `useProfile` race + missing DB trigger, not OAuth itself. See BUGS.md. |
 | 6 | Onboarding Tutorial + User Questionnaire | High | Yes | ✅ Done — merged into main via PR #6 |
-| 12 | Delete Account ⚠️ App Store compliance | High | Yes | Pending — required before public App Store release (App Store Review Guideline 5.1.1: apps that support account creation must provide in-app account deletion). UI in Profile tab; backend calls Supabase `admin.deleteUser()` which cascades all user data via FK. |
-| 11 | Rebrand: Kanji Learn → Kanji Buddy | Med | No | Pending |
-| 9 | Splash Screen Polish: solid bg color, longer display duration, branding imagery | Med | No | Pending |
-| 10 | About/Credits Page: add app branding imagery and credits | Low | No | Pending |
+| 12 | Delete Account ⚠️ App Store compliance | High | Yes | ✅ Code complete in B120 (2026-04-17). Awaiting hands-on TestFlight verification of the full delete flow + Supabase orphan check. |
+| 11 | Rebrand: Kanji Learn → Kanji Buddy | Med | No | **Next up.** Pending. |
+| 9 | Splash Screen Polish: solid bg color, longer display duration, branding imagery | Med | No | Pending — bundle with #11 |
+| 10 | About/Credits Page: add app branding imagery and credits | Low | No | Pending — bundle with #11 |
 | 7 | Dark / Light Theme Toggle | High | No | Pending |
 | 8 | Heatmap Calendar View | High | No | Pending |
 
-**Why this order (reshuffled 2026-04-17 after OAuth regression + tutor analytics merge):**
-- **OAuth regression first** — new testers cannot sign up at all, blocking broader TestFlight distribution. This must be diagnosed and fixed before anything else in Phase 2.
-- **Delete Account (#12)** — App Store compliance blocker for public launch; no point polishing the app until this ships.
-- **Rebrand (#11)** — big v2 naming moment; should land together with the splash polish and about/credits page as a coordinated "Kanji Buddy 1.0" release.
+**Why this order (reshuffled 2026-04-17 after OAuth fix + Delete Account ship):**
+- **Rebrand (#11)** is the next launch-blocker work — natural "Kanji Buddy 1.0" v2 moment; should land together with the splash polish and about/credits page as a coordinated release.
 - **Splash polish (#9) + About/Credits (#10)** — natural companions to the rebrand; share branding imagery and messaging.
 - **Theme toggle (#7)** — highly requested UX polish; touches every screen, better before adding more screens.
 - **Heatmap (#8)** — retention/motivation feature, purely frontend.
 
 **Prior context:**
-- #5 was marked ✅ Done on 2026-04-13 after Apple + Google Sign-In were verified on TestFlight B111. Regression was reported on 2026-04-17 after B116 testing — root cause unknown. Check Supabase auth logs, OAuth provider settings, callback URLs, and bundle ID matches. Commit `a63ffd0` ("fix: fix JWT signature corruption in Apple client secret generator") is recent and worth examining.
-- #6 shipped via onboarding branch, which was merged into tutor-analytics-sharing and ultimately landed on main via PR #6 on 2026-04-17.
+- #5 was originally marked ✅ Done on 2026-04-13 after TestFlight B111 verification, then suspected to have regressed in B116. Root cause was actually the new onboarding routing gate exposing a pre-existing `useProfile` race + a missing `on_auth_user_created` Postgres trigger; OAuth itself never broke. Re-verified clean after B117/B118.
+- #6 shipped via the onboarding branch, merged into tutor-analytics-sharing, landed on main via PR #6 on 2026-04-17.
+- #12 design spec at `docs/superpowers/specs/2026-04-17-delete-account-design.md`; implementation plan at `docs/superpowers/plans/2026-04-17-delete-account.md`. Cascade gap on `learner_identity` (no FK to `user_profiles`) caught in final code review and fixed via migration 0016.
 
 ---
 

@@ -119,8 +119,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Home Screen Widget (Daily Progress)** — A small iOS/Android home screen widget showing today's review count, streak, and cards remaining. Keeps the app top-of-mind without requiring the user to open it to check progress.
   `[Effort: L]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
 
-- [ ] **Onboarding Tutorial** — A guided first-run walkthrough that explains the SRS system, how review types work, and how to interpret card metadata. Reduces early churn from users who don't understand spaced repetition and abandon the app prematurely.
-  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Onboarding Tutorial** — A guided first-run walkthrough that explains the SRS system, how review types work, and how to interpret card metadata. Reduces early churn from users who don't understand spaced repetition and abandon the app prematurely.
+  `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [x] **Card Flip Animation Polish** — Add a smooth 3D card-flip animation when revealing the answer side of a flashcard. A small UX detail that significantly improves the feel of the core study loop.
   `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
@@ -129,8 +129,11 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 🔐 Authentication
 
-- [ ] **OAuth 2.0 Social Login (Apple, Google)** — Add Sign in with Apple and Sign in with Google as registration and login options alongside the existing email/password flow. Reduces sign-up friction significantly — users skip the email/password form entirely and authenticate with a single tap. Sign in with Apple is required by App Store guidelines for any app that offers third-party social login. Supabase supports both providers natively via its Auth module; integration requires (1) configuring the OAuth app credentials in the Supabase dashboard, (2) adding the Apple and Google entitlements/capabilities to the Expo project via a config plugin, (3) adding deep-link redirect URL handling for the OAuth callback, (4) updating the auth store and login screen to offer provider buttons alongside the email form, and (5) handling the `user_profiles` row creation for OAuth users (the existing `on_user_created` DB trigger should handle this automatically).
-  `[Effort: M]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
+- [x] **OAuth 2.0 Social Login (Apple, Google)** — Add Sign in with Apple and Sign in with Google as registration and login options alongside the existing email/password flow. Reduces sign-up friction significantly — users skip the email/password form entirely and authenticate with a single tap. Sign in with Apple is required by App Store guidelines for any app that offers third-party social login. Supabase supports both providers natively via its Auth module; integration requires (1) configuring the OAuth app credentials in the Supabase dashboard, (2) adding the Apple and Google entitlements/capabilities to the Expo project via a config plugin, (3) adding deep-link redirect URL handling for the OAuth callback, (4) updating the auth store and login screen to offer provider buttons alongside the email form, and (5) handling the `user_profiles` row creation for OAuth users (the existing `on_user_created` DB trigger should handle this automatically).
+  `[Effort: M]` `[Impact: High]` `[Backend: Yes]` `[Status: ✅ Shipped]`
+
+- [x] **Delete Account (App Store 5.1.1 compliance)** — In-app account deletion required by App Store Review Guideline 5.1.1. Profile tab → "Danger zone" → typed-DELETE confirmation modal → `DELETE /v1/user/me` API → `supabaseAdmin.auth.admin.deleteUser()` triggers FK cascade through `auth.users → user_profiles → learner_identity` and every user-keyed table → farewell screen → sign-in. Hard delete only, no grace period. Spec at `docs/superpowers/specs/2026-04-17-delete-account-design.md`, plan at `docs/superpowers/plans/2026-04-17-delete-account.md`.
+  `[Effort: M]` `[Impact: High]` `[Backend: Yes]` `[Status: ✅ Shipped (B120, awaiting TestFlight verification)]`
 
 ---
 

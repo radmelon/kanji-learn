@@ -6,22 +6,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
-- [ ] **Google and Apple Sign-In broken — blocks new user onboarding** ⚠️ **HIGH PRIORITY** — Social login flows (Sign in with Google, Sign in with Apple) are not functioning, which prevents new testers from creating accounts and getting into the app. This is a blocker for broader TestFlight testing and public launch. Needs investigation of the native auth configuration (GoogleSignin SDK, Apple Authentication Services), Supabase OAuth provider settings, redirect URIs, and iOS/Android entitlements.
+- [ ] **Delete Account flow — TestFlight verification pending** — Code complete in B120 (Profile tab → Danger zone → typed-DELETE confirmation modal → API admin delete → cascade through `auth.users → user_profiles → learner_identity` → farewell screen → sign-in). Blocked only on hands-on TestFlight test of the full flow against a throwaway account, plus a Supabase SQL spot-check that no orphan rows remain in `auth.users`, `user_profiles`, `learner_identity`, or any user-keyed table after deletion.
 
-  **Affected files (likely):**
-  - `apps/mobile/src/lib/auth.ts` / `apps/mobile/src/hooks/useAuth.ts`
-  - `apps/mobile/app/(auth)/` screens
-  - `apps/mobile/app.json` (URL schemes, entitlements, `expo-apple-authentication` config)
-  - Supabase dashboard: Authentication → Providers (Google client ID, Apple service ID)
-  - `GoogleService-Info.plist` / Google Cloud OAuth consent screen
-
-  **Investigation steps:**
-  1. Reproduce in TestFlight; capture console/device logs
-  2. Check Supabase auth logs for failed OAuth exchanges
-  3. Verify redirect URI matches between Supabase + provider console
-  4. Confirm bundle ID in Apple Developer matches what's registered for Sign in with Apple
-
-  `[Effort: M]` `[Impact: High]` `[Status: 🐛 Active — blocking]`
+  `[Effort: 0 (verify only)]` `[Impact: High]` `[Status: 🚧 Awaiting verification]`
 
 - [ ] **Study Time Timer Doesn't Pause When App Backgrounds** — The mobile review store records session study time as `Date.now() - studyStartMs`. If the user backgrounds the app mid-session and returns later to finish, the wall-clock difference includes all idle time. Observed a 29-review session that reported 16.8 hours of study time on one user. A server-side cap (30s/item, 60min hard max) was added in `srs.service.ts::submitReview` to protect the daily_stats rollup, but the mobile client should also pause the timer on `AppState` change to 'background' and resume on 'active'. Fix location: `apps/mobile/src/stores/review.store.ts` — wrap the timer in a pause/resume pattern keyed off `AppState`. Also wipe the elapsed time on session restore from offline queue.
 
@@ -96,6 +83,31 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 ---
 
 ## ✅ Fixed Bugs
+
+### OAuth post-login navigation regression (B116)
+- **Symptom:** After Google or Apple Sign-In completed successfully, the user was returned to the sign-in screen with no visible change. Initially diagnosed as "OAuth broken"; actually a routing-gate race introduced when the onboarding feature merged.
+- **Root cause:** `useProfile` mounted at the root with `useEffect(…, [])` (empty deps) fired its fetch exactly once at app launch — before `initialize()` had hydrated the session from SecureStore. The fetch went out without a token, got 401, swallowed the error, and left `_cache = null`. After OAuth set the session, the routing effect in `_layout.tsx` checked `profile === null` and returned early without navigating. Compounding factor: the `on_auth_user_created` Postgres trigger had been dropped from prod, so any new OAuth user also lacked a `user_profiles` row.
+- **Fix (shipped B117/B118):** (1) `useProfile` subscribes to `useAuthStore`'s access token and re-runs its fetch on every session change. (2) `GET /v1/user/profile` self-heals by inserting a row on demand when missing (defense against future trigger gaps). (3) Migration 0015 restored the `handle_new_user` trigger + function idempotently. (4) Sign-in screen reworded to clarify social buttons handle both new and returning users.
+
+### Onboarding wizard wiped existing learner interests
+- **Symptom:** Returning user re-entering onboarding (forced when their `onboarding_completed_at` was NULL because migration 0013 backfill missed them) had their `learner_profiles.interests` blanked on completion.
+- **Root cause:** `handleComplete` in `onboarding.tsx:114` unconditionally sent `interests: []` in the PATCH payload, even though the wizard never asks for interests. The API's PATCH is an upsert — `interests: []` overwrote any prior selection.
+- **Fix (shipped B118):** dropped the `interests: []` field from the payload. The wizard now only writes fields it actually collects. Interests stay editable in the Profile tab.
+
+### Dashboard greeting drifted from edited display name
+- **Symptom:** Editing display name on the Profile tab updated the Profile screen but the Dashboard greeting still showed the old name. OAuth users often saw their email prefix even when a name was set.
+- **Root cause:** The Dashboard read `user.user_metadata.display_name` (the Supabase `auth.users.raw_user_meta_data` blob, set once at sign-up and never refreshed when the user edits their name), while the Profile tab + onboarding write to `user_profiles.display_name`. Two independent copies that drift.
+- **Fix (shipped B120):** Dashboard now reads from `useProfile().displayName` — the same source the Profile tab edits. Email-prefix kept as a load-time fallback.
+
+### `learner_identity` + 6 UKG tables orphaned on account delete
+- **Symptom:** Caught by final code review before any user encountered it. Deleting an `auth.users` row cascaded through `user_profiles` but stopped there — `learner_identity` (containing PII: email, display_name) and its 6 cascade-children (`learner_profile_universal`, `learner_knowledge_state`, `learner_memory_artifacts`, `learner_timeline_events`, `learner_app_grants`, `learner_connections`) survived as orphans, breaking the farewell screen's "permanently removed" promise and weakening App Store 5.1.1 compliance.
+- **Root cause:** `learner_identity.learner_id` was declared as a plain `uuid PRIMARY KEY NOT NULL` with no FK to `user_profiles.id`. The application set `learner_id = user_profiles.id` by convention, but Postgres didn't know about the relationship.
+- **Fix:** Migration 0016 adds `FOREIGN KEY (learner_id) REFERENCES user_profiles(id) ON DELETE CASCADE`. Applied manually in prod 2026-04-17. Integration test extended to cover `learner_identity` + `learner_profile_universal` cascade.
+
+### `on_auth_user_created` Postgres trigger missing in prod
+- **Symptom:** Some users (new OAuth signups, sometimes random) had no `user_profiles` row, breaking the routing gate added by the onboarding feature.
+- **Root cause:** Migration 0003 defined the trigger + `handle_new_user` function. Both were absent from prod (`pg_trigger` and `pg_proc` queries returned 0 rows). Likely dropped during a Supabase regional migration or project reset; cause unknown.
+- **Fix:** Migration 0015 recreates both idempotently. Applied in prod 2026-04-17. API also has a self-heal fallback in `GET /v1/user/profile` so the system tolerates future trigger drops.
 
 ### Example sentence seed produces sparse coverage
 - **Root cause:** Per-query Tatoeba API approach was too slow (195 kanji/hr), filter too strict (≤40 chars), and Claude fallback silently swallowed rate limit errors. After 10+ hours the seed had only covered ~15% of kanji.
