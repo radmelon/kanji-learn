@@ -48,7 +48,7 @@ export const ONBOARDING_CONTENT = {
         description: 'Tap ⓘ to see how reading evaluation difficulty levels work',
       },
     ] satisfies InfoItem[],
-    footer: "You don't need to memorise any of this now.",
+    footer: "You don't need to memorise any of this now. Studying daily is the key to making progress.",
     cta: 'Got it',
   },
 
