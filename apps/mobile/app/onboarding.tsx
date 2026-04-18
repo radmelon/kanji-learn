@@ -102,6 +102,9 @@ export default function OnboardingScreen() {
     setSaveError(null)
     setIsSaving(true)
 
+    // Only write fields the wizard actually collects. Do NOT include `interests`
+    // — the current flow never asks for them, and the API PATCH is an upsert
+    // that would overwrite any prior selections with [].
     const [profileOk, learnerOk] = await Promise.all([
       updateProfile({
         displayName: displayName.trim() || null,
@@ -111,7 +114,6 @@ export default function OnboardingScreen() {
       updateLearnerProfile({
         country,
         reasonsForLearning: selectedReasons,
-        interests: [],
       }),
     ])
 
