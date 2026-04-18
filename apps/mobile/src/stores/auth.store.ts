@@ -4,6 +4,7 @@ import { NativeModules, Platform } from 'react-native'
 import { supabase } from '../lib/supabase'
 import { storage } from '../lib/storage'
 import { startOAuthFlow } from '../lib/oauth'
+import { api } from '../lib/api'
 import { clearProfileCache } from '../hooks/useProfile'
 import { clearLearnerProfileCache } from '../hooks/useLearnerProfile'
 
@@ -86,6 +87,7 @@ interface AuthState {
   signInWithApple: () => Promise<void>
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
+  deleteAccount: () => Promise<void>
   setSession: (session: Session | null) => void
   initialize: () => Promise<void>
   // Watch connectivity
@@ -171,6 +173,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     clearProfileCache()
     clearLearnerProfileCache()
     await supabase.auth.signOut()
+    set({ session: null, user: null })
+  },
+
+  deleteAccount: async () => {
+    // The server-side Supabase session is invalidated by the admin delete,
+    // so we deliberately skip supabase.auth.signOut() (which would 401).
+    // Local cache + session state cleanup is sufficient.
+    await api.delete('/v1/user/me')
+    clearProfileCache()
+    clearLearnerProfileCache()
     set({ session: null, user: null })
   },
 
