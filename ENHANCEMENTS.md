@@ -236,8 +236,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **AI-Powered Personalized Study Plan** — Use the user's error history, leech patterns, and JLPT target date to generate a week-by-week study roadmap. The plan dynamically adjusts based on actual performance and flags which radicals or reading patterns are causing the most failures.
   `[Effort: XL]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
-- [ ] **Dashboard "Invite a Study Mate" Banner** — When the user has zero study mates and hasn't dismissed the prompt in the past 7 days, show a dismissible banner on the Dashboard encouraging them to invite a friend. Tap → opens the existing invite flow. The X / dismiss button writes a `studyMateInviteDismissedAt` timestamp to `AsyncStorage` so the banner reappears after the cooldown. Distinct from the existing "Study Mate Invite Notifications" idea (which handles *receiving* invites).
-  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Dashboard "Invite a Study Mate" Banner** — ~~SHIPPED~~ in B121 (commit `87f2695`). Verified by user on 2026-04-18: fresh account with zero mates sees the "Study with a friend" banner on the Dashboard; X dismisses for 7 days (persisted via `kl:invite_mate_dismissed_at` AsyncStorage key); tap body navigates to the Profile tab.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **Study Mate Nudge / "Poke"** — Add a tappable nudge action on each row of the Study Mates list. Rate-limited to one poke per sender → receiver per 24-hour window. On send: push notification to the receiver (`"{senderName} poked you — time to study!"`), with Apple Watch haptic if the Watch companion is paired. Each poker sends a separate push (not aggregated). The receiver's Study Mates list shows a "You were poked" indicator next to the sender's row until acknowledged. Requires a new `pokes` table, API endpoint, push delivery, mates-list UI, and Watch complication update.
   `[Effort: L]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
