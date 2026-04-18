@@ -23,6 +23,7 @@
     "@google/generative-ai": "^0.24.1",
     "@kanji-learn/db": "workspace:*",
     "@kanji-learn/shared": "workspace:*",
+    "@supabase/supabase-js": "2.100.1",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.31.0",
     "eta": "^4.5.1",
