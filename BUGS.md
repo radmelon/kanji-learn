@@ -125,17 +125,13 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
 
-- [ ] **Session Complete screen labels confidence as "accuracy"** — The percentage ring on the Session Complete screen displays `"accuracy"` below the number, but the value is a confidence score derived from Easy/Good/Hard/Again self-grading, not raw accuracy. File: [apps/mobile/src/components/study/SessionComplete.tsx:59](apps/mobile/src/components/study/SessionComplete.tsx:59). Bundle with the broader accuracy→confidence audit enhancement.
+- [x] **Session Complete screen labels confidence as "accuracy"** — ~~FIXED~~ in B121 (commit `744dede`). Verified by user on 2026-04-18: the big percentage ring on Session Complete now reads "confidence" below the number. File: `apps/mobile/src/components/study/SessionComplete.tsx:59`.
 
-  Found B120.
+  `[Effort: XS]` `[Impact: Low]` `[Status: ✅ Fixed]`
 
-  `[Effort: XS]` `[Impact: Low]` `[Status: 🐛 Active]`
+- [x] **Drill Weak Spots dialog (>65% path) says "accuracy" — should say "confidence"** — ~~FIXED~~ in B121 (commit `744dede`). Verified by user on 2026-04-18: the alert now reads "your confidence is above 65% on all recently reviewed kanji. Keep it up!" File: `apps/mobile/app/(tabs)/index.tsx:214`.
 
-- [ ] **Drill Weak Spots dialog (>65% path) says "accuracy" — should say "confidence"** — Tapping "Drill Weak Spots" on the Dashboard when the user is above the 65% confidence threshold shows: `"Great news — your accuracy is above 65% on all recently reviewed kanji. Keep it up!"` Flip `accuracy` → `confidence`. File: [apps/mobile/app/(tabs)/index.tsx:214](apps/mobile/app/(tabs)/index.tsx:214). Bundle with the broader audit.
-
-  Found B120.
-
-  `[Effort: XS]` `[Impact: Low]` `[Status: 🐛 Active]`
+  `[Effort: XS]` `[Impact: Low]` `[Status: ✅ Fixed]`
 
 - [ ] **Post-delete relational cascade — deleted user persists in mates + leaderboard** — After a test user deletes their account, other users who had invited or been invited by the deleted user still see them in the Leaderboard and Study Mates lists. Same issue likely exists for tutor shares.
 
