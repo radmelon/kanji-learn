@@ -99,8 +99,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **JLPT Progress Panel: Add Color Legend** — The Dashboard JLPT info panel and the Progress tab both use a multi-segment stacked bar (learning / reviewing / remembered / burned), but the color-to-stage mapping is implicit. Add a compact legend (colored dots + labels on one row) beneath or alongside the bar so users can read the bar without guessing.
   `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
 
-- [ ] **Leaderboard: Add Days-Studied + Remembered-Count Columns** — Augment the Leaderboard with two new metrics: `totalDaysStudied` (lifetime count of days with ≥1 review) and `rememberedCount` (kanji at status `remembered` or `burned`). Keep existing columns. Single sort order with tiebreakers: streak days → total days studied → remembered count. Requires exposing the new fields in `GET /v1/social/leaderboard` and extending `LeaderboardEntry` in [apps/mobile/src/hooks/useSocial.ts](apps/mobile/src/hooks/useSocial.ts).
-  `[Effort: S]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
+- [x] **Leaderboard: Add Days-Studied + Remembered-Count Columns** — ~~SHIPPED~~ in B121 (commit `91e8161`, API deploy 2026-04-18). Verified by user on 2026-04-18: leaderboard rows now show `📅 N days` + `🌱 N remembered` beneath the existing line; server sorts streak → days → remembered.
+  `[Effort: S]` `[Impact: Med]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 
 ---
 

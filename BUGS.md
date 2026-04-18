@@ -145,9 +145,11 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Fix plan:** Audit every user-keyed relational table for missing `ON DELETE CASCADE` FKs. Add migration 0017 to fill the gaps. Cascade immediately on delete (no decay period — hard delete is already our model). Optionally send a one-time farewell push to affected friends at deletion time so the disappearance isn't silent.
 
+  **Reproducibility:** Confirmed still present in B121 TestFlight verification on 2026-04-18 — the deleted test user from the B120 session remained visible on the inviter's leaderboard. No data migration or ad-hoc cleanup has been run between B120 and B121.
+
   Found B120 Delete Account verification pass.
 
-  `[Effort: M]` `[Impact: High]` `[Status: 🐛 Active]`
+  `[Effort: M]` `[Impact: High]` `[Status: 🐛 Active — confirmed B121]`
 
 ---
 
