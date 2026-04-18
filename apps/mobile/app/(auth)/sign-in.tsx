@@ -42,6 +42,7 @@ export default function SignIn() {
         <Text style={styles.subtitle}>Master 2,136 Jōyō kanji</Text>
 
         <SocialAuthButtons mode="sign-in" disabled={isLoading} />
+        <Text style={styles.socialHint}>First time? We'll set you up automatically.</Text>
 
         <View style={styles.dividerRow}>
           <View style={styles.dividerLine} />
@@ -77,7 +78,7 @@ export default function SignIn() {
 
         <Link href="/(auth)/sign-up" asChild>
           <TouchableOpacity style={styles.link}>
-            <Text style={styles.linkText}>No account? Sign up</Text>
+            <Text style={styles.linkText}>Sign up with email →</Text>
           </TouchableOpacity>
         </Link>
       </View>
@@ -135,5 +136,11 @@ const styles = StyleSheet.create({
   dividerText: {
     ...typography.caption,
     color: colors.textMuted,
+  },
+  socialHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: -spacing.xs,
   },
 })

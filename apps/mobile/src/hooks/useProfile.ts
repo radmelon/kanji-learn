@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
+import { useAuthStore } from '../stores/auth.store'
 
 export type UserProfile = {
   id: string
@@ -32,6 +33,11 @@ export function clearProfileCache() {
 }
 
 export function useProfile() {
+  // Subscribe to the access token so this hook re-runs its fetch effect whenever
+  // the session changes (sign-in, sign-out, token refresh). Without this the
+  // pre-login fetch races `initialize()`, fails with 401, and `_cache` stays
+  // null forever — stranding users on the sign-in screen after OAuth succeeds.
+  const accessToken = useAuthStore((s) => s.session?.access_token ?? null)
   const [profile, setProfile] = useState<UserProfile | null>(_cache)
   const [isLoading, setIsLoading] = useState(_cache === null)
 
@@ -42,6 +48,13 @@ export function useProfile() {
   }, [])
 
   useEffect(() => {
+    // No session → clear any stale cache from a prior session or failed fetch.
+    if (!accessToken) {
+      _cache = null
+      setProfile(null)
+      setIsLoading(false)
+      return
+    }
     if (_cache) {
       setProfile(_cache)
       setIsLoading(false)
@@ -50,18 +63,19 @@ export function useProfile() {
     if (_fetching) return
 
     _fetching = true
+    setIsLoading(true)
     api
       .get<UserProfile>('/v1/user/profile')
       .then((data) => {
         _cache = data
         notifyListeners(data)
       })
-      .catch(() => {/* swallow — layout will retry on next mount */})
+      .catch(() => {/* swallow — next session change will retry */})
       .finally(() => {
         _fetching = false
         setIsLoading(false)
       })
-  }, [])
+  }, [accessToken])
 
   const update = useCallback(async (fields: Partial<UserProfile>): Promise<boolean> => {
     try {

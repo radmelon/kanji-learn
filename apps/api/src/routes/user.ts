@@ -17,12 +17,24 @@ const updateProfileSchema = z.object({
 export async function userRoutes(server: FastifyInstance) {
   // GET /v1/user/profile — also syncs email from JWT into user_profiles
   server.get('/profile', { preHandler: [server.authenticate] }, async (req, reply) => {
-    const profile = await server.db.query.userProfiles.findFirst({
+    let profile = await server.db.query.userProfiles.findFirst({
       where: eq(userProfiles.id, req.userId!),
     })
 
+    // Self-heal: if the on_auth_user_created trigger didn't run for this user
+    // (B8 in the bug tracker), create the row on demand with onboarding pending.
     if (!profile) {
-      return reply.code(404).send({ ok: false, error: 'Profile not found', code: 'NOT_FOUND' })
+      const [created] = await server.db
+        .insert(userProfiles)
+        .values({ id: req.userId!, email: req.userEmail ?? null })
+        .onConflictDoNothing()
+        .returning()
+      profile = created ?? await server.db.query.userProfiles.findFirst({
+        where: eq(userProfiles.id, req.userId!),
+      })
+      if (!profile) {
+        return reply.code(500).send({ ok: false, error: 'Profile creation failed', code: 'INTERNAL' })
+      }
     }
 
     // Keep email in sync with Supabase auth (used for friend search)
