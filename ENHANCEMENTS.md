@@ -44,11 +44,11 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Pitch Accent Indicator** — Display the pitch accent pattern (高低 pattern) for kun-yomi readings on the KanjiCard. Sourced from an open pitch accent dictionary (e.g., Wadoku or a bundled dataset). Particularly valuable for intermediate learners targeting natural spoken Japanese.
   `[Effort: L]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
-- [ ] **Distinguish Meaning vs Reading Prompts (Study Card)** — Users report that it's easy to blur what the card is asking for. Apply three complementary cues per prompt type: (1) colored border — violet (#7C3AED) for meaning prompts, amber (#F59E0B) for reading prompts, (2) a "Meaning" / "読み方" label below the kanji glyph using the spare whitespace, (3) a subtle 5–8% opacity background tint matching the border color. Reduces cognitive load at a glance.
-  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [ ] **Distinguish Meaning vs Reading Prompts (Study Card)** — Implemented in B121 (commit `14f1f62`). **Meaning prompts verified** by user on 2026-04-18 — violet border + tint appear correctly. **Reading prompts amber cue pending** — user hasn't encountered a reading prompt yet during verification. The code path is identical for both (`colors.accent` for reading vs `colors.meaningCue` for meaning), so amber should work once a reading prompt surfaces. Close this entry once reading is visually confirmed.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 🧪 Meaning verified; reading pending]`
 
-- [ ] **"Show Mnemonic" Button on Kanji Details Page** — Add a "Show mnemonic" button on the Kanji details page (reachable from Journal and the study card detail drawer). Default behavior: reveal the existing cached mnemonic for that kanji. If an AI mnemonic already exists, also surface a "Regenerate" option that requests a fresh one from the LLM. Keeps cost predictable (cached path is free); mirrors the Journal UX. Pairs with the mnemonic-trigger rework (mnemonics no longer auto-reveal on Hard — see Learning & SRS section) so users can still pull one up on demand.
-  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **"Show Mnemonic" Button on Kanji Details Page** — ~~SHIPPED~~ in B121 (commit `5f2c009`). Verified by user on 2026-04-18: Kanji details page now has a Mnemonic section between Readings and Example Vocabulary. When a mnemonic exists, it renders with a Regenerate button; when none exists, a "Generate mnemonic" button is shown instead. Uses the existing `useMnemonics(kanjiId)` hook — no new backend endpoints.
+  `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **Speak Button on Example Sentences (Kanji Details)** — The Kanji details page renders each example sentence (`exampleSentences` on `KanjiDetail`) as text-only today. Add a speak icon next to each sentence that plays the Japanese string via the existing Expo Speech TTS infra (`ja-JP`, rate ~0.9 — see `SPEECH_OPTS` in `apps/mobile/app/kanji/[id].tsx`). Mirrors the speak icons already on readings and vocab. Simple: one tap = play; disable icon while speaking to prevent overlap. Reuses existing `useTTS`/Expo Speech plumbing — no backend, no new data.
   `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
@@ -124,11 +124,11 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Adaptive Daily Goal** — Automatically suggest a daily card goal adjustment when the user consistently finishes well under or far over their goal. Keeps the daily goal realistic and prevents review pile-up from over-ambitious targets.
   `[Effort: M]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
-- [ ] **Weighted Confidence Scoring (Easy=3 / Good=2 / Hard=1 / Again=0)** — Today the dashboard "confidence" metric treats grades binarily (Easy|Good = correct, Hard|Again = incorrect). Switch to a weighted average: normalized to `sum(score) / (3 × total) × 100`. Same 4 grade buttons — no new UI. Hard and Again still keep the card in the queue. Historical reviews stay under the old binary formula (no data backfill needed). The daily Quiz continues to use binary correct/incorrect. Ship together with the mnemonic-trigger rework below.
-  `[Effort: M]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
+- [x] **Weighted Confidence Scoring (Easy=3 / Good=2 / Hard=1 / Again=0)** — ~~SHIPPED~~ in B121 (server commit `aaa874a`, client commit `dededf3`, App Runner deploy op `7a2c8a31df514442bedbc29b0c79ab8a` on 2026-04-18). Verified by user on 2026-04-18: Session Complete screen ring shows the weighted 3/2/1/0 percentage (not the old binary correct÷total). Ground truth revealed no data migration was needed — `review_logs.quality` was already stored 0–5, so the weighted formula applies retroactively to all historical reviews. Dashboard confidence ring (server-side `getConfidenceRate`) pending user visual confirmation but uses the same deployed SQL.
+  `[Effort: M]` `[Impact: High]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 
-- [ ] **Mnemonic Auto-Reveal: Only on "Again"** — Currently both Hard and Again auto-reveal the mnemonic after grading. Narrow this to Again-only — Hard returns the card to the queue without revealing. Users who want to see the mnemonic on a Hard or Good can reach it manually via the new "Show mnemonic" button on the Kanji details page (see Study Card Enhancements). Ship together with weighted confidence scoring.
-  `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Mnemonic Auto-Reveal: Only on "Again"** — ~~SHIPPED~~ in B121 (commit `b5ec166`). Verified by user on 2026-04-18: grading a card **Hard** no longer surfaces the mnemonic nudge sheet — it returns the card to the queue silently. "Again" path (which triggers the nudge) was the pre-existing behavior and is preserved. Users can still access the mnemonic on demand via the "Show mnemonic" button on the Kanji details page.
+  `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 ---
 
@@ -155,8 +155,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Card Flip Animation Polish** — Add a smooth 3D card-flip animation when revealing the answer side of a flashcard. A small UX detail that significantly improves the feel of the core study loop.
   `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Accuracy → Confidence Terminology Audit** — The app uses "confidence" to describe the self-graded SRS score (Easy/Good/Hard/Again) but still shows "accuracy" in several user-facing strings (e.g. Session Complete ring label, Drill Weak Spots dialog, Progress tab info panels "Avg accuracy" and "Accuracy colour coding", session history rows). Sweep every user-facing "accuracy" string and flip to "confidence" wherever the context is SRS. Writing and voice practice statistics remain "accuracy" (they're objective stroke / speech scores). Internal variable names don't need to change.
-  `[Effort: S]` `[Impact: Low]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **Accuracy → Confidence Terminology Audit** — ~~SHIPPED~~ in B121 (commit `744dede`). Verified by user on 2026-04-18: Session Complete ring label, Drill Weak Spots dialog, and Progress tab "Confidence colour coding" info panel now read "confidence". Writing/voice practice stats correctly remain "accuracy" (objective scores). Internal variable names and style keys left untouched.
+  `[Effort: S]` `[Impact: Low]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [ ] **Onboarding findHelp Panel: Append Motivational Line** — Append the sentence `"Studying daily is the key to making progress."` to the existing footer on the onboarding findHelp panel (after `"You don't need to memorise any of this now."`). File: [apps/mobile/src/config/onboarding-content.ts](apps/mobile/src/config/onboarding-content.ts). OTA-updatable — no rebuild needed.
   `[Effort: XS]` `[Impact: Low]` `[Backend: No]` `[Status: 💡 Idea]`
