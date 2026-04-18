@@ -96,8 +96,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **Grade Level Equivalent (Kyouiku Kanji)** — Display the Japanese school grade level equivalent on the progress page based on the Kyouiku kanji list (教育漢字). Shows users where they stand relative to the Japanese elementary school curriculum (grades 1–6, ~1,026 kanji). Provides a tangible, alternative progress metric alongside JLPT levels.
   `[Effort: M]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
-- [ ] **JLPT Progress Panel: Add Color Legend** — The Dashboard JLPT info panel and the Progress tab both use a multi-segment stacked bar (learning / reviewing / remembered / burned), but the color-to-stage mapping is implicit. Add a compact legend (colored dots + labels on one row) beneath or alongside the bar so users can read the bar without guessing.
-  `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+- [x] **JLPT Progress Panel: Add Color Legend** — ~~SHIPPED~~ in B121 (commit `6e779a8`). Verified by user on 2026-04-18: a compact legend with 4 colored dots + labels (Learning / Reviewing / Remembered / Burned) appears beneath the JLPT stacked bars. Lives inside `JlptProgressGrid` so every consumer (Dashboard + Progress tab) gets it automatically.
+  `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 - [x] **Leaderboard: Add Days-Studied + Remembered-Count Columns** — ~~SHIPPED~~ in B121 (commit `91e8161`, API deploy 2026-04-18). Verified by user on 2026-04-18: leaderboard rows now show `📅 N days` + `🌱 N remembered` beneath the existing line; server sorts streak → days → remembered.
   `[Effort: S]` `[Impact: Med]` `[Backend: Yes]` `[Status: ✅ Shipped]`
