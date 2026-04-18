@@ -50,6 +50,9 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [ ] **"Show Mnemonic" Button on Kanji Details Page** — Add a "Show mnemonic" button on the Kanji details page (reachable from Journal and the study card detail drawer). Default behavior: reveal the existing cached mnemonic for that kanji. If an AI mnemonic already exists, also surface a "Regenerate" option that requests a fresh one from the LLM. Keeps cost predictable (cached path is free); mirrors the Journal UX. Pairs with the mnemonic-trigger rework (mnemonics no longer auto-reveal on Hard — see Learning & SRS section) so users can still pull one up on demand.
   `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
 
+- [ ] **Speak Button on Example Sentences (Kanji Details)** — The Kanji details page renders each example sentence (`exampleSentences` on `KanjiDetail`) as text-only today. Add a speak icon next to each sentence that plays the Japanese string via the existing Expo Speech TTS infra (`ja-JP`, rate ~0.9 — see `SPEECH_OPTS` in `apps/mobile/app/kanji/[id].tsx`). Mirrors the speak icons already on readings and vocab. Simple: one tap = play; disable icon while speaking to prevent overlap. Reuses existing `useTTS`/Expo Speech plumbing — no backend, no new data.
+  `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: 💡 Idea]`
+
 ---
 
 ## 📊 Analytics & Progress
