@@ -5,6 +5,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default('0.0.0.0'),
   DATABASE_URL: z.string().url(),
+  SUPABASE_URL: z.string().url(),
   SUPABASE_JWT_SECRET: z.string().min(32),
   SUPABASE_SERVICE_ROLE_KEY: z.string(),
   ANTHROPIC_API_KEY: z.string().startsWith('sk-ant-'),

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import fp from 'fastify-plugin'
 import jwt from '@fastify/jwt'
 import { createPublicKey } from 'node:crypto'
+import { env } from '../lib/env'
 
 // ─── Supabase JWT auth plugin ─────────────────────────────────────────────────
 // Supabase newer projects sign JWTs with ES256 (ECDSA P-256).
@@ -9,10 +10,7 @@ import { createPublicKey } from 'node:crypto'
 // to verify tokens — no need to trust the JWT secret for verification.
 
 export const authPlugin = fp(async (server: FastifyInstance) => {
-  const supabaseUrl = process.env.SUPABASE_URL
-  if (!supabaseUrl) {
-    throw new Error('SUPABASE_URL environment variable is required')
-  }
+  const supabaseUrl = env.SUPABASE_URL
 
   // Fetch public keys from Supabase JWKS endpoint
   const jwksUrl = `${supabaseUrl}/auth/v1/.well-known/jwks.json`
