@@ -1,4 +1,4 @@
-import { and, eq, inArray, gte, or, ne } from 'drizzle-orm'
+import { and, eq, inArray, gt, gte, or, ne, sql } from 'drizzle-orm'
 import { userProfiles, friendships, userKanjiProgress, dailyStats } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 
@@ -25,6 +25,8 @@ export interface LeaderboardEntry {
   dailyAverage: number
   totalReviewed: number
   totalBurned: number
+  totalDaysStudied: number
+  rememberedCount: number
   isMe: boolean
 }
 
@@ -183,6 +185,34 @@ export class SocialService {
       if (row.status === 'burned') burnedMap[row.userId] = (burnedMap[row.userId] ?? 0) + 1
     }
 
+    // Lifetime distinct study days per user (not limited to 60 days).
+    const daysStudiedRows = await this.db
+      .select({
+        userId: dailyStats.userId,
+        days: sql<number>`count(distinct ${dailyStats.date})::int`,
+      })
+      .from(dailyStats)
+      .where(and(
+        inArray(dailyStats.userId, targetIds),
+        gt(dailyStats.reviewed, 0),
+      ))
+      .groupBy(dailyStats.userId)
+    const daysStudiedMap = new Map(daysStudiedRows.map((r) => [r.userId, r.days]))
+
+    // Remembered + burned kanji per user.
+    const rememberedRows = await this.db
+      .select({
+        userId: userKanjiProgress.userId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(userKanjiProgress)
+      .where(and(
+        inArray(userKanjiProgress.userId, targetIds),
+        inArray(userKanjiProgress.status, ['remembered', 'burned']),
+      ))
+      .groupBy(userKanjiProgress.userId)
+    const rememberedMap = new Map(rememberedRows.map((r) => [r.userId, r.count]))
+
     // Fetch last 60 days of daily stats for streak calculation
     const since = new Date()
     since.setDate(since.getDate() - 60)
@@ -217,11 +247,17 @@ export class SocialService {
         dailyAverage: computeDailyAverage(userStats),
         totalReviewed: reviewedMap[uid] ?? 0,
         totalBurned: burnedMap[uid] ?? 0,
+        totalDaysStudied: daysStudiedMap.get(uid) ?? 0,
+        rememberedCount: rememberedMap.get(uid) ?? 0,
         isMe: uid === userId,
       }
     })
 
-    return entries.sort((a, b) => b.streak - a.streak || b.totalReviewed - a.totalReviewed)
+    return entries.sort((a, b) =>
+      b.streak - a.streak ||
+      b.totalDaysStudied - a.totalDaysStudied ||
+      b.rememberedCount - a.rememberedCount
+    )
   }
 
   // ── Friends activity (Watch: delay picker encouragement) ───────────────────

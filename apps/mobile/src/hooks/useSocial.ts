@@ -21,6 +21,8 @@ export interface LeaderboardEntry {
   streak: number
   totalReviewed: number
   totalBurned: number
+  totalDaysStudied: number
+  rememberedCount: number
   dailyAverage: number
   isMe: boolean
 }

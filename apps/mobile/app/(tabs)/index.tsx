@@ -568,6 +568,9 @@ export default function Dashboard() {
                   <Text style={styles.lbStats}>
                     {entry.dailyAverage}/day · {entry.totalBurned.toLocaleString()} mastered · {entry.streak}d streak
                   </Text>
+                  <Text style={styles.lbStats}>
+                    📅 {entry.totalDaysStudied.toLocaleString()} days · 🌱 {entry.rememberedCount.toLocaleString()} remembered
+                  </Text>
                 </View>
               </View>
             ))}
