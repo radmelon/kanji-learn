@@ -102,7 +102,19 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Personal Records & Milestones** — Surface achievement-style milestones ("First 100 kanji mastered", "30-day streak", "All N5 complete") with a simple notification or badge. Low-effort motivation boost; no new data infrastructure needed.
   `[Effort: S]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
-- [ ] **Grade Level Equivalent (Kyouiku Kanji)** — Display the Japanese school grade level equivalent on the progress page based on the Kyouiku kanji list (教育漢字). Shows users where they stand relative to the Japanese elementary school curriculum (grades 1–6, ~1,026 kanji). Provides a tangible, alternative progress metric alongside JLPT levels.
+- [ ] **Grade Level Equivalent (Kyouiku Kanji) + Grade-Level Badges** — Display the Japanese school grade level equivalent on the Progress page based on the Kyouiku kanji list (教育漢字, grades 1–6, ~1,026 kanji). Provides a tangible alternative progress metric alongside JLPT levels.
+
+  **Badge scope (added 2026-04-19):** completing a grade level earns a milestone achievement:
+  - **🥈 Silver badge** — the learner has reached `remembered` status on every kanji at a given Kyouiku grade.
+  - **🥇 Gold badge** — the learner has `burned` every kanji at a given Kyouiku grade (genuine long-term mastery).
+
+  Both awards surface in the existing Milestones panel (see the shipped "Personal Records & Milestones" entry) and are shared socially with study mates: the Leaderboard / Study Mates views pick up a new badge column, and the friend-notification pipeline (same infra used by study-mate activity notifications) emits a one-time push when a mate earns one. Silver-before-gold is the natural progression; gold supersedes silver on the same grade.
+
+  **Implementation hooks:**
+  - Schema: kanji table needs a `kyouiku_grade smallint` column (1–6) populated from the Kyouiku list; or compute grade from existing `jlptOrder` + a reference mapping.
+  - Backend: new `/v1/analytics/grade-progress` returning `{ grade: 1..6, total, remembered, burned, silverEarnedAt?, goldEarnedAt? }`. Badge earn events persist to the existing milestones/achievements table so the Milestones panel renders them consistently.
+  - Social: extend the study-mate notification payload to carry badge-earn events; add a badge avatar/ring to rows in the Leaderboard + Study Mates list.
+
   `[Effort: M]` `[Impact: Med]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
 - [x] **JLPT Progress Panel: Add Color Legend** — ~~SHIPPED~~ in B121 (commit `6e779a8`). Verified by user on 2026-04-18: a compact legend with 4 colored dots + labels (Learning / Reviewing / Remembered / Burned) appears beneath the JLPT stacked bars. Lives inside `JlptProgressGrid` so every consumer (Dashboard + Progress tab) gets it automatically.
