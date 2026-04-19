@@ -41,7 +41,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: Med — confusing but not crashing]` `[Status: 🐛 Active]`
 
-- [ ] **SessionComplete shows "20 correct / 0 missed" (and similar) — client counts `quality >= 3` as correct, server counts `quality >= 4`** — Client/server disagreement on the "correct" threshold produces incorrect counts on the Session Complete screen. Reproduced in the 2026-04-18 comprehensive weighted-math test: a 5 Again + 5 Hard + 5 Good + 5 Easy session was counted as 15 correct / 5 wrong on the screen, but the server's `daily_stats.correct` was 10 (only Good + Easy). For an all-Hard-and-Easy session the screen shows 20/0, which is the "always 20 correct / 0 missed" observation.
+- [x] **SessionComplete shows "20 correct / 0 missed" (and similar) — client counts `quality >= 3` as correct, server counts `quality >= 4`** — Client/server disagreement on the "correct" threshold produces incorrect counts on the Session Complete screen. Reproduced in the 2026-04-18 comprehensive weighted-math test: a 5 Again + 5 Hard + 5 Good + 5 Easy session was counted as 15 correct / 5 wrong on the screen, but the server's `daily_stats.correct` was 10 (only Good + Easy). For an all-Hard-and-Easy session the screen shows 20/0, which is the "always 20 correct / 0 missed" observation.
 
   **Root cause:** [apps/mobile/app/(tabs)/study.tsx:269](apps/mobile/app/(tabs)/study.tsx:269) computes `const correct = results.filter((r) => r.quality >= 3).length`. The server at [apps/api/src/services/srs.service.ts:289](apps/api/src/services/srs.service.ts:289) uses `if (result.quality >= 4) correctItems++` with an explicit comment: "quality 4 (Good) and 5 (Easy) = confident recall; quality 3 (Hard) = remembered but with difficulty (not counted as 'correct' for accuracy display)." The client drifted from this convention.
 
@@ -50,11 +50,11 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   **Affected files:**
   - `apps/mobile/app/(tabs)/study.tsx:269`
 
-  Found B121 on-device verification 2026-04-18.
+  Found B121 on-device verification 2026-04-18. ~~FIXED~~ in B123 (commit `a7590cc` changed `>=3` to `>=4` in `study.tsx:269`). Verified by user 2026-04-19: counts now match server. Label refinement landed in B124 (commit `5d81768` renamed correct→remembered, wrong→missed).
 
-  `[Effort: XS]` `[Impact: Med — users see wrong counts]` `[Status: 🐛 Active]`
+  `[Effort: XS]` `[Impact: Med — users see wrong counts]` `[Status: ✅ Fixed]`
 
-- [ ] **Mnemonic section missing from the study-card reveal drawer (`RevealAllDrawer` / `KanjiCard.tsx`)** — In B121 the Mnemonic section was added to `apps/mobile/app/kanji/[id].tsx` (the main Kanji details page, reachable from Browse / Journal). The study card's reveal flow — opened via the magnifying glass icon mid-session to see the full kanji record — does NOT include a mnemonic section, so users can't access mnemonics without leaving the study session. Expected: the mnemonic section should be in both places, or at minimum the drawer should offer a button to jump to the main details page where the mnemonic lives. Confirmed 2026-04-18 by grepping `Mnemonic` in `KanjiCard.tsx` — zero matches.
+- [x] **Mnemonic section missing from the study-card reveal drawer (`RevealAllDrawer` / `KanjiCard.tsx`)** — In B121 the Mnemonic section was added to `apps/mobile/app/kanji/[id].tsx` (the main Kanji details page, reachable from Browse / Journal). The study card's reveal flow — opened via the magnifying glass icon mid-session to see the full kanji record — does NOT include a mnemonic section, so users can't access mnemonics without leaving the study session. Expected: the mnemonic section should be in both places, or at minimum the drawer should offer a button to jump to the main details page where the mnemonic lives. Confirmed 2026-04-18 by grepping `Mnemonic` in `KanjiCard.tsx` — zero matches.
 
   **Updated 2026-04-19 — broader scope confirmed by owner:** "The kanji details pages off of the reveal side of study cards is different from the detail cards connected to the Browse feature. The Browse kanji details are superior and should be the normal." The issue isn't just the mnemonic panel — the two details views have drifted apart entirely, and the Browse-originated `/kanji/[id]` is the preferred canonical version. Fix should unify them, not just patch the mnemonic gap.
 
@@ -67,9 +67,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   - `apps/mobile/src/components/study/KanjiCard.tsx` — remove drawer's custom details render; replace magnifying-glass icon action with `router.push('/kanji/${item.kanjiId}')`
   - Alternatively (b): extract sections from `apps/mobile/app/kanji/[id].tsx` into `apps/mobile/src/components/kanji/*.tsx`
 
-  Found B121 on-device verification 2026-04-18; scope broadened 2026-04-19.
+  Found B121 on-device verification 2026-04-18; scope broadened 2026-04-19. ~~SHIPPED~~ in B124 (commit `dd6c5f7`) via option (a): the magnifying-glass icon on the study card now navigates to `/kanji/[id]` (the canonical details page). The `RevealAllDrawer` function remains in `KanjiCard.tsx` unreachable — flagged for cleanup in a follow-up pass. Awaiting on-device verification once B124 lands in TestFlight.
 
-  `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
+  `[Effort: S]` `[Impact: Med]` `[Status: 🔄 Shipped, awaiting B124 verification]`
 
 - [x] **Session Complete screen persists after returning to Study tab** — ~~FIXED~~ in B123 (commit `a7590cc`). Verified on device 2026-04-19: after completing a 5-card session (with daily goal=5), tapping Back to Dashboard → Start Today's Reviews now shows the daily-goal-complete message; tapping the Study tab loads a fresh 5-card deck. No stale Session Complete screen anywhere. onDone now clears `sessionSummary` + calls `reset()` before navigating.
 
