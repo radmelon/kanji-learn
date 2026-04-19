@@ -30,6 +30,7 @@ import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as SecureStore from 'expo-secure-store'
 import { useReviewStore } from '../../src/stores/review.store'
+import { useProfile } from '../../src/hooks/useProfile'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { KanjiCard } from '../../src/components/study/KanjiCard'
 import { CompoundCard } from '../../src/components/study/CompoundCard'
@@ -44,6 +45,10 @@ function StudySession() {
   const router = useRouter()
   const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset } =
     useReviewStore()
+  // Respect the user's onboarding choice (5/10/15/20/30/50). Falls back to 20
+  // until the profile finishes loading on first mount.
+  const { profile } = useProfile()
+  const dailyGoal = profile?.dailyGoal ?? 20
 
   const [isRevealed, setIsRevealed] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -162,7 +167,7 @@ function StudySession() {
     // Skip loadQueue when arriving from "Drill Weak Spots" — the weak queue
     // was already loaded by loadWeakQueue() before navigation and must not be overwritten.
     if (!useReviewStore.getState().isWeakDrill) {
-      loadQueue(20)
+      loadQueue(dailyGoal)
     }
     return () => reset()
   }, [])
@@ -266,7 +271,12 @@ function StudySession() {
   const handleFinish = useCallback(async () => {
     setIsSaving(true)
     const { results } = useReviewStore.getState()
-    const correct = results.filter((r) => r.quality >= 3).length
+    // Match the server-side definition (srs.service.ts:289): Good (4) and
+    // Easy (5) count as "correct"; Hard (3) and Again (1) do not. Previously
+    // the client used `>= 3`, which disagreed with daily_stats.correct and
+    // produced inflated counts on Session Complete (e.g. "20 correct / 0
+    // missed" for an all-Hard-and-Easy session).
+    const correct = results.filter((r) => r.quality >= 4).length
     const newLearned = results.filter((r) => {
       const item = queue.find((q) => q.kanjiId === r.kanjiId)
       return item?.status === 'unseen'
@@ -331,7 +341,7 @@ function StudySession() {
         <Ionicons name="alert-circle" size={64} color={colors.error} />
         <Text style={styles.emptyTitle}>Something went wrong</Text>
         <Text style={styles.emptySubtitle}>{error}</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => loadQueue(20)}>
+        <TouchableOpacity style={styles.backButton} onPress={() => loadQueue(dailyGoal)}>
           <Text style={styles.backText}>Retry</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -372,7 +382,16 @@ function StudySession() {
     return (
       <SessionComplete
         {...sessionSummary}
-        onDone={() => router.replace('/(tabs)')}
+        onDone={() => {
+          // Clear local summary + Zustand review state BEFORE navigating so
+          // re-entering the Study tab (via Dashboard → Start Today's Reviews)
+          // mounts a fresh queue instead of re-rendering the stale Session
+          // Complete screen. Expo Router tabs stay mounted across navigations,
+          // so without this reset the state survives and the user gets stuck.
+          setSessionSummary(null)
+          reset()
+          router.replace('/(tabs)')
+        }}
         onReview={() => {
           const ok = loadMissedQueue()
           if (ok) {
