@@ -50,4 +50,18 @@ describe('evaluateReading — homophone workaround', () => {
     const result = evaluateReading('紙み', ['かみみ'], false, fixture)
     expect(result.correct).toBe(true)
   })
+
+  it('accepts a kanji transcript when index stores katakana on-yomi (real DB shape)', () => {
+    // Real DB stores on-yomi in katakana; evaluator receives hiragana-normalized
+    // correctReadings. Both sides must end up in the same form for comparison.
+    const katakanaFixture: KanjiReadingsIndex = new Map([
+      ['感', new Set(['カン'])],  // katakana as DB stores it
+      ['缶', new Set(['カン'])],
+    ])
+    const result = evaluateReading('缶', ['カン'], false, katakanaFixture)
+    expect(result.correct).toBe(true)
+    expect(result.quality).toBe(5)
+    expect(result.normalizedSpoken).toBe('かん')
+    expect(result.closestCorrect).toBe('かん')
+  })
 })

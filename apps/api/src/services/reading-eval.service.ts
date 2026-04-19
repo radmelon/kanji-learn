@@ -99,7 +99,8 @@ export function evaluateReading(
   if (kanjiIndex && containsCJK(normalizedSpoken)) {
     const normalizedCorrect = correctReadings.map(normalise)
     const candidates = expandReadings(normalizedSpoken, kanjiIndex)
-    for (const c of candidates) {
+    for (const raw of candidates) {
+      const c = normalise(raw)
       if (normalizedCorrect.includes(c)) {
         return {
           normalizedSpoken: c,
