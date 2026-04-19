@@ -59,3 +59,29 @@ export function expandReadings(input: string, index: KanjiReadingsIndex): string
 
   return candidates.slice(0, MAX_CANDIDATES)
 }
+
+import type { Db } from '@kanji-learn/db'
+import { kanji } from '@kanji-learn/db'
+
+/**
+ * Load the kanji → readings index from the database.
+ *
+ * Reads character, kunReadings, and onReadings for every row in `kanji` and
+ * returns a Map from each character to a Set of the union of its readings.
+ *
+ * Called once at server boot, refreshed on a 6-hour interval as a safety net.
+ */
+export async function loadKanjiReadingsIndex(db: Db): Promise<KanjiReadingsIndex> {
+  const rows = await db.select({
+    character: kanji.character,
+    kunReadings: kanji.kunReadings,
+    onReadings: kanji.onReadings,
+  }).from(kanji)
+
+  const idx: KanjiReadingsIndex = new Map()
+  for (const row of rows) {
+    const readings = new Set<string>([...row.kunReadings, ...row.onReadings])
+    if (readings.size > 0) idx.set(row.character, readings)
+  }
+  return idx
+}
