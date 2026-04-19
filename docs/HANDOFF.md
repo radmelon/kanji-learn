@@ -59,7 +59,7 @@ Execution style: subagent-driven, fresh implementer per task, light inline diff 
 
 Tracked in [BUGS.md](BUGS.md). Four new active bugs from this session:
 
-1. **Save-session latency ~45 seconds** — Root cause confirmed by reading the code: the submit path at [srs.service.ts:276–330](apps/api/src/services/srs.service.ts:276) does ~7 DB round trips per review (findFirst UKG + a 4-write transaction with BEGIN/COMMIT). For a 20-card session that's **~145 round trips**. At ~300ms cross-region RTT (us-east-1 API ↔ ap-southeast-2 Supabase), 145 × 300ms = 43.5s — matches observed 45s exactly. **Fix path specified:** batch the loop into a single transaction with bulk INSERT + ON CONFLICT DO UPDATE statements (~12 RTTs instead of 145, expected ~12× speedup). Also requires adding a `recordReviewSubmissions` plural method on `DualWriteService`. See BUGS entry for full investigation steps + affected files. `[Effort: M]` `[Impact: High]` `[Status: 🔎 Investigation complete; fix pending sign-off]`
+1. **Save-session latency ~45 seconds** — ✅ **FIXED 2026-04-18** via commits `d137b9c` (code) + `69cbc54` (tracker) and App Runner deploy op `c8b9b0b466a7471b8c69f2f24befcd27`. Root cause was per-review DB round-trips — the submit path at `srs.service.ts` did ~7 round-trips per card, compounding to ~145 RTTs for a 20-card session at ~300ms cross-region RTT. Fix collapsed the per-review loop into: (a) one `findMany` for existing UKG rows, (b) in-memory SM-2 math, (c) one transaction with four bulk statements. Round-trip count dropped from ~145 to ~13, expected latency ~45s → ~4s. Session-level atomicity replaces per-review atomicity (kanjiId validation happens before the transaction opens; mobile offline queue handles session-level retry). 8 new unit tests cover the pure `buildBatchedRowSets` transformation. **On-device confirmation pending — next study-session save on any device will exercise the new path.**
 
 2. **Session Complete screen persists after returning to Study tab** — `onDone` at [study.tsx:375](apps/mobile/app/(tabs)/study.tsx:375) only calls `router.replace('/(tabs)')` but doesn't clear the local `sessionSummary` state or call the review-store `reset()`. Because Expo Router tabs stay mounted, state survives navigations and the stale Session Complete re-renders. **Workaround for user:** force-quit the app to remount the Study tab. **Fix:** add `setSessionSummary(null)` + `reset()` in `onDone` before navigating. `[Effort: XS]` `[Impact: High]`
 
@@ -77,7 +77,12 @@ Tracked in [ENHANCEMENTS.md](ENHANCEMENTS.md). Three new entries worth bundling 
 
 - **Speak button on example sentences (Kanji details)** — One-tap TTS on each sentence using existing Expo Speech infra. `[Effort: XS]` `[Impact: Med]`
 
-## Latency investigation: root cause + fix plan (ready to ship)
+## Latency fix shipped (API-only, no EAS build)
+
+Commits: `d137b9c` (perf fix + 8 unit tests) and `69cbc54` (tracker closure).
+App Runner deploy: op `c8b9b0b466a7471b8c69f2f24befcd27` succeeded 2026-04-18T17:14:55-07:00, service status `RUNNING`.
+
+### Latency investigation: root cause + fix plan (historical — kept for reference)
 
 ### Evidence from reading the code
 
@@ -124,11 +129,11 @@ Tomorrow's first decision is (a) vs. (c) and go.
 
 ---
 
-## 🚦 Tomorrow's first tasks
+## 🚦 Next-session first tasks
 
-1. **Amber reading-prompt cue** — start a study session on a mature account that has reading-stage cards, verify amber border/tint shows when a reading prompt appears. Close the partial entry in ENHANCEMENTS.md. (The code path is identical to the verified meaning cue, so this should just visually confirm.)
+1. **Confirm the latency fix on device** — any study session that hits the API now uses the batched path. Expected: ~4s save instead of ~45s. This is the one verification that can't be done from the CLI. Once confirmed, close the BUGS.md entry from "Fixed — awaiting verification" to plain Fixed.
 
-2. **Latency fix decision + ship** — decide between "unit test + batch submit" (my recommendation) or defer. If ship: the fix is API-only (server-side change in `apps/api/`), so requires an App Runner redeploy but **no new EAS build**. Save on EAS credits.
+2. **Amber reading-prompt cue** — start a study session on a mature account that has reading-stage cards, verify amber border/tint shows when a reading prompt appears. Close the partial entry in ENHANCEMENTS.md. (The code path is identical to the verified meaning cue, so this should just visually confirm.)
 
 3. **Build 3 plan scope** — bundle the remaining open work. Candidates:
    - Fix: Session Complete stale state (`onDone` reset) — XS
