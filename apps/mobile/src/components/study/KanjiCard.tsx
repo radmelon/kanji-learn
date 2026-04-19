@@ -14,6 +14,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Linking
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
 import { Ionicons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
 import { toRomaji } from 'wanakana'
 import { colors, spacing, radius, typography } from '../../theme'
 import type { ReviewQueueItem } from '@kanji-learn/shared'
@@ -54,6 +55,7 @@ interface Props {
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.85 }
 
 export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRomaji, onDetailsOpenChange }: Props) {
+  const router = useRouter()
   // Array.isArray() guards protect against non-array truthy values (e.g. a string
   // stored as jsonb in the DB). `?? []` only catches null/undefined — a string
   // passes through and calling .map()/.join() on it gives "undefined is not a function".
@@ -65,7 +67,6 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
 
   // Which group is currently being spoken: null | 'kun' | 'on' | vocab index
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
-  const [detailsOpen, setDetailsOpen] = useState(false)
   const iconOpacity = useRef(new Animated.Value(0)).current
 
   // Guard TTS callbacks against post-unmount execution.
@@ -82,8 +83,6 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   // Speech.stop() in the cleanup on every grade press (crashes native speech bridge).
   useEffect(() => {
     setSpeakingGroup(null)
-    setDetailsOpen(false)
-    onDetailsOpenChange?.(false)
   }, [item.kanjiId])
 
   // Fade the magnifying glass icon in when the card is revealed, out on reset
@@ -237,7 +236,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
         {/* Full Details icon — fades in on reveal, bottom-left of kanji area */}
         <Animated.View style={[styles.detailsIcon, { opacity: iconOpacity }]} pointerEvents={isRevealed ? 'auto' : 'none'}>
           <TouchableOpacity
-            onPress={() => { setDetailsOpen(true); onDetailsOpenChange?.(true) }}
+            onPress={() => router.push(`/kanji/${item.kanjiId}`)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             activeOpacity={0.7}
           >
@@ -326,8 +325,12 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
         </ScrollView>
       )}
 
-      {/* Full Details modal — opened via the magnifying glass icon */}
-      <RevealAllDrawer item={item} visible={detailsOpen} onClose={() => { setDetailsOpen(false); onDetailsOpenChange?.(false) }} />
+      {/* The magnifying glass icon now navigates to /kanji/:id (the canonical
+          details page, reused from Browse). The old RevealAllDrawer modal was
+          a second details surface that drifted out of sync with the main page
+          — e.g. missing the mnemonic section added in B121. Consolidating to
+          one source of truth (2026-04-19). The drawer code remains below for
+          now and can be deleted in a follow-up cleanup pass. */}
     </Animated.View>
   )
 }

@@ -381,41 +381,73 @@ export default function KanjiDetail() {
           {/* Example Vocabulary */}
           {kanji.exampleVocab.length > 0 && (
             <Card title="Example Vocabulary">
-              {kanji.exampleVocab.map((v, i) => (
-                <View key={i} style={[styles.vocabRow, i > 0 && styles.vocabRowBorder]}>
-                  <View style={styles.vocabLeft}>
-                    <Text style={styles.vocabWord}>{v.word}</Text>
-                    <Text style={styles.vocabReading}>{v.reading}</Text>
+              {kanji.exampleVocab.map((v, i) => {
+                const groupKey = `vocab-${i}`
+                return (
+                  <View key={i} style={[styles.vocabRow, i > 0 && styles.vocabRowBorder]}>
+                    <View style={styles.vocabLeft}>
+                      <Text style={styles.vocabWord}>{v.word}</Text>
+                      <Text style={styles.vocabReading}>{v.reading}</Text>
+                    </View>
+                    <Text style={styles.vocabMeaning}>{v.meaning}</Text>
+                    <TouchableOpacity
+                      onPress={() => speakReadings([v.word], groupKey)}
+                      hitSlop={8}
+                      activeOpacity={0.7}
+                      style={styles.speakIcon}
+                    >
+                      <Ionicons
+                        name={speakingGroup === groupKey ? 'volume-high' : 'volume-medium-outline'}
+                        size={16}
+                        color={speakingGroup === groupKey ? colors.accent : colors.textMuted}
+                      />
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.vocabMeaning}>{v.meaning}</Text>
-                </View>
-              ))}
+                )
+              })}
             </Card>
           )}
 
           {/* Example Sentences */}
           {(kanji.exampleSentences ?? []).length > 0 && (
             <Card title="Example Sentences">
-              {(kanji.exampleSentences ?? []).map((s, i) => (
-                <View key={i} style={[styles.sentenceRow, i > 0 && styles.sentenceRowBorder]}>
-                  <Text style={styles.sentenceJa}>
-                    {s.vocab ? (
-                      (() => {
-                        const idx = s.ja.indexOf(s.vocab)
-                        if (idx === -1) return <Text>{s.ja}</Text>
-                        return (
-                          <>
-                            <Text>{s.ja.slice(0, idx)}</Text>
-                            <Text style={styles.sentenceVocabHighlight}>{s.vocab}</Text>
-                            <Text>{s.ja.slice(idx + s.vocab.length)}</Text>
-                          </>
-                        )
-                      })()
-                    ) : s.ja}
-                  </Text>
-                  <Text style={styles.sentenceEn}>{s.en}</Text>
-                </View>
-              ))}
+              {(kanji.exampleSentences ?? []).map((s, i) => {
+                const groupKey = `sentence-${i}`
+                return (
+                  <View key={i} style={[styles.sentenceRow, i > 0 && styles.sentenceRowBorder]}>
+                    <View style={styles.sentenceJaRow}>
+                      <Text style={styles.sentenceJa}>
+                        {s.vocab ? (
+                          (() => {
+                            const idx = s.ja.indexOf(s.vocab)
+                            if (idx === -1) return <Text>{s.ja}</Text>
+                            return (
+                              <>
+                                <Text>{s.ja.slice(0, idx)}</Text>
+                                <Text style={styles.sentenceVocabHighlight}>{s.vocab}</Text>
+                                <Text>{s.ja.slice(idx + s.vocab.length)}</Text>
+                              </>
+                            )
+                          })()
+                        ) : s.ja}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => speakReadings([s.ja], groupKey)}
+                        hitSlop={8}
+                        activeOpacity={0.7}
+                        style={styles.speakIcon}
+                      >
+                        <Ionicons
+                          name={speakingGroup === groupKey ? 'volume-high' : 'volume-medium-outline'}
+                          size={16}
+                          color={speakingGroup === groupKey ? colors.accent : colors.textMuted}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.sentenceEn}>{s.en}</Text>
+                  </View>
+                )
+              })}
             </Card>
           )}
 
@@ -626,11 +658,13 @@ const styles = StyleSheet.create({
   vocabWord: { ...typography.h3, color: colors.textPrimary },
   vocabReading: { ...typography.caption, color: colors.textMuted },
   vocabMeaning: { ...typography.bodySmall, color: colors.textSecondary, flex: 1, textAlign: 'right' },
+  speakIcon: { marginLeft: spacing.xs },
 
   // Example Sentences
   sentenceRow: { gap: 4, paddingVertical: spacing.xs },
   sentenceRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
-  sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22 },
+  sentenceJaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
+  sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22, flex: 1 },
   sentenceVocabHighlight: { color: colors.accent, fontWeight: '700' },
   sentenceEn: { ...typography.caption, color: colors.textMuted, lineHeight: 16 },
 
