@@ -2,6 +2,14 @@ import type { FastifyInstance } from 'fastify'
 import { eq, and, ilike, sql, asc } from 'drizzle-orm'
 import { kanji, userKanjiProgress } from '@kanji-learn/db'
 
+// Defensive array coercion. `?? []` only catches null/undefined, but a
+// jsonb column can hold a scalar (e.g. a corrupted string that was once an
+// array, see the 2026-04-18 radicals-string repair). If the mobile client
+// then calls `.map()` or `.slice()` on a string, React Native's native
+// bridge throws RCTFatal. Mirror the guard used in srs.service.ts so kanji
+// routes are resilient to future seed-pipeline regressions.
+const toArr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
+
 export async function kanjiRoutes(server: FastifyInstance) {
   // GET /v1/kanji/lookup?character=三  — resolve a kanji character to its DB row
   server.get<{ Querystring: { character?: string } }>(
@@ -110,7 +118,7 @@ export async function kanjiRoutes(server: FastifyInstance) {
           items: rows.map((r) => ({
             ...r,
             srsStatus: r.srsStatus ?? 'unseen',
-            meanings: (r.meanings as string[]).slice(0, 3),
+            meanings: toArr<string>(r.meanings).slice(0, 3),
           })),
           total: Number(countRow?.total ?? 0),
           offset,
@@ -139,7 +147,7 @@ export async function kanjiRoutes(server: FastifyInstance) {
         return reply.code(404).send({ ok: false, error: 'Kanji not found', code: 'NOT_FOUND' })
       }
 
-      const radicals = (target.radicals as string[]) ?? []
+      const radicals = toArr<string>(target.radicals)
       if (radicals.length === 0) {
         return reply.send({ ok: true, data: [] })
       }
@@ -176,7 +184,7 @@ export async function kanjiRoutes(server: FastifyInstance) {
           id: r.id,
           character: r.character,
           jlptLevel: r.jlptLevel,
-          meaning: (r.meanings as string[])[0] ?? '',
+          meaning: toArr<string>(r.meanings)[0] ?? '',
           srsStatus: r.srsStatus ?? 'unseen',
         })),
       })
@@ -240,6 +248,14 @@ export async function kanjiRoutes(server: FastifyInstance) {
         ok: true,
         data: {
           ...row,
+          // Coerce every array-shaped jsonb column so a corrupted scalar
+          // never reaches the mobile client and trips RCTFatal on .map().
+          meanings: toArr<string>(row.meanings),
+          kunReadings: toArr<string>(row.kunReadings),
+          onReadings: toArr<string>(row.onReadings),
+          radicals: toArr<string>(row.radicals),
+          exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(row.exampleVocab),
+          exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(row.exampleSentences),
           srsStatus: row.srsStatus ?? 'unseen',
         },
       })
