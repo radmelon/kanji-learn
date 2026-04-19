@@ -119,6 +119,17 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 - Backend scaling should happen before a major marketing push or App Store feature
 - Home screen widget and iPad support are platform expansion features — both are native work (Expo widget plugin, responsive layouts) and benefit from a stable, scaled backend
 
+### Pre-launch infra checklist (cross-reference to ENHANCEMENTS.md)
+
+Before shipping a general-availability release, close these items (all tracked in ENHANCEMENTS.md as `🚀 Pre-Launch`):
+
+- ✅ **Configure Groq + Gemini keys on App Runner** — shipped 2026-04-19 (op `fed113f8`). Closes tier-2 LLM fallback gap.
+- ✅ **Enable RLS on last 5 tables** — shipped 2026-04-19 via migration 0018. RLS coverage now 35/35.
+- ✅ **Post-delete cascade FK** — shipped 2026-04-19 via migration 0017. App Store 5.1.1 compliance complete.
+- 🚀 **Secrets management — rotate + migrate to AWS Secrets Manager** — added 2026-04-19 after the Groq/Gemini keys were pasted through chat. Covers one-time rotation of exposed keys, migration to Secrets Manager, quarterly rotation policy, and chat-hygiene guidance. See the ENHANCEMENTS.md entry for the full action list.
+- 🚀 **Migrate Supabase DB to us-east-1** — cross-region latency tax. Requires coordinated EAS rebuild + DB dump/restore + env-var swap across App Runner, Lambda, mobile EAS, and local. Best handled as its own dedicated session.
+- 🚀 **Configure SES out of sandbox** — needed for tutor-share emails and any future transactional mail (Delete Account farewell push path stays optional).
+
 ---
 
 ## Phase 6 — Moonshots (XL effort)

@@ -1,210 +1,133 @@
-# Session Handoff — 2026-04-18 (evening)
+# Session Handoff — 2026-04-19 (evening)
 
 ## Current State
 
-**Branch:** `main` — all session work merged and pushed (origin/main up to date).
-**Latest TestFlight build:** **B121** (iOS) — auto-submitted by EAS, bundles Build 1 + Build 2 together (13 feature commits). User verified 12 of 14 items during an end-of-day pass.
-**API:** Redeployed to App Runner `us-east-1` on 2026-04-18 (op `7a2c8a31df514442bedbc29b0c79ab8a`) with the new weighted-confidence SQL + leaderboard columns. Health 200.
-**DB:** No migrations this session. No schema changes. One ad-hoc data flip remains in place: for the test account `buddy@g.ucla.edu` (id `c0d80f51-9355-4116-ba46-66760c7352a8`), all 20 user_kanji_progress rows have `next_review_at` set to ~2026-04-18 23:02 UTC so the cards remain due for further morning-after testing if desired.
+**Branch:** `main` — all session work merged and pushed. Local and origin are in sync.
+**Latest TestFlight build:** **B124** (iOS) — auto-submitted to App Store Connect 2026-04-19 08:12 PT. Code consolidates the kanji details page + adds speak icons to vocab/sentences; Remembered/Missed labels; "Drill N missed cards" threshold fix.
+**API:** App Runner `us-east-1` — two successful deploys this session.
+- op `03b663dd…` — toArr defense on kanji routes (paired with 1185-row radicals repair).
+- op `fed113f85b…` — Groq + Gemini env vars now injected; health check HTTP 200 in 470ms.
+**DB:** two migrations applied to prod 2026-04-19.
+- `0017_user_profiles_auth_users_cascade.sql` — adds missing FK so account deletes fully cascade through friendships / tutor_shares / placement / daily_stats / review_logs / learner_identity. Deleted 2 pre-existing orphan `user_profiles` rows as part of the apply.
+- `0018_rls_placement_tutor_tables.sql` — enables RLS + authenticated-user + service_role policies on `placement_sessions`, `placement_results`, `tutor_shares`, `tutor_notes`, `tutor_analysis_cache`. RLS coverage now **35 / 35** public tables.
 
 ## What shipped this session
 
-Plans written and executed:
-- [docs/superpowers/plans/2026-04-18-b121-copy-and-ux-sweep.md](docs/superpowers/plans/2026-04-18-b121-copy-and-ux-sweep.md) — Build 1, 6 tasks
-- [docs/superpowers/plans/2026-04-18-b122-study-loop-and-leaderboard.md](docs/superpowers/plans/2026-04-18-b122-study-loop-and-leaderboard.md) — Build 2, 6 tasks (filename says "b122" but everything bundled into B121 on EAS — see note below)
+### Mobile (in B124 TestFlight)
+- `5d81768` — fix(mobile)+docs: Remembered/Missed labels on Session Complete; `loadMissedQueue` threshold aligned from `q<3` to `q<4` so "Drill N missed cards" matches its label.
+- `dd6c5f7` — feat(mobile): consolidate kanji details to one canonical page (`/kanji/[id]`); the study card's magnifying-glass icon now navigates there instead of opening the inferior in-card drawer. Speak icons added to every vocab row + sentence row (tap to play Japanese TTS, tap again to stop).
 
-Execution style: subagent-driven, fresh implementer per task, light inline diff review (no separate spec / quality reviewer subagents — user chose lighter process).
+### API / data
+- `5f1b043` — fix(api,data): repaired 1185 corrupted `kanji.radicals` rows (double-encoded JSON string → real array) + added `toArr` defense to `/v1/kanji/browse`, `/v1/kanji/:id`, and `/v1/kanji/:id/related`.
+- Migrations 0017 + 0018 (applied manually to Supabase via `psql`).
+- App Runner env-var update adding `GROQ_API_KEY` + `GEMINI_API_KEY` (redeploy op `fed113f85b…`).
 
-### Build 1 commits (copy + UX sweep)
-- `744dede` fix(mobile): flip accuracy→confidence in SRS-context copy
-- `9295c06` refactor(mobile): expose refresh from useInterventions hook
-- `d03cfad` feat(mobile): auto-refresh Dashboard data on tab focus
-- `63c464e` fix(mobile): dedicated empty state + Start studying CTA on quiz screen
-- `378f85c` chore(mobile): add motivational line to onboarding findHelp footer
-- `6e779a8` feat(mobile): add color legend under JLPT progress grid
+### Tracker hygiene
+- Closed 6 bug entries: post-delete relational cascade (root cause was the missing FK, not the downstream cascades); umbrella Delete Account entry; SessionComplete 20/0 counts; browse-crash on corrupted kanji; stale Session Complete after navigation; daily-goal hardcoded-20.
+- Flipped 4 enhancement entries to Shipped: Remembered/Missed / Drill fix; reveal-drawer consolidation; speak-icons scope extension; RLS on last 5 tables; Groq/Gemini keys.
+- Added 3 new items: gesture-mapping refinement; speak-icons scope extension (already shipped as part of B124); expand vocab/sentences from JMdict-Kanjidic-Tatoeba; **secrets-management + rotation policy** (see ROADMAP pre-launch section).
+- Updated E11 (Grade-level Kyouiku) with silver/gold badge + social-share design.
 
-### Build 2 commits (study loop + leaderboard)
-- `b5ec166` fix(mobile): mnemonic auto-reveal only on Again (quality=1), not Hard
-- `aaa874a` feat(api): weighted 3/2/1/0 confidence scoring (Easy=3 / Good=2 / Hard=1 / Again=0)
-- `dededf3` feat(mobile): weighted session confidence on Session Complete screen
-- `5f2c009` feat(mobile): show-mnemonic section on Kanji details page
-- `14f1f62` feat(mobile): meaning/reading visual cue on study card (violet/amber)
-- `87f2695` feat(mobile): dismissible invite-a-study-mate banner on Dashboard
-- `91e8161` feat(leaderboard): add days-studied + remembered columns; sort streak→days→remembered
+## B124 verification results (TestFlight, 2026-04-19)
 
-**Note on build numbering:** EAS auto-incremented to **B121** after our push (one build, bundling both plans). There is no separate B122 — the "B122 plan" filename is a misnomer from mid-session.
+**Confirmed on device:**
+- ✅ SessionComplete counts (`q>=4`) show 10/10 for 5-Again+5-Hard+5-Good+5-Easy.
+- ✅ Dashboard confidence ring updates post-session (~3s refresh).
+- ✅ dailyGoal=5 → study session loads 5 cards.
+- ✅ Session Complete → Done → Dashboard → Start Today's Reviews → "up to date" message (goal met); Study tab loads fresh deck.
+- ✅ Browse `息` (and other previously-corrupted kanji) renders `["心"]` radicals correctly — no crash.
 
-## B121 verification results (TestFlight, 2026-04-18 evening)
+**Pending verification (user will catch in next study session):**
+- 🧪 Amber reading-prompt cue (when a reading-stage card surfaces naturally).
+- 🧪 B124 changes: Remembered/Missed labels, Drill N missed button works (even with all-Hard session), magnifying-glass navigation, speak icons on vocab/sentences on `/kanji/[id]`.
 
-**12 of 14 items verified end-to-end:**
+## Sub-Sprint A1 — Pre-launch readiness (shipped today)
 
-✅ SessionComplete "confidence" label
-✅ Drill Weak Spots dialog copy
-✅ Progress tab info panel ("Confidence colour coding")
-✅ Dashboard auto-refresh on tab focus (no pull-to-refresh needed)
-✅ Take Quiz empty state + "Start studying" CTA (tested via fresh account → Start Studying worked)
-✅ Onboarding findHelp motivational footer
-✅ JLPT color legend under progress bars
-✅ Mnemonic auto-reveal: Hard no longer triggers nudge
-✅ Kanji details page: Mnemonic section with Show / Regenerate button
-✅ Meaning-prompt violet border + tint (study card)
-✅ Invite-a-study-mate banner (fresh account, 0 mates)
-✅ Leaderboard: days-studied + remembered columns, sorted streak → days → remembered
-✅ **Weighted 3/2/1/0 confidence math** — fully proved via a controlled 20-card test (5 × Again + 5 × Hard + 5 × Good + 5 × Easy, all button taps). DB recorded exactly 5 of each quality; Session Complete showed 50%; Dashboard showed 47% cumulative; manual SQL matched Dashboard.
+Of the Option A (App Store readiness) plan, three of four items are now **done**:
 
-**Remaining to verify:**
-🧪 **Amber reading-prompt cue** — will naturally surface when a reading-stage card appears in a session. Not a code concern; same code path as the verified meaning cue.
+1. ✅ **B1 — Post-delete relational cascade** (migration 0017). Real root cause: `user_profiles` had no FK to `auth.users` at all. Downstream CASCADEs were there; the chain just never started. Migration adds the one missing FK + cleaned up 2 orphan rows.
+2. ✅ **E21 — RLS on last 5 tables** (migration 0018). 35/35 tables now covered.
+3. ✅ **E23 — Groq + Gemini keys** on App Runner (op `fed113f85b…`). Tier-2 LLM fallback is now live.
+4. 🚀 **E22 — Supabase us-east-1 migration** — still pending; needs coordinated EAS rebuild + DB dump/restore. See ROADMAP pre-launch section.
 
-## Bugs discovered during B121 verification
+Plus a late addition:
 
-Tracked in [BUGS.md](BUGS.md). Four new active bugs from this session:
+5. 🚀 **Secrets management — rotate + migrate to AWS Secrets Manager** — new ENHANCEMENTS entry and a ROADMAP pre-launch bullet. Immediate one-time rotation recommended for the Groq + Gemini keys that were pasted through chat this session. Longer-term: move all provider keys into AWS Secrets Manager, document a quarterly rotation policy, and establish chat-hygiene for secrets.
 
-1. **Save-session latency ~45 seconds** — ✅ **FIXED 2026-04-18** via commits `d137b9c` (code) + `69cbc54` (tracker) and App Runner deploy op `c8b9b0b466a7471b8c69f2f24befcd27`. Root cause was per-review DB round-trips — the submit path at `srs.service.ts` did ~7 round-trips per card, compounding to ~145 RTTs for a 20-card session at ~300ms cross-region RTT. Fix collapsed the per-review loop into: (a) one `findMany` for existing UKG rows, (b) in-memory SM-2 math, (c) one transaction with four bulk statements. Round-trip count dropped from ~145 to ~13, expected latency ~45s → ~4s. Session-level atomicity replaces per-review atomicity (kanjiId validation happens before the transaction opens; mobile offline queue handles session-level retry). 8 new unit tests cover the pure `buildBatchedRowSets` transformation. **On-device confirmation pending — next study-session save on any device will exercise the new path.**
+## ⚠️ Immediate security action owed
 
-2. **Session Complete screen persists after returning to Study tab** — `onDone` at [study.tsx:375](apps/mobile/app/(tabs)/study.tsx:375) only calls `router.replace('/(tabs)')` but doesn't clear the local `sessionSummary` state or call the review-store `reset()`. Because Expo Router tabs stay mounted, state survives navigations and the stale Session Complete re-renders. **Workaround for user:** force-quit the app to remount the Study tab. **Fix:** add `setSessionSummary(null)` + `reset()` in `onDone` before navigating. `[Effort: XS]` `[Impact: High]`
+The Groq + Gemini API keys added to App Runner today came through this chat transcript. Recommended: **rotate both once, post-session**, via the respective provider consoles:
 
-3. **Study queue ignores `profile.dailyGoal`** — `study.tsx:165` calls `loadQueue(20)` hardcoded. A new user who picks dailyGoal=5 in onboarding still gets 20-card sessions. Same hardcoded literal on line 334 (offline retry). **Fix:** destructure `dailyGoal` from `useProfile()` and pass to `loadQueue`. `[Effort: XS]` `[Impact: High]`
+- Groq: https://console.groq.com/keys → Regenerate
+- Gemini (AI Studio): https://aistudio.google.com/app/apikey → Regenerate
 
-4. **Post-delete relational cascade — deleted users linger in mates + leaderboard** — Confirmed reproducible in B121: a deleted user still shows on another user's leaderboard and mates list. Root cause is missing `ON DELETE CASCADE` FKs on friendships / mate / tutor-share tables back to `auth.users` / `user_profiles`. Known since B120; repro'd this session. **Fix:** schema audit + migration 0017 + optional farewell push to affected friends. `[Effort: M]` `[Impact: High]`
-
-## New refinements / enhancements logged
-
-Tracked in [ENHANCEMENTS.md](ENHANCEMENTS.md). Three new entries worth bundling into Build 3 where relevant:
-
-- **Study Card Gesture Mapping: Clarify or Remap Swipe Directions** — Origin of the session's confusing 43% result. The user swiped down on cards intending "Again" but swipe-down maps to Hard ([study.tsx:108–144](apps/mobile/app/(tabs)/study.tsx:108)). Current mapping: right=Easy, left=Again, up=Good, down=Hard. Intuition says down=reject/dismiss/again. Three candidate fixes documented: remap, enlarge mid-drag labels, or onboarding gesture diagram. `[Effort: S]` `[Impact: High]`
-
-- **Session Complete: High / Medium / Low / Missed breakdown** — Replace the binary "correct vs wrong" breakdown with a 4-tier count (Easy=High, Good=Medium, Hard=Low, Again=Missed) aligned to the new weighted ring. `[Effort: S]` `[Impact: Med]`
-
-- **Speak button on example sentences (Kanji details)** — One-tap TTS on each sentence using existing Expo Speech infra. `[Effort: XS]` `[Impact: Med]`
-
-## Latency fix shipped (API-only, no EAS build)
-
-Commits: `d137b9c` (perf fix + 8 unit tests) and `69cbc54` (tracker closure).
-App Runner deploy: op `c8b9b0b466a7471b8c69f2f24befcd27` succeeded 2026-04-18T17:14:55-07:00, service status `RUNNING`.
-
-### Latency investigation: root cause + fix plan (historical — kept for reference)
-
-### Evidence from reading the code
-
-- `apps/api/src/services/srs.service.ts::submitReview` (lines 215–339) runs a FOR-loop over `results` with one `findFirst` + one `dualWrite.recordReviewSubmission` call per review.
-- `dual-write.service.ts` opens a Drizzle transaction for each call with 4 writes inside (review_logs insert, user_kanji_progress upsert, learner_knowledge_state upsert, learner_timeline_events insert).
-- Each transaction = BEGIN + 4 writes + COMMIT = **6 RTT minimum**. Plus the pre-transaction findFirst = **7 RTT per review**.
-- Plus fixed setup queries (userProfiles upsert, learnerIdentity upsert, reviewSessions insert, kanji batch select) and a final UPDATE reviewSessions completedAt.
-- **20-card session: 4 + (20×7) + 1 = 145 RTTs**.
-
-### Fix plan
-
-Add a new `DualWriteService.recordReviewSubmissions(inputs: ReviewSubmissionInput[])` (plural) that:
-- Performs ONE `findMany` for existing UKG rows (using `inArray(kanjiId, kanjiIds)`).
-- Computes all SRS math in-memory (pure function `calculateNextReview` from shared).
-- Runs a SINGLE transaction with FOUR bulk statements:
-  - Bulk insert review_logs
-  - Bulk upsert user_kanji_progress (`VALUES ...`, `ON CONFLICT ... DO UPDATE SET col = excluded.col`)
-  - Bulk upsert learner_knowledge_state (same pattern, with `reviewCount = learner_knowledge_state.reviewCount + 1` via `sql\`excluded\` references`)
-  - Bulk insert learner_timeline_events
-
-Update `SrsService.submitReview` to call the new plural method. Keep the existing singular `recordReviewSubmission` for backwards compatibility (and in case some future caller really does want per-row atomicity).
-
-### Trade-off (needs user sign-off before shipping)
-
-**Today:** per-review atomicity — if review 15/20 fails, 0–14 are committed, 15–19 skipped. The client-side offline queue handles session-level retry.
-**After fix:** session-level atomicity — a single bad row rolls back the whole session. The client offline queue still handles retry.
-
-In practice, pre-validation at [srs.service.ts:301–306](apps/api/src/services/srs.service.ts:301) rejects unknown kanjiIds before any write, so the remaining failure modes are connection-level — in which case rolling back the session and letting the offline queue retry is arguably cleaner than leaving a half-committed session. Recommendation: **accept the trade-off**.
-
-### Expected speedup
-
-- Before: 145 RTTs × ~300ms = 43.5s
-- After: ~12 RTTs × ~300ms = ~3.6s
-- **~12× speedup**, no DB migration needed, matches the observed user pain exactly.
-
-### Testing strategy
-
-Per systematic-debugging skill: "no fix without a failing test." Options discussed:
-- **(a) Unit-test the batching transformation** (pure function: given inputs + existing UKG, produce correct row sets) — no DB needed, runs in Jest today. Recommended.
-- (b) Full integration test — requires `TEST_DATABASE_URL` setup.
-- (c) Manual TestFlight verification only.
-
-Tomorrow's first decision is (a) vs. (c) and go.
-
----
+Takes ~30 seconds per key. When rotated, I can update App Runner via `aws apprunner update-service` in a single pass.
 
 ## 🚦 Next-session first tasks
 
-1. **Confirm the latency fix on device** — any study session that hits the API now uses the batched path. Expected: ~4s save instead of ~45s. This is the one verification that can't be done from the CLI. Once confirmed, close the BUGS.md entry from "Fixed — awaiting verification" to plain Fixed.
+1. **Verify B124 on device** — the four items in the "pending verification" block above. Should all just work; no expected regressions.
+2. **Rotate Groq + Gemini keys** (security hygiene from today) — one-shot action, not a whole session.
+3. **Pick Build 3 direction** — the planning board had four options (A = shipped today, B = core UX, C = data enrichment, D = social push). Controller's recommendation is **Option C** (see below).
+4. **Close the amber-cue enhancement** once a reading-stage prompt surfaces.
 
-2. **Amber reading-prompt cue** — start a study session on a mature account that has reading-stage cards, verify amber border/tint shows when a reading prompt appears. Close the partial entry in ENHANCEMENTS.md. (The code path is identical to the verified meaning cue, so this should just visually confirm.)
+## Build 3 recommendation — Option C (Data enrichment)
 
-3. **Build 3 plan scope** — bundle the remaining open work. Candidates:
-   - Fix: Session Complete stale state (`onDone` reset) — XS
-   - Fix: daily goal hardcoded-20 — XS
-   - Fix: post-delete relational cascade (migration 0017 + farewell push) — M
-   - Feature: nudge/poke (still outstanding from B120 triage) — L
-   - Refinement: High/Medium/Low/Missed breakdown on Session Complete — S
-   - Refinement: Speak button on Kanji details sentences — XS
-   - Refinement: Gesture mapping clarity — S
+### Why C over D
 
-   The first two XS fixes are good candidates for an immediate hotfix build even before Build 3.
+Option D (social push — nudges / invite notifications / study group badges) assumes two things that aren't currently true:
+
+- **Daily push notifications work.** Currently broken (`BUGS.md`: "Daily push notifications not firing" — active since Build 103). Nudges are push-notification-first, so D has a blocking dependency that needs repair before its headline features work.
+- **There's a social graph to engage.** In today's user base (owner + a handful of test accounts), social engagement features don't have anyone to engage with. Option D's ROI grows dramatically with user count and is best timed closer to launch.
+
+Option C's items sharpen the already-shipped study loop:
+- **E5 Expand vocab + sentences** (5–10 vocab, 3–5 sentences per kanji) subsumes B4 (the kanji-doesn't-contain-itself data-quality bug) and multiplies the value of the speak-icons we just shipped in B124 (more things to hear).
+- **E6 Pitch accent indicator** — once we have richer readings, adding pitch accent turns reading practice into natural-speech practice. Complements E5.
+- **E8 Drill Weak Spots scope** — recent-session vs. cumulative threshold is a day-to-day UX win, single-endpoint change.
+- **E16 Broaden streak** — counts placement / quiz / writing toward the streak. Closes a long-standing complaint and is 1–2 hours of work.
+
+None of C's items require push notifications. None are blocked by open bugs. Every one of them makes the existing app more useful to the solo learner that most users are today.
+
+### Suggested C sequencing (one focused session each)
+
+1. **E8 Drill Weak Spots scope** — smallest win, warm-up.
+2. **E16 Broaden streak** — analytics query + mobile widget tweak, same pattern as E8.
+3. **E5 Expand vocab + sentences** — biggest value. Seed script rework + validator for "word contains kanji". Closes B4 bug as a bonus.
+4. **E6 Pitch accent indicator** — last because it requires sourcing a pitch accent dataset (Wadoku or similar) and has external-data uncertainty.
+
+### When to do D
+
+After Option C ships AND the daily-push-notifications bug is fixed. Fixing that bug is the cheaper of the two and unblocks D's entire feature set.
 
 ---
 
 ## Working environment notes
 
-- **API URL (production):** `https://73x3fcaaze.us-east-1.awsapprunner.com`
-- **Supabase project:** `pyltysrcqvskxgumzrlg.supabase.co` — still in `ap-southeast-2` (Sydney). Migration to us-east-1 is queued as a Pre-Launch item in ENHANCEMENTS.md and would independently resolve the 45s submit latency.
-- **Build numbers:** EAS auto-increments. Last shipped: **B121**. Don't manually bump.
-- **Docker deploys:** API → App Runner via `DOCKER_CONTEXT=default ./scripts/deploy-api.sh` from the repo root. OrbStack's default context produces ARM images that crash App Runner.
-- **EAS builds:** from `apps/mobile/`, not repo root. Current status: past 100% of included monthly tier, billing at ~$2/build. Continue to bundle builds.
-- **EAS credits:** at pay-as-you-go rate. Bundle fixes into coherent TestFlight cuts (see memory: "Bundle TestFlight builds to conserve EAS credits and test time").
-- **Database connection:** `DATABASE_URL` in `apps/api/.env` (used by the `psql` calls this session).
-- **Test account for weighted-math verification:** `buddy@g.ucla.edu` (id `c0d80f51-9355-4116-ba46-66760c7352a8`). As of session end, has 40 total review_logs rows (5/5/5/5/5/17 across qualities 1/3/4/5 + the original 17/3 split). Cards are due NOW for further testing if needed.
+- **API URL (production):** `https://73x3fcaaze.us-east-1.awsapprunner.com` — health check OK post-redeploy.
+- **Supabase project:** `pyltysrcqvskxgumzrlg.supabase.co` (still in `ap-southeast-2`). Pre-launch migration to us-east-1 still pending.
+- **Build numbers:** EAS auto-increments. Last shipped: **B124**. Don't manually bump.
+- **Docker deploys:** `DOCKER_CONTEXT=default ./scripts/deploy-api.sh`. OrbStack's default context produces ARM images that crash App Runner.
+- **EAS builds:** from `apps/mobile/`, not repo root. Pay-as-you-go at $2/build. Last two builds ran with `eas-cli@18.7.0` (upgrade required — 18.5.0 silently fails at request submission).
+- **EAS env vars** with `EXPO_PUBLIC_` prefix are baked into each build. Changing Supabase URL (Pre-Launch item E22) requires a fresh EAS build.
+- **Test account `buddy@g.ucla.edu`** had its `user_profiles` row cleaned up by migration 0017 this session (it was orphaned — `auth.users` row had already been deleted from earlier testing). Was a test account — shouldn't impact ongoing work. If the user is still using TestFlight logged in as that email, they'll need to sign up again (a fresh account will be created).
 
 ## Tomorrow's first command
 
 ```
 cd /Users/rdennis/Documents/projects/kanji-learn
 git pull origin main
-# 1. Verify the amber reading-prompt cue in TestFlight B121
-# 2. Decide on latency-fix approach (batch submit + unit test, or defer)
-# 3. Scope Build 3 bundle
+# 1. Verify B124 items on device (4 checks above)
+# 2. Rotate Groq + Gemini keys in their consoles; ping controller to update App Runner
+# 3. Begin Build 3 Option C — start with E8 Drill Weak Spots scope refinement
 ```
 
 ---
 
-## Recent commits (this session, in chronological order — reverse of git log)
+## Recent commits this session
 
 ```
-6a69d62 docs(trackers): log B120 verification findings — 5 bugs + 10 enhancements
-
-# Build 1 (copy + UX sweep)
-744dede fix(mobile): flip accuracy→confidence in SRS-context copy
-9295c06 refactor(mobile): expose refresh from useInterventions hook
-d03cfad feat(mobile): auto-refresh Dashboard data on tab focus
-63c464e fix(mobile): dedicated empty state + Start studying CTA on quiz screen
-378f85c chore(mobile): add motivational line to onboarding findHelp footer
-6e779a8 feat(mobile): add color legend under JLPT progress grid
-
-# Build 2 (study loop + leaderboard)
-b5ec166 fix(mobile): mnemonic auto-reveal only on Again (quality=1), not Hard
-aaa874a feat(api): weighted 3/2/1/0 confidence scoring (Easy/Good/Hard/Again)
-dededf3 feat(mobile): weighted session confidence on Session Complete screen
-5f2c009 feat(mobile): show-mnemonic section on Kanji details page
-14f1f62 feat(mobile): meaning/reading visual cue on study card (violet/amber)
-87f2695 feat(mobile): dismissible invite-a-study-mate banner on Dashboard
-91e8161 feat(leaderboard): add days-studied + remembered columns; sort streak→days→remembered
-
-# Verification + investigation docs
-08ccbb6 docs(enhancements): log speak button on example sentences (Kanji details)
-c3ab643 docs(bugs): log 45s save-session latency observed in B121
-a73babf docs(enhancements): log High/Medium/Low/Missed breakdown on Session Complete
-ce0e3f1 docs(bugs): close SessionComplete + Drill Weak Spots copy — verified B121
-9dc04ff docs(trackers): leaderboard metrics shipped; post-delete cascade confirmed in B121
-a8b7e63 docs(enhancements): invite-a-study-mate banner shipped and verified in B121
-b9b7f44 docs(enhancements): close 4 B121 features; meaning/reading cue partial
-75cc363 docs(enhancements): revert weighted-scoring to pending — math not yet verified
-8850827 docs(enhancements): JLPT color legend shipped — verified in B121
-021b208 docs(trackers): close 3 more B121 items — Dashboard refresh, Take Quiz empty, onboarding footer
-5f625e1 docs(bugs): log daily-goal-ignored bug + refine 45s latency investigation
-d6f376d docs(bugs): log stale Session Complete state after tab navigation
-f280573 docs: close weighted-math verification + log gesture-mapping refinement
+f4882bf  fix(db)+docs: migrations 0017 (post-delete cascade) + 0018 (RLS on last 5 tables)
+a088b54  docs(enhancements): expand E11 Grade-Level Kyouiku entry with silver/gold badges + social share
+337f6eb  docs(bugs): close SessionComplete counts + reveal-drawer entries
+dd6c5f7  feat(mobile): consolidate kanji details to one page + speak icons on vocab/sentences
+5d81768  fix(mobile)+docs: Remembered/Missed labels + Drill Missed threshold align + B123 tracker updates
 ```
