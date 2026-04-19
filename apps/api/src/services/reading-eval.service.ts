@@ -8,6 +8,7 @@
  */
 
 import { toHiragana } from 'wanakana'
+import { containsCJK, expandReadings, type KanjiReadingsIndex } from './kanji-readings-index.js'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,11 +60,15 @@ function normalise(input: string): string {
  * @param spoken           Raw transcript from the speech recogniser
  * @param correctReadings  Array of accepted hiragana readings (e.g. ['みず', 'すい'])
  * @param strict           If true, near-matches are NOT accepted (used for level checkpoints)
+ * @param kanjiIndex       Optional in-memory kanji→readings index. When provided,
+ *                         CJK characters in the transcript (iOS recognizer output)
+ *                         are expanded to candidate phonetic strings and compared.
  */
 export function evaluateReading(
   spoken: string,
   correctReadings: string[],
-  strict = false
+  strict = false,
+  kanjiIndex?: KanjiReadingsIndex,
 ): EvalResult {
   if (!correctReadings.length) {
     return {
@@ -85,6 +90,25 @@ export function evaluateReading(
       correct:        true,
       quality:        5,
       feedback:       'Perfect.',
+    }
+  }
+
+  // ── Homophone workaround: expand any CJK chars via the kanji index ──────
+  // Runs only when the index is provided and the transcript still contains
+  // CJK after wanakana normalise. Matches against any correctReading → accept.
+  if (kanjiIndex && containsCJK(normalizedSpoken)) {
+    const normalizedCorrect = correctReadings.map(normalise)
+    const candidates = expandReadings(normalizedSpoken, kanjiIndex)
+    for (const c of candidates) {
+      if (normalizedCorrect.includes(c)) {
+        return {
+          normalizedSpoken: c,
+          closestCorrect:   c,
+          correct:          true,
+          quality:          5,
+          feedback:         'Perfect.',
+        }
+      }
     }
   }
 
