@@ -22,7 +22,7 @@ The current Speak evaluation is unreliable for any kanji with a common-reading h
 | 2 | E6 Kanjium pitch ingest (Tokyo-primary pattern only) | DB / seed scripts |
 | 3 | Vocab-Speak drill (voicePrompt on reading queue; vocab-as-prompt UX) | API + mobile |
 | 4 | Homophone short-term fix (server-side kanji→reading expansion) | API |
-| 5 | Opportunistic Kanjidic2 grade ingest (unblocks E11; no UI in 3-C) | DB / seed scripts |
+| 5 | Opportunistic Kanjidic2 data ingest — grade (unblocks E11), frequency rank, Hadamitzky-Spahn "Kanji & Kana" reference (no UI in 3-C) | DB / seed scripts |
 
 ### Explicit non-goals
 
@@ -84,14 +84,29 @@ Dashboard/Study tab
 
 Two small migrations and one jsonb field extension.
 
-**Migration 0019** — `kanji.grade smallint` (nullable):
+**Migration 0019** — three new `kanji` columns ingested from Kanjidic2 (all nullable):
 
 ```sql
-ALTER TABLE kanji ADD COLUMN grade smallint;
+ALTER TABLE kanji
+  ADD COLUMN grade            smallint,
+  ADD COLUMN frequency_rank   smallint,
+  ADD COLUMN hadamitzky_spahn integer;
+
 COMMENT ON COLUMN kanji.grade IS
   'Kyōiku grade from Kanjidic2: 1-6 = elementary grades, 8 = remaining Jōyō,
    9-10 = Jinmeiyō. NULL for kanji absent from Kanjidic2.';
+
+COMMENT ON COLUMN kanji.frequency_rank IS
+  'Mainichi Shimbun newspaper corpus rank from Kanjidic2 <freq> element.
+   1 = most common, ~2500 = least; NULL if unranked.';
+
+COMMENT ON COLUMN kanji.hadamitzky_spahn IS
+  'Reference index in Hadamitzky & Spahn "Kanji & Kana" (2011 ed),
+   sourced from Kanjidic2 <dic_ref dr_type="sh_kk2"> with fallback to sh_kk.
+   NULL if the kanji is not indexed in that reference.';
 ```
+
+**Kanjidic2 dic_ref mapping note:** the "Kanji & Kana" reference is exposed as `dr_type="sh_kk"` (original ed) and `dr_type="sh_kk2"` (2nd ed / 2011 revision) in the Kanjidic2 DTD. Seed prefers `sh_kk2` when present; falls back to `sh_kk`. Implementation verifies this mapping against the current DTD before committing the parse logic.
 
 **Migration 0020** — `user_profiles.show_pitch_accent boolean default true`:
 
@@ -126,7 +141,12 @@ Entries without `pitchPattern` render without overlay. Same array schema for `ex
 2. **Kanjium** (pitch) — vendored snapshot at `packages/db/data/kanjium/accents-YYYY-MM-DD.json`. Look up `{word, reading}`; take first-listed (Tokyo-primary) pattern; convert to mora-flag array.
 3. **Validator** — every `example_vocab` entry must satisfy `entry.word.includes(targetKanji)`. Rejects dropped with warning log (closes B4).
 
-**Kanjidic2 seed** — either extends the above script or a new `seed-grade.ts`. Parses Kanjidic2 XML, extracts `<grade>` per kanji, writes to `kanji.grade`. Runs once; idempotent on re-run.
+**Kanjidic2 seed** — either extends the above script or a new `seed-kanjidic-refs.ts`. Single XML pass per kanji extracts:
+- `<grade>` → `kanji.grade`
+- `<freq>` → `kanji.frequency_rank`
+- `<dic_ref dr_type="sh_kk2">` (or `sh_kk` fallback) → `kanji.hadamitzky_spahn`
+
+Runs once; idempotent on re-run (writes update existing rows in place).
 
 **Tatoeba sentence re-seed** — existing `packages/db/src/seeds/seed-sentences.ts` runs with cap raised from 2 to 5. Same validator: sentence must contain the target kanji.
 
@@ -329,7 +349,7 @@ Ships alone. Fixes the Speak bug for every reading card today — including the 
 1. Apply migrations 0019, 0020 to prod via `psql`
 2. Vendor Kanjium snapshot to `packages/db/data/kanjium/`
 3. Write `seed-vocab-pitch.ts` (JMdict + validator + Kanjium merge)
-4. Extend / add Kanjidic2 seed for `kanji.grade`
+4. Extend / add Kanjidic2 seed for `kanji.grade`, `kanji.frequency_rank`, `kanji.hadamitzky_spahn` (single XML pass, three columns)
 5. Rerun Tatoeba sentence seed (cap 2 → 5)
 6. Run seeds locally against a dev DB first; verify counts; spot-check 息 for B4 closure; then apply migrations + seeds to prod via `psql`
 
@@ -410,6 +430,7 @@ Order of work:
 | iOS recognizer returns kanji we can't resolve in our DB | Low-med | Homophone workaround covers 2,294 known kanji; edge-case misses fall back to today's behavior (no regression) |
 | Cartesian explosion on 4+ kanji vocab | Very low | 200-candidate cap in expander |
 | Pitch pattern length ≠ mora count (bad data) | Low | Mora-aligner returns null; component renders plain reading + dev warning |
+| Kanjidic2 `sh_kk2` dic_ref type doesn't exist / maps differently than expected | Low | Implementation verifies against current Kanjidic2 DTD before committing the parse logic; if mapping differs, `hadamitzky_spahn` column simply stays NULL for this seed pass and is addressed in a follow-up. Migration 0019 still adds the column either way — no data loss. |
 
 ---
 
