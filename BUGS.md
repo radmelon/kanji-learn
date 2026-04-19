@@ -6,6 +6,33 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **Speak evaluation marks homophone kanji wrong — iOS recognizer returns a *kanji* transcript that wanakana can't normalize to hiragana** — On a reading card for 感 (reading `かん`), the user speaks "kan" correctly but the Speak evaluator returns "Not quite" with feedback like `Heard "缶" — the reading is かん`. Same class of failure for any kanji with a common-reading homophone (感 / 缶 / 館 / 巻 / 漢 all read `かん`; 紙 / 髪 / 神 all read `かみ`; 橋 / 箸 read `はし`; etc.).
+
+  **Root cause:** The iOS `ja-JP` speech recognizer (used via `expo-speech-recognition` in [VoiceEvaluator.tsx:165](apps/mobile/src/components/voice/VoiceEvaluator.tsx:165)) does lexical conversion, not phonetic — it returns its best-guess *kanji* string from its own language model, not the hiragana the user spoke. The server-side evaluator at [reading-eval.service.ts:51](apps/api/src/services/reading-eval.service.ts:51) calls `toHiragana(spoken)` from wanakana, which only converts romaji/katakana → hiragana. **Wanakana cannot convert kanji to its reading.** So `缶` stays as `缶`, the exact-match check against `["かん"]` fails, Levenshtein distance is 2 (full rewrite), and the card is graded wrong. The feedback string literally echoes the raw kanji back at the user, which reads as nonsense if they don't recognize what happened.
+
+  This is NOT inflection / vowel-length / strict-mode related. The evaluator never got phonetic text to compare.
+
+  **Reproduction:**
+  1. Start a study session that surfaces 感 (or any card where the reading has a common kanji homophone).
+  2. Tap the mic, speak the reading clearly (e.g. "kan").
+  3. Result card shows `Heard "缶"` (or another homophone kanji) and marks it wrong.
+
+  **Fix plan — two tiers:**
+
+  1. **Short-term server-side workaround (can ship independently):** In `reading-eval.service.ts`, if `normalise(spoken)` still contains CJK characters after wanakana runs, look up each character in our `kanji` table and expand it to all its accepted readings (union of `onyomi` + `kunyomi`). If any expansion matches an entry in `correctReadings`, treat as exact match. This fixes the homophone case without any client or UX change. Scope: one DB query per evaluation; cache kanji readings in-process since the table is static. Estimated 4–6h including tests.
+
+  2. **Longer-term structural fix (Build 3-C candidate):** Shift voice-reading drills from *isolated kanji* to *vocab words*. Multi-syllable vocab (e.g. `感じる`, `感動`, `紙袋`) almost never collides with another homophone, so the recognizer's lexical bias works *for* us instead of against us — it'll return the exact vocab kanji string we prompted with. This also composes naturally with E5 (expanded vocab/sentences), E6 (pitch accent — a word-level property), and the existing `example_vocab` data we already seed. See scoping discussion in the 2026-04-19 Build 3-C brainstorming session.
+
+  **Affected files:**
+  - `apps/api/src/services/reading-eval.service.ts` — add kanji-to-reading expansion step (short-term)
+  - `apps/api/src/routes/review.ts:139` — endpoint that calls the evaluator
+  - `apps/mobile/src/components/voice/VoiceEvaluator.tsx` — consumer; may need no change for the short-term fix
+  - Structural/longer-term: reading-queue source (swap kanji-level prompts for vocab-level prompts)
+
+  Found 2026-04-19 during Build 3-C scoping discussion; root cause traced in the same session.
+
+  `[Effort: S (short-term) / M (structural)]` `[Impact: High — voice-reading drills unreliable for any kanji with a homophone, which is a large fraction of the corpus]` `[Status: 🐛 Active]`
+
 - [x] **Browse-kanji crashes the app on any kanji whose `radicals` column is a JSON string instead of an array (1185 of 2294 rows — 52% of kanji)** — ~~FIXED~~ 2026-04-18. Data repair SQL applied to prod (1185 rows, UPDATE returns 1185), `toArr` defense added to all three affected kanji routes (commit `5f1b043`), API deployed (op `03b663dd41a642e996736e1353883795`). User confirmed on device: 息 no longer crashes the browse flow. The server-side fix is live independent of TestFlight — any previously-crashing kanji in a currently-installed build should now render correctly. Tapping a kanji from the Browse page (or the Progress-tab kanji grid) used to crash the app when the target kanji had a malformed `radicals` value.
 
   **Root cause:** Seed data corruption in the `kanji.radicals` column. For ~52% of rows, the stored value is a jsonb STRING that contains a JSON-encoded string of an array, e.g. on 息 the value is `"\"[\\\"心\\\"]\""` — a double-JSON-encoded string `"[\"心\"]"`. When the mobile client calls `.map()` on that string (expecting an array of radical characters), React Native's native bridge throws `RCTFatal: undefined is not a function`. This is the same class of failure called out in the existing defensive comment at `srs.service.ts:145-147`: "If a jsonb column contains a non-array value (e.g. a string) `??` passes it through, and the client then calls `.map()/.join()` on a string → RCTFatal."
