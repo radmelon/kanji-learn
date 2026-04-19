@@ -6,6 +6,65 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **Browse-kanji crashes the app on any kanji whose `radicals` column is a JSON string instead of an array (1185 of 2294 rows — 52% of kanji)** — Tapping a kanji from the Browse page (or the Progress-tab kanji grid) crashes the app when the target kanji has a malformed `radicals` value. Reproduced on 息 (id=1599).
+
+  **Root cause:** Seed data corruption in the `kanji.radicals` column. For ~52% of rows, the stored value is a jsonb STRING that contains a JSON-encoded string of an array, e.g. on 息 the value is `"\"[\\\"心\\\"]\""` — a double-JSON-encoded string `"[\"心\"]"`. When the mobile client calls `.map()` on that string (expecting an array of radical characters), React Native's native bridge throws `RCTFatal: undefined is not a function`. This is the same class of failure called out in the existing defensive comment at `srs.service.ts:145-147`: "If a jsonb column contains a non-array value (e.g. a string) `??` passes it through, and the client then calls `.map()/.join()` on a string → RCTFatal."
+
+  **Scope of corruption (queried 2026-04-18):**
+  ```sql
+  SELECT jsonb_typeof(radicals) AS type, COUNT(*) FROM kanji GROUP BY jsonb_typeof(radicals);
+  -- string: 1185, array: 1109
+  ```
+  Only `radicals` is affected — `example_vocab` and `example_sentences` are `array`-typed for all 2294 rows.
+
+  **Fix plan (two parts, both needed):**
+  1. **Data repair** — one-time SQL: `UPDATE kanji SET radicals = (radicals #>> '{}')::jsonb WHERE jsonb_typeof(radicals) = 'string';`. The `#>> '{}'` extracts the inner string; the cast re-parses it as a real jsonb array. Test carefully on one row first, then commit to the full set.
+  2. **Server-side defense** — the `/v1/kanji/:id` handler (and any related endpoint) should run the `toArr` guard already defined inline in `srs.service.ts` before returning array-shaped fields, mirroring what `getReviewQueue` already does. This prevents a regression if the seed pipeline reintroduces the bug.
+
+  **Affected files:**
+  - `packages/db/src/seeds/` — check whichever seed populated `radicals` for the double-encoding bug
+  - `apps/api/src/routes/kanji.ts` (or wherever `/v1/kanji/:id` lives) — add `toArr` guard
+  - Reproducer SQL above
+
+  Found B121 on-device verification 2026-04-18 while browsing 息.
+
+  `[Effort: S]` `[Impact: High — crashes app on ~52% of kanji when opened via Browse]` `[Status: 🐛 Active]`
+
+- [ ] **Kanji `example_vocab` can contain words that don't use the kanji itself** — On 息 ("breath"), example_vocab is `[{"word": "息子", "reading": "むすこ", "meaning": "son"}, {"word": "呼吸", "reading": "こきゅう", "meaning": "breathing"}]`. The second entry (呼吸) means "breathing" but uses the characters 呼 + 吸 — neither is 息. This is semantically related but misleading: the example vocab for a kanji should always contain that kanji so learners can see it in context. Data-quality issue in the seed pipeline. Spot-checked in 2026-04-18 session; unknown how widespread.
+
+  **Fix plan:** Add a seed-time validator that rejects any `example_vocab` entry where `word` does not contain the kanji character. Audit existing rows for violations and either remove the offending entries or replace with compliant alternatives. No user-facing change required until the data is cleaned.
+
+  **Affected files:**
+  - `packages/db/src/seeds/` — whichever seed writes `example_vocab`
+
+  Found B121 on-device verification 2026-04-18 on 息.
+
+  `[Effort: S]` `[Impact: Med — confusing but not crashing]` `[Status: 🐛 Active]`
+
+- [ ] **SessionComplete shows "20 correct / 0 missed" (and similar) — client counts `quality >= 3` as correct, server counts `quality >= 4`** — Client/server disagreement on the "correct" threshold produces incorrect counts on the Session Complete screen. Reproduced in the 2026-04-18 comprehensive weighted-math test: a 5 Again + 5 Hard + 5 Good + 5 Easy session was counted as 15 correct / 5 wrong on the screen, but the server's `daily_stats.correct` was 10 (only Good + Easy). For an all-Hard-and-Easy session the screen shows 20/0, which is the "always 20 correct / 0 missed" observation.
+
+  **Root cause:** [apps/mobile/app/(tabs)/study.tsx:269](apps/mobile/app/(tabs)/study.tsx:269) computes `const correct = results.filter((r) => r.quality >= 3).length`. The server at [apps/api/src/services/srs.service.ts:289](apps/api/src/services/srs.service.ts:289) uses `if (result.quality >= 4) correctItems++` with an explicit comment: "quality 4 (Good) and 5 (Easy) = confident recall; quality 3 (Hard) = remembered but with difficulty (not counted as 'correct' for accuracy display)." The client drifted from this convention.
+
+  **Fix:** two sensible paths — (a) **align client with server** as a two-character change: `r.quality >= 4`. Makes Hard count as wrong, matching daily_stats. Lowest risk, ships in the next EAS build. (b) **ship the already-logged "High / Medium / Low / Missed breakdown" enhancement** which replaces the binary correct/wrong render entirely with a 4-tier count (Easy=High, Good=Medium, Hard=Low, Again=Missed). Cleaner long-term; subsumes this bug. Recommend (a) now + schedule (b) for Build 3.
+
+  **Affected files:**
+  - `apps/mobile/app/(tabs)/study.tsx:269`
+
+  Found B121 on-device verification 2026-04-18.
+
+  `[Effort: XS]` `[Impact: Med — users see wrong counts]` `[Status: 🐛 Active]`
+
+- [ ] **Mnemonic section missing from the study-card reveal drawer (`RevealAllDrawer` / `KanjiCard.tsx`)** — In B121 the Mnemonic section was added to `apps/mobile/app/kanji/[id].tsx` (the main Kanji details page, reachable from Browse / Journal). The study card's reveal flow — opened via the magnifying glass icon mid-session to see the full kanji record — does NOT include a mnemonic section, so users can't access mnemonics without leaving the study session. Expected: the mnemonic section should be in both places, or at minimum the drawer should offer a button to jump to the main details page where the mnemonic lives. Confirmed 2026-04-18 by grepping `Mnemonic` in `KanjiCard.tsx` — zero matches.
+
+  **Fix plan:** Either (a) duplicate the Mnemonic Card block from `kanji/[id].tsx` into the reveal drawer (keeps study flow self-contained), or (b) add a "Open full details" / "Show mnemonic" button in the drawer that pushes `/kanji/{id}` (simpler, reuses the main page). (a) is preferred — the user is already looking at full details and shouldn't have to leave study to see one more section. Use the same `useMnemonics(kanjiId)` hook pattern.
+
+  **Affected files:**
+  - `apps/mobile/src/components/study/KanjiCard.tsx` — drawer section insertion
+
+  Found B121 on-device verification 2026-04-18.
+
+  `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
+
 - [ ] **Session Complete screen persists after returning to Study tab** — After completing a session and tapping "Done" (or navigating back to Dashboard and then tapping "Start Today's Reviews"), the Study tab still shows the previous Session Complete screen instead of loading a fresh queue. The user must force-quit the app to get out of the state.
 
   **Root cause:** The Session Complete screen renders when the local `sessionSummary` state is non-null ([apps/mobile/app/(tabs)/study.tsx:371](apps/mobile/app/(tabs)/study.tsx:371)). `onDone` at line 375 just calls `router.replace('/(tabs)')` — it does NOT clear `sessionSummary` or call `reset()`. Because Expo Router tabs stay mounted when you navigate between them, the local React state + Zustand state survive, and the stale Session Complete renders again when the user re-enters the Study tab.
@@ -66,7 +125,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Fix shipped 2026-04-18 (commit `d137b9c`, API deploy pending):** Batched the submit path. `DualWriteService.recordReviewSubmissions` (new plural method) opens a single transaction with four bulk statements. `SrsService.submitReview` pre-fetches existing UKG rows with one `findMany` (instead of N `findFirst` calls) and computes SRS math in-memory before a single dual-write call. Round-trips per 20-card session drop from ~145 to ~13 (~12x speedup, ~45s → ~4s on cross-region DB). Session-level atomicity replaces per-review atomicity; the mobile offline queue already handles session-level retry so the trade-off is transparent. 8 new unit tests cover the pure `buildBatchedRowSets` transformation.
 
-  `[Effort: M]` `[Impact: High]` `[Status: ✅ Fixed — awaiting API deploy + next TestFlight test for confirmation]`
+  `[Effort: M]` `[Impact: High]` `[Status: ✅ Fixed — confirmed on device 2026-04-18 ("save session delay is shorter")]`
 
   Found B121 TestFlight verification, 2026-04-18.
 
