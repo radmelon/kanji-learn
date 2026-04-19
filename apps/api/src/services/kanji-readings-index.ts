@@ -50,8 +50,7 @@ export function expandReadings(input: string, index: KanjiReadingsIndex): string
       for (const opt of options) {
         next.push(prefix + opt)
         if (next.length >= MAX_CANDIDATES) {
-          candidates = next
-          return candidates.slice(0, MAX_CANDIDATES)
+          return next.slice(0, MAX_CANDIDATES)
         }
       }
     }

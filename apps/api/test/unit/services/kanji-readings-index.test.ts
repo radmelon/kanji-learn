@@ -60,6 +60,6 @@ describe('expandReadings', () => {
     const readings = new Set(['あ', 'い', 'う', 'え', 'お', 'か'])
     for (const ch of '亜伊宇江') big.set(ch, readings)
     const out = expandReadings('亜伊宇江', big)
-    expect(out.length).toBeLessThanOrEqual(200)
+    expect(out.length).toBe(200)
   })
 })
