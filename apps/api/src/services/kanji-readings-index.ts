@@ -9,6 +9,9 @@
  * evaluator expands CJK characters through this index before comparison.
  */
 
+import type { Db } from '@kanji-learn/db'
+import { kanji } from '@kanji-learn/db'
+
 // CJK Unified Ideographs block (covers all Jōyō kanji and the entire corpus
 // our app ships). We intentionally do NOT include the compatibility block
 // (U+F900-U+FAFF) because those glyphs round-trip to the main block.
@@ -59,9 +62,6 @@ export function expandReadings(input: string, index: KanjiReadingsIndex): string
 
   return candidates.slice(0, MAX_CANDIDATES)
 }
-
-import type { Db } from '@kanji-learn/db'
-import { kanji } from '@kanji-learn/db'
 
 /**
  * Load the kanji → readings index from the database.
