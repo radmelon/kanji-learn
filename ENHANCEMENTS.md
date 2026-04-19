@@ -8,8 +8,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 > **Must fix immediately** — these are active security vulnerabilities flagged by Supabase.
 
-- [ ] **Enable RLS on Remaining 5 Tables (Tutor + Placement)** — Audit on 2026-04-17 confirmed RLS is enabled on 30 of 35 public tables, including all major user-owned tables (`user_profiles`, `user_kanji_progress`, `review_logs`, `review_sessions`, `daily_stats`, `writing_attempts`, `voice_attempts`, `kl_test_sessions`, `kl_test_results`, `friendships`, `mnemonics`, `interventions`, etc.). The 5 tables still without RLS are all from feature branches merged after the initial security audit: `placement_sessions`, `placement_results`, `tutor_shares`, `tutor_notes`, `tutor_analysis_cache`. Each needs `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` plus policies (user-owned tables restrict to `auth.uid() = user_id`, service-role bypass where the API needs writes). Tutor tables also need a policy allowing teachers to read notes for shares they own by token — currently enforced only at the API layer.
-  `[Effort: S]` `[Impact: Critical]` `[Backend: Yes]` `[Status: 🚨 Security]`
+- [x] **Enable RLS on Remaining 5 Tables (Tutor + Placement)** — ~~SHIPPED~~ 2026-04-19 via migration 0018. RLS enabled on `placement_sessions`, `placement_results`, `tutor_shares`, `tutor_notes`, `tutor_analysis_cache`. Each gets an authenticated-user policy scoped via `auth.uid() = user_id` (or via parent table for child rows) plus an explicit service_role bypass policy, matching the pattern from migration 0009. Tutor notes use a SELECT-only policy for the owning student — tutor writes flow through the API's service_role since tutors authenticate by opaque share token, not Supabase auth. Verified post-apply: all 5 tables show `rowsecurity = t` with 2 policies each.
+  `[Effort: S]` `[Impact: Critical]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 
 ---
 

@@ -110,9 +110,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: M (investigation first)]` `[Impact: High]` `[Status: 🔎 Needs investigation]`
 
-- [ ] **Delete Account flow — Core flow verified B120; relational cascade still open** — The user-facing delete flow works end-to-end (confirmed B120, 2026-04-18): Profile → Danger zone → typed-DELETE → API admin delete → farewell → sign-up with the same email yields a fresh account. Verification also surfaced that rows pointing to the deleted user from OTHER users' perspectives (friendships, study-mates, leaderboard, tutor shares) don't cascade — tracked separately below as "Post-delete relational cascade". Close this entry once the relational cleanup ships.
+- [x] **Delete Account flow — Core flow verified B120; relational cascade fix shipped 2026-04-19** — The user-facing delete flow was confirmed working end-to-end in B120 (Profile → Danger zone → typed-DELETE → API admin delete → farewell → sign-up with same email yields a fresh account). The relational cascade gap (deleted users persisting in OTHER users' friendships / leaderboard / tutor shares) was fixed 2026-04-19 by migration 0017 — the missing `user_profiles.id → auth.users.id` FK with `ON DELETE CASCADE`. See the "Post-delete relational cascade" entry below for full details. App Store 5.1.1 compliance is now complete.
 
-  `[Effort: 0 (verify only)]` `[Impact: High]` `[Status: 🚧 Core verified; relational follow-up open]`
+  `[Effort: 0 (verify only)]` `[Impact: High]` `[Status: ✅ Complete]`
 
 - [ ] **Study Time Timer Doesn't Pause When App Backgrounds** — The mobile review store records session study time as `Date.now() - studyStartMs`. If the user backgrounds the app mid-session and returns later to finish, the wall-clock difference includes all idle time. Observed a 29-review session that reported 16.8 hours of study time on one user. A server-side cap (30s/item, 60min hard max) was added in `srs.service.ts::submitReview` to protect the daily_stats rollup, but the mobile client should also pause the timer on `AppState` change to 'background' and resume on 'active'. Fix location: `apps/mobile/src/stores/review.store.ts` — wrap the timer in a pause/resume pattern keyed off `AppState`. Also wipe the elapsed time on session restore from offline queue.
 
@@ -200,7 +200,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: XS]` `[Impact: Low]` `[Status: ✅ Fixed]`
 
-- [ ] **Post-delete relational cascade — deleted user persists in mates + leaderboard** — After a test user deletes their account, other users who had invited or been invited by the deleted user still see them in the Leaderboard and Study Mates lists. Same issue likely exists for tutor shares.
+- [x] **Post-delete relational cascade — deleted user persists in mates + leaderboard** — After a test user deletes their account, other users who had invited or been invited by the deleted user still see them in the Leaderboard and Study Mates lists. Same issue likely exists for tutor shares.
 
   **Steps to reproduce (B120):**
   1. Create test user A. Add study data.
@@ -216,7 +216,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   Found B120 Delete Account verification pass.
 
-  `[Effort: M]` `[Impact: High]` `[Status: 🐛 Active — confirmed B121]`
+  **Root cause FOUND + FIXED 2026-04-19:** `user_profiles` had no foreign key to `auth.users` at all. Deleting from `auth.users` left `user_profiles` intact, so every downstream table (friendships, tutor_shares, placement_sessions, user_kanji_progress, daily_stats, review_sessions, review_logs, learner_identity) — which all CASCADE from `user_profiles`, not from `auth.users` — kept their data. Audit query showed 2 orphan `user_profiles` rows pre-fix, confirming the chain was broken. Migration 0017 (`packages/db/supabase/migrations/0017_user_profiles_auth_users_cascade.sql`) adds the missing FK with `ON DELETE CASCADE` and cleans up the 2 orphans. Applied to prod 2026-04-19. Post-fix: `orphan_user_profiles = 0`, FK verified via `pg_constraint`. Future `supabaseAdmin.auth.admin.deleteUser()` calls now fire the full cascade chain without any application-layer cleanup.
+
+  `[Effort: M]` `[Impact: High]` `[Status: ✅ Fixed (migration 0017, 2026-04-19)]`
 
 ---
 
