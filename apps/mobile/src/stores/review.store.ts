@@ -250,7 +250,11 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   loadMissedQueue: () => {
     const { results, queue } = get()
-    const missedIds = new Set(results.filter((r) => r.quality < 3).map((r) => r.kanjiId))
+    // "Missed" must match the SessionComplete `wrong` threshold (totalItems -
+    // correctItems where correct = quality >= 4). Without this alignment,
+    // the "Drill N missed cards" button shows a count that loadMissedQueue
+    // can't actually fill, and returns false (button does nothing).
+    const missedIds = new Set(results.filter((r) => r.quality < 4).map((r) => r.kanjiId))
     const missedCards = queue
       .filter((card) => missedIds.has(card.kanjiId))
       .map((card) => ({ ...card, reviewType: 'meaning' as const })) // reset to meaning for the re-drill

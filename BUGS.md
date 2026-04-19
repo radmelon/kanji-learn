@@ -56,49 +56,28 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 - [ ] **Mnemonic section missing from the study-card reveal drawer (`RevealAllDrawer` / `KanjiCard.tsx`)** — In B121 the Mnemonic section was added to `apps/mobile/app/kanji/[id].tsx` (the main Kanji details page, reachable from Browse / Journal). The study card's reveal flow — opened via the magnifying glass icon mid-session to see the full kanji record — does NOT include a mnemonic section, so users can't access mnemonics without leaving the study session. Expected: the mnemonic section should be in both places, or at minimum the drawer should offer a button to jump to the main details page where the mnemonic lives. Confirmed 2026-04-18 by grepping `Mnemonic` in `KanjiCard.tsx` — zero matches.
 
-  **Fix plan:** Either (a) duplicate the Mnemonic Card block from `kanji/[id].tsx` into the reveal drawer (keeps study flow self-contained), or (b) add a "Open full details" / "Show mnemonic" button in the drawer that pushes `/kanji/{id}` (simpler, reuses the main page). (a) is preferred — the user is already looking at full details and shouldn't have to leave study to see one more section. Use the same `useMnemonics(kanjiId)` hook pattern.
+  **Updated 2026-04-19 — broader scope confirmed by owner:** "The kanji details pages off of the reveal side of study cards is different from the detail cards connected to the Browse feature. The Browse kanji details are superior and should be the normal." The issue isn't just the mnemonic panel — the two details views have drifted apart entirely, and the Browse-originated `/kanji/[id]` is the preferred canonical version. Fix should unify them, not just patch the mnemonic gap.
+
+  **Fix plan (revised):** Consolidate to a single canonical kanji details view. Two options:
+  - **(a) Navigate out to `/kanji/[id]` from the reveal panel.** Replace the custom drawer content in `KanjiCard.tsx` with a button (or gesture) that pushes the main details route. Pros: one page to maintain, automatically picks up every future enhancement (mnemonic, speak icons, etc.). Cons: leaves the study flow; user must tap Back to return to the card.
+  - **(b) Extract `/kanji/[id]` section components (Meanings, Readings, Mnemonic, Example Vocab, Example Sentences, Related Kanji, SRS Progress) into shared components and render them inside the drawer.** Pros: stays in study flow. Cons: more code to extract + keep in sync.
+  - **Recommended:** (a) — simpler, guarantees consistency, and the Back navigation back to the study card is a single tap.
 
   **Affected files:**
-  - `apps/mobile/src/components/study/KanjiCard.tsx` — drawer section insertion
+  - `apps/mobile/src/components/study/KanjiCard.tsx` — remove drawer's custom details render; replace magnifying-glass icon action with `router.push('/kanji/${item.kanjiId}')`
+  - Alternatively (b): extract sections from `apps/mobile/app/kanji/[id].tsx` into `apps/mobile/src/components/kanji/*.tsx`
 
-  Found B121 on-device verification 2026-04-18.
+  Found B121 on-device verification 2026-04-18; scope broadened 2026-04-19.
 
   `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
 
-- [ ] **Session Complete screen persists after returning to Study tab** — After completing a session and tapping "Done" (or navigating back to Dashboard and then tapping "Start Today's Reviews"), the Study tab still shows the previous Session Complete screen instead of loading a fresh queue. The user must force-quit the app to get out of the state.
+- [x] **Session Complete screen persists after returning to Study tab** — ~~FIXED~~ in B123 (commit `a7590cc`). Verified on device 2026-04-19: after completing a 5-card session (with daily goal=5), tapping Back to Dashboard → Start Today's Reviews now shows the daily-goal-complete message; tapping the Study tab loads a fresh 5-card deck. No stale Session Complete screen anywhere. onDone now clears `sessionSummary` + calls `reset()` before navigating.
 
-  **Root cause:** The Session Complete screen renders when the local `sessionSummary` state is non-null ([apps/mobile/app/(tabs)/study.tsx:371](apps/mobile/app/(tabs)/study.tsx:371)). `onDone` at line 375 just calls `router.replace('/(tabs)')` — it does NOT clear `sessionSummary` or call `reset()`. Because Expo Router tabs stay mounted when you navigate between them, the local React state + Zustand state survive, and the stale Session Complete renders again when the user re-enters the Study tab.
+  `[Effort: XS]` `[Impact: High]` `[Status: ✅ Fixed]`
 
-  **Fix:** In `onDone`, before navigating, clear the local summary and reset the review store:
-  ```tsx
-  onDone={() => {
-    setSessionSummary(null)
-    reset()
-    router.replace('/(tabs)')
-  }}
-  ```
-  Alternative (more robust): use `useFocusEffect` on the Study tab so returning to focus with `isComplete: true` auto-triggers a fresh `loadQueue(limit)`.
+- [x] **Study queue ignores `profile.dailyGoal` — hardcoded to 20** — ~~FIXED~~ in B123 (commit `a7590cc`). Verified on device 2026-04-19: user set dailyGoal=5 on their profile; Study tab now loads exactly 5 cards. Fix destructured `dailyGoal` from `useProfile()` (with 20 fallback before the profile loads) and passed it to both `loadQueue` call sites in study.tsx.
 
-  **Affected files:**
-  - `apps/mobile/app/(tabs)/study.tsx` — `onDone`, lines 373–386
-
-  Found B121 fresh-account verification 2026-04-18 (also likely pre-existing, just surfaced by the tight test loop).
-
-  `[Effort: XS]` `[Impact: High]` `[Status: 🐛 Active]`
-
-- [ ] **Study queue ignores `profile.dailyGoal` — hardcoded to 20** — A new user sets daily goal = 5 in onboarding (`app/onboarding.tsx:111` writes `dailyGoal` to the learner profile via the API), but tapping Study starts a 20-card session. Reproduced on a fresh account in B121 TestFlight (2026-04-18).
-
-  **Root cause:** [apps/mobile/app/(tabs)/study.tsx:165](apps/mobile/app/(tabs)/study.tsx:165) calls `loadQueue(20)` with a hardcoded literal, never reading `profile.dailyGoal` from `useProfile()`. Same hardcoded 20 is also used by the offline-retry path on line 334. `useReviewStore.loadQueue` accepts a `limit` parameter but it's never populated from the user's preference.
-
-  **Fix plan:** In `study.tsx`, destructure `dailyGoal` from `useProfile()` and pass it to `loadQueue(dailyGoal)` (and the offline-retry button). Fall back to 20 only if the profile hasn't loaded yet. Mobile-only change; no API or schema work. Also review `loadWeakQueue(20)` to confirm it's intentional or similarly should use the goal.
-
-  **Affected files:**
-  - `apps/mobile/app/(tabs)/study.tsx` (lines 165, 334)
-  - No API change — `loadQueue` already takes a limit.
-
-  Found B121 fresh-account verification 2026-04-18.
-
-  `[Effort: XS]` `[Impact: High]` `[Status: 🐛 Active]`
+  `[Effort: XS]` `[Impact: High]` `[Status: ✅ Fixed]`
 
 - [x] **Save session latency ~45s (observed B121, 2026-04-18) — narrowed to submit path** — User reports that tapping the last grade kicks off a ~45s "Saving session…" spinner before Session Complete appears. Once Dashboard loads after, its auto-refresh takes only ~2–3 seconds. This narrows the bottleneck to the **submit path** (`POST /v1/reviews/submit` and the mobile `finishSession` wrapper), NOT the Dashboard useFocusEffect fan-out (which was suspected earlier but is now ruled out).
 

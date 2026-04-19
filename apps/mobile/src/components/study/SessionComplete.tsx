@@ -63,12 +63,12 @@ export function SessionComplete({ totalItems, correctItems, confidencePct, newLe
               <View style={styles.breakdownItem}>
                 <View style={[styles.breakdownDot, { backgroundColor: colors.success }]} />
                 <Text style={styles.breakdownCount}>{correctItems}</Text>
-                <Text style={styles.breakdownLabel}>correct</Text>
+                <Text style={styles.breakdownLabel}>remembered</Text>
               </View>
               <View style={styles.breakdownItem}>
                 <View style={[styles.breakdownDot, { backgroundColor: colors.error }]} />
                 <Text style={styles.breakdownCount}>{wrong}</Text>
-                <Text style={styles.breakdownLabel}>wrong</Text>
+                <Text style={styles.breakdownLabel}>missed</Text>
               </View>
               <View style={styles.breakdownItem}>
                 <View style={[styles.breakdownDot, { backgroundColor: colors.textMuted }]} />
