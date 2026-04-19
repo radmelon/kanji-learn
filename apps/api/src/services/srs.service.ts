@@ -11,7 +11,7 @@ import { calculateNextReview, createNewCard } from '@kanji-learn/shared'
 import type { Db } from '@kanji-learn/db'
 import type { ReviewResult } from '@kanji-learn/shared'
 import { SURPRISE_BURNED_CHECK_RATE } from '@kanji-learn/shared'
-import { DualWriteService } from './buddy/dual-write.service'
+import { DualWriteService, type ReviewSubmissionInput } from './buddy/dual-write.service'
 import type { SrsStatus } from './buddy/constants'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -194,23 +194,24 @@ export class SrsService {
   /**
    * Submit a batch of review results.
    *
-   * Transaction boundary is PER RESULT, not per session. Each element of
-   * `results` is dispatched to DualWriteService.recordReviewSubmission,
-   * which wraps its four writes (review_logs, user_kanji_progress,
-   * learner_knowledge_state, learner_timeline_events) in a single
-   * transaction. If result N fails:
+   * Transaction boundary is PER SESSION. All writes (review_logs,
+   * user_kanji_progress, learner_knowledge_state, learner_timeline_events)
+   * for the whole session are committed or rolled back together via
+   * `DualWriteService.recordReviewSubmissions`.
    *
-   *   - results [0..N-1] are committed (each individually atomic across
-   *     its app + UKG tables — no partial review state is ever visible)
-   *   - result N and beyond are skipped
-   *   - the review_sessions row is left without completedAt set
+   * Previously the service ran one transaction per review result, which
+   * produced ~7 DB round-trips per card. On cross-region Postgres (us-east-1
+   * API ↔ ap-southeast-2 Supabase) this compounded to ~45 seconds for a
+   * 20-card session. The batched path collapses it to ~6 round-trips for
+   * the whole session regardless of size.
    *
-   * This is deliberate: a single bad kanjiId in a batch of 20 should not
-   * discard the other 19 valid reviews the user just completed. Clients
-   * that retry should be idempotent on already-committed kanjiIds (SM-2
-   * state is a pure function of prior state + quality, so replays reach
-   * the same steady state). See also the class-level DualWriteService
-   * rollback test for the atomicity guarantee of a single review.
+   * Atomicity trade-off: if ANY row fails, the whole session rolls back
+   * (the singular per-review path is still available via
+   * `DualWriteService.recordReviewSubmission` for callers that need
+   * per-review atomicity). The mobile client already retries at the session
+   * level via an offline queue, so session-rollback is transparent in
+   * practice — and kanjiId validation runs before any write, catching the
+   * most likely failure mode before it can abort the session.
    */
   async submitReview(
     userId: string,
@@ -261,10 +262,11 @@ export class SrsService {
       sessionType: 'daily',
     })
 
+    const kanjiIds = results.map((r) => r.kanjiId)
+
     // Batch-fetch the kanji characters for all results in one query so the
     // dual-write call can construct UKG "kanji:<character>" subjects without
     // a per-iteration lookup.
-    const kanjiIds = results.map((r) => r.kanjiId)
     const kanjiRows = kanjiIds.length > 0
       ? await this.db
           .select({ id: kanji.id, character: kanji.character })
@@ -273,14 +275,27 @@ export class SrsService {
       : []
     const charById = new Map(kanjiRows.map((r) => [r.id, r.character]))
 
-    for (const result of results) {
-      const existing = await this.db.query.userKanjiProgress.findFirst({
-        where: and(
-          eq(userKanjiProgress.userId, userId),
-          eq(userKanjiProgress.kanjiId, result.kanjiId)
-        ),
-      })
+    // Batch-fetch all existing UKG rows in ONE query (instead of N findFirst
+    // calls inside the loop). For a 20-card session this alone saves 19
+    // cross-region round trips.
+    const existingRows = kanjiIds.length > 0
+      ? await this.db
+          .select()
+          .from(userKanjiProgress)
+          .where(
+            and(
+              eq(userKanjiProgress.userId, userId),
+              inArray(userKanjiProgress.kanjiId, kanjiIds),
+            )
+          )
+      : []
+    const existingByKanjiId = new Map(existingRows.map((r) => [r.kanjiId, r]))
 
+    // Compute SRS math in-memory for every review, then hand the full batch
+    // to the plural dual-write for a single-transaction persist.
+    const submissionInputs: ReviewSubmissionInput[] = []
+    for (const result of results) {
+      const existing = existingByKanjiId.get(result.kanjiId)
       const prevCard = existing ?? createNewCard()
       const prevStatus = prevCard.status
       const srsResult = calculateNextReview(prevCard, result.quality)
@@ -300,15 +315,13 @@ export class SrsService {
       const character = charById.get(result.kanjiId)
       if (!character) {
         // Defensive — would indicate the client sent a kanjiId that doesn't
-        // exist in the kanji table. Fail loud rather than silently corrupting
-        // the UKG subject.
+        // exist in the kanji table. Fail loud BEFORE opening the transaction
+        // so the whole-session rollback is never triggered by a validation
+        // miss (it's triggered only by real DB failures).
         throw new Error(`SrsService.submitReview: unknown kanjiId ${result.kanjiId}`)
       }
 
-      // Delegate the per-result writes (review_logs + user_kanji_progress
-      // upsert) to DualWriteService so they happen atomically with the
-      // matching UKG mirror (learner_knowledge_state + learner_timeline_events).
-      await this.dualWrite.recordReviewSubmission({
+      submissionInputs.push({
         userId,
         kanjiId: result.kanjiId,
         kanjiCharacter: character,
@@ -328,6 +341,10 @@ export class SrsService {
         },
       })
     }
+
+    // Single transaction with four bulk statements — O(1) round-trips
+    // regardless of session size.
+    await this.dualWrite.recordReviewSubmissions(submissionInputs)
 
     // Mark session complete
     await this.db
