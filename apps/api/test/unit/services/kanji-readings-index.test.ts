@@ -17,4 +17,7 @@ describe('containsCJK', () => {
   it('returns false for an empty string', () => {
     expect(containsCJK('')).toBe(false)
   })
+  it('returns false for a CJK Compatibility Ideographs character (U+F900)', () => {
+    expect(containsCJK('\uF900')).toBe(false)
+  })
 })
