@@ -41,7 +41,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: XS]` `[Impact: High]` `[Status: 🐛 Active]`
 
-- [ ] **Save session latency ~45s (observed B121, 2026-04-18) — narrowed to submit path** — User reports that tapping the last grade kicks off a ~45s "Saving session…" spinner before Session Complete appears. Once Dashboard loads after, its auto-refresh takes only ~2–3 seconds. This narrows the bottleneck to the **submit path** (`POST /v1/reviews/submit` and the mobile `finishSession` wrapper), NOT the Dashboard useFocusEffect fan-out (which was suspected earlier but is now ruled out).
+- [x] **Save session latency ~45s (observed B121, 2026-04-18) — narrowed to submit path** — User reports that tapping the last grade kicks off a ~45s "Saving session…" spinner before Session Complete appears. Once Dashboard loads after, its auto-refresh takes only ~2–3 seconds. This narrows the bottleneck to the **submit path** (`POST /v1/reviews/submit` and the mobile `finishSession` wrapper), NOT the Dashboard useFocusEffect fan-out (which was suspected earlier but is now ruled out).
 
   **Suspected contributors (ranked by likelihood, updated 2026-04-18 with new telemetry):**
   1. **Cross-region sequential-write waterfall in submit loop.** API runs in `us-east-1` (App Runner), Supabase in `ap-southeast-2` (Sydney). Baseline DB RTT ~500ms with TLS. `srs.service.ts::submitReview` likely processes each review sequentially: `review_logs` insert + `user_kanji_progress` SRS upsert + session-summary update. For a 20-card session at 3–5 queries each = 60–100 queries × 500ms = **30–50s**, matching the observed 45s exactly. This is very likely the dominant cause. Migration to us-east-1 is queued as a Pre-Launch item in ENHANCEMENTS.md; even without migration, batching the submit into a single transaction with bulk inserts would collapse the waterfall.
@@ -63,6 +63,10 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   - `apps/api/src/routes/review.ts` — submit handler
   - `apps/api/src/services/srs.service.ts::submitReview` — the per-review upsert logic
   - `apps/mobile/src/stores/review.store.ts::finishSession` — client-side submit + retry
+
+  **Fix shipped 2026-04-18 (commit `d137b9c`, API deploy pending):** Batched the submit path. `DualWriteService.recordReviewSubmissions` (new plural method) opens a single transaction with four bulk statements. `SrsService.submitReview` pre-fetches existing UKG rows with one `findMany` (instead of N `findFirst` calls) and computes SRS math in-memory before a single dual-write call. Round-trips per 20-card session drop from ~145 to ~13 (~12x speedup, ~45s → ~4s on cross-region DB). Session-level atomicity replaces per-review atomicity; the mobile offline queue already handles session-level retry so the trade-off is transparent. 8 new unit tests cover the pure `buildBatchedRowSets` transformation.
+
+  `[Effort: M]` `[Impact: High]` `[Status: ✅ Fixed — awaiting API deploy + next TestFlight test for confirmation]`
 
   Found B121 TestFlight verification, 2026-04-18.
 
