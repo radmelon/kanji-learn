@@ -145,7 +145,7 @@ export async function reviewRoutes(server: FastifyInstance) {
     const { kanjiId, transcript, correctReadings, strict } = body.data
 
     // Evaluate server-side (wanakana + Levenshtein)
-    const result = evaluateReading(transcript, correctReadings, strict)
+    const result = evaluateReading(transcript, correctReadings, strict, server.kanjiReadingsIndex)
 
     // Compute integer Levenshtein distance for the log column
     const distance = Math.abs(

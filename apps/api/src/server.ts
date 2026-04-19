@@ -33,6 +33,7 @@ import { RateLimiter } from './services/llm/rate-limit.js'
 import { createTelemetryWriter } from './services/llm/telemetry.js'
 import { DualWriteService } from './services/buddy/dual-write.service.js'
 import { LearnerStateService } from './services/buddy/learner-state.service.js'
+import { loadKanjiReadingsIndex } from './services/kanji-readings-index.js'
 
 export async function buildServer() {
   const server = Fastify({
@@ -110,12 +111,29 @@ export async function buildServer() {
   const dualWrite = new DualWriteService(db)
   const learnerState = new LearnerStateService(db)
 
+  // ── Kanji readings index for homophone workaround ─────────────────────────
+  const kanjiReadingsIndex = await loadKanjiReadingsIndex(db)
+  server.log.info({ entries: kanjiReadingsIndex.size }, 'kanji-readings-index loaded')
+
+  // Refresh every 6 hours as a safety net (primary refresh is server restart)
+  const refreshInterval = setInterval(async () => {
+    try {
+      const fresh = await loadKanjiReadingsIndex(db)
+      for (const [k, v] of fresh) kanjiReadingsIndex.set(k, v)
+      server.log.info({ entries: kanjiReadingsIndex.size }, 'kanji-readings-index refreshed')
+    } catch (err) {
+      server.log.error({ err }, 'kanji-readings-index refresh failed')
+    }
+  }, 6 * 60 * 60 * 1000)
+  server.addHook('onClose', async () => clearInterval(refreshInterval))
+
   // ── Decorators ────────────────────────────────────────────────────────────
 
   server.decorate('db', db)
   server.decorate('buddyLLM', buddyLLM)
   server.decorate('dualWrite', dualWrite)
   server.decorate('learnerState', learnerState)
+  server.decorate('kanjiReadingsIndex', kanjiReadingsIndex)
 
   // ── Routes ────────────────────────────────────────────────────────────────
 
