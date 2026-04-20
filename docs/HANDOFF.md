@@ -30,8 +30,8 @@ Phase 2 of the Build 3-C umbrella landed — migrations 0019 + 0020 applied to S
 - `e36fd5d` fix(db): use sql.json() for example_vocab writes to prevent jsonb double-encoding
 - `a118498` fix(db): let Drizzle serialize example_sentences directly to prevent jsonb double-encoding
 
-**Prod state after seed + repair (2026-04-20):**
-- `example_vocab`: 2,294 rows, all array-typed (manual repair during session via `#>> '{}'` pattern). Distribution: 2,024 kanji with 5 entries, 146 with 4, 12 with 3, 106 with 2, 6 with 0-1 (rare N1/Jinmeiyō characters where Claude couldn't generate enough self-containing vocab).
+**Prod state after seed + repair + top-up (2026-04-20 — final):**
+- `example_vocab`: 2,294 rows, all array-typed (manual repair during session via `#>> '{}'` pattern, then top-up run for 112 stragglers). Final distribution: **2,120 kanji with 5 entries, 158 with 4, 13 with 3, 3 below-floor (倖=1, 嚇=2, 錬=2 — all N1/Jinmeiyō with unavoidable Claude coverage gaps).** 2,291/2,294 (99.9%) meet the 3-entry floor.
 - `example_sentences`: 2,294 rows, all array-typed (manual repair similarly). Distribution: 1,906 kanji with 5 sentences, 41 with 4, 49 with 3, 53 with 2, 67 with 1, 178 with 0 (rare kanji with no Tatoeba coverage).
 - `kanji.grade`: 2,275 / 2,294 populated (99.2%).
 - `kanji.frequency_rank`: 2,152 / 2,294 (93.8%).
@@ -53,6 +53,7 @@ Both were "papered over" previously by startup `#>> '{}'` repair — those repai
 - `pnpm seed:kanjidic2` — 2,294 rows updated with Kanjidic2 refs
 - `pnpm seed:vocab --force` — 10,752 vocab entries generated across 2,193 kanji (101 had Claude JSON-parse failures and kept prior 2-entry data)
 - `pnpm seed:sentences --force` — 2,116 kanji got Tatoeba sentences; 178 unchanged (no Tatoeba coverage)
+- Post-bug-fix top-up: cleared 112 below-floor vocab rows, re-ran `pnpm seed:vocab` (no `--force`) — 92 filled first pass, 20 hit the same JSON-parse pattern and stayed empty; second run of the 20 filled all cleanly. Net: +109 kanji upgraded from 2-entry pre-seed data to 5-entry.
 
 Total Anthropic API spend for vocab seed: ~$2–3 (Haiku).
 
@@ -136,12 +137,15 @@ Plus a late addition:
 
 ## ⚠️ Immediate security action owed
 
-The Groq + Gemini API keys added to App Runner today came through this chat transcript. Recommended: **rotate both once, post-session**, via the respective provider consoles:
+Three provider keys need rotation from two separate chat exposures over this sprint:
 
-- Groq: https://console.groq.com/keys → Regenerate
-- Gemini (AI Studio): https://aistudio.google.com/app/apikey → Regenerate
+- **Groq** (exposed 2026-04-19 when added to App Runner via chat): https://console.groq.com/keys → Regenerate
+- **Gemini AI Studio** (exposed 2026-04-19 same flow): https://aistudio.google.com/app/apikey → Regenerate
+- **Anthropic** (exposed 2026-04-20 via an unmasked `grep` on `packages/db/.env`): https://console.anthropic.com/settings/keys → Regenerate
 
-Takes ~30 seconds per key. When rotated, I can update App Runner via `aws apprunner update-service` in a single pass.
+Takes ~30 seconds per key. When rotated, ping for a single `aws apprunner update-service` pass to inject the new values + update `.env` locally.
+
+Longer-term follow-up: move all provider keys into AWS Secrets Manager (see ENHANCEMENTS secrets-management entry) and establish a quarterly rotation policy + chat hygiene.
 
 ## 🚦 Next-session first tasks
 
