@@ -21,6 +21,8 @@ import { colors, spacing, radius, typography } from '../../src/theme'
 import type { SrsStatus } from '@kanji-learn/shared'
 import { getRadicalName } from '../../src/constants/radicals'
 import { useMnemonics } from '../../src/hooks/useMnemonics'
+import { useShowPitchAccent } from '../../src/hooks/useShowPitchAccent'
+import { PitchAccentReading } from '../../src/components/kanji/PitchAccentReading'
 
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.9 }
 
@@ -39,6 +41,7 @@ interface VocabExample {
   word: string
   reading: string
   meaning: string
+  pitchPattern?: number[]
 }
 
 interface KanjiDetail {
@@ -119,6 +122,7 @@ export default function KanjiDetail() {
   const [related, setRelated] = useState<RelatedKanji[]>([])
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
   const speakingGroupRef = useRef<string | null>(null)
+  const [showPitchAccent, setShowPitchAccent] = useShowPitchAccent()
 
   // Mnemonics — id from route params is a string; the hook needs a number
   const kanjiId = Number(id)
@@ -380,14 +384,33 @@ export default function KanjiDetail() {
 
           {/* Example Vocabulary */}
           {kanji.exampleVocab.length > 0 && (
-            <Card title="Example Vocabulary">
+            <Card
+              title="Example Vocabulary"
+              headerRight={
+                <TouchableOpacity
+                  style={[styles.pitchToggle, showPitchAccent && styles.pitchToggleActive]}
+                  onPress={() => setShowPitchAccent(!showPitchAccent)}
+                  activeOpacity={0.7}
+                  hitSlop={8}
+                >
+                  <Text style={[styles.pitchToggleText, showPitchAccent && styles.pitchToggleTextActive]}>
+                    Pitch
+                  </Text>
+                </TouchableOpacity>
+              }
+            >
               {kanji.exampleVocab.map((v, i) => {
                 const groupKey = `vocab-${i}`
                 return (
                   <View key={i} style={[styles.vocabRow, i > 0 && styles.vocabRowBorder]}>
                     <View style={styles.vocabLeft}>
                       <Text style={styles.vocabWord}>{v.word}</Text>
-                      <Text style={styles.vocabReading}>{v.reading}</Text>
+                      <PitchAccentReading
+                        reading={v.reading}
+                        pattern={v.pitchPattern}
+                        enabled={showPitchAccent}
+                        size="small"
+                      />
                     </View>
                     <Text style={styles.vocabMeaning}>{v.meaning}</Text>
                     <TouchableOpacity
@@ -551,10 +574,13 @@ const refRowStyles = StyleSheet.create({
 
 // ─── Card sub-component ────────────────────────────────────────────────────────
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children, headerRight }: { title: string; children: React.ReactNode; headerRight?: React.ReactNode }) {
   return (
     <View style={cardStyles.wrapper}>
-      <Text style={cardStyles.title}>{title}</Text>
+      <View style={cardStyles.header}>
+        <Text style={cardStyles.title}>{title}</Text>
+        {headerRight}
+      </View>
       <View style={cardStyles.body}>{children}</View>
     </View>
   )
@@ -562,6 +588,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 const cardStyles = StyleSheet.create({
   wrapper: { gap: spacing.sm },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { ...typography.h3, color: colors.textPrimary },
   body: {
     backgroundColor: colors.bgCard,
@@ -657,6 +684,21 @@ const styles = StyleSheet.create({
   vocabLeft: { gap: 2 },
   vocabWord: { ...typography.h3, color: colors.textPrimary },
   vocabReading: { ...typography.caption, color: colors.textMuted },
+
+  pitchToggle: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  pitchToggleActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accent + '22',
+  },
+  pitchToggleText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  pitchToggleTextActive: { color: colors.accent },
   vocabMeaning: { ...typography.bodySmall, color: colors.textSecondary, flex: 1, textAlign: 'right' },
   speakIcon: { marginLeft: spacing.xs },
 
