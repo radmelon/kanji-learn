@@ -1,7 +1,10 @@
-# Daily-Goal Celebration + Flash-Race Fix — Design
+# Daily-Goal Celebration + Flash-Race Fix + Study-Card Vocab Speak Icons — Design
 
 **Date:** 2026-04-20
-**Scope:** Mobile-only UX work that clarifies daily-goal semantics without changing behaviour. Ships in B126 alongside the PitchAccentReading contrast fix.
+**Scope:** Mobile-only UX polish bundled into B126. Three additive changes plus the already-committed PitchAccentReading contrast fix (`a704ad2`):
+1. Daily-goal celebration + progress indicator (clarifies "am I done for today?" semantics without adding a cap).
+2. Rendering-race fix for the `"All caught up!"` flash.
+3. Speak icons on vocab rows in the study-card reveal panel (parity with the kanji details page).
 **Status:** Design approved during B125 verification discussion. Awaiting implementation plan.
 
 ---
@@ -81,6 +84,20 @@ Side effect accepted: the Study tab will show its loading spinner for ~100ms lon
 
 Corollary: the "All caught up!" copy itself is honest as-is. "No reviews due right now. Come back later." is what it should say when the server returns zero — which will now only happen when it's actually true.
 
+**4. Speak icons on study-card reveal vocab rows (parity gap)**
+
+During B125 verification it was noted that the kanji **details page** (`/kanji/[id]`) has speak icons on every vocab row and sentence row (shipped in B124 commit `dd6c5f7`), but the **study-card reveal panel** (`KanjiCard.tsx`) has speak icons only on the kun/on reading groups, not on vocab rows. This is an oversight from the B124 scope and was missed again when PitchAccentReading was integrated in Phase 4 Task 23.
+
+Fix: in the `exampleVocab.map` block in [`KanjiCard.tsx`](../../apps/mobile/src/components/study/KanjiCard.tsx) around line 316, add a `<SpeakButton>` to each vocab row using the exact existing pattern already in use for kun/on groups at lines 285 and 305:
+
+- `groupKey = `vocab-${i}`` — distinct per vocab entry so the `speakingGroup` state correctly highlights only the active one.
+- `onPress={() => speakSequence([v.word], `vocab-${i}`)}` — reuses the existing `speakSequence` helper and its mount-safety guards.
+- Uses the existing `SpeakButton` component defined later in the file (no new component needed).
+
+Small layout adjustment: the current vocab row is a horizontal flex row ending in the meaning text. The SpeakButton appends cleanly after the meaning — or, if visual tests show the row becoming too crowded in small-screen widths, it can sit at `flex: 1` with the SpeakButton right-aligned. Plan phase picks one after a simulator glance.
+
+No new imports, no new state machinery — the `speakingGroup` / `setSpeakingGroup` refs and the `speakSequence` callback are already in scope at line ~69 and ~161 respectively.
+
 ---
 
 ## Architecture & Data Flow
@@ -135,6 +152,10 @@ After B126 lands in TestFlight:
 3. **Flash-race fix:**
    - Background app for 10+ minutes, reopen, tap Study tab. Should show loading spinner briefly, then cards — never the "All caught up" flash.
    - Genuinely exhausted queue (rare in practice): "All caught up!" still renders when server returns zero.
+4. **Study-card vocab speak icons:**
+   - Start a reading-stage card with non-empty example vocab, reveal the card. Each vocab row shows a speak icon.
+   - Tap a vocab-row speak icon: TTS plays the vocab word in Japanese; icon state cycles (volume-medium-outline → volume-high → back to outline) as on the details page.
+   - Tap a different vocab-row speak icon while one is playing: first one stops, second one starts. (Existing `speakingGroupRef` mutex handles this.)
 
 ---
 
