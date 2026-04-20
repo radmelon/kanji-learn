@@ -38,7 +38,7 @@ import readline from 'node:readline'
 import { execSync } from 'node:child_process'
 import postgres from 'postgres'
 import { drizzle } from 'drizzle-orm/postgres-js'
-import { eq, sql } from 'drizzle-orm'
+import { eq, sql, inArray } from 'drizzle-orm'
 import Anthropic from '@anthropic-ai/sdk'
 import { kanji } from '../schema'
 
@@ -341,12 +341,25 @@ async function main() {
 
   async function flushBatch() {
     if (updates.length === 0) return
-    // Use sql cast to prevent Drizzle double-serializing the array into a JSONB string
     await Promise.all(updates.map(({ id, sentences }) =>
       db.update(kanji)
-        .set({ exampleSentences: sql`${JSON.stringify(sentences)}::jsonb` as any })
+        .set({ exampleSentences: sentences })
         .where(eq(kanji.id, id))
     ))
+
+    // Post-write sanity check — guards against future jsonb-encoding regressions.
+    // If any row wrote as a jsonb string instead of array, log loudly and exit.
+    const ids = updates.map(u => u.id)
+    const checkRows = await db
+      .select({ id: kanji.id, t: sql<string>`jsonb_typeof(example_sentences)` })
+      .from(kanji)
+      .where(inArray(kanji.id, ids))
+    const bad = checkRows.filter(r => r.t !== 'array')
+    if (bad.length > 0) {
+      console.error(`❌  ${bad.length} rows stored example_sentences as ${bad[0].t}, not array: ${bad.map(r => r.id).join(', ')}`)
+      process.exit(1)
+    }
+
     updates.length = 0
   }
 
