@@ -99,6 +99,10 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: XS]` `[Impact: High]` `[Status: ✅ Fixed]`
 
+- [x] **Study queue re-surfaces 20 cards after a profile cache eviction** — ~~FIXED~~ 2026-04-20 (Build 3-C session, commit `a9c91fd`). Distinct from the B123 fix above: root cause here was the `useEffect(..., [])` at `study.tsx:165` firing on mount before `useProfile()` resolved, causing `dailyGoal` to read as its `20` fallback. Reproduces when the app is backgrounded for 1–2 hours (iOS reclaims profile cache) and the user taps Start Today's Reviews cold. Fix gates the effect on `profile` and depends on `[profile]` so it re-fires once the profile hydrates. Ships in B125.
+
+  `[Effort: XS]` `[Impact: Med]` `[Status: ✅ Fixed]`
+
 - [x] **Save session latency ~45s (observed B121, 2026-04-18) — narrowed to submit path** — User reports that tapping the last grade kicks off a ~45s "Saving session…" spinner before Session Complete appears. Once Dashboard loads after, its auto-refresh takes only ~2–3 seconds. This narrows the bottleneck to the **submit path** (`POST /v1/reviews/submit` and the mobile `finishSession` wrapper), NOT the Dashboard useFocusEffect fan-out (which was suspected earlier but is now ruled out).
 
   **Suspected contributors (ranked by likelihood, updated 2026-04-18 with new telemetry):**

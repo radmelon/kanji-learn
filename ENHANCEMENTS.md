@@ -182,6 +182,9 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Accuracy → Confidence Terminology Audit** — ~~SHIPPED~~ in B121 (commit `744dede`). Verified by user on 2026-04-18: Session Complete ring label, Drill Weak Spots dialog, and Progress tab "Confidence colour coding" info panel now read "confidence". Writing/voice practice stats correctly remain "accuracy" (objective scores). Internal variable names and style keys left untouched.
   `[Effort: S]` `[Impact: Low]` `[Backend: No]` `[Status: ✅ Shipped]`
 
+- [x] **Session Complete "confidence" copy + colour bands recalibrated** — ~~SHIPPED~~ 2026-04-20 (Build 3-C session, commits `6a4b74d` + `9c086d2`). Threshold bands shifted from ≥80 / ≥60 to ≥60 / ≥35 so all-Good sessions (67%) now render with the green checkmark + "Solid — consistent recall." copy instead of amber-star "Decent effort — review the misses" (which leaked failure framing when there were zero misses). Weight table unchanged; "confidence" label unchanged. `motivationalMessage` extracted to `SessionComplete.messaging.ts` so the band logic is unit-tested independently of the React render path. Ships in B125.
+  `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
+
 - [x] **Onboarding findHelp Panel: Append Motivational Line** — ~~SHIPPED~~ in B121 (commit `378f85c`). Verified by user on 2026-04-18: onboarding findHelp panel footer now reads "You don't need to memorise any of this now. Studying daily is the key to making progress."
   `[Effort: XS]` `[Impact: Low]` `[Backend: No]` `[Status: ✅ Shipped]`
 
@@ -223,13 +226,68 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Configure Groq & Gemini API keys on App Runner** — ~~SHIPPED~~ 2026-04-19 (App Runner operation `fed113f85bcf4883a6d0d3ad927d2ea5`, SUCCEEDED). `GROQ_API_KEY` + `GEMINI_API_KEY` injected alongside the existing `ANTHROPIC_API_KEY`; post-deploy health check HTTP 200 in 470ms. The LLM router's tier 2 fallback path now has credentials, closing the "Both tier 2 providers failed" failure mode that had caused tutor-report analysis outages earlier in the month.
   `[Effort: XS]` `[Impact: High]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 
-- [ ] **Secrets Management — Rotate API Keys Regularly + Move to Secrets Manager** — As of 2026-04-19 the Anthropic / Groq / Gemini / Supabase service-role / Supabase JWT keys are stored as plaintext env vars on App Runner and mirrored in `apps/api/.env` for local development. This works at today's scale but carries real risk: (a) keys pasted through chat / screen share / support logs can leak; (b) App Runner env vars are visible to anyone with AWS console access to the account — there's no per-variable access control; (c) there's no rotation cadence, so a leaked key stays valid until manually revoked.
+- [ ] **Secrets Management — Rotate Exposed Keys + Move to SSM Parameter Store** — All production secrets are currently stored as plaintext `RuntimeEnvironmentVariables` on App Runner and mirrored in `packages/db/.env` for local development. This works at today's scale but carries real risk: (a) keys pasted through chat / screen share / support logs can leak; (b) App Runner env vars are visible to anyone with AWS console access to the account — there's no per-variable access control; (c) there's no rotation cadence, so a leaked key stays valid until manually revoked; (d) `aws apprunner describe-service` without a scoped `--query` returns the full plaintext map, so routine ops commands can dump secrets into logs.
 
-  **Pre-launch actions:**
-  1. **Immediate one-time rotation** of any key that has been exposed in a chat transcript, screenshot, or support channel — Groq and Gemini keys added 2026-04-19 are the current known examples. Both consoles support one-click regenerate.
-  2. **Migrate all LLM + third-party keys into AWS Secrets Manager** and have App Runner pull via the `aws-secrets:` reference pattern (or via a small startup hook that resolves them at boot). Secrets Manager provides versioning, IAM-scoped access, automatic rotation hooks, and audit logs.
-  3. **Quarterly rotation policy** — calendar-based rotation for every production key, with a runbook in `docs/` that covers (a) how to rotate in the provider console, (b) how to update Secrets Manager + App Runner, (c) how to verify the LLM router still hits each tier after rotation.
-  4. **Chat hygiene** — paste secrets via the provider's own CLI / console flow, not through collaboration channels. For ad-hoc work, set env var in a single shell session and use `aws apprunner update-service` directly.
+  **Known exposure events (2026-04-19 → 2026-04-20):**
+  - 2026-04-19 — `GROQ_API_KEY` and `GEMINI_API_KEY` pasted through chat when being added to App Runner for the first time.
+  - 2026-04-20 — `ANTHROPIC_API_KEY` echoed via an unmasked `grep` on `packages/db/.env`.
+  - 2026-04-20 — `DATABASE_URL` (with Supabase postgres password), `INTERNAL_SECRET`, `SUPABASE_JWT_SECRET`, and `SUPABASE_SERVICE_ROLE_KEY` returned in the response body of an `aws apprunner describe-service` call. **All seven keys now require rotation.**
+
+  **Why SSM Parameter Store over AWS Secrets Manager:**
+  - Standard `SecureString` parameters are **free** under the AWS-managed `aws/ssm` KMS key; Secrets Manager is $0.40/secret/month × 7 secrets = $2.80/mo with no added benefit for this app.
+  - No automated rotation infrastructure needed — quarterly manual rotation is the operating model, not Lambda-driven DB-credential rotation.
+  - 4KB size limit is irrelevant for API keys / connection strings.
+  - App Runner's `RuntimeEnvironmentSecrets` accepts SSM Parameter Store ARNs natively — no startup hook or code change required. At container start, App Runner resolves each ARN and injects the decrypted value as a normal env var. Fastify reads `process.env.GROQ_API_KEY` exactly as today.
+
+  **Current AWS state (verified 2026-04-20):**
+  - App Runner service ARN: `arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654`
+  - `InstanceRoleArn` is already set: `arn:aws:iam::087656010655:role/kanji-learn-apprunner-instance` — **no role creation needed**, just an inline SSM read policy to attach.
+  - `RuntimeEnvironmentSecrets` is currently `null` — clean migration target.
+
+  **Target `RuntimeEnvironmentSecrets` shape (seven entries):**
+  ```jsonc
+  {
+    "GROQ_API_KEY":              "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/groq-api-key",
+    "GEMINI_API_KEY":            "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/gemini-api-key",
+    "ANTHROPIC_API_KEY":         "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/anthropic-api-key",
+    "DATABASE_URL":              "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/database-url",
+    "INTERNAL_SECRET":           "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/internal-secret",
+    "SUPABASE_JWT_SECRET":       "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/supabase-jwt-secret",
+    "SUPABASE_SERVICE_ROLE_KEY": "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/supabase-service-role-key"
+  }
+  ```
+
+  **IAM policy to attach to `kanji-learn-apprunner-instance`:**
+  ```json
+  {
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": ["ssm:GetParameters"],
+      "Resource": "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/*"
+    }]
+  }
+  ```
+  KMS permissions are **not** required for the AWS-managed `aws/ssm` key — roles can decrypt by default. A custom CMK would require an additional `kms:Decrypt` statement.
+
+  **Pre-launch execution checklist:**
+  1. **User rotates all seven exposed keys** in their provider consoles / Supabase dashboard. Supabase JWT secret + service-role key rotation may cascade to `DATABASE_URL` and require coordinated rotation of all Supabase-issued credentials.
+  2. **User creates SSM parameters locally** (value never touches tool output):
+     ```
+     aws ssm put-parameter --name /kanji-learn/prod/groq-api-key \
+       --type SecureString --value "$(cat ~/tmp/groq.key)" --region us-east-1
+     ```
+     Repeat for each of the seven keys.
+  3. Claude attaches the SSM read policy to `kanji-learn-apprunner-instance` (ARN-only, no secret values touch tool output).
+  4. Claude updates App Runner via `aws apprunner update-service` with `apprunner-env.json` that moves all seven variables from `RuntimeEnvironmentVariables` → `RuntimeEnvironmentSecrets`. Response body only echoes ARNs.
+  5. Verify with health check and one provider-exercising call per tier: Groq (tier 2 primary), Gemini (tier 2 fallback), Anthropic (tier 1), Supabase (via any authenticated API route).
+  6. User updates local `packages/db/.env` with the new Anthropic key (and any rotated Supabase values) — user edits directly; Claude never `cat`s.
+  7. **Rotation runbook** at `docs/runbooks/secret-rotation.md` — document the `aws ssm put-parameter --overwrite` + `aws apprunner start-deployment` cycle, add quarterly calendar reminder, include the `--query "Service.InstanceConfiguration.InstanceRoleArn"`-style scoped query patterns.
+
+  **Chat-hygiene rules to enforce going forward:**
+  - Never run `aws apprunner describe-service` / `get-parameter` / `env` dumps without a `--query` scoped to keys or structural fields only.
+  - Never `cat` / `grep` files known to contain secrets (`packages/db/.env`, `apps/mobile/credentials.json`, `*.key`).
+  - Secret rotation is always a user-side action in their own terminal; Claude operates on ARN references only.
 
   `[Effort: M]` `[Impact: High — compliance + breach-risk]` `[Backend: Yes]` `[Status: 🚀 Pre-Launch]`
 
