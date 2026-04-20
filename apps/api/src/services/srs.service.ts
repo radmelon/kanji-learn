@@ -16,8 +16,8 @@ import type { SrsStatus } from './buddy/constants'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type { ReviewQueueItem } from '@kanji-learn/shared'
-import type { ReviewQueueItem } from '@kanji-learn/shared'
+export type { ReviewQueueItem, VoicePrompt, VoicePromptVocab } from '@kanji-learn/shared'
+import type { ReviewQueueItem, VoicePrompt } from '@kanji-learn/shared'
 
 export interface SessionSummary {
   sessionId: string
@@ -27,16 +27,6 @@ export interface SessionSummary {
   newLearned: number
   burned: number
 }
-
-export type VoicePromptVocab = {
-  type: 'vocab'
-  word: string
-  reading: string
-  meaning: string
-  pitchPattern?: number[]
-}
-
-export type VoicePrompt = VoicePromptVocab | { type: 'kanji' }
 
 type ExampleVocabEntry = {
   word: string

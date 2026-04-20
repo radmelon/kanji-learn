@@ -89,6 +89,21 @@ export interface ReviewQueueItem extends ReviewItem {
   morohashiPage: number | null
 }
 
+// ─── Voice prompt (reading-queue items) ───────────────────────────────────────
+// Attached to each /v1/review/reading-queue item by SrsService.getReadingQueue.
+// When the kanji has example vocab, mobile should render vocab-word drilling;
+// otherwise fall back to the legacy kanji-level prompt.
+
+export interface VoicePromptVocab {
+  type: 'vocab'
+  word: string
+  reading: string
+  meaning: string
+  pitchPattern?: number[]
+}
+
+export type VoicePrompt = VoicePromptVocab | { type: 'kanji' }
+
 export interface ReviewResult {
   kanjiId: number
   quality: 0 | 1 | 2 | 3 | 4 | 5
