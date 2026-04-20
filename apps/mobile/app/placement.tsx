@@ -8,10 +8,25 @@ import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { usePlacementStore } from '../src/stores/placement.store'
+import { useShowPitchAccent } from '../src/hooks/useShowPitchAccent'
 import { colors, spacing, radius, typography } from '../src/theme'
 import type { JlptLevel } from '@kanji-learn/shared'
 
 const JLPT_LEVELS: JlptLevel[] = ['N5', 'N4', 'N3', 'N2', 'N1']
+
+/**
+ * Derive the pitch-accent default from placement results.
+ * N5/N4 learners (beginner level) start with pitch off — the NHK overline
+ * notation is extra visual noise before they're fluent with kana. N3/N2/N1
+ * and "unsure" (no levels passed / skipped placement) start with pitch on,
+ * so intermediate+ learners see the feature without needing to discover it.
+ */
+function pitchDefaultFromPlacement(passedByLevel: Record<string, number>): boolean {
+  const passed = JLPT_LEVELS.filter((l) => (passedByLevel[l] ?? 0) > 0)
+  if (passed.length === 0) return true // unsure
+  const highest = passed[passed.length - 1]
+  return highest === 'N3' || highest === 'N2' || highest === 'N1'
+}
 
 export default function PlacementScreen() {
   const router = useRouter()
@@ -24,6 +39,7 @@ export default function PlacementScreen() {
   const [feedback, setFeedback] = useState<null | 'correct' | 'wrong'>(null)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const feedbackOpacity = useRef(new Animated.Value(0)).current
+  const [, setShowPitchAccent] = useShowPitchAccent()
 
   const showFeedback = (correct: boolean) => {
     setFeedback(correct ? 'correct' : 'wrong')
@@ -76,11 +92,14 @@ export default function PlacementScreen() {
   }
 
   const handleSkip = () => {
+    // Skipped placement = "unsure" self-assessment → default pitch overlay on.
+    setShowPitchAccent(true)
     reset()
     router.replace('/(tabs)')
   }
 
   const handleStartStudying = () => {
+    setShowPitchAccent(pitchDefaultFromPlacement(passedByLevel))
     reset()
     router.replace('/(tabs)')
   }
