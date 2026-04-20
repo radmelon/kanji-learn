@@ -13,6 +13,7 @@ export type UserProfile = {
   reminderHour: number
   restDay: number | null
   onboardingCompletedAt: string | null
+  showPitchAccent: boolean
   createdAt: string
   updatedAt: string
 }
