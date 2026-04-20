@@ -89,26 +89,41 @@ On-device verification (B124, 2026-04-19): user spoke "kan" for a reading-stage 
 Status of the rest of Build 3-C:
 - **Phase 2** (data layer): ✅ SHIPPED 2026-04-20 — see section above.
 - **Phase 3** (API `voicePrompt` + `showPitchAccent` PATCH): ✅ SHIPPED 2026-04-20 — see section above.
-- **Phase 4** (mobile vocab-as-prompt + pitch component + toggle, requires B125 EAS build): 🟡 **Tasks 18–20 landed 2026-04-20** — pure helpers + component + hook are merged (see Phase 4 partial section below). Tasks 21–27 (UI integration, onboarding, EAS build) pending.
+- **Phase 4** (mobile vocab-as-prompt + pitch component + toggle): 🚀 **B125 EAS build in flight 2026-04-20** — all code committed (Tasks 18–25). EAS build ID `f027ab70-823e-4143-b15c-7f8d62105358`, auto-submitting to TestFlight. On-device verification (Task 27) pending once TestFlight push lands.
 - **Phase 5** (verification + tracker closure): not started; lands after B125 on-device sign-off.
 
-## Build 3-C Phase 4 — partial (Tasks 18–20 landed 2026-04-20)
+## Build 3-C Phase 4 — code complete; B125 in flight (2026-04-20)
 
-Three commits on main — pure-logic scaffolding for the pitch-accent UI arc. No UI wiring yet, no EAS build.
+All Phase 4 implementation committed to main. EAS build submitted; auto-submit to TestFlight scheduled.
 
-- `25f134c` feat(mobile): mora-alignment helper — splits kana readings into mora-level groups so per-mora pitch patterns align correctly with small-ya/yu/yo combos, sokuon, and katakana. 8 unit tests.
-- `30bfb92` feat(mobile): PitchAccentReading component — NHK-style overline + drop-hook renderer. Three size variants (large/medium/small). Degrades to plain `<Text>` when disabled, pattern missing, or mora/pattern length mismatch. No tests; on-device verification deferred to next Phase 4 run.
-- `f4b6e1d` feat(mobile): useShowPitchAccent hook + UserProfile.showPitchAccent field. **Plan deviation:** replaced the spec's proposed `preferences.store.ts` Zustand store with a thin hook wrapping the existing `useProfile().update()` flow — avoids duplicating server-state in a second store. Tasks 22/24/25 will consume this hook.
+**Pure-logic scaffolding:**
+- `25f134c` feat(mobile): mora-alignment helper — 8 unit tests.
+- `30bfb92` feat(mobile): PitchAccentReading component — NHK overline + drop-hook, 3 size variants.
+- `f4b6e1d` feat(mobile): useShowPitchAccent hook + UserProfile.showPitchAccent field. **Plan deviation:** single source of truth via `useProfile().update()` instead of a duplicate Zustand store.
 
-### Phase 4 tasks still pending (next-session scope)
+**UI integration + onboarding (Tasks 21–25):**
+- `61131a4` feat(mobile): VoiceEvaluator vocab prompt path. **Plan deviation:** voice.tsx is the actual consumer, not study.tsx. Vocab mode renders word + PitchAccentReading + "Say this word" + hint + meaning.
+- `960806a` feat(mobile): kanji details page — vocab readings wrapped in PitchAccentReading; Pitch toggle chip in Example Vocabulary card header; Card sub-component extended with `headerRight` slot. **Plan deviation:** the Rōmaji chip actually lives on KanjiCard, not the details page.
+- `6e0c3da` feat(mobile): study-card reveal panel — vocab readings wrapped in PitchAccentReading. Deprecated RevealAllDrawer untouched.
+- `d9bc2b3` feat(mobile): Profile tab → Study Preferences section with single pitch toggle.
+- `27ef49a` feat(mobile): placement sets pitch default from passedByLevel. **Plan deviation:** onboarding.tsx just routes to placement; level is inferred from test results. N5/N4 → off; N3/N2/N1/unsure → on.
 
-- **Task 21:** Thread `voicePrompt` through `study.tsx` → `VoiceEvaluator.tsx`. Render vocab prompt layout (glyph + `PitchAccentReading` overlay + "Say this word" label + hint) when `voicePrompt?.type === 'vocab'`; fall back to today's kanji-level layout otherwise.
-- **Task 22:** Integrate `PitchAccentReading` on kanji details page; add inline `Pitch` toggle chip next to existing Rōmaji toggle.
-- **Task 23:** Integrate `PitchAccentReading` on study-card reveal panel (vocab + sentence readings).
-- **Task 24:** Profile tab → Study Preferences section with "Show pitch accent markers on readings" toggle bound to `useShowPitchAccent()`.
-- **Task 25:** Onboarding — set `showPitchAccent = false` for N5/N4, `true` for N3+/unsure, when the profile is created.
-- **Task 26:** Cut B125 EAS build with `--auto-submit`. Verify `eas-cli` ≥ 18.7.0. **~$2 cost; hard commit point.**
-- **Task 27:** On-device verification against Phase 4 exit criteria (reading card surfaces vocab, pitch overlay toggles, 20-card session daily_stats match, etc.).
+**B125 EAS build (2026-04-20):**
+- Build ID: `f027ab70-823e-4143-b15c-7f8d62105358`
+- Logs: https://expo.dev/accounts/radmelon/projects/kanji-learn/builds/f027ab70-823e-4143-b15c-7f8d62105358
+- Submission: `c8ba5295-56b7-440c-ad1e-a887e98c2b07` (auto-submit to TestFlight)
+- 100% of monthly EAS credits used; this build is pay-as-you-go (~$2).
+
+**Task 27 — on-device verification checklist (user-side, once B125 is in TestFlight):**
+- Reading-stage card surfaces a vocab word with PitchAccentReading overlay; mic accepts the vocab reading.
+- Pitch toggle OFF hides overline on all three surfaces: study-card reveal, kanji details, VoiceEvaluator vocab layout.
+- Kanji details shows 5–10 vocab entries, all containing the target kanji (B4 closure confirmation).
+- Rōmaji toggle still works on KanjiCard.
+- Pitch chip in kanji-details Example Vocabulary header toggles the state across surfaces.
+- 20-card reading session → daily_stats.reviewed matches server.
+- Placement test: completing at N3+ defaults pitch ON; skip defaults pitch ON; completing at N5/N4 defaults pitch OFF.
+
+**Local-dev tooling status:** user has been direct-to-prod because iOS local dev has been flakey (`ios/Pods` wiped, last successful Xcode build Apr 10). Fixable separately; `pod install` + `pnpm ios` is the starting point but may need a multi-step tooling pass. Not on the critical path for Build 3-C; tracked as a post-launch cleanup item.
 
 Plan entry point: [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md) § Phase 4 (Tasks 21–27).
 
@@ -194,7 +209,7 @@ Phase 3 of Build 3-C landed — API now attaches `voicePrompt` to every `/v1/rev
 
 ## 🚦 Next-session first tasks
 
-1. **Finish Build 3-C Phase 4 (mobile)** — Tasks 18–20 landed 2026-04-20 (see partial section above). Remaining: Tasks 21–27 (UI integration + onboarding + B125 EAS build + on-device verification) in [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md). Full-focus session. EAS build (~$2, Task 26) is the hard commit point — make sure Tasks 21–25 are visually polished in a simulator run before cutting B125.
+1. **Verify B125 on device** (Task 27 exit criteria above). If visuals need polish, queue a B126 with the tweaks. If all surfaces pass, flip Build 3-C Phase 5 tracker items: close B4 (kanji-doesn't-contain-itself), flip E5 / E6 / speak-icons to `✅ Shipped`, flip the homophone bug fully Fixed, and update the Phase 4 entries in ENHANCEMENTS.md.
 2. **Rotate secrets** — seven keys exposed this sprint (Groq + Gemini + Anthropic + Supabase DATABASE_URL/JWT_SECRET/SERVICE_ROLE_KEY + INTERNAL_SECRET). See ROADMAP.md / ENHANCEMENTS.md "Secrets Management" for the rotation order and the SSM Parameter Store migration plan.
 3. **Verify B124 amber reading-prompt cue** once a reading-stage card surfaces naturally in normal study; close the amber-cue enhancement after.
 4. **(Optional follow-up)** Re-run `pnpm seed:vocab` (no `--force`) to top up the 6 kanji with <3 vocab entries, now that the write bug is fixed.
@@ -244,9 +259,9 @@ After Option C ships AND the daily-push-notifications bug is fixed. Fixing that 
 ```
 cd /Users/rdennis/Documents/projects/kanji-learn
 git pull origin main
-# 1. Resume Build 3-C Phase 4 at Task 21 — plan: docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md § Phase 4 (Tasks 21–27)
-# 2. Tasks 18–20 already shipped 2026-04-20 (mora-alignment helper, PitchAccentReading component, useShowPitchAccent hook). Remaining is UI integration + onboarding + B125 EAS build.
-# 3. Before EAS build (Task 26), run Tasks 21–25 in a simulator — B125 cut is the ~$2 commit point
+# 1. Check B125 status in TestFlight and run Task 27 verification checklist (see Phase 4 section above)
+# 2. If visuals pass, close Build 3-C: flip B4 and homophone bug to ✅ Fixed, mark E5/E6/speak-icons ✅ Shipped
+# 3. If visuals need polish, queue a B126 with the tweaks (~$2 again — still pay-as-you-go until credits reset)
 # 4. Rotate the 7 exposed secrets at any natural checkpoint (ROADMAP.md "Secrets Management" has the runbook)
 ```
 
