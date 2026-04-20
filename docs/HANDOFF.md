@@ -1,9 +1,9 @@
-# Session Handoff — 2026-04-20 (Build 3-C Phases 1 + 2 shipped)
+# Session Handoff — 2026-04-20 (Build 3-C Phases 1 + 2 + 3 shipped)
 
 ## Current State
 
-**Branch:** `main` — Build 3-C Phase 1 (server homophone workaround) shipped and verified.
-**Latest TestFlight build:** **B124** (iOS) — unchanged; Phase 1 is server-only and applies to the existing B124 build in testers' hands.
+**Branch:** `main` — Build 3-C Phases 1 + 2 + 3 shipped. Only Phase 4 (mobile) remains before B125.
+**Latest TestFlight build:** **B124** (iOS) — unchanged; Phases 1–3 are all server/shared-only. Phase 4 will cut B125.
 **API:** App Runner `us-east-1` — Phase 1 shipped via two deploys:
 - op `53710d9b…` — initial Phase 1 deploy (2026-04-19 15:59→16:03 PT, SUCCEEDED).
 - op `e24febc1…` — hotfix normalizing expanded candidates through hiragana before comparison (fixed katakana on-yomi mismatch caught during on-device verification). Deploy 16:16→16:20 PT, SUCCEEDED, health check HTTP 200 in 409ms.
@@ -88,9 +88,9 @@ On-device verification (B124, 2026-04-19): user spoke "kan" for a reading-stage 
 
 Status of the rest of Build 3-C:
 - **Phase 2** (data layer): ✅ SHIPPED 2026-04-20 — see section above.
-- **Phase 3** (API `getReadingQueue` voicePrompt field): not started. Small (~0.3 session).
-- **Phase 4** (mobile vocab-as-prompt + pitch component + toggle, requires B125 EAS build): not started.
-- **Phase 5** (verification + tracker closure): not started.
+- **Phase 3** (API `voicePrompt` + `showPitchAccent` PATCH): ✅ SHIPPED 2026-04-20 — see section above.
+- **Phase 4** (mobile vocab-as-prompt + pitch component + toggle, requires B125 EAS build): not started. Next-session focus.
+- **Phase 5** (verification + tracker closure): not started; lands after B125 on-device sign-off.
 
 ## What shipped this session (earlier, pre-Build-3-C)
 
@@ -147,13 +147,29 @@ Takes ~30 seconds per key. When rotated, ping for a single `aws apprunner update
 
 Longer-term follow-up: move all provider keys into AWS Secrets Manager (see ENHANCEMENTS secrets-management entry) and establish a quarterly rotation policy + chat hygiene.
 
+## Build 3-C Phase 3 — API contract (SHIPPED 2026-04-20)
+
+Phase 3 of Build 3-C landed — API now attaches `voicePrompt` to every `/v1/review/reading-queue` item (round-robin by `repetitions`) and accepts `showPitchAccent` in the PATCH `/v1/user/profile` validator. No user-visible change on its own; this is the API contract Phase 4 mobile depends on.
+
+**Code commits (3):**
+- `474ad94` feat(api): attach voicePrompt to reading queue (round-robin by repetitions)
+- `b60c2ba` feat(shared): export VoicePrompt types from @kanji-learn/shared
+- `43c8f9d` feat(api): allow showPitchAccent in PATCH /v1/user/profile
+
+**Plan deviation to note:** Phase 3 Task 15 called for `userKanjiProgress.reviewCount`, which doesn't exist in the schema — only `repetitions` (SM-2 consecutive-success counter) does. Used `repetitions` as the rotation index. Zero-cost, migration-free, good-enough variety. If strict monotonic round-robin ever matters, add a `review_count` column later.
+
+**Deploy:** App Runner op `24f17892fa1e4641bc4c2d1a8a39974c` — SUCCEEDED in ~4.5 min. Health check HTTP 200 in 427ms. Both new surfaces reachable (401 unauthed, as expected).
+
+**Test status:** 169/170 unit + integration tests pass. The 1 remaining failure (`user-delete` test, `learner_identity_pkey` duplicate) is a test-pollution issue unrelated to Phase 3 — pre-existing, will clear with a fresh TEST_DATABASE reset.
+
+**Local dev DB fix:** migration 0020 (`user_profiles.show_pitch_accent`) applied to `TEST_DATABASE_URL` this session; `.env.test`-backed integration tests now clear the 3 `show_pitch_accent column does not exist` errors they previously failed on.
+
 ## 🚦 Next-session first tasks
 
-1. **Decide Build 3-C Phase 3 timing.** Phases 1 + 2 are shipped. Phase 3 is the API change that attaches `voicePrompt` to `/v1/review/reading-queue` + allows `showPitchAccent` in the user profile PATCH. Small scope (~0.3 session). Ships no user-visible change on its own — it's the API contract Phase 4 mobile depends on. Can go at any time.
-2. **Rotate secrets** — both the Groq + Gemini keys from 2026-04-19 AND the Anthropic key exposed in this session (see Security action owed above).
-3. **Verify B124 amber reading-prompt cue** once a reading-stage card surfaces naturally in normal study.
-4. **Close the amber-cue enhancement** after step 3.
-5. **(Optional follow-up)** Re-run `pnpm seed:vocab` (no `--force`) to top up the 6 kanji with <3 vocab entries, now that the write bug is fixed. Expected cost: negligible — only processes rows with empty example_vocab OR those still below floor.
+1. **Start Build 3-C Phase 4 (mobile)** — the last phase of the umbrella. Tasks 18–27 in [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md). New mora-alignment helper + PitchAccentReading component + preferences store + 4 UI integrations + onboarding default + B125 EAS build + on-device verification. Full-focus session; don't tail-end. EAS build (~$2, Task 26) is the hard commit point — keep Tasks 18–25 tested before cutting B125.
+2. **Rotate secrets** — seven keys exposed this sprint (Groq + Gemini + Anthropic + Supabase DATABASE_URL/JWT_SECRET/SERVICE_ROLE_KEY + INTERNAL_SECRET). See ROADMAP.md / ENHANCEMENTS.md "Secrets Management" for the rotation order and the SSM Parameter Store migration plan.
+3. **Verify B124 amber reading-prompt cue** once a reading-stage card surfaces naturally in normal study; close the amber-cue enhancement after.
+4. **(Optional follow-up)** Re-run `pnpm seed:vocab` (no `--force`) to top up the 6 kanji with <3 vocab entries, now that the write bug is fixed.
 
 ## Build 3 recommendation — Option C (Data enrichment)
 
@@ -200,9 +216,9 @@ After Option C ships AND the daily-push-notifications bug is fixed. Fixing that 
 ```
 cd /Users/rdennis/Documents/projects/kanji-learn
 git pull origin main
-# 1. Rotate Groq + Gemini keys in their consoles; ping controller to update App Runner
-# 2. Decide whether to run Build 3-C Phase 2 (data layer) or pause to let Phase 1 bake on device
-# 3. Phase 2 entry point: docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md § Phase 2 (Tasks 8–14)
+# 1. Start Build 3-C Phase 4 (mobile) — plan: docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md § Phase 4 (Tasks 18–27)
+# 2. Before EAS build (Task 26), confirm Tasks 18–25 tested and UI polished — B125 cut is the ~$2 commit point
+# 3. Rotate the 7 exposed secrets at any natural checkpoint (ROADMAP.md "Secrets Management" has the runbook)
 ```
 
 ---
