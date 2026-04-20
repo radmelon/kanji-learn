@@ -18,6 +18,7 @@ import { useTutorSharing } from '../../src/hooks/useTutorSharing'
 import { useLearnerProfile } from '../../src/hooks/useLearnerProfile'
 import { COUNTRIES, ONBOARDING_CONTENT } from '../../src/config/onboarding-content'
 import { DeleteAccountModal } from '../../src/components/profile/DeleteAccountModal'
+import { useShowPitchAccent } from '../../src/hooks/useShowPitchAccent'
 
 const PROFILE_CACHE_KEY = 'kl:profile_cache'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -455,6 +456,9 @@ export default function ProfileScreen() {
             </>
           )}
         </Section>
+
+        {/* Study Preferences */}
+        <StudyPreferencesSection />
 
         {/* Apple Watch */}
         <Section title="Apple Watch">
@@ -1094,6 +1098,31 @@ function Section({
       </View>
       <View style={styles.sectionBody}>{children}</View>
     </View>
+  )
+}
+
+// ─── Study Preferences sub-section ─────────────────────────────────────────────
+
+function StudyPreferencesSection() {
+  const [showPitchAccent, setShowPitchAccent] = useShowPitchAccent()
+  return (
+    <Section title="Study Preferences">
+      <View style={styles.row}>
+        <View style={styles.rowLeft}>
+          <Ionicons name="musical-notes-outline" size={20} color={colors.textSecondary} />
+          <View>
+            <Text style={styles.rowLabel}>Show pitch accent</Text>
+            <Text style={styles.rowSub}>Overlay NHK-style pitch marks on vocab readings</Text>
+          </View>
+        </View>
+        <Switch
+          value={showPitchAccent}
+          onValueChange={(v) => { setShowPitchAccent(v) }}
+          trackColor={{ false: colors.border, true: colors.primary }}
+          thumbColor="#fff"
+        />
+      </View>
+    </Section>
   )
 }
 
