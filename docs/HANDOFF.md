@@ -89,8 +89,36 @@ On-device verification (B124, 2026-04-19): user spoke "kan" for a reading-stage 
 Status of the rest of Build 3-C:
 - **Phase 2** (data layer): ✅ SHIPPED 2026-04-20 — see section above.
 - **Phase 3** (API `voicePrompt` + `showPitchAccent` PATCH): ✅ SHIPPED 2026-04-20 — see section above.
-- **Phase 4** (mobile vocab-as-prompt + pitch component + toggle, requires B125 EAS build): not started. Next-session focus.
+- **Phase 4** (mobile vocab-as-prompt + pitch component + toggle, requires B125 EAS build): 🟡 **Tasks 18–20 landed 2026-04-20** — pure helpers + component + hook are merged (see Phase 4 partial section below). Tasks 21–27 (UI integration, onboarding, EAS build) pending.
 - **Phase 5** (verification + tracker closure): not started; lands after B125 on-device sign-off.
+
+## Build 3-C Phase 4 — partial (Tasks 18–20 landed 2026-04-20)
+
+Three commits on main — pure-logic scaffolding for the pitch-accent UI arc. No UI wiring yet, no EAS build.
+
+- `25f134c` feat(mobile): mora-alignment helper — splits kana readings into mora-level groups so per-mora pitch patterns align correctly with small-ya/yu/yo combos, sokuon, and katakana. 8 unit tests.
+- `30bfb92` feat(mobile): PitchAccentReading component — NHK-style overline + drop-hook renderer. Three size variants (large/medium/small). Degrades to plain `<Text>` when disabled, pattern missing, or mora/pattern length mismatch. No tests; on-device verification deferred to next Phase 4 run.
+- `f4b6e1d` feat(mobile): useShowPitchAccent hook + UserProfile.showPitchAccent field. **Plan deviation:** replaced the spec's proposed `preferences.store.ts` Zustand store with a thin hook wrapping the existing `useProfile().update()` flow — avoids duplicating server-state in a second store. Tasks 22/24/25 will consume this hook.
+
+### Phase 4 tasks still pending (next-session scope)
+
+- **Task 21:** Thread `voicePrompt` through `study.tsx` → `VoiceEvaluator.tsx`. Render vocab prompt layout (glyph + `PitchAccentReading` overlay + "Say this word" label + hint) when `voicePrompt?.type === 'vocab'`; fall back to today's kanji-level layout otherwise.
+- **Task 22:** Integrate `PitchAccentReading` on kanji details page; add inline `Pitch` toggle chip next to existing Rōmaji toggle.
+- **Task 23:** Integrate `PitchAccentReading` on study-card reveal panel (vocab + sentence readings).
+- **Task 24:** Profile tab → Study Preferences section with "Show pitch accent markers on readings" toggle bound to `useShowPitchAccent()`.
+- **Task 25:** Onboarding — set `showPitchAccent = false` for N5/N4, `true` for N3+/unsure, when the profile is created.
+- **Task 26:** Cut B125 EAS build with `--auto-submit`. Verify `eas-cli` ≥ 18.7.0. **~$2 cost; hard commit point.**
+- **Task 27:** On-device verification against Phase 4 exit criteria (reading card surfaces vocab, pitch overlay toggles, 20-card session daily_stats match, etc.).
+
+Plan entry point: [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md) § Phase 4 (Tasks 21–27).
+
+## Build 3-C Session Complete rebalance + dailyGoal race fix (SHIPPED 2026-04-20)
+
+Small bundled fix that ships in B125 alongside Phase 4. Motivational copy + colour bands rebalanced so all-Good sessions (67%) render green "Solid — consistent recall" instead of amber "Decent effort — review the misses". Also fixes the `study.tsx` useEffect race that surfaced 20-card queues when profile cache was evicted.
+
+- Spec: [docs/superpowers/specs/2026-04-20-session-complete-feedback-rebalance-design.md](superpowers/specs/2026-04-20-session-complete-feedback-rebalance-design.md)
+- Plan: [docs/superpowers/plans/2026-04-20-session-complete-feedback-rebalance.md](superpowers/plans/2026-04-20-session-complete-feedback-rebalance.md)
+- Commits: `6a4b74d`, `9c086d2`, `a9c91fd`, `70d1edb`
 
 ## What shipped this session (earlier, pre-Build-3-C)
 
@@ -166,7 +194,7 @@ Phase 3 of Build 3-C landed — API now attaches `voicePrompt` to every `/v1/rev
 
 ## 🚦 Next-session first tasks
 
-1. **Start Build 3-C Phase 4 (mobile)** — the last phase of the umbrella. Tasks 18–27 in [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md). New mora-alignment helper + PitchAccentReading component + preferences store + 4 UI integrations + onboarding default + B125 EAS build + on-device verification. Full-focus session; don't tail-end. EAS build (~$2, Task 26) is the hard commit point — keep Tasks 18–25 tested before cutting B125.
+1. **Finish Build 3-C Phase 4 (mobile)** — Tasks 18–20 landed 2026-04-20 (see partial section above). Remaining: Tasks 21–27 (UI integration + onboarding + B125 EAS build + on-device verification) in [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md). Full-focus session. EAS build (~$2, Task 26) is the hard commit point — make sure Tasks 21–25 are visually polished in a simulator run before cutting B125.
 2. **Rotate secrets** — seven keys exposed this sprint (Groq + Gemini + Anthropic + Supabase DATABASE_URL/JWT_SECRET/SERVICE_ROLE_KEY + INTERNAL_SECRET). See ROADMAP.md / ENHANCEMENTS.md "Secrets Management" for the rotation order and the SSM Parameter Store migration plan.
 3. **Verify B124 amber reading-prompt cue** once a reading-stage card surfaces naturally in normal study; close the amber-cue enhancement after.
 4. **(Optional follow-up)** Re-run `pnpm seed:vocab` (no `--force`) to top up the 6 kanji with <3 vocab entries, now that the write bug is fixed.
@@ -216,9 +244,10 @@ After Option C ships AND the daily-push-notifications bug is fixed. Fixing that 
 ```
 cd /Users/rdennis/Documents/projects/kanji-learn
 git pull origin main
-# 1. Start Build 3-C Phase 4 (mobile) — plan: docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md § Phase 4 (Tasks 18–27)
-# 2. Before EAS build (Task 26), confirm Tasks 18–25 tested and UI polished — B125 cut is the ~$2 commit point
-# 3. Rotate the 7 exposed secrets at any natural checkpoint (ROADMAP.md "Secrets Management" has the runbook)
+# 1. Resume Build 3-C Phase 4 at Task 21 — plan: docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md § Phase 4 (Tasks 21–27)
+# 2. Tasks 18–20 already shipped 2026-04-20 (mora-alignment helper, PitchAccentReading component, useShowPitchAccent hook). Remaining is UI integration + onboarding + B125 EAS build.
+# 3. Before EAS build (Task 26), run Tasks 21–25 in a simulator — B125 cut is the ~$2 commit point
+# 4. Rotate the 7 exposed secrets at any natural checkpoint (ROADMAP.md "Secrets Management" has the runbook)
 ```
 
 ---
