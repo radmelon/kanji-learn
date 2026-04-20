@@ -24,10 +24,14 @@ interface Props {
   size?: Size
 }
 
+// Explicit text colour is required — React Native's default is black, which
+// is invisible on this app's dark card backgrounds and fails WCAG 2.1 AA.
+// colors.textPrimary (#F0F0F5) on bgCard (#1A1A2E) is ~15.5:1 — well above
+// AA's 4.5:1 threshold for normal text.
 const SIZE_STYLES: Record<Size, TextStyle> = {
-  large:  { fontSize: 22, lineHeight: 30, letterSpacing: 1 },
-  medium: { fontSize: 16, lineHeight: 22, letterSpacing: 1 },
-  small:  { fontSize: 13, lineHeight: 18, letterSpacing: 1 },
+  large:  { fontSize: 22, lineHeight: 30, letterSpacing: 1, color: colors.textPrimary },
+  medium: { fontSize: 16, lineHeight: 22, letterSpacing: 1, color: colors.textPrimary },
+  small:  { fontSize: 13, lineHeight: 18, letterSpacing: 1, color: colors.textPrimary },
 }
 
 export function PitchAccentReading({ reading, pattern, enabled, size = 'medium' }: Props) {
