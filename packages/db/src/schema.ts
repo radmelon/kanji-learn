@@ -124,6 +124,11 @@ export const kanji = pgTable(
     morohashiVolume:  smallint('morohashi_volume'),                 // Volume 1–13
     morohashiPage:    smallint('morohashi_page'),                   // Page within volume
 
+    // ── Kanjidic2 additional references (migration 0019, 2026-04-19) ────────
+    grade:            smallint('grade'),
+    frequencyRank:    smallint('frequency_rank'),
+    hadamitzkySpahn:  integer('hadamitzky_spahn'),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
