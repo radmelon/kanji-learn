@@ -167,7 +167,7 @@ async function generateVocabBatch(batch: KanjiRow[]): Promise<Map<number, VocabI
 
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
+    max_tokens: 4096,
     messages: [{
       role: 'user',
       content: `For each kanji below, give exactly ${TARGET_VOCAB_PER_KANJI} common Japanese vocabulary words that use that kanji. Format as JSON array of objects with keys: id (the number before the kanji), word (kanji+kana), reading (hiragana), meaning (English).
@@ -216,7 +216,7 @@ Include exactly ${TARGET_VOCAB_PER_KANJI} entries per kanji id. No markdown, no 
 
 function getSeedOutputDir(): string {
   const here = dirname(fileURLToPath(import.meta.url))
-  return resolve(here, '../../../seed-output')
+  return resolve(here, '../../seed-output')
 }
 
 function getGitSha(): string {
