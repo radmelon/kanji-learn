@@ -105,7 +105,7 @@ export const kanji = pgTable(
     kunReadings: jsonb('kun_readings').$type<string[]>().notNull().default([]),
     onReadings: jsonb('on_readings').$type<string[]>().notNull().default([]),
     exampleVocab: jsonb('example_vocab')
-      .$type<{ word: string; reading: string; meaning: string }[]>()
+      .$type<{ word: string; reading: string; meaning: string; pitchPattern?: number[] }[]>()
       .notNull()
       .default([]),
     exampleSentences: jsonb('example_sentences')

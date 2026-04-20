@@ -1,0 +1,2 @@
+# Build artifacts; only README.md is committed
+*.json
