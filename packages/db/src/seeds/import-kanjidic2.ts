@@ -31,13 +31,16 @@ const LOCAL_PATH    = '/tmp/kanjidic2.xml'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface KanjiEntry {
-  literal:         string
-  jisCode:         string | null
-  nelsonClassic:   number | null
-  nelsonNew:       number | null
-  morohashiIndex:  number | null
-  morohashiVolume: number | null
-  morohashiPage:   number | null
+  literal:          string
+  jisCode:          string | null
+  nelsonClassic:    number | null
+  nelsonNew:        number | null
+  morohashiIndex:   number | null
+  morohashiVolume:  number | null
+  morohashiPage:    number | null
+  grade:            number | null  // <grade>: 1-6 elementary, 8 other Jouyou, 9-10 Jinmeiyou
+  frequencyRank:    number | null  // <freq>: Mainichi Shimbun rank, 1 = most common
+  hadamitzkySpahn:  number | null  // <dic_ref dr_type="sh_kk2"> with sh_kk fallback
 }
 
 // ─── Download ─────────────────────────────────────────────────────────────────
@@ -100,24 +103,43 @@ function parseKanjidic2(xml: string): Map<string, KanjiEntry> {
     const nelsonNEntry = dicRefs.find((d) => d['@_dr_type'] === 'nelson_n')
     const moroEntry    = dicRefs.find((d) => d['@_dr_type'] === 'moro')
 
+    // Hadamitzky-Spahn: prefer sh_kk2 (2nd ed), fall back to sh_kk (1st ed)
+    const shKk2Entry     = dicRefs.find((d) => d['@_dr_type'] === 'sh_kk2')
+    const shKkEntry      = dicRefs.find((d) => d['@_dr_type'] === 'sh_kk')
+    const hadamitzkyEntry = shKk2Entry ?? shKkEntry
+
     // Guard: Number() returns NaN for objects/undefined — map those to null
     const toInt = (v: unknown): number | null => {
       const n = Number(v)
       return isNaN(n) ? null : n
     }
 
+    // ── Misc fields (grade, freq) ─────────────────────────────────────────
+    const misc = c.misc as Record<string, unknown> | undefined
+    const grade       = misc?.grade != null ? toInt(misc.grade) : null
+    const frequencyRank = misc?.freq != null ? toInt(misc.freq) : null
+
     map.set(literal, {
       literal,
       jisCode,
-      nelsonClassic:   nelsonCEntry  ? toInt(nelsonCEntry['#text'])  : null,
-      nelsonNew:       nelsonNEntry  ? toInt(nelsonNEntry['#text'])  : null,
-      morohashiIndex:  moroEntry     ? toInt(moroEntry['#text'])     : null,
+      nelsonClassic:   nelsonCEntry    ? toInt(nelsonCEntry['#text'])    : null,
+      nelsonNew:       nelsonNEntry    ? toInt(nelsonNEntry['#text'])    : null,
+      morohashiIndex:  moroEntry       ? toInt(moroEntry['#text'])       : null,
       morohashiVolume: moroEntry?.['@_m_vol']  ? toInt(moroEntry['@_m_vol'])  : null,
       morohashiPage:   moroEntry?.['@_m_page'] ? toInt(moroEntry['@_m_page']) : null,
+      grade,
+      frequencyRank,
+      hadamitzkySpahn: hadamitzkyEntry ? toInt(hadamitzkyEntry['#text']) : null,
     })
   }
 
-  console.log(`✓  Parsed ${map.size} entries from KANJIDIC2.`)
+  let withGrade = 0, withFreq = 0, withHadamitzky = 0
+  for (const entry of map.values()) {
+    if (entry.grade != null) withGrade++
+    if (entry.frequencyRank != null) withFreq++
+    if (entry.hadamitzkySpahn != null) withHadamitzky++
+  }
+  console.log(`✓  Parsed ${map.size} entries (grade: ${withGrade}, freq: ${withFreq}, sh_kk: ${withHadamitzky}).`)
   return map
 }
 
@@ -143,12 +165,15 @@ async function enrichKanji(entries: Map<string, KanjiEntry>): Promise<void> {
     await db
       .update(kanji)
       .set({
-        jisCode:         entry.jisCode,
-        nelsonClassic:   entry.nelsonClassic,
-        nelsonNew:       entry.nelsonNew,
-        morohashiIndex:  entry.morohashiIndex,
-        morohashiVolume: entry.morohashiVolume,
-        morohashiPage:   entry.morohashiPage,
+        jisCode:          entry.jisCode,
+        nelsonClassic:    entry.nelsonClassic,
+        nelsonNew:        entry.nelsonNew,
+        morohashiIndex:   entry.morohashiIndex,
+        morohashiVolume:  entry.morohashiVolume,
+        morohashiPage:    entry.morohashiPage,
+        grade:            entry.grade,
+        frequencyRank:    entry.frequencyRank,
+        hadamitzkySpahn:  entry.hadamitzkySpahn,
       })
       .where(eq(kanji.id, k.id))
 
