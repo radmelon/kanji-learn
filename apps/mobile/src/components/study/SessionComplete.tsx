@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors, spacing, radius, typography } from '../../theme'
+import { motivationalMessage } from './SessionComplete.messaging'
 
 interface Props {
   totalItems: number
@@ -23,20 +24,10 @@ function formatTime(ms: number): string {
   return `${mins}m ${secs}s`
 }
 
-function motivationalMessage(accuracy: number, burned: number): string {
-  if (burned > 0) return `🔥 ${burned} kanji burned — locked into long-term memory!`
-  if (accuracy === 100) return 'Perfect session — flawless execution!'
-  if (accuracy >= 90) return 'Outstanding! Near-perfect recall.'
-  if (accuracy >= 80) return 'Great work — solid retention.'
-  if (accuracy >= 70) return 'Good session — keep the streak going.'
-  if (accuracy >= 60) return 'Decent effort — review the misses.'
-  return 'Tough session — come back tomorrow and you\'ll improve.'
-}
-
 export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview }: Props) {
   const accuracy = confidencePct
   const wrong = totalItems - correctItems
-  const accColor = accuracy >= 80 ? colors.success : accuracy >= 60 ? colors.warning : colors.error
+  const accColor = accuracy >= 60 ? colors.success : accuracy >= 35 ? colors.warning : colors.error
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -44,7 +35,7 @@ export function SessionComplete({ totalItems, correctItems, confidencePct, newLe
         {/* Hero */}
         <View style={styles.hero}>
           <Ionicons
-            name={accuracy >= 80 ? 'checkmark-circle' : accuracy >= 60 ? 'star' : 'refresh-circle'}
+            name={accuracy >= 60 ? 'checkmark-circle' : accuracy >= 35 ? 'star' : 'refresh-circle'}
             size={72}
             color={accColor}
           />
