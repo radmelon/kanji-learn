@@ -150,6 +150,7 @@ export const userProfiles = pgTable('user_profiles', {
   reminderHour: smallint('reminder_hour').notNull().default(20),   // 0-23, in user's timezone
   restDay: smallint('rest_day'),                                    // 0=Sun…6=Sat, null=no rest day
   onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
+  showPitchAccent: boolean('show_pitch_accent').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
