@@ -1,19 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { userProfiles } from '@kanji-learn/db'
-import { z } from 'zod'
 import { supabaseAdmin } from '../lib/supabase-admin.js'
-
-const updateProfileSchema = z.object({
-  displayName: z.string().min(1).max(50).nullable().optional(),
-  dailyGoal: z.number().int().min(5).max(200).optional(),
-  notificationsEnabled: z.boolean().optional(),
-  pushToken: z.string().max(200).nullable().optional(),
-  timezone: z.string().optional(),
-  reminderHour: z.number().int().min(0).max(23).optional(),
-  restDay: z.number().int().min(0).max(6).nullable().optional(),
-  onboardingCompletedAt: z.coerce.date().optional(),
-})
+import { updateProfileSchema } from './user-profile.schema.js'
 
 export async function userRoutes(server: FastifyInstance) {
   // GET /v1/user/profile — also syncs email from JWT into user_profiles
