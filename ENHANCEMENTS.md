@@ -301,6 +301,24 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 🔮 Future / Big Ideas
 
+- [ ] **Three-Modality Learning Loop** — Owner-proposed 2026-04-20 during Build 3-C Phase 4 verification. After each daily-goal flashcard batch, gate further flashcard sessions until the same kanji have been practiced in *writing* AND *speaking* modalities. Only after both gates clear does the next batch of flashcards become available. Pedagogically grounded: multi-modal encoding strengthens memory; the gate prevents the "flashcard-only" trap most Anki-style apps fall into, and forces real integration of the kanji into active recall. Would be a meaningful differentiator vs. generic SRS apps.
+
+  **Prerequisites that must be solid first:**
+  - Writing evaluation path: reliable, fast grading (audit not yet done as of 2026-04-20).
+  - Voice evaluation: Build 3-C Phase 1 homophone fix shipped + Phase 4 vocab-level prompts in B125. Needs to bake in production before becoming a *gate*.
+  - Cross-tab state machine: Study / Writing / Voice tabs currently have independent queues with no shared "session" concept. A new orchestration layer is required.
+
+  **Open design questions (for future brainstorm/spec):**
+  1. Per-session cycle ("this 5 flashcards locked until writing + voice of these same 5") or per-day ("first session sets the 5, all further flashcards locked until both modalities clear")?
+  2. "Completed" definition — attempted vs. passed at threshold X? Leniency matters: too strict and users get stuck; too loose and the gate is theatre.
+  3. Sparse data edge cases — if only 3 of 5 kanji have practicable vocab with pitch data and only 4 are writable, gate on available subset or block entirely?
+  4. Cross-day persistence — user writes Monday, voices Wednesday. Does the cycle survive that, or reset daily?
+  5. Escape hatch — days when writing is impractical (no stylus, commuting, one-handed). Some form of "skip this modality with a mild penalty" may be needed.
+  6. Interaction with Drill Weak Spots and other non-daily-queue flows — do those count toward modality completion?
+
+  Needs its own brainstorm → spec → plan cycle. Estimated 1–2 weeks of implementation once prerequisites are solid. Natural headline feature for whatever the next major version becomes.
+  `[Effort: XL]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
+
 - [ ] **OCR Kanji Lookup** — Point the device camera at any Japanese text to detect and look up kanji in real time. Tapping a detected character opens the full KanjiCard detail view. Requires an on-device or cloud OCR model and a camera permission flow.
   `[Effort: XL]` `[Impact: High]` `[Backend: Yes]` `[Status: 💡 Idea]`
 

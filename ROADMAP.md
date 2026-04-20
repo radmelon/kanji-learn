@@ -126,7 +126,72 @@ Before shipping a general-availability release, close these items (all tracked i
 - ✅ **Configure Groq + Gemini keys on App Runner** — shipped 2026-04-19 (op `fed113f8`). Closes tier-2 LLM fallback gap.
 - ✅ **Enable RLS on last 5 tables** — shipped 2026-04-19 via migration 0018. RLS coverage now 35/35.
 - ✅ **Post-delete cascade FK** — shipped 2026-04-19 via migration 0017. App Store 5.1.1 compliance complete.
-- 🚀 **Secrets management — rotate + migrate to AWS Secrets Manager** — added 2026-04-19 after the Groq/Gemini keys were pasted through chat. Covers one-time rotation of exposed keys, migration to Secrets Manager, quarterly rotation policy, and chat-hygiene guidance. See the ENHANCEMENTS.md entry for the full action list.
+- 🚀 **Secrets management — rotate + migrate to SSM Parameter Store (SecureString)** — added 2026-04-19, expanded 2026-04-20. Covers rotation of exposed keys and migration of all App Runner plaintext env secrets to SSM Parameter Store references via `RuntimeEnvironmentSecrets`. See the ENHANCEMENTS.md entry for full action list; implementation notes below.
+
+  **Keys requiring rotation (as of 2026-04-20):**
+  - `GROQ_API_KEY` — exposed 2026-04-19 (pasted through chat to configure App Runner)
+  - `GEMINI_API_KEY` — exposed 2026-04-19 (same flow)
+  - `ANTHROPIC_API_KEY` — exposed 2026-04-20 (unmasked `grep` on `packages/db/.env`)
+  - `DATABASE_URL`, `INTERNAL_SECRET`, `SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` — exposed 2026-04-20 via an `aws apprunner describe-service` call that returned the full `RuntimeEnvironmentVariables` map to chat. Lesson: when querying App Runner config, always scope `--query` to key names (`keys(RuntimeEnvironmentVariables)`) to avoid returning plaintext values.
+
+  **Why Parameter Store over Secrets Manager for this app:**
+  - Standard `SecureString` parameters are free under the AWS-managed `aws/ssm` KMS key; Secrets Manager is $0.40/secret/month.
+  - No automated rotation infrastructure needed — quarterly manual rotation is the operating model.
+  - 4KB size limit is irrelevant for API keys / connection strings.
+
+  **Integration shape (App Runner):**
+  App Runner's `RuntimeEnvironmentSecrets` accepts SSM Parameter Store ARNs. At container start, App Runner resolves each ARN and injects the **decrypted value** as a normal env var. No code change — Fastify reads `process.env.GROQ_API_KEY` exactly as today.
+
+  ```jsonc
+  // In apprunner-env.json, swap plaintext values for ARN references:
+  "RuntimeEnvironmentSecrets": {
+    "GROQ_API_KEY":              "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/groq-api-key",
+    "GEMINI_API_KEY":            "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/gemini-api-key",
+    "ANTHROPIC_API_KEY":         "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/anthropic-api-key",
+    "DATABASE_URL":              "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/database-url",
+    "INTERNAL_SECRET":           "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/internal-secret",
+    "SUPABASE_JWT_SECRET":       "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/supabase-jwt-secret",
+    "SUPABASE_SERVICE_ROLE_KEY": "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/supabase-service-role-key"
+  }
+  ```
+
+  **Current AWS state (verified 2026-04-20):**
+  - App Runner service ARN: `arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654`
+  - **InstanceRoleArn already set:** `arn:aws:iam::087656010655:role/kanji-learn-apprunner-instance` — no role creation needed. Attach an inline SSM read policy to this existing role.
+  - **AccessRoleArn** (for ECR pulls, unrelated): `arn:aws:iam::087656010655:role/service-role/AppRunnerECRAccessRole`
+  - `RuntimeEnvironmentSecrets` is currently `null` — clean slate.
+
+  **IAM policy to attach to `kanji-learn-apprunner-instance`:**
+  ```json
+  {
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": ["ssm:GetParameters"],
+      "Resource": "arn:aws:ssm:us-east-1:087656010655:parameter/kanji-learn/prod/*"
+    }]
+  }
+  ```
+  KMS permissions are **not** required for the AWS-managed `aws/ssm` key — roles can decrypt by default. Custom CMK would require an additional `kms:Decrypt` statement.
+
+  **Execution checklist (when we tackle this):**
+  1. User rotates all seven exposed keys in their provider consoles.
+  2. User creates SSM parameters locally (value never touches tool output):
+     ```
+     aws ssm put-parameter --name /kanji-learn/prod/groq-api-key \
+       --type SecureString --value "$(cat ~/tmp/groq.key)" --region us-east-1
+     ```
+     Repeat for each of the seven keys.
+  3. Claude attaches the SSM read policy to `kanji-learn-apprunner-instance` (ARN-only, no secret values).
+  4. Claude updates App Runner via `aws apprunner update-service` with `apprunner-env.json` that moves all seven variables from `RuntimeEnvironmentVariables` → `RuntimeEnvironmentSecrets`. The update response will echo ARNs, not plaintext.
+  5. Verify with health check and a provider-exercising call for each of Groq, Gemini, Anthropic, Supabase (via an authenticated API route).
+  6. Update local `packages/db/.env` with new Anthropic key value (user edits directly; Claude never `cat`s).
+  7. Rotation runbook: document the `put-parameter --overwrite` + `aws apprunner start-deployment` cycle and add a quarterly calendar reminder.
+
+  **Chat-hygiene rules to enforce going forward:**
+  - Never run `describe-service` / `get-parameter` / `env` dumps without a `--query` scoped to keys only.
+  - Never `cat` / `grep` files known to contain secrets (`.env`, `credentials.json`, `*.key`).
+  - Secret rotation is always a user-side action in their own terminal; Claude operates on ARN references only.
 - 🚀 **Migrate Supabase DB to us-east-1** — cross-region latency tax. Requires coordinated EAS rebuild + DB dump/restore + env-var swap across App Runner, Lambda, mobile EAS, and local. Best handled as its own dedicated session.
 - 🚀 **Configure SES out of sandbox** — needed for tutor-share emails and any future transactional mail (Delete Account farewell push path stays optional).
 
@@ -140,11 +205,13 @@ Before shipping a general-availability release, close these items (all tracked i
 | 20 | Multiple SRS Deck Support | High | Yes | Pending |
 | 21 | Graded Reading Passage Mode | High | Yes | Pending |
 | 22 | AI-Powered Personalized Study Plan | High | Yes | Pending |
+| 23 | **Three-Modality Learning Loop** — owner-proposed 2026-04-20. After each daily-goal flashcard batch, gate further flashcard sessions until the same kanji have been practiced in *writing* AND *speaking* modalities. Pedagogically motivated: multi-modal encoding (recognition → production → vocalisation) beats flashcard-only loops, and the gate forces integration of new kanji into active recall rather than pattern-matching. Differentiator vs. generic SRS apps. | High | Yes | Pending |
 
 **Why last:**
 - Multiple decks is an architectural change (schema, SRS service, all UI) — highest risk
 - Reading passages are a new product surface, not an improvement to an existing one
 - AI study plan benefits from leech data (Phase 3) and session builder infrastructure (Phase 4)
+- Three-Modality Loop requires reliable writing + voice evaluators (currently in early-polish stages), a cross-tab session state machine that doesn't exist today, and careful UX design around edge cases (partial completion, sparse vocab data, subway-friendly escape hatches). Needs its own brainstorm → spec → plan cycle; estimated 1–2 weeks once prerequisites are solid. See ENHANCEMENTS.md for the full entry.
 
 ---
 
