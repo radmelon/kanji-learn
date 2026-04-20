@@ -18,6 +18,8 @@ import { useRouter } from 'expo-router'
 import { toRomaji } from 'wanakana'
 import { colors, spacing, radius, typography } from '../../theme'
 import type { ReviewQueueItem } from '@kanji-learn/shared'
+import { PitchAccentReading } from '../kanji/PitchAccentReading'
+import { useShowPitchAccent } from '../../hooks/useShowPitchAccent'
 import { StrokeOrderAnimation } from '../writing/StrokeOrderAnimation'
 import { getRadicalName } from '../../constants/radicals'
 
@@ -62,8 +64,9 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   const meanings = (Array.isArray(item.meanings) ? item.meanings : []).join(', ')
   const jlptColor = JLPT_COLORS[item.jlptLevel as keyof typeof JLPT_COLORS] ?? colors.textMuted
   const exampleVocab = (Array.isArray(item.exampleVocab)
-    ? item.exampleVocab as { word: string; reading: string; meaning: string }[]
+    ? item.exampleVocab as { word: string; reading: string; meaning: string; pitchPattern?: number[] }[]
     : []).slice(0, 2)
+  const [showPitchAccent] = useShowPitchAccent()
 
   // Which group is currently being spoken: null | 'kun' | 'on' | vocab index
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
@@ -314,9 +317,14 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
             <View style={styles.vocab}>
               {exampleVocab.map((v, i) => (
                 <View key={i} style={styles.vocabRow}>
-                  <Text style={styles.vocabItem}>
-                    {v.word}【{v.reading}】{'  '}{v.meaning}
-                  </Text>
+                  <Text style={styles.vocabItem}>{v.word}【</Text>
+                  <PitchAccentReading
+                    reading={v.reading}
+                    pattern={v.pitchPattern}
+                    enabled={showPitchAccent}
+                    size="small"
+                  />
+                  <Text style={styles.vocabItem}>】{'  '}{v.meaning}</Text>
                 </View>
               ))}
             </View>
