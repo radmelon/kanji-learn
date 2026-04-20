@@ -338,7 +338,19 @@ async function main() {
         }
 
         // Write to DB using postgres client directly — no Drizzle, no double-encoding
-        await sql`UPDATE kanji SET example_vocab = ${JSON.stringify(withPitch)}::jsonb WHERE id = ${row.id}`
+        // Use sql.json() so postgres.js serializes the value correctly as jsonb (not double-encoded text)
+        await sql`UPDATE kanji SET example_vocab = ${sql.json(withPitch as unknown as postgres.JSONValue)} WHERE id = ${row.id}`
+
+        // Post-write sanity check — guards against future jsonb-encoding regressions
+        const [verify] = await sql<{ t: string }[]>`
+          SELECT jsonb_typeof(example_vocab) AS t FROM kanji WHERE id = ${row.id}
+        `
+        if (verify?.t !== 'array') {
+          console.error(`  ❌ Row ${row.id} (${row.character}) stored as ${verify?.t}, not array!`)
+          failed++
+          continue
+        }
+
         updated++
       }
 
