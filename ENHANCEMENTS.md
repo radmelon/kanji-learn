@@ -159,6 +159,15 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 ## 🎨 UI & Experience
 
 - [ ] **Dark / Light Theme Toggle** — Add a manual theme toggle (with system default option) for dark and light mode. Dark mode is especially useful for late-night study sessions and is a highly requested feature in language learning apps.
+
+  **WCAG 2.1 AA requirement (added 2026-04-20):** every foreground / background pair must clear **4.5:1 for normal text**, **3:1 for large text or graphical UI**, in *both* themes. Same rule introduced after the B125 pitch-overlay contrast bug (see [`feedback_accessibility_wcag.md`](../../../.claude/projects/-Users-rdennis-Documents-projects-kanji-learn/memory/feedback_accessibility_wcag.md) in memory). Implementation consequence: theme tokens must be semantic (`colors.textPrimary`, `colors.bgCard`, etc.) and the exact hex for each token switches per theme — consumer components reference the semantic name and automatically remain compliant.
+
+  **Known problem colours to resolve during the theme-toggle spec:**
+  - `colors.accent` = `#F4A261` (warm amber) — on the current dark `bgCard #1A1A2E` contrast is ~7.9:1 (passes AA). On a plausible light `bgCard` (e.g. `#F5F5F5`) the same amber drops to ~1.85:1 (**fails AA for text and graphical**). The `PitchAccentReading` overline, `Pitch` toggle chip, `Rōmaji` toggle chip, and several success/accent indicators would need a darker accent in light mode — `colors.accentDark #E07B2A` is already in the theme and clears ~4.1:1 on white, which passes AA graphical and AA-large-text. The theme-toggle implementation should map `accent` to different hex per theme rather than leaving the current shared token.
+  - Other shared tokens to re-check per theme: `info`, `warning`, `error`, `success`, `primary` (vermillion), `meaningCue`. Each needs a swatch-on-swatch contrast audit against both themes' `bg` / `bgCard` / `bgElevated`.
+
+  **Sanity check before merging:** an automated contrast check against every semantic pair (or a manual table committed alongside the theme file) so regressions are caught before shipping, not in the next bug report.
+
   `[Effort: M]` `[Impact: High]` `[Backend: No]` `[Status: 💡 Idea]`
 
 - [x] **Haptic Feedback on Grade Buttons** — Trigger subtle haptic patterns (light tap for "Again", medium for "Hard", strong for "Easy") when grading cards. Adds a tactile dimension to the grading action and makes the UI feel more responsive and polished.
