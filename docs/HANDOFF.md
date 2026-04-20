@@ -1,4 +1,4 @@
-# Session Handoff — 2026-04-19 (late evening — Build 3-C Phase 1 shipped)
+# Session Handoff — 2026-04-20 (Build 3-C Phases 1 + 2 shipped)
 
 ## Current State
 
@@ -14,6 +14,51 @@ Earlier in the day the following also shipped (context preserved):
 **DB:** two migrations applied to prod 2026-04-19.
 - `0017_user_profiles_auth_users_cascade.sql` — adds missing FK so account deletes fully cascade through friendships / tutor_shares / placement / daily_stats / review_logs / learner_identity. Deleted 2 pre-existing orphan `user_profiles` rows as part of the apply.
 - `0018_rls_placement_tutor_tables.sql` — enables RLS + authenticated-user + service_role policies on `placement_sessions`, `placement_results`, `tutor_shares`, `tutor_notes`, `tutor_analysis_cache`. RLS coverage now **35 / 35** public tables.
+
+## Build 3-C Phase 2 — data layer (SHIPPED 2026-04-20)
+
+Phase 2 of the Build 3-C umbrella landed — migrations 0019 + 0020 applied to Supabase prod, Kanjidic2 seed extended (grade + frequency_rank + hadamitzky_spahn), vocab seed upgraded to 5 entries per kanji with self-containment validator (closes B4) and Kanjium pitch merge, Tatoeba sentence seed raised 2→5 per kanji.
+
+**Code commits (9):**
+- `f4d8a8b` feat(db): migration 0019 — add kanjidic2 refs (grade, frequency_rank, hadamitzky_spahn)
+- `855d163` feat(db): migration 0020 — add user_profiles.show_pitch_accent
+- `d3346b9` chore(db): vendor Kanjium pitch-accent snapshot
+- `2eacf05` feat(db): expand vocab seed to 5-10 per kanji + self-containment validator + Kanjium pitch merge
+- `1d5dc10` fix(db): correct seed-output path + raise Claude max_tokens for full batches
+- `7c560f1` feat(db): extend import-kanjidic2 with grade, frequency_rank, hadamitzky_spahn
+- `7ff7f5a` feat(db): raise sentence cap to 5 per kanji + defensive self-containment validator
+- `e36fd5d` fix(db): use sql.json() for example_vocab writes to prevent jsonb double-encoding
+- `a118498` fix(db): let Drizzle serialize example_sentences directly to prevent jsonb double-encoding
+
+**Prod state after seed + repair (2026-04-20):**
+- `example_vocab`: 2,294 rows, all array-typed (manual repair during session via `#>> '{}'` pattern). Distribution: 2,024 kanji with 5 entries, 146 with 4, 12 with 3, 106 with 2, 6 with 0-1 (rare N1/Jinmeiyō characters where Claude couldn't generate enough self-containing vocab).
+- `example_sentences`: 2,294 rows, all array-typed (manual repair similarly). Distribution: 1,906 kanji with 5 sentences, 41 with 4, 49 with 3, 53 with 2, 67 with 1, 178 with 0 (rare kanji with no Tatoeba coverage).
+- `kanji.grade`: 2,275 / 2,294 populated (99.2%).
+- `kanji.frequency_rank`: 2,152 / 2,294 (93.8%).
+- `kanji.hadamitzky_spahn`: 2,254 / 2,294 (98.3%).
+- Pitch accent patterns: 8,053 vocab entries have `pitchPattern` attached (~75% of accepted entries).
+- B4 validator: 2,288 / 2,294 kanji have ALL example_vocab entries containing the target kanji ✅ (closes the long-standing "kanji doesn't contain itself" bug).
+
+**Two seed bugs found and fixed during the run:**
+1. `enrich-vocab.ts` — raw postgres.js `JSON.stringify(x)::jsonb` pattern produced jsonb strings instead of arrays. 2,193 rows corrupted mid-run, manually repaired, write pattern changed to `sql.json()` + post-write `jsonb_typeof` assertion (commit `e36fd5d`).
+2. `seed-sentences.ts` — Drizzle's `sql\`${JSON.stringify(x)}::jsonb\`` pattern hit the same class of bug. 2,116 rows corrupted during Tatoeba re-seed, manually repaired, write pattern changed to plain `.set({ exampleSentences: sentences })` + post-write assertion (commit `a118498`).
+
+Both were "papered over" previously by startup `#>> '{}'` repair — those repairs run at seed start, not during the loop, so `--force` re-seeds re-corrupted faster than the startup repair could help. Fixes now do the write correctly AND assert post-write that the type is `'array'`.
+
+**Migrations applied to prod via `psql`:**
+- Migration 0019 — `kanji.grade / frequency_rank / hadamitzky_spahn` (all nullable)
+- Migration 0020 — `user_profiles.show_pitch_accent boolean NOT NULL DEFAULT true`
+
+**Seed runs (all against Supabase prod via session-mode pooler `aws-1-ap-southeast-2.pooler.supabase.com:5432`):**
+- `pnpm seed:kanjidic2` — 2,294 rows updated with Kanjidic2 refs
+- `pnpm seed:vocab --force` — 10,752 vocab entries generated across 2,193 kanji (101 had Claude JSON-parse failures and kept prior 2-entry data)
+- `pnpm seed:sentences --force` — 2,116 kanji got Tatoeba sentences; 178 unchanged (no Tatoeba coverage)
+
+Total Anthropic API spend for vocab seed: ~$2–3 (Haiku).
+
+## ⚠️ Security action owed
+
+The `ANTHROPIC_API_KEY` value from `packages/db/.env` was echoed into this session's transcript via a `grep` that included the line contents. Recommend rotating via https://console.anthropic.com/settings/keys (one-click regenerate), then updating the local `.env` and App Runner env var.
 
 ## Build 3-C Phase 1 — server homophone workaround (SHIPPED)
 
@@ -41,8 +86,8 @@ Test coverage: 109/109 unit tests passing. New suites:
 On-device verification (B124, 2026-04-19): user spoke "kan" for a reading-stage card on 感 — evaluator returned Perfect (previously returned "Not quite. Heard: 缶"). Confirmed the fix accepts homophone-kanji transcripts across the common-reading families (感/缶, 紙/髪, 橋/箸, etc.).
 
 Status of the rest of Build 3-C:
-- **Phase 2** (data layer: JMdict vocab expansion, Kanjium pitch, Kanjidic2 grade+frequency+Hadamitzky-Spahn, Tatoeba re-seed): not started.
-- **Phase 3** (API `getReadingQueue` voicePrompt field): not started.
+- **Phase 2** (data layer): ✅ SHIPPED 2026-04-20 — see section above.
+- **Phase 3** (API `getReadingQueue` voicePrompt field): not started. Small (~0.3 session).
 - **Phase 4** (mobile vocab-as-prompt + pitch component + toggle, requires B125 EAS build): not started.
 - **Phase 5** (verification + tracker closure): not started.
 
@@ -100,10 +145,11 @@ Takes ~30 seconds per key. When rotated, I can update App Runner via `aws apprun
 
 ## 🚦 Next-session first tasks
 
-1. **Decide Build 3-C Phase 2 timing.** Phase 1 is shipped and bug-fix-complete. Phase 2 is the data-layer work (migrations 0019 + 0020, JMdict vocab expansion to 5–10 per kanji, Kanjium pitch ingest, Kanjidic2 grade/frequency/Hadamitzky-Spahn ingest, Tatoeba re-seed with cap 2→5). Estimated ~1 session. Ships no user-visible change on its own — it pre-positions data for Phases 3–4.
-2. **Rotate Groq + Gemini keys** (security hygiene from earlier today) — one-shot action, still outstanding.
+1. **Decide Build 3-C Phase 3 timing.** Phases 1 + 2 are shipped. Phase 3 is the API change that attaches `voicePrompt` to `/v1/review/reading-queue` + allows `showPitchAccent` in the user profile PATCH. Small scope (~0.3 session). Ships no user-visible change on its own — it's the API contract Phase 4 mobile depends on. Can go at any time.
+2. **Rotate secrets** — both the Groq + Gemini keys from 2026-04-19 AND the Anthropic key exposed in this session (see Security action owed above).
 3. **Verify B124 amber reading-prompt cue** once a reading-stage card surfaces naturally in normal study.
 4. **Close the amber-cue enhancement** after step 3.
+5. **(Optional follow-up)** Re-run `pnpm seed:vocab` (no `--force`) to top up the 6 kanji with <3 vocab entries, now that the write bug is fixed. Expected cost: negligible — only processes rows with empty example_vocab OR those still below floor.
 
 ## Build 3 recommendation — Option C (Data enrichment)
 

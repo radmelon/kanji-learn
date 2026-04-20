@@ -57,16 +57,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High — crashes app on ~52% of kanji when opened via Browse]` `[Status: 🐛 Active]`
 
-- [ ] **Kanji `example_vocab` can contain words that don't use the kanji itself** — On 息 ("breath"), example_vocab is `[{"word": "息子", "reading": "むすこ", "meaning": "son"}, {"word": "呼吸", "reading": "こきゅう", "meaning": "breathing"}]`. The second entry (呼吸) means "breathing" but uses the characters 呼 + 吸 — neither is 息. This is semantically related but misleading: the example vocab for a kanji should always contain that kanji so learners can see it in context. Data-quality issue in the seed pipeline. Spot-checked in 2026-04-18 session; unknown how widespread.
+- [x] **Kanji `example_vocab` can contain words that don't use the kanji itself** — ~~FIXED~~ 2026-04-20 as part of Build 3-C Phase 2. Seed-time validator shipped in `enrich-vocab.ts` (commit `2eacf05`): every generated vocab entry must satisfy `entry.word.includes(targetKanji)` or it's dropped and logged to `packages/db/seed-output/seed-warnings-YYYY-MM-DD.json`. Full re-seed with `--force` on 2026-04-20 rejected 214 non-self-containing entries out of ~11,000 generated. Post-seed prod check: 2,288 of 2,294 kanji have ALL example_vocab entries containing the target kanji; the remaining 6 are rare N1/Jinmeiyō kanji (倖/弥/脹/膚/槻/骸) where Claude couldn't generate 3+ valid self-containing entries — acceptable degradation for rare characters.
 
-  **Fix plan:** Add a seed-time validator that rejects any `example_vocab` entry where `word` does not contain the kanji character. Audit existing rows for violations and either remove the offending entries or replace with compliant alternatives. No user-facing change required until the data is cleaned.
-
-  **Affected files:**
-  - `packages/db/src/seeds/` — whichever seed writes `example_vocab`
-
-  Found B121 on-device verification 2026-04-18 on 息.
-
-  `[Effort: S]` `[Impact: Med — confusing but not crashing]` `[Status: 🐛 Active]`
+  `[Effort: S]` `[Impact: Med — confusing but not crashing]` `[Status: ✅ Fixed]`
 
 - [x] **SessionComplete shows "20 correct / 0 missed" (and similar) — client counts `quality >= 3` as correct, server counts `quality >= 4`** — Client/server disagreement on the "correct" threshold produces incorrect counts on the Session Complete screen. Reproduced in the 2026-04-18 comprehensive weighted-math test: a 5 Again + 5 Hard + 5 Good + 5 Easy session was counted as 15 correct / 5 wrong on the screen, but the server's `daily_stats.correct` was 10 (only Good + Easy). For an all-Hard-and-Easy session the screen shows 20/0, which is the "always 20 correct / 0 missed" observation.
 
