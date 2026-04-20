@@ -9,6 +9,7 @@ import * as SecureStore from 'expo-secure-store'
 import { VoiceEvaluator } from '../../src/components/voice/VoiceEvaluator'
 import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
+import type { VoicePrompt } from '@kanji-learn/shared'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,10 @@ interface ReadingQueueItem {
   kunReadings: string[]
   onReadings: string[]
   status: string
+  /** Attached by the API — directs VoiceEvaluator to render vocab-word layout
+   *  when available, falling back to legacy kanji-level prompt when missing
+   *  (protects against API skew during deploy). */
+  voicePrompt?: VoicePrompt
 }
 
 interface Result {
@@ -336,6 +341,7 @@ export default function VoiceSession() {
             readingLabel={label}
             hideHint={difficulty > 1}
             onResult={handleResult}
+            voicePrompt={currentItem.voicePrompt}
           />
         </View>
 

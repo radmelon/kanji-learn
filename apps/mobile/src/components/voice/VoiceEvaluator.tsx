@@ -4,6 +4,9 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { api } from '../../lib/api'
 import { colors, spacing, radius, typography } from '../../theme'
+import { PitchAccentReading } from '../kanji/PitchAccentReading'
+import { useShowPitchAccent } from '../../hooks/useShowPitchAccent'
+import type { VoicePrompt } from '@kanji-learn/shared'
 
 // ─── Safe native module loading ───────────────────────────────────────────────
 // expo-speech-recognition calls requireNativeModule at import time, which
@@ -44,7 +47,9 @@ interface EvalResult {
 interface Props {
   kanjiId: number
   character: string
-  /** All accepted readings in hiragana, e.g. ['みず'] or ['すい','みず'] */
+  /** All accepted readings in hiragana, e.g. ['みず'] or ['すい','みず']
+   *  Used when voicePrompt is absent or of type 'kanji'. When voicePrompt
+   *  is of type 'vocab', only [voicePrompt.reading] is sent to the server. */
   correctReadings: string[]
   /** Label shown in the prompt, e.g. 'kun'yomi' or 'reading' */
   readingLabel?: string
@@ -54,6 +59,11 @@ interface Props {
   strict?: boolean
   /** Hide the expected reading hint below the prompt (for Prompted/Recall/Challenge difficulty) */
   hideHint?: boolean
+  /** Attached by the API to each reading-queue item. When present and of
+   *  type 'vocab', the evaluator renders a vocab-word layout (glyph =
+   *  vocab.word, pitch overlay, meaning line). Fallback to kanji layout
+   *  when absent or of type 'kanji'. */
+  voicePrompt?: VoicePrompt
 }
 
 // ─── Voice Evaluator ──────────────────────────────────────────────────────────
@@ -66,7 +76,15 @@ export function VoiceEvaluator({
   onResult,
   strict = false,
   hideHint = false,
+  voicePrompt,
 }: Props) {
+  const [showPitchAccent] = useShowPitchAccent()
+  const isVocabMode = voicePrompt?.type === 'vocab'
+  // When the API attached a vocab prompt, send only that reading to the
+  // evaluator — the target is a specific vocab word, not "any reading of
+  // this kanji". Keeps feedback aligned with what the user was shown.
+  const effectiveCorrectReadings = isVocabMode ? [voicePrompt.reading] : correctReadings
+
   const [phase, setPhase] = useState<Phase>('idle')
   const [result, setResult] = useState<EvalResult | null>(null)
   const [transcript, setTranscript] = useState('')
@@ -122,7 +140,7 @@ export function VoiceEvaluator({
       const eval_ = await api.post<EvalResult>('/v1/review/voice', {
         kanjiId,
         transcript: currentTranscript,
-        correctReadings,
+        correctReadings: effectiveCorrectReadings,
         strict,
       })
       setResult(eval_)
@@ -195,8 +213,8 @@ export function VoiceEvaluator({
           {' '}to build a local dev client.
         </Text>
         <View style={styles.characterPreview}>
-          <Text style={styles.character}>{character}</Text>
-          <Text style={styles.expectedHint}>{correctReadings[0]}</Text>
+          <Text style={styles.character}>{isVocabMode ? voicePrompt.word : character}</Text>
+          <Text style={styles.expectedHint}>{effectiveCorrectReadings[0]}</Text>
         </View>
       </View>
     )
@@ -206,12 +224,31 @@ export function VoiceEvaluator({
 
   return (
     <View style={styles.container}>
-      {/* Kanji + prompt */}
-      <View style={styles.prompt}>
-        <Text style={styles.character}>{character}</Text>
-        <Text style={styles.promptLabel}>Say the {readingLabel}</Text>
-        {!hideHint && <Text style={styles.expectedHint}>({correctReadings[0]})</Text>}
-      </View>
+      {/* Prompt — vocab layout when voicePrompt is present, else legacy kanji layout */}
+      {isVocabMode ? (
+        <View style={styles.prompt}>
+          <Text style={styles.character}>{voicePrompt.word}</Text>
+          <PitchAccentReading
+            reading={voicePrompt.reading}
+            pattern={voicePrompt.pitchPattern}
+            enabled={showPitchAccent}
+            size="large"
+          />
+          <Text style={styles.promptLabel}>Say this word</Text>
+          {!hideHint && (
+            <>
+              <Text style={styles.expectedHint}>({voicePrompt.reading})</Text>
+              <Text style={styles.meaningHint}>{voicePrompt.meaning}</Text>
+            </>
+          )}
+        </View>
+      ) : (
+        <View style={styles.prompt}>
+          <Text style={styles.character}>{character}</Text>
+          <Text style={styles.promptLabel}>Say the {readingLabel}</Text>
+          {!hideHint && <Text style={styles.expectedHint}>({correctReadings[0]})</Text>}
+        </View>
+      )}
 
       {/* Mic button — hidden while evaluating or showing result */}
       {phase !== 'result' && phase !== 'evaluating' && (
@@ -309,6 +346,7 @@ const styles = StyleSheet.create({
   character: { ...typography.kanjiLarge, color: colors.textPrimary },
   promptLabel: { ...typography.body, color: colors.textSecondary },
   expectedHint: { ...typography.reading, color: colors.textMuted },
+  meaningHint: { ...typography.bodySmall, color: colors.textMuted, fontStyle: 'italic' },
   micBtn: {
     width: 80, height: 80, borderRadius: 40,
     backgroundColor: colors.primary,
