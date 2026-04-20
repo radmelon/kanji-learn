@@ -1,17 +1,52 @@
-# Session Handoff — 2026-04-19 (evening)
+# Session Handoff — 2026-04-19 (late evening — Build 3-C Phase 1 shipped)
 
 ## Current State
 
-**Branch:** `main` — all session work merged and pushed. Local and origin are in sync.
-**Latest TestFlight build:** **B124** (iOS) — auto-submitted to App Store Connect 2026-04-19 08:12 PT. Code consolidates the kanji details page + adds speak icons to vocab/sentences; Remembered/Missed labels; "Drill N missed cards" threshold fix.
-**API:** App Runner `us-east-1` — two successful deploys this session.
+**Branch:** `main` — Build 3-C Phase 1 (server homophone workaround) shipped and verified.
+**Latest TestFlight build:** **B124** (iOS) — unchanged; Phase 1 is server-only and applies to the existing B124 build in testers' hands.
+**API:** App Runner `us-east-1` — Phase 1 shipped via two deploys:
+- op `53710d9b…` — initial Phase 1 deploy (2026-04-19 15:59→16:03 PT, SUCCEEDED).
+- op `e24febc1…` — hotfix normalizing expanded candidates through hiragana before comparison (fixed katakana on-yomi mismatch caught during on-device verification). Deploy 16:16→16:20 PT, SUCCEEDED, health check HTTP 200 in 409ms.
+
+Earlier in the day the following also shipped (context preserved):
 - op `03b663dd…` — toArr defense on kanji routes (paired with 1185-row radicals repair).
 - op `fed113f85b…` — Groq + Gemini env vars now injected; health check HTTP 200 in 470ms.
 **DB:** two migrations applied to prod 2026-04-19.
 - `0017_user_profiles_auth_users_cascade.sql` — adds missing FK so account deletes fully cascade through friendships / tutor_shares / placement / daily_stats / review_logs / learner_identity. Deleted 2 pre-existing orphan `user_profiles` rows as part of the apply.
 - `0018_rls_placement_tutor_tables.sql` — enables RLS + authenticated-user + service_role policies on `placement_sessions`, `placement_results`, `tutor_shares`, `tutor_notes`, `tutor_analysis_cache`. RLS coverage now **35 / 35** public tables.
 
-## What shipped this session
+## Build 3-C Phase 1 — server homophone workaround (SHIPPED)
+
+Full design + plan:
+- Spec: [docs/superpowers/specs/2026-04-19-vocab-as-drill-unit-design.md](superpowers/specs/2026-04-19-vocab-as-drill-unit-design.md)
+- Plan: [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md)
+
+Phase 1 addresses the iOS speech-recognizer homophone bug surfaced on B124 testing (`感` spoken as "kan" evaluated as wrong because iOS returned the kanji `缶` as transcript and wanakana can't convert kanji to readings). The fix is server-only: `apps/api/src/services/kanji-readings-index.ts` loads an in-memory kanji→readings map at boot; the evaluator in `reading-eval.service.ts` now expands any CJK characters surviving wanakana through that index and matches against `correctReadings`.
+
+Commits (all on main, 9 total):
+- `c462202` feat(api): add containsCJK helper for homophone workaround
+- `7e416dc` refactor(api): document no-g-flag intent + test CJK compat exclusion
+- `d82ee6b` feat(api): add expandReadings for homophone expansion
+- `f8210dc` refactor(api): remove dead assignment in expandReadings + tighten cap test
+- `7d0d50f` feat(api): add loadKanjiReadingsIndex from kanji table
+- `37c0a57` refactor(api): hoist loader imports to top of file
+- `628dae1` feat(api): integrate homophone workaround into evaluateReading
+- `2c18045` feat(api): wire kanji readings index through voice route
+- `af0ce9a` fix(api): normalize expanded candidates before homophone match
+
+Test coverage: 109/109 unit tests passing. New suites:
+- 13 tests in [kanji-readings-index.test.ts](../apps/api/test/unit/services/kanji-readings-index.test.ts) (containsCJK + expandReadings + cap + compat-block exclusion)
+- 7 tests in [reading-eval.homophone.test.ts](../apps/api/test/unit/reading-eval.homophone.test.ts) (hiragana fixtures + real-DB katakana fixture regression test)
+
+On-device verification (B124, 2026-04-19): user spoke "kan" for a reading-stage card on 感 — evaluator returned Perfect (previously returned "Not quite. Heard: 缶"). Confirmed the fix accepts homophone-kanji transcripts across the common-reading families (感/缶, 紙/髪, 橋/箸, etc.).
+
+Status of the rest of Build 3-C:
+- **Phase 2** (data layer: JMdict vocab expansion, Kanjium pitch, Kanjidic2 grade+frequency+Hadamitzky-Spahn, Tatoeba re-seed): not started.
+- **Phase 3** (API `getReadingQueue` voicePrompt field): not started.
+- **Phase 4** (mobile vocab-as-prompt + pitch component + toggle, requires B125 EAS build): not started.
+- **Phase 5** (verification + tracker closure): not started.
+
+## What shipped this session (earlier, pre-Build-3-C)
 
 ### Mobile (in B124 TestFlight)
 - `5d81768` — fix(mobile)+docs: Remembered/Missed labels on Session Complete; `loadMissedQueue` threshold aligned from `q<3` to `q<4` so "Drill N missed cards" matches its label.
@@ -65,10 +100,10 @@ Takes ~30 seconds per key. When rotated, I can update App Runner via `aws apprun
 
 ## 🚦 Next-session first tasks
 
-1. **Verify B124 on device** — the four items in the "pending verification" block above. Should all just work; no expected regressions.
-2. **Rotate Groq + Gemini keys** (security hygiene from today) — one-shot action, not a whole session.
-3. **Pick Build 3 direction** — the planning board had four options (A = shipped today, B = core UX, C = data enrichment, D = social push). Controller's recommendation is **Option C** (see below).
-4. **Close the amber-cue enhancement** once a reading-stage prompt surfaces.
+1. **Decide Build 3-C Phase 2 timing.** Phase 1 is shipped and bug-fix-complete. Phase 2 is the data-layer work (migrations 0019 + 0020, JMdict vocab expansion to 5–10 per kanji, Kanjium pitch ingest, Kanjidic2 grade/frequency/Hadamitzky-Spahn ingest, Tatoeba re-seed with cap 2→5). Estimated ~1 session. Ships no user-visible change on its own — it pre-positions data for Phases 3–4.
+2. **Rotate Groq + Gemini keys** (security hygiene from earlier today) — one-shot action, still outstanding.
+3. **Verify B124 amber reading-prompt cue** once a reading-stage card surfaces naturally in normal study.
+4. **Close the amber-cue enhancement** after step 3.
 
 ## Build 3 recommendation — Option C (Data enrichment)
 
@@ -115,9 +150,9 @@ After Option C ships AND the daily-push-notifications bug is fixed. Fixing that 
 ```
 cd /Users/rdennis/Documents/projects/kanji-learn
 git pull origin main
-# 1. Verify B124 items on device (4 checks above)
-# 2. Rotate Groq + Gemini keys in their consoles; ping controller to update App Runner
-# 3. Begin Build 3 Option C — start with E8 Drill Weak Spots scope refinement
+# 1. Rotate Groq + Gemini keys in their consoles; ping controller to update App Runner
+# 2. Decide whether to run Build 3-C Phase 2 (data layer) or pause to let Phase 1 bake on device
+# 3. Phase 2 entry point: docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md § Phase 2 (Tasks 8–14)
 ```
 
 ---
