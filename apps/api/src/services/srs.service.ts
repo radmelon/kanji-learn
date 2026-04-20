@@ -28,6 +28,32 @@ export interface SessionSummary {
   burned: number
 }
 
+export type VoicePromptVocab = {
+  type: 'vocab'
+  word: string
+  reading: string
+  meaning: string
+  pitchPattern?: number[]
+}
+
+export type VoicePrompt = VoicePromptVocab | { type: 'kanji' }
+
+type ExampleVocabEntry = {
+  word: string
+  reading: string
+  meaning: string
+  pitchPattern?: number[]
+}
+
+export function selectVoicePrompt(
+  exampleVocab: ExampleVocabEntry[] | null,
+  reviewCount: number,
+): VoicePrompt {
+  if (!exampleVocab?.length) return { type: 'kanji' }
+  const idx = (reviewCount ?? 0) % exampleVocab.length
+  return { type: 'vocab', ...exampleVocab[idx] }
+}
+
 // ─── SRS Service ──────────────────────────────────────────────────────────────
 
 export class SrsService {
@@ -421,8 +447,10 @@ export class SrsService {
         jlptLevel: kanji.jlptLevel,
         kunReadings: kanji.kunReadings,
         onReadings: kanji.onReadings,
+        exampleVocab: kanji.exampleVocab,
         status: userKanjiProgress.status,
         lastReviewedAt: userKanjiProgress.lastReviewedAt,
+        repetitions: userKanjiProgress.repetitions,
       })
       .from(userKanjiProgress)
       .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
@@ -435,8 +463,21 @@ export class SrsService {
       .orderBy(desc(userKanjiProgress.lastReviewedAt))
       .limit(limit)
 
-    // Only include kanji that have at least one reading to practice
-    return rows.filter((r) => r.kunReadings.length > 0 || r.onReadings.length > 0)
+    const toArr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
+
+    return rows
+      .filter((r) => r.kunReadings.length > 0 || r.onReadings.length > 0)
+      .map((r) => {
+        const exampleVocab = toArr<ExampleVocabEntry>(r.exampleVocab)
+        // `repetitions` is SM-2's consecutive-success counter (resets on failure).
+        // Used here as the rotation index — a true total-review counter would require
+        // a new column or correlated reviewLogs subquery. Good-enough variety for now.
+        return {
+          ...r,
+          exampleVocab,
+          voicePrompt: selectVoicePrompt(exampleVocab, r.repetitions),
+        }
+      })
   }
 
   // ── Weak kanji drill queue ─────────────────────────────────────────────────
