@@ -163,6 +163,11 @@ function StudySession() {
   const hardOpacity = swipeY.interpolate({ inputRange: [0, SWIPE_THRESHOLD * 0.4, SWIPE_THRESHOLD], outputRange: [0, 0.6, 1], extrapolate: 'clamp' })
 
   useEffect(() => {
+    // Wait for profile to resolve so `dailyGoal` isn't read as its 20
+    // fallback during the first render. Without this guard, a backgrounded
+    // app whose profile cache was evicted loads a 20-card queue for users
+    // whose actual dailyGoal is smaller.
+    if (!profile) return
     syncPendingSessions()
     // Skip loadQueue when arriving from "Drill Weak Spots" — the weak queue
     // was already loaded by loadWeakQueue() before navigation and must not be overwritten.
@@ -170,7 +175,7 @@ function StudySession() {
       loadQueue(dailyGoal)
     }
     return () => reset()
-  }, [])
+  }, [profile])
 
   useEffect(() => {
     SecureStore.getItemAsync(HELP_KEY).then((val) => {
