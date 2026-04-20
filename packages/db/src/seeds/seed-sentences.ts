@@ -45,7 +45,7 @@ import { kanji } from '../schema'
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const MAX_JP_CHARS        = 60   // max Japanese sentence length to accept
-const SENTENCES_PER_KANJI = 2    // how many sentences to store per kanji
+const SENTENCES_PER_KANJI = 5    // how many sentences to store per kanji
 const CLAUDE_RETRY_LIMIT  = 3
 const CLAUDE_BASE_DELAY   = 2_000
 const DB_BATCH_SIZE       = 50   // kanji updated per DB round-trip
@@ -160,6 +160,15 @@ async function parseLinks(
 }
 
 // ─── Sentence selection ───────────────────────────────────────────────────────
+
+/**
+ * Defensive validator: ensures a generated sentence actually contains the
+ * target kanji character. Tatoeba path already filters via charIndex; this
+ * is belt-and-suspenders for the Claude fallback and any future changes.
+ */
+function validateSentenceContainsKanji(ja: string, kanji: string): boolean {
+  return ja.includes(kanji)
+}
 
 /**
  * From the full Tatoeba corpus (already in memory), pick the best sentences
@@ -363,8 +372,16 @@ async function main() {
       else skippedCount++
     }
 
-    if (sentences.length > 0) {
-      updates.push({ id: k.id, sentences })
+    const validated = sentences.filter((s) => {
+      const ok = validateSentenceContainsKanji(s.ja, k.character)
+      if (!ok) {
+        console.warn(`⚠️  Rejected sentence for ${k.character}: "${s.ja}" (does not contain kanji)`)
+      }
+      return ok
+    })
+
+    if (validated.length > 0) {
+      updates.push({ id: k.id, sentences: validated })
     }
 
     if (updates.length >= DB_BATCH_SIZE) await flushBatch()
