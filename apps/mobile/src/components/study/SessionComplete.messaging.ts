@@ -20,3 +20,20 @@ export function motivationalMessage(accuracy: number, burned: number): string {
   if (accuracy >= 35) return 'Mixed — some cards still need work.'
   return 'Rough patch — come back tomorrow.'
 }
+
+/**
+ * True when this session is the one that crossed the daily-goal threshold
+ * for the first time today. Used by SessionComplete to decide whether to
+ * render the one-time 🎉 celebration banner.
+ *
+ * @param reviewedBefore  daily_stats.reviewed BEFORE this session's submit
+ * @param totalItems      cards reviewed in the session just completed
+ * @param dailyGoal       user's configured target from user_profiles.daily_goal
+ */
+export function didCrossGoal(
+  reviewedBefore: number,
+  totalItems: number,
+  dailyGoal: number,
+): boolean {
+  return reviewedBefore < dailyGoal && reviewedBefore + totalItems >= dailyGoal
+}

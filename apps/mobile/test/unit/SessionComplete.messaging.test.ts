@@ -30,3 +30,28 @@ describe('motivationalMessage', () => {
     expect(motivationalMessage(0, 0)).toBe('Rough patch — come back tomorrow.')
   })
 })
+
+import { didCrossGoal } from '../../src/components/study/SessionComplete.messaging'
+
+describe('didCrossGoal', () => {
+  it('is true when the session crosses from below to at-or-above the goal', () => {
+    expect(didCrossGoal(4, 5, 5)).toBe(true)   // 4 + 5 reviewed ≥ 5
+    expect(didCrossGoal(0, 5, 5)).toBe(true)   // first-session crossing
+    expect(didCrossGoal(2, 10, 5)).toBe(true)  // crosses by overshooting
+  })
+
+  it('is false when already at or above the goal before the session', () => {
+    expect(didCrossGoal(5, 3, 5)).toBe(false)  // already met
+    expect(didCrossGoal(7, 5, 5)).toBe(false)  // overshooting again after meeting
+  })
+
+  it('is false when still below the goal after the session', () => {
+    expect(didCrossGoal(0, 3, 5)).toBe(false)
+    expect(didCrossGoal(2, 2, 5)).toBe(false)
+  })
+
+  it('handles dailyGoal = 1 edge case', () => {
+    expect(didCrossGoal(0, 1, 1)).toBe(true)
+    expect(didCrossGoal(1, 1, 1)).toBe(false)
+  })
+})
