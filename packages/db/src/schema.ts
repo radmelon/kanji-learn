@@ -145,7 +145,7 @@ export const userProfiles = pgTable('user_profiles', {
   email: text('email'),                                             // from Supabase JWT, used for friend search
   dailyGoal: smallint('daily_goal').notNull().default(20),
   notificationsEnabled: boolean('notifications_enabled').notNull().default(true),
-  pushToken: text('push_token'),                                    // Expo push token
+  // pushToken removed — see user_push_tokens table below (multi-device support).
   timezone: text('timezone').notNull().default('UTC'),
   reminderHour: smallint('reminder_hour').notNull().default(20),   // 0-23, in user's timezone
   restDay: smallint('rest_day'),                                    // 0=Sun…6=Sat, null=no rest day
@@ -154,6 +154,28 @@ export const userProfiles = pgTable('user_profiles', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// ─── user_push_tokens ─────────────────────────────────────────────────────────
+// One row per (user, Expo push token). A user can be signed in on multiple
+// devices; every device registers its own token here. Stale tokens are pruned
+// synchronously when Expo's send tickets return DeviceNotRegistered.
+
+export const userPushTokens = pgTable(
+  'user_push_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    platform: text('platform').notNull(), // 'ios' | 'android', enforced by CHECK constraint
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userTokenUnique: uniqueIndex('user_push_tokens_user_token_idx').on(t.userId, t.token),
+    userIdIdx: index('user_push_tokens_user_id_idx').on(t.userId),
+  })
+)
 
 // ─── user_kanji_progress ──────────────────────────────────────────────────────
 
@@ -434,6 +456,8 @@ export const friendships = pgTable(
     requesterId: uuid('requester_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
     addresseeId: uuid('addressee_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
     status: text('status').notNull().default('pending'), // pending | accepted | declined
+    requesterNotifyOfActivity: boolean('requester_notify_of_activity').notNull().default(true),
+    addresseeNotifyOfActivity: boolean('addressee_notify_of_activity').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
