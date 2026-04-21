@@ -1,10 +1,14 @@
-# Daily-Goal Celebration + Flash-Race Fix + Study-Card Vocab Speak Icons — Design
+# B126 UX Polish Bundle — Design
 
 **Date:** 2026-04-20
-**Scope:** Mobile-only UX polish bundled into B126. Three additive changes plus the already-committed PitchAccentReading contrast fix (`a704ad2`):
+**Scope:** Polish bundle for B126. Four additive changes plus the already-committed PitchAccentReading contrast fix (`a704ad2`):
 1. Daily-goal celebration + progress indicator (clarifies "am I done for today?" semantics without adding a cap).
 2. Rendering-race fix for the `"All caught up!"` flash.
 3. Speak icons on vocab rows in the study-card reveal panel (parity with the kanji details page).
+4. Surface three Kanjidic2 reference codes already present in the DB on the kanji details page (Hadamitzky-Spahn, Kyōiku grade, frequency rank).
+
+**Deployment footprint:** Mobile EAS build (B126) **plus one API deploy**. Prior sections (1–3) are mobile-only; section 4 requires the API to extend its `/v1/kanji/:id` response to include the three new fields.
+
 **Status:** Design approved during B125 verification discussion. Awaiting implementation plan.
 
 ---
@@ -98,6 +102,98 @@ Small layout adjustment: the current vocab row is a horizontal flex row ending i
 
 No new imports, no new state machinery — the `speakingGroup` / `setSpeakingGroup` refs and the `speakSequence` callback are already in scope at line ~69 and ~161 respectively.
 
+**5. Surface Kanjidic2 reference codes on the kanji details page (Hadamitzky-Spahn, Kyōiku grade, frequency rank)**
+
+Phase 2 migration 0019 added three columns to the `kanji` table — `grade`, `frequency_rank`, `hadamitzky_spahn` — and the seed populated them (grade 99.2%, frequency_rank 93.8%, hadamitzky_spahn 98.3% of the 2,294-kanji corpus). The data has been sitting in the DB since 2026-04-20 but is not exposed through the API or rendered anywhere in the mobile UI. Raised during B125 verification; the owner learned kanji from the Hadamitzky-Spahn *Kanji & Kana* reference and expected it surfaced by now.
+
+**API change** (`apps/api/src/routes/kanji.ts` around line 218 in the `/v1/kanji/:id` handler):
+
+Extend the SELECT for the kanji detail record to include the three new columns. They already exist on the Drizzle `kanji` schema (`apps/db/src/schema.ts`) via migration 0019 — no schema.ts edit is required, just reference them in the `select({ ... })` shape so they appear on the response object:
+
+```ts
+        jisCode: kanji.jisCode,
+        nelsonClassic: kanji.nelsonClassic,
+        nelsonNew: kanji.nelsonNew,
+        morohashiIndex: kanji.morohashiIndex,
+        morohashiVolume: kanji.morohashiVolume,
+        morohashiPage: kanji.morohashiPage,
+        grade: kanji.grade,                       // NEW
+        frequencyRank: kanji.frequencyRank,       // NEW
+        hadamitzkySpahn: kanji.hadamitzkySpahn,   // NEW
+```
+
+No other API-level changes required — the endpoint simply emits three more optional fields on its response.
+
+**Mobile change** ([`apps/mobile/app/kanji/[id].tsx`](../../apps/mobile/app/kanji/[id].tsx)):
+
+*Type extension* around line 59 — add the three fields to `KanjiDetail`:
+
+```ts
+  // Cross-reference codes
+  jisCode: string | null
+  nelsonClassic: number | null
+  nelsonNew: number | null
+  morohashiIndex: number | null
+  morohashiVolume: number | null
+  morohashiPage: number | null
+  grade: number | null                  // NEW  — Kyōiku grade 1–6, JHS 8, Jinmeiyō 9, 10
+  frequencyRank: number | null          // NEW  — rank 1–2500 (lower = more frequent)
+  hadamitzkySpahn: number | null        // NEW  — Hadamitzky-Spahn reference index
+```
+
+*Render* around line 499 — extend the Cross-references block. The existing `if (any-of-these != null)` guard needs its check list extended so the block shows when only Hadamitzky/grade/freq are present (currently would hide if all of JIS/Nelson/Morohashi are null but Hadamitzky is set):
+
+```tsx
+{(kanji.nelsonClassic != null
+  || kanji.nelsonNew != null
+  || kanji.morohashiIndex != null
+  || kanji.jisCode != null
+  || kanji.grade != null
+  || kanji.frequencyRank != null
+  || kanji.hadamitzkySpahn != null) && (
+    <Card title="Cross-references">
+      {kanji.jisCode != null && <RefRow label="JIS Code" value={kanji.jisCode} />}
+      {kanji.grade != null && <RefRow label="Kyōiku Grade" value={formatGrade(kanji.grade)} />}
+      {kanji.frequencyRank != null && <RefRow label="Frequency" value={`#${kanji.frequencyRank} of ~2500`} />}
+      {kanji.nelsonClassic != null && <RefRow label="Nelson Classic" value={`#${kanji.nelsonClassic}`} onPress={...} />}
+      {kanji.nelsonNew != null && <RefRow label="New Nelson" value={`#${kanji.nelsonNew}`} onPress={...} />}
+      {kanji.hadamitzkySpahn != null && <RefRow label="Hadamitzky-Spahn" value={`#${kanji.hadamitzkySpahn}`} />}
+      {kanji.morohashiIndex != null && <RefRow label="Morohashi" value={`#${kanji.morohashiIndex}, vol. ${kanji.morohashiVolume}, p. ${kanji.morohashiPage}`} />}
+    </Card>
+  )
+}
+```
+
+Ordering intent: **JIS → Kyōiku Grade → Frequency → Nelson (Classic, New) → Hadamitzky-Spahn → Morohashi**. Groups the three *learner-oriented* codes (grade, frequency, Hadamitzky — the ones a student references while studying) near the top, and the two *scholarly-lookup* codes (Nelson, Morohashi) at the bottom. Plan phase may tweak if a simulator glance shows a cleaner ordering.
+
+*Grade formatter* — add a small helper, either inline or alongside the existing `formatNextReview` helper around line 99:
+
+```ts
+function formatGrade(g: number): string {
+  if (g >= 1 && g <= 6) return `${g}`            // Kyōiku 1st–6th grade (elementary)
+  if (g === 8) return 'Junior High'              // Jōyō kanji taught in JHS
+  if (g === 9 || g === 10) return 'Jinmeiyō'     // Name-use kanji
+  return `${g}`                                   // Unknown — surface raw value
+}
+```
+
+(Mapping is per the Kanjidic2 grade attribute definition — see the upstream DTD. Grade 7 does not exist in Kanjidic2.)
+
+**Explicitly deferred (out of scope for B126):**
+
+- Grade *badge* adjacent to the JLPT pill (currently tracked under ENHANCEMENTS E11 Grade-Level Kyōiku with silver/gold badge design).
+- Frequency *indicator bar* or percentile treatment — the text `#500 of ~2500` is enough for now.
+- Deep links from Hadamitzky-Spahn to any external resource — the upstream book is a print reference, no URL.
+
+**Testing (automated):** none new required at this scope — the API change is a pure SELECT extension with optional fields; the mobile change is conditional RefRow rendering. Existing unit test coverage for the route and details page is sufficient.
+
+**Testing (manual verification on B126):**
+
+1. Open kanji details for a common elementary kanji (e.g. `水`) — should show Kyōiku Grade `1`, Frequency `#{small number}`, Hadamitzky-Spahn `#{small number}`.
+2. Open a JHS-level Jōyō kanji (e.g. `憂`) — should show Kyōiku Grade `Junior High`.
+3. Open a Jinmeiyō kanji (e.g. `倖` from the B4 top-up list) — Kyōiku Grade `Jinmeiyō`, no frequency rank (Jinmeiyō kanji are rarely in the 2,500-frequency corpus).
+4. Open a kanji that somehow has all reference codes null — card hides cleanly (confirms the guard list expansion works both ways).
+
 ---
 
 ## Architecture & Data Flow
@@ -156,14 +252,21 @@ After B126 lands in TestFlight:
    - Start a reading-stage card with non-empty example vocab, reveal the card. Each vocab row shows a speak icon.
    - Tap a vocab-row speak icon: TTS plays the vocab word in Japanese; icon state cycles (volume-medium-outline → volume-high → back to outline) as on the details page.
    - Tap a different vocab-row speak icon while one is playing: first one stops, second one starts. (Existing `speakingGroupRef` mutex handles this.)
+5. **Kanjidic2 reference codes on kanji details:**
+   - Common elementary kanji (e.g. `水`): Cross-references card shows Kyōiku Grade `1`, Frequency `#{small}`, Hadamitzky-Spahn `#{small}`.
+   - JHS-level Jōyō kanji (e.g. `憂`): Kyōiku Grade shows `Junior High`.
+   - Jinmeiyō kanji (e.g. `倖`): Kyōiku Grade shows `Jinmeiyō`; Frequency row omitted when null.
+   - Before B126 mobile reaches TestFlight, verify the API deploy succeeded by hitting `/v1/kanji/2` (or any known ID) with an auth token and confirming the response body includes `grade`, `frequencyRank`, `hadamitzkySpahn`.
 
 ---
 
 ## Rollout
 
-- Mobile-only. No API deploy, no migration.
-- Ships in **B126** alongside the PitchAccentReading contrast fix (`a704ad2`). Single EAS build covers both.
-- Tracker hygiene: close the "feels inconsistent" user-reported UX gap as part of the B126 verification checklist. The flash-race gets its own BUGS.md entry (separate from the earlier `a9c91fd` race fix, which was a different root cause).
+- **Mobile + one API deploy.** Sections 1–3 are mobile-only. Section 5 (Kanjidic2 reference codes) requires the API to return three additional fields from `/v1/kanji/:id`.
+- Deploy order: ship the API change first (so by the time B126 rolls out through TestFlight, the new fields are already populated on responses). API deploy uses the canonical `DOCKER_CONTEXT=default ./scripts/deploy-api.sh` path.
+- Mobile ships in **B126** alongside the PitchAccentReading contrast fix (`a704ad2`). Single EAS build covers sections 1–5.
+- No DB migration required — migration 0019 already created the columns back in Phase 2.
+- Tracker hygiene: close the "feels inconsistent" user-reported UX gap as part of the B126 verification checklist. The flash-race gets its own BUGS.md entry (separate from the earlier `a9c91fd` race fix, which was a different root cause). Flip the "Surface Kanjidic2 references" expectation to Shipped under the ENHANCEMENTS entry that describes the Phase 2 data-layer landing, or add a new entry if none exists.
 
 ---
 
