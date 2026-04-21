@@ -12,6 +12,7 @@ import { reviewRoutes } from './routes/review.js'
 import { mnemonicRoutes } from './routes/mnemonics.js'
 import { analyticsRoutes } from './routes/analytics.js'
 import { userRoutes } from './routes/user.js'
+import { pushTokensRoute } from './routes/push-tokens.js'
 import { interventionRoutes } from './routes/interventions.js'
 import { kanjiRoutes } from './routes/kanji.js'
 import { placementRoutes } from './routes/placement.js'
@@ -139,6 +140,7 @@ export async function buildServer() {
 
   await server.register(healthRoutes)
   await server.register(userRoutes, { prefix: '/v1/user' })
+  await server.register(pushTokensRoute)
   await server.register(learnerProfileRoutes, { prefix: '/v1/user' })
   await server.register(reviewRoutes, { prefix: '/v1/review' })
   await server.register(mnemonicRoutes, { prefix: '/v1/mnemonics' })
