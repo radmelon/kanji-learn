@@ -315,18 +315,26 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
           {/* Example vocab — first 2 entries */}
           {exampleVocab.length > 0 && (
             <View style={styles.vocab}>
-              {exampleVocab.map((v, i) => (
-                <View key={i} style={styles.vocabRow}>
-                  <Text style={styles.vocabItem}>{v.word}【</Text>
-                  <PitchAccentReading
-                    reading={v.reading}
-                    pattern={v.pitchPattern}
-                    enabled={showPitchAccent}
-                    size="small"
-                  />
-                  <Text style={styles.vocabItem}>】{'  '}{v.meaning}</Text>
-                </View>
-              ))}
+              {exampleVocab.map((v, i) => {
+                const groupKey = `vocab-${i}`
+                return (
+                  <View key={i} style={styles.vocabRow}>
+                    <Text style={styles.vocabItem}>{v.word}【</Text>
+                    <PitchAccentReading
+                      reading={v.reading}
+                      pattern={v.pitchPattern}
+                      enabled={showPitchAccent}
+                      size="small"
+                    />
+                    <Text style={styles.vocabItem}>】{'  '}{v.meaning}</Text>
+                    <SpeakButton
+                      groupKey={groupKey}
+                      speakingGroup={speakingGroup}
+                      onPress={() => speakSequence([v.word], groupKey)}
+                    />
+                  </View>
+                )
+              })}
             </View>
           )}
 
