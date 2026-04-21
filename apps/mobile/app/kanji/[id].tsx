@@ -63,6 +63,9 @@ interface KanjiDetail {
   morohashiIndex: number | null
   morohashiVolume: number | null
   morohashiPage: number | null
+  grade: number | null
+  frequencyRank: number | null
+  hadamitzkySpahn: number | null
   // SRS progress
   srsStatus: SrsStatus
   srsInterval: number | null
@@ -109,6 +112,16 @@ function formatNextReview(dateStr: string | null): string {
   if (days < 30) return `In ${days} days`
   const months = Math.floor(days / 30)
   return months === 1 ? 'In 1 month' : `In ${months} months`
+}
+
+/** Map Kanjidic2 <grade> values to a human label.
+ *  1–6 = Kyōiku (elementary); 8 = JHS-only Jōyō; 9/10 = Jinmeiyō (name-use).
+ *  Grade 7 does not exist in the DTD. */
+function formatGrade(g: number): string {
+  if (g >= 1 && g <= 6) return `${g}`
+  if (g === 8) return 'Junior High'
+  if (g === 9 || g === 10) return 'Jinmeiyō'
+  return `${g}`
 }
 
 // ─── Screen ─────────────────────────────────────────────────────────────────────
