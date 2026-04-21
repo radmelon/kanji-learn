@@ -43,7 +43,7 @@ const GOAL_OPTIONS = [5, 10, 15, 20, 30, 50] as const
 
 export default function ProfileScreen() {
   const router = useRouter()
-  const { user, signOut, setWatchEnabled, forceSyncToWatch, getWatchConnectionStatus } = useAuthStore()
+  const { user, signOut, setWatchEnabled, forceSyncToWatch, syncToWatch, getWatchConnectionStatus } = useAuthStore()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -198,12 +198,18 @@ export default function ProfileScreen() {
     try {
       const updated = await api.patch<UserProfile>('/v1/user/profile', patch)
       setProfile(updated)
+      // Keep the profile cache in sync so that the Watch sync (which reads
+      // dailyGoal / reminderHour / restDay from this cache) uses the fresh values.
+      await storage.setItem(PROFILE_CACHE_KEY, { data: updated })
+      // Fan the change out to the Watch immediately so users don't have to wait
+      // for the next token refresh / sign-in to see their new settings.
+      void syncToWatch()
     } catch {
       Alert.alert('Save failed', 'Could not update your profile. Please try again.')
     } finally {
       setIsSaving(false)
     }
-  }, [])
+  }, [syncToWatch])
 
   const handleNameBlur = useCallback(() => {
     if (!profile) return

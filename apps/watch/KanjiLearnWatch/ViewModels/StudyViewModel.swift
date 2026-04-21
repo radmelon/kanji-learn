@@ -63,6 +63,13 @@ final class StudyViewModel: ObservableObject {
     private let api = APIClient.shared
     private let defaults = UserDefaults.standard
 
+    /// Daily goal from the iPhone app (synced via WatchConnectivity), defaulting to 20.
+    /// Also caps how many cards this session will fetch.
+    private var dailyGoal: Int {
+        let v = defaults.integer(forKey: "kl_daily_goal")
+        return v > 0 ? v : 20
+    }
+
     // ── Session entry point ────────────────────────────────────────────────────
 
     func startSession() {
@@ -84,7 +91,7 @@ final class StudyViewModel: ObservableObject {
         await retryPendingSubmission()
 
         do {
-            let result = try await api.fetchQueue(limit: 10)
+            let result = try await api.fetchQueue(limit: dailyGoal)
             if result.cards.isEmpty {
                 state = .empty
                 return

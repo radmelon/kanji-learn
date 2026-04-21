@@ -44,6 +44,7 @@ struct HomeView: View {
                     // ── Due count hero ────────────────────────────────────────
                     DueCountHero(
                         dueCount: cappedDueCount,
+                        dailyGoal: dailyGoal,
                         isLoading: isLoadingStatus
                     )
 
@@ -164,6 +165,7 @@ private struct NotAuthenticatedBanner: View {
 
 private struct DueCountHero: View {
     let dueCount: Int
+    let dailyGoal: Int
     let isLoading: Bool
 
     var body: some View {
@@ -178,10 +180,15 @@ private struct DueCountHero: View {
                     .contentTransition(.numericText())
                     .animation(.easeInOut, value: dueCount)
             }
-            Text(dueCount == 1 ? "card due" : "cards due")
+            Text(subtitle)
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
         }
+    }
+
+    private var subtitle: String {
+        if dueCount == 0 { return "All caught up" }
+        return "of \(dailyGoal) today"
     }
 }
 

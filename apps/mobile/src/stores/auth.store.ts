@@ -41,12 +41,12 @@ async function pushToWatch(session: Session, force = false): Promise<PushResult 
     const watchEnabled = (await storage.getItem<boolean>(WATCH_ENABLED_KEY)) ?? false
     if (!force && !watchEnabled) return null
 
-    // Read cached profile for settings needed by Watch encouragement messages
-    const profile = await storage.getItem<{
-      dailyGoal?: number
-      reminderHour?: number
-      restDay?: number | null
+    // Read cached profile for settings needed by Watch encouragement messages.
+    // Cache shape is `{ data: UserProfile }` (see profile.tsx PROFILE_CACHE_KEY writer).
+    const cached = await storage.getItem<{
+      data?: { dailyGoal?: number; reminderHour?: number; restDay?: number | null }
     }>('kl:profile_cache')
+    const profile = cached?.data
 
     const supabaseURL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? ''
     const apiBaseURL  = process.env.EXPO_PUBLIC_API_URL ?? ''
@@ -93,6 +93,7 @@ interface AuthState {
   // Watch connectivity
   setWatchEnabled: (enabled: boolean) => Promise<PushResult | null>
   forceSyncToWatch: () => Promise<PushResult | null>
+  syncToWatch: () => Promise<PushResult | null>
   getWatchConnectionStatus: () => Promise<{ supported: boolean; paired?: boolean; watchAppInstalled?: boolean; reachable?: boolean }>
 }
 
@@ -198,6 +199,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { session } = get()
     if (!session) return { sent: false, reason: 'no_session' }
     return pushToWatch(session, true)
+  },
+
+  // Non-forced sync — respects the kl:watch_enabled flag. Call after profile
+  // edits so the Watch picks up changes to dailyGoal / reminderHour / restDay
+  // without waiting for the next auth refresh.
+  syncToWatch: async () => {
+    const { session } = get()
+    if (!session) return null
+    return pushToWatch(session, false)
   },
 
   getWatchConnectionStatus: async () => {
