@@ -65,7 +65,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   queue: [],
   currentIndex: 0,
   results: [],
-  isLoading: false,
+  // Initial true so study.tsx's "All caught up!" branch (guarded by
+  // `!isLoading && queue.length === 0`) doesn't flash for a render
+  // frame on cold mount before the effect fires loadQueue().
+  isLoading: true,
   isComplete: false,
   studyStartMs: 0,
   error: null,
