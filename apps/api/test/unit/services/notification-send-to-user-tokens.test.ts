@@ -229,8 +229,21 @@ describe('sendDailyReminders — multi-device', () => {
 
   beforeEach(async () => {
     mockSendPushNotificationsAsync.mockReset()
-    await db.execute(sql`DELETE FROM user_push_tokens WHERE user_id = ${REMINDER_USER}`)
-    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${REMINDER_USER}`)
+    // Bound the fixture universe: the preceding notifyStudyMates describe
+    // leaves SUBMITTER + RECIPIENT (notificationsEnabled=true, default
+    // reminderHour=20) in the DB, and RECIPIENT carries two tokens. Without
+    // broader cleanup, running this suite at UTC 20:00 would let RECIPIENT
+    // qualify for sendDailyReminders and pollute the captured calls.
+    await db.execute(sql`
+      DELETE FROM user_push_tokens WHERE user_id IN (
+        ${USER}, ${REMINDER_USER}, ${SUBMITTER}, ${RECIPIENT}
+      )
+    `)
+    await db.execute(sql`
+      DELETE FROM user_profiles WHERE id IN (
+        ${USER}, ${REMINDER_USER}, ${SUBMITTER}, ${RECIPIENT}
+      )
+    `)
   })
 
   it('fans the reminder out to all of the user\'s tokens', async () => {
@@ -261,8 +274,18 @@ describe('sendRestDaySummaries — multi-device', () => {
 
   beforeEach(async () => {
     mockSendPushNotificationsAsync.mockReset()
-    await db.execute(sql`DELETE FROM user_push_tokens WHERE user_id = ${REST_USER}`)
-    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${REST_USER}`)
+    // Same bounded-universe cleanup as sendDailyReminders — keep the fixture
+    // state deterministic regardless of what prior describes left behind.
+    await db.execute(sql`
+      DELETE FROM user_push_tokens WHERE user_id IN (
+        ${USER}, ${REST_USER}, ${SUBMITTER}, ${RECIPIENT}
+      )
+    `)
+    await db.execute(sql`
+      DELETE FROM user_profiles WHERE id IN (
+        ${USER}, ${REST_USER}, ${SUBMITTER}, ${RECIPIENT}
+      )
+    `)
   })
 
   it('fans the rest-day summary out to all of the user\'s tokens', async () => {
