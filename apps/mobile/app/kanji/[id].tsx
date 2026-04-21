@@ -536,6 +536,7 @@ export default function KanjiDetail() {
               )}
               <Text style={styles.refCredit}>
                 Nelson: Andrew Nelson (Classic 1962); Jack Halpern ed. (New Nelson, 1997).{'\n'}
+                Hadamitzky-Spahn: Wolfgang Hadamitzky & Mark Spahn, Kanji & Kana (1981; rev. eds.).{'\n'}
                 Morohashi: Tetsuji Morohashi, 大漢和辞典 (1955–1960). Source: KANJIDIC2 (CC BY-SA 4.0).
               </Text>
             </Card>
