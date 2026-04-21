@@ -22,7 +22,7 @@ CREATE TABLE public.user_push_tokens (
   token       text NOT NULL,
   platform    text NOT NULL CHECK (platform IN ('ios', 'android')),
   created_at  timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, token)
+  CONSTRAINT user_push_tokens_user_token_idx UNIQUE (user_id, token)
 );
 
 CREATE INDEX user_push_tokens_user_id_idx ON public.user_push_tokens(user_id);
