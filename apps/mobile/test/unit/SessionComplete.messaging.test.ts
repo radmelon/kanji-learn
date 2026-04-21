@@ -1,4 +1,4 @@
-import { motivationalMessage } from '../../src/components/study/SessionComplete.messaging'
+import { motivationalMessage, didCrossGoal } from '../../src/components/study/SessionComplete.messaging'
 
 describe('motivationalMessage', () => {
   it('returns the burned override when burned > 0', () => {
@@ -30,8 +30,6 @@ describe('motivationalMessage', () => {
     expect(motivationalMessage(0, 0)).toBe('Rough patch — come back tomorrow.')
   })
 })
-
-import { didCrossGoal } from '../../src/components/study/SessionComplete.messaging'
 
 describe('didCrossGoal', () => {
   it('is true when the session crosses from below to at-or-above the goal', () => {
