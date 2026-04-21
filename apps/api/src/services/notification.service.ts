@@ -1,7 +1,11 @@
 import { Expo, type ExpoPushMessage } from 'expo-server-sdk'
-import { and, eq, gte, isNotNull, or, sql } from 'drizzle-orm'
-import { userProfiles, dailyStats, friendships } from '@kanji-learn/db'
+import { and, eq, gte, inArray, isNotNull, or, sql } from 'drizzle-orm'
+import { userProfiles, dailyStats, friendships, userPushTokens } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
+
+// Expo ticket error strings that mean "this token will never work again."
+// Anything else (e.g. MessageRateExceeded) is transient — leave the row alone.
+const DEAD_TOKEN_ERRORS = new Set(['DeviceNotRegistered', 'InvalidCredentials', 'MessageTooBig'])
 
 // Module-level frequency cap for study-mate alerts.
 // Key: "${submitterId}:${recipientId}" → last-sent timestamp (ms).
@@ -305,6 +309,42 @@ export class NotificationService {
       burned:   Number(row?.burned ?? 0),
       streakDays: streak,
     }
+  }
+
+  // Fan out a single notification payload to every push token this user has
+  // registered (multi-device). Synchronously prunes tokens that ticket with a
+  // terminal error so the next send doesn't re-hit dead devices.
+  async sendToUserTokens(
+    userId: string,
+    message: Omit<ExpoPushMessage, 'to'>,
+  ): Promise<{ sent: number; pruned: number }> {
+    const rows = await this.db
+      .select({ token: userPushTokens.token })
+      .from(userPushTokens)
+      .where(eq(userPushTokens.userId, userId))
+
+    if (rows.length === 0) {
+      return { sent: 0, pruned: 0 }
+    }
+
+    const messages: ExpoPushMessage[] = rows.map((r) => ({ ...message, to: r.token }))
+    const tickets = await expo.sendPushNotificationsAsync(messages)
+
+    const dead: string[] = []
+    tickets.forEach((ticket, i) => {
+      if (ticket.status === 'error' && DEAD_TOKEN_ERRORS.has(ticket.details?.error ?? '')) {
+        dead.push(rows[i].token)
+      }
+    })
+
+    if (dead.length > 0) {
+      await this.db
+        .delete(userPushTokens)
+        .where(and(eq(userPushTokens.userId, userId), inArray(userPushTokens.token, dead)))
+    }
+
+    console.log(`[Push] userId=${userId} sent=${tickets.length} pruned=${dead.length}`)
+    return { sent: tickets.length, pruned: dead.length }
   }
 
   private async sendMessages(messages: ExpoPushMessage[]): Promise<void> {
