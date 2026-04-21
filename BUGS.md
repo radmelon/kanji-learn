@@ -103,6 +103,10 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: XS]` `[Impact: Med]` `[Status: ✅ Fixed]`
 
+- [x] **"All caught up!" empty state flashes briefly before the review queue loads** — ~~FIXED~~ 2026-04-20 in B126. `review.store.ts` initial state had `isLoading: false`, so `study.tsx`'s empty-state branch (guarded by `!isLoading && queue.length === 0`) rendered for one frame on cold mount before the effect fired `loadQueue`. Observed during B125 verification as a ~2s "All caught up!" flash between back-to-back sessions. Fix: initial `isLoading: true` — empty state now only renders when `loadQueue` genuinely returns zero.
+
+  `[Effort: XS]` `[Impact: Low]` `[Status: ✅ Fixed]`
+
 - [x] **Save session latency ~45s (observed B121, 2026-04-18) — narrowed to submit path** — User reports that tapping the last grade kicks off a ~45s "Saving session…" spinner before Session Complete appears. Once Dashboard loads after, its auto-refresh takes only ~2–3 seconds. This narrows the bottleneck to the **submit path** (`POST /v1/reviews/submit` and the mobile `finishSession` wrapper), NOT the Dashboard useFocusEffect fan-out (which was suspected earlier but is now ruled out).
 
   **Suspected contributors (ranked by likelihood, updated 2026-04-18 with new telemetry):**
