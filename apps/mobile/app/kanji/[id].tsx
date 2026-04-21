@@ -510,11 +510,20 @@ export default function KanjiDetail() {
           </Card>
 
           {/* Cross-references */}
-          {(kanji.nelsonClassic != null || kanji.nelsonNew != null || kanji.morohashiIndex != null || kanji.jisCode != null) && (
+          {(kanji.nelsonClassic != null
+            || kanji.nelsonNew != null
+            || kanji.morohashiIndex != null
+            || kanji.jisCode != null
+            || kanji.grade != null
+            || kanji.frequencyRank != null
+            || kanji.hadamitzkySpahn != null) && (
             <Card title="References">
               {kanji.jisCode != null && <RefRow label="JIS Code" value={kanji.jisCode} />}
+              {kanji.grade != null && <RefRow label="Kyōiku Grade" value={formatGrade(kanji.grade)} />}
+              {kanji.frequencyRank != null && <RefRow label="Frequency" value={`#${kanji.frequencyRank} of ~2500`} />}
               {kanji.nelsonClassic != null && <RefRow label="Nelson Classic" value={`#${kanji.nelsonClassic}`} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(kanji.character)}%23kanji`)} />}
               {kanji.nelsonNew != null && <RefRow label="New Nelson" value={`#${kanji.nelsonNew}`} onPress={() => Linking.openURL(`https://jisho.org/search/${encodeURIComponent(kanji.character)}%23kanji`)} />}
+              {kanji.hadamitzkySpahn != null && <RefRow label="Hadamitzky-Spahn" value={`#${kanji.hadamitzkySpahn}`} />}
               {kanji.morohashiIndex != null && (
                 <RefRow
                   label="Morohashi (大漢和)"
