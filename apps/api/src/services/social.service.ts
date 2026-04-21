@@ -14,6 +14,7 @@ export interface FriendRequest {
 }
 
 export interface Friend {
+  /** @deprecated Use `userId` instead. Kept for legacy callers (getLeaderboard, getFriendsActivity, mobile useSocial); will be removed after those migrate. */
   id: string
   userId: string
   displayName: string | null
