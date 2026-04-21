@@ -171,6 +171,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
+    // Best-effort: unregister this device's token so the server no longer fans
+    // pushes to it. Receipt pruning is the safety net if this call fails.
+    const lastToken = await storage.getItem<string>('kl:last_push_token')
+    if (lastToken) {
+      try {
+        await api.delete(`/v1/push-tokens/${encodeURIComponent(lastToken)}`)
+      } catch {
+        // Swallow — token will be pruned server-side on its next failed send.
+      }
+    }
+    await storage.removeItem('kl:last_push_token')
     clearProfileCache()
     clearLearnerProfileCache()
     await supabase.auth.signOut()
