@@ -83,6 +83,12 @@ function StudySession() {
   const isDetailsOpenRef = useRef(false)
   const handleGradeRef = useRef<(q: 0 | 1 | 2 | 3 | 4 | 5) => void>(() => {})
   const didFireHapticRef = useRef(false)
+  // Ref-mirror of analyticsSummary so handleFinish's useCallback (captured
+  // when queue populates) reads the current value, not a stale cached one.
+  // Prevents a false-positive 🎉 banner when the server analytics fetch
+  // completes after loadQueue.
+  const analyticsSummaryRef = useRef(analyticsSummary)
+  useEffect(() => { analyticsSummaryRef.current = analyticsSummary }, [analyticsSummary])
 
   useEffect(() => { isRevealedRef.current = isRevealed }, [isRevealed])
 
@@ -308,7 +314,7 @@ function StudySession() {
     // analyticsSummary is cached-or-fresh from useAnalytics; if not yet loaded, fall
     // back to 0 so the banner only fires on a genuine first-time crossing.
     const today = new Date().toISOString().slice(0, 10)
-    const reviewedBefore = analyticsSummary?.recentStats.find((r) => r.date === today)?.reviewed ?? 0
+    const reviewedBefore = analyticsSummaryRef.current?.recentStats.find((r) => r.date === today)?.reviewed ?? 0
 
     try {
       const serverData = await finishSession()
