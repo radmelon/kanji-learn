@@ -76,19 +76,6 @@ function buildRestDayMessage(stats: { reviewed: number; burned: number; streakDa
 export class NotificationService {
   constructor(private db: Db) {}
 
-  // Send a push notification to a single user
-  async sendToUser(userId: string, title: string, body: string): Promise<void> {
-    const profile = await this.db.query.userProfiles.findFirst({
-      where: eq(userProfiles.id, userId),
-      columns: { pushToken: true, notificationsEnabled: true },
-    })
-
-    if (!profile?.pushToken || !profile.notificationsEnabled) return
-    if (!Expo.isExpoPushToken(profile.pushToken)) return
-
-    await this.sendMessages([{ to: profile.pushToken, title, body, sound: 'default' }])
-  }
-
   // Daily reminder cron — called every hour; only sends to users whose reminderHour matches now in their timezone
   async sendDailyReminders(): Promise<void> {
     const nowUtc = new Date()
@@ -374,16 +361,5 @@ export class NotificationService {
       console.log(`[Push] userId=${userId} sent=${tickets.length} pruned=${dead.length}`)
     }
     return { sent: tickets.length, pruned: dead.length }
-  }
-
-  private async sendMessages(messages: ExpoPushMessage[]): Promise<void> {
-    const chunks = expo.chunkPushNotifications(messages)
-    for (const chunk of chunks) {
-      try {
-        await expo.sendPushNotificationsAsync(chunk)
-      } catch (err) {
-        console.error('[Notifications] Push send error:', err)
-      }
-    }
   }
 }
