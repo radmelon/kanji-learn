@@ -8,7 +8,6 @@ export type UserProfile = {
   email: string | null
   dailyGoal: number
   notificationsEnabled: boolean
-  pushToken: string | null
   timezone: string
   reminderHour: number
   restDay: number | null

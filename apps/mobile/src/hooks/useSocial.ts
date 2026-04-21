@@ -2,8 +2,11 @@ import { useState, useCallback, useEffect } from 'react'
 import { api } from '../lib/api'
 
 export interface Friend {
+  /** @deprecated Use `userId` instead — the API marks this as deprecated. */
   id: string
+  userId: string
   displayName: string | null
+  notifyOfActivity: boolean
 }
 
 export interface FriendRequest {
@@ -84,6 +87,22 @@ export function useSocial() {
     setLeaderboard((prev) => prev.filter((e) => e.userId !== friendId))
   }, [])
 
+  // Per-friendship mute toggle. Applies an optimistic update and reverts on
+  // failure. Rejects with the underlying error so callers can surface a toast.
+  const setFriendMute = useCallback(async (friendUserId: string, notifyOfActivity: boolean) => {
+    setFriends((prev) => prev.map((f) =>
+      f.userId === friendUserId ? { ...f, notifyOfActivity } : f
+    ))
+    try {
+      await api.patch(`/v1/social/friends/${friendUserId}`, { notifyOfActivity })
+    } catch (err) {
+      setFriends((prev) => prev.map((f) =>
+        f.userId === friendUserId ? { ...f, notifyOfActivity: !notifyOfActivity } : f
+      ))
+      throw err
+    }
+  }, [])
+
   return {
     friends,
     pendingRequests,
@@ -95,5 +114,6 @@ export function useSocial() {
     sendRequest,
     respondToRequest,
     removeFriend,
+    setFriendMute,
   }
 }

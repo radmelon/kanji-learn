@@ -13,7 +13,7 @@ import { storage } from '../../src/lib/storage'
 import { useNetworkStatus } from '../../src/hooks/useNetworkStatus'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { useSocial } from '../../src/hooks/useSocial'
-import type { SearchResult } from '../../src/hooks/useSocial'
+import type { Friend, SearchResult } from '../../src/hooks/useSocial'
 import { useTutorSharing } from '../../src/hooks/useTutorSharing'
 import { useLearnerProfile } from '../../src/hooks/useLearnerProfile'
 import { COUNTRIES, ONBOARDING_CONTENT } from '../../src/config/onboarding-content'
@@ -101,7 +101,7 @@ export default function ProfileScreen() {
   }, [forceSyncToWatch, getWatchConnectionStatus, loadWatchStatus])
 
   // Social
-  const { friends, pendingRequests, isSearching, loadAll, searchByEmail, sendRequest, respondToRequest, removeFriend } = useSocial()
+  const { friends, pendingRequests, isSearching, loadAll, searchByEmail, sendRequest, respondToRequest, removeFriend, setFriendMute } = useSocial()
   const [friendSearch, setFriendSearch] = useState('')
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
 
@@ -268,6 +268,15 @@ export default function ProfileScreen() {
       message: `Hey! I'm using Kanji Learn to study Japanese kanji. Join me as a study mate! Download it and look me up by email: ${user?.email}`,
     })
   }, [user?.email])
+
+  const handleToggleFriendMute = useCallback(async (friend: Friend) => {
+    const next = !friend.notifyOfActivity
+    try {
+      await setFriendMute(friend.userId, next)
+    } catch {
+      Alert.alert('Update failed', 'Could not update mate alert preference. Please try again.')
+    }
+  }, [setFriendMute])
 
   const handleRemoveFriend = useCallback((friendId: string, name: string) => {
     Alert.alert(`Remove ${name || 'study mate'}?`, 'You can always add them back later.', [
@@ -707,17 +716,38 @@ export default function ProfileScreen() {
           {friends.length > 0 ? (
             <View style={{ marginTop: spacing.sm }}>
               <Text style={styles.subSectionTitle}>Your mates ({friends.length})</Text>
+              {!notificationsEnabled && (
+                <Text style={styles.muteHintText}>
+                  Turn on notifications above to control mate alerts per friend.
+                </Text>
+              )}
               {friends.map((f) => (
-                <View key={f.id} style={[styles.searchResultCard, { marginTop: spacing.xs }]}>
+                <View key={f.userId} style={[styles.searchResultCard, { marginTop: spacing.xs }]}>
                   <View style={styles.rowLeft}>
                     <Ionicons name="person-circle-outline" size={28} color={colors.primary} />
                     <View>
                       <Text style={styles.rowLabel}>{f.displayName ?? 'Unknown'}</Text>
                     </View>
                   </View>
-                  <TouchableOpacity onPress={() => handleRemoveFriend(f.id, f.displayName ?? '')}>
-                    <Ionicons name="person-remove-outline" size={20} color={colors.textMuted} />
-                  </TouchableOpacity>
+                  <View style={styles.mateRowActions}>
+                    <TouchableOpacity
+                      disabled={!notificationsEnabled}
+                      onPress={() => handleToggleFriendMute(f)}
+                      style={[styles.bellButton, !notificationsEnabled && styles.bellButtonDisabled]}
+                      accessibilityLabel={f.notifyOfActivity
+                        ? `Mute alerts from ${f.displayName ?? 'study mate'}`
+                        : `Unmute alerts from ${f.displayName ?? 'study mate'}`}
+                    >
+                      <Ionicons
+                        name={f.notifyOfActivity ? 'notifications' : 'notifications-off'}
+                        size={20}
+                        color={notificationsEnabled ? colors.textPrimary : colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleRemoveFriend(f.userId, f.displayName ?? '')}>
+                      <Ionicons name="person-remove-outline" size={20} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </View>
@@ -1318,6 +1348,25 @@ const styles = StyleSheet.create({
     borderColor: colors.success + '55',
   },
   acceptBtnText: { ...typography.caption, color: colors.success, fontWeight: '600' },
+
+  // Study mate row — bell + remove buttons
+  mateRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  bellButton: {
+    padding: 4,
+  },
+  bellButtonDisabled: {
+    opacity: 0.5,
+  },
+  muteHintText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+    fontStyle: 'italic',
+  },
 
   // Sign out
   signOutBtn: {
