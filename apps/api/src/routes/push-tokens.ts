@@ -30,7 +30,7 @@ export async function pushTokensRoute(server: FastifyInstance) {
       if (!parsed.success) {
         return reply.code(400).send({
           ok: false,
-          error: parsed.error.message,
+          error: 'Invalid body',
           code: 'VALIDATION_ERROR',
           details: parsed.error.issues,
         })

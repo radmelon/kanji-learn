@@ -12,7 +12,9 @@
 // sets `req.userId` to that value, or replies 401 with the same envelope
 // `errorHandler` + `authPlugin` produce in production.
 //
-// Usage:
+// Usage — two supported forms:
+//
+//   // 1. Bare plugin — registered at the root.
 //   import { buildTestApp } from '../helpers/test-app'
 //   import { pushTokensRoute } from '../../src/routes/push-tokens'
 //
@@ -23,10 +25,22 @@
 //     headers: { 'x-test-user-id': USER_A },
 //     payload: { token: EXPO_IOS, platform: 'ios' },
 //   })
+//
+//   // 2. Plugin + register options — e.g. to mount under a prefix matching
+//   // production (see apps/api/src/server.ts).
+//   import { socialRoutes } from '../../src/routes/social'
+//
+//   const app = await buildTestApp({
+//     plugin: socialRoutes,
+//     opts: { prefix: '/v1/social' },
+//   })
+//
+// Both forms can be mixed in a single call.
 
 import Fastify, {
   type FastifyInstance,
   type FastifyPluginAsync,
+  type FastifyRegisterOptions,
   type FastifyRequest,
   type FastifyReply,
 } from 'fastify'
@@ -36,8 +50,17 @@ import * as schema from '@kanji-learn/db'
 
 const TEST_USER_HEADER = 'x-test-user-id'
 
+// A route can be passed as either a bare plugin (registered at the root) or
+// an object carrying explicit register options (e.g. `{ prefix: '/v1/social' }`).
+type RouteSpec =
+  | FastifyPluginAsync
+  | {
+      plugin: FastifyPluginAsync
+      opts: FastifyRegisterOptions<Record<string, never>>
+    }
+
 export async function buildTestApp(
-  ...routes: FastifyPluginAsync[]
+  ...routes: RouteSpec[]
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false })
 
@@ -71,8 +94,12 @@ export async function buildTestApp(
     await client.end()
   })
 
-  for (const route of routes) {
-    await app.register(route)
+  for (const spec of routes) {
+    if (typeof spec === 'function') {
+      await app.register(spec)
+    } else {
+      await app.register(spec.plugin, spec.opts)
+    }
   }
   await app.ready()
 
