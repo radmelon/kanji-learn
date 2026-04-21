@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors, spacing, radius, typography } from '../../theme'
-import { motivationalMessage } from './SessionComplete.messaging'
+import { motivationalMessage, didCrossGoal } from './SessionComplete.messaging'
 
 interface Props {
   totalItems: number
@@ -13,6 +13,10 @@ interface Props {
   studyTimeMs: number
   onDone: () => void
   onReview: () => void
+  /** daily_stats.reviewed BEFORE this session — used to detect goal crossing */
+  reviewedBefore: number
+  /** user_profiles.daily_goal — used to detect goal crossing */
+  dailyGoal: number
 }
 
 function formatTime(ms: number): string {
@@ -24,14 +28,20 @@ function formatTime(ms: number): string {
   return `${mins}m ${secs}s`
 }
 
-export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview }: Props) {
+export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview, reviewedBefore, dailyGoal }: Props) {
   const accuracy = confidencePct
   const wrong = totalItems - correctItems
   const accColor = accuracy >= 60 ? colors.success : accuracy >= 35 ? colors.warning : colors.error
+  const showGoalBanner = burned === 0 && didCrossGoal(reviewedBefore, totalItems, dailyGoal)
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        {showGoalBanner && (
+          <View style={styles.goalBanner}>
+            <Text style={styles.goalBannerText}>🎉 Daily goal met — nice work.</Text>
+          </View>
+        )}
         {/* Hero */}
         <View style={styles.hero}>
           <Ionicons
@@ -191,4 +201,21 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   reviewText: { ...typography.h3, color: colors.textSecondary },
+
+  goalBanner: {
+    alignSelf: 'center',
+    marginTop: spacing.md,
+    marginBottom: -spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    backgroundColor: colors.success + '22',
+    borderWidth: 1,
+    borderColor: colors.success,
+  },
+  goalBannerText: {
+    ...typography.bodySmall,
+    color: colors.success,
+    fontWeight: '600',
+  },
 })

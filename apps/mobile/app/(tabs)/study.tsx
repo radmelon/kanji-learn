@@ -31,6 +31,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as SecureStore from 'expo-secure-store'
 import { useReviewStore } from '../../src/stores/review.store'
 import { useProfile } from '../../src/hooks/useProfile'
+import { useAnalytics } from '../../src/hooks/useAnalytics'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { KanjiCard } from '../../src/components/study/KanjiCard'
 import { CompoundCard } from '../../src/components/study/CompoundCard'
@@ -49,6 +50,7 @@ function StudySession() {
   // until the profile finishes loading on first mount.
   const { profile } = useProfile()
   const dailyGoal = profile?.dailyGoal ?? 20
+  const { summary: analyticsSummary } = useAnalytics()
 
   const [isRevealed, setIsRevealed] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -61,6 +63,7 @@ function StudySession() {
   const [pendingResult, setPendingResult] = useState<ReviewResult | null>(null)
   const [sessionSummary, setSessionSummary] = useState<{
     totalItems: number; correctItems: number; confidencePct: number; newLearned: number; burned: number; studyTimeMs: number
+    reviewedBefore: number; dailyGoal: number
   } | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [nudgeItem, setNudgeItem] = useState<{ kanjiId: number; character: string; meaning: string } | null>(null)
@@ -301,6 +304,12 @@ function StudySession() {
         )
       : 0
 
+    // Today's reviewed count BEFORE the current session's submit lands in daily_stats.
+    // analyticsSummary is cached-or-fresh from useAnalytics; if not yet loaded, fall
+    // back to 0 so the banner only fires on a genuine first-time crossing.
+    const today = new Date().toISOString().slice(0, 10)
+    const reviewedBefore = analyticsSummary?.recentStats.find((r) => r.date === today)?.reviewed ?? 0
+
     try {
       const serverData = await finishSession()
       setSessionSummary({
@@ -310,6 +319,8 @@ function StudySession() {
         newLearned,
         burned: serverData?.burned ?? 0,
         studyTimeMs: serverData?.studyTimeMs ?? clientStudyMs,
+        reviewedBefore,
+        dailyGoal,
       })
     } catch (err) {
       // Even if saving fails, show the summary so the user isn't stuck on a blank screen
@@ -321,6 +332,8 @@ function StudySession() {
         newLearned,
         burned: 0,
         studyTimeMs: clientStudyMs,
+        reviewedBefore: 0,
+        dailyGoal,
       })
     } finally {
       setIsSaving(false)
