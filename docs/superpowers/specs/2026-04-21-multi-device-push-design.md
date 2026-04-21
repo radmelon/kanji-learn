@@ -83,7 +83,7 @@ Notes:
 | Verb | Path | Auth | Body | Response |
 |---|---|---|---|---|
 | POST | `/v1/push-tokens` | `server.authenticate` | `{ token: string, platform: 'ios' \| 'android' }` | 201 on insert, 200 if row already existed |
-| DELETE | `/v1/push-tokens` | `server.authenticate` | `{ token: string }` | 204 (idempotent; 204 also when row missing) |
+| DELETE | `/v1/push-tokens/:token` | `server.authenticate` | — | 204 (idempotent; 204 also when row missing). Mobile sends `encodeURIComponent(token)` since Expo tokens contain `[` and `]`. |
 
 Validation:
 - `token` must start with `ExponentPushToken[` and be non-empty (matches Expo's format).
@@ -178,7 +178,7 @@ Extend `signOut`:
 signOut: async () => {
   const lastToken = await storage.getItem<string>('kl:last_push_token')
   if (lastToken) {
-    try { await api.delete('/v1/push-tokens', { body: { token: lastToken } }) }
+    try { await api.delete(`/v1/push-tokens/${encodeURIComponent(lastToken)}`) }
     catch { /* swallow — receipt pruning is the safety net */ }
   }
   await storage.removeItem('kl:last_push_token')
