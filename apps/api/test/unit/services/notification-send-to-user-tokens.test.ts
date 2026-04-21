@@ -9,7 +9,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { sql, eq } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
-import { userPushTokens, userProfiles } from '@kanji-learn/db'
+import { userPushTokens, userProfiles, friendships } from '@kanji-learn/db'
 
 // Mock the Expo SDK before importing NotificationService — the service
 // module-level `new Expo()` will pick up this fake class. `vi.hoisted` is
@@ -28,7 +28,7 @@ vi.mock('expo-server-sdk', () => ({
   },
 }))
 
-import { NotificationService } from '../../../src/services/notification.service'
+import { NotificationService, mateNotifyCache } from '../../../src/services/notification.service'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
@@ -38,6 +38,9 @@ const USER = '00000000-0000-0000-0000-0000000000f1'
 const TOKEN_A = 'ExponentPushToken[aaa]'
 const TOKEN_B = 'ExponentPushToken[bbb]'
 const TOKEN_C = 'ExponentPushToken[ccc]'
+
+const SUBMITTER = '00000000-0000-0000-0000-0000000000f2'
+const RECIPIENT = '00000000-0000-0000-0000-0000000000f3'
 
 beforeEach(async () => {
   mockSendPushNotificationsAsync.mockReset()
@@ -117,5 +120,106 @@ describe('sendToUserTokens', () => {
     expect(result.pruned).toBe(0)
     const remaining = await db.select().from(userPushTokens).where(eq(userPushTokens.userId, USER))
     expect(remaining).toHaveLength(1)
+  })
+})
+
+describe('notifyStudyMates — per-friendship mute', () => {
+  beforeEach(async () => {
+    // Clear the module-level 24h frequency cap so each test starts clean —
+    // otherwise the first successful send leaves a cache entry that blocks
+    // every subsequent test using the same SUBMITTER:RECIPIENT pair.
+    mateNotifyCache.clear()
+    await db.execute(sql`DELETE FROM friendships WHERE requester_id IN (${SUBMITTER}, ${RECIPIENT}) OR addressee_id IN (${SUBMITTER}, ${RECIPIENT})`)
+    await db.execute(sql`DELETE FROM user_push_tokens WHERE user_id IN (${SUBMITTER}, ${RECIPIENT})`)
+    await db.execute(sql`DELETE FROM user_profiles WHERE id IN (${SUBMITTER}, ${RECIPIENT})`)
+    await db.insert(userProfiles).values([
+      { id: SUBMITTER, displayName: 'Submitter', timezone: 'UTC', notificationsEnabled: true },
+      { id: RECIPIENT, displayName: 'Recipient', timezone: 'UTC', notificationsEnabled: true },
+    ])
+    await db.insert(userPushTokens).values({ userId: RECIPIENT, token: TOKEN_A, platform: 'ios' })
+  })
+
+  it('sends to the recipient when they have not muted the submitter', async () => {
+    await db.insert(friendships).values({
+      requesterId: SUBMITTER,
+      addresseeId: RECIPIENT,
+      status: 'accepted',
+      requesterNotifyOfActivity: true,   // submitter's preference (irrelevant here)
+      addresseeNotifyOfActivity: true,   // recipient wants to hear
+    })
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok' }])
+
+    await service.notifyStudyMates(SUBMITTER, 12)
+
+    expect(mockSendPushNotificationsAsync).toHaveBeenCalledTimes(1)
+    const args = mockSendPushNotificationsAsync.mock.calls[0][0]
+    expect(args).toHaveLength(1)
+    expect(args[0].to).toBe(TOKEN_A)
+    expect(args[0].title).toContain('Submitter')
+  })
+
+  it('suppresses when recipient has muted on their side (addresseeNotifyOfActivity=false)', async () => {
+    await db.insert(friendships).values({
+      requesterId: SUBMITTER,
+      addresseeId: RECIPIENT,
+      status: 'accepted',
+      requesterNotifyOfActivity: true,
+      addresseeNotifyOfActivity: false,
+    })
+    await service.notifyStudyMates(SUBMITTER, 12)
+    expect(mockSendPushNotificationsAsync).not.toHaveBeenCalled()
+  })
+
+  it('suppresses when recipient is the requester and has muted (requesterNotifyOfActivity=false)', async () => {
+    await db.insert(friendships).values({
+      requesterId: RECIPIENT,
+      addresseeId: SUBMITTER,
+      status: 'accepted',
+      requesterNotifyOfActivity: false,  // recipient's side
+      addresseeNotifyOfActivity: true,
+    })
+    await service.notifyStudyMates(SUBMITTER, 12)
+    expect(mockSendPushNotificationsAsync).not.toHaveBeenCalled()
+  })
+
+  it('fires for recipient even if submitter\'s own side is muted — mute is directional', async () => {
+    await db.insert(friendships).values({
+      requesterId: SUBMITTER,
+      addresseeId: RECIPIENT,
+      status: 'accepted',
+      requesterNotifyOfActivity: false,  // submitter's preference — irrelevant when submitter studied
+      addresseeNotifyOfActivity: true,
+    })
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok' }])
+    await service.notifyStudyMates(SUBMITTER, 12)
+    expect(mockSendPushNotificationsAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('still respects notificationsEnabled=false as a master switch', async () => {
+    await db.update(userProfiles).set({ notificationsEnabled: false }).where(eq(userProfiles.id, RECIPIENT))
+    await db.insert(friendships).values({
+      requesterId: SUBMITTER,
+      addresseeId: RECIPIENT,
+      status: 'accepted',
+      requesterNotifyOfActivity: true,
+      addresseeNotifyOfActivity: true,
+    })
+    await service.notifyStudyMates(SUBMITTER, 12)
+    expect(mockSendPushNotificationsAsync).not.toHaveBeenCalled()
+  })
+
+  it('fans out to all of the recipient\'s tokens', async () => {
+    await db.insert(userPushTokens).values({ userId: RECIPIENT, token: TOKEN_B, platform: 'android' })
+    await db.insert(friendships).values({
+      requesterId: SUBMITTER,
+      addresseeId: RECIPIENT,
+      status: 'accepted',
+      requesterNotifyOfActivity: true,
+      addresseeNotifyOfActivity: true,
+    })
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok' }, { status: 'ok' }])
+    await service.notifyStudyMates(SUBMITTER, 12)
+    const args = mockSendPushNotificationsAsync.mock.calls[0][0]
+    expect(args).toHaveLength(2)
   })
 })

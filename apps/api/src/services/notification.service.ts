@@ -10,7 +10,9 @@ const DEAD_TOKEN_ERRORS = new Set(['DeviceNotRegistered', 'InvalidCredentials', 
 // Module-level frequency cap for study-mate alerts.
 // Key: "${submitterId}:${recipientId}" → last-sent timestamp (ms).
 // Lives for process lifetime; restarts reset it (acceptable for a 24-hour cap).
-const mateNotifyCache = new Map<string, number>()
+// Exported so tests can reset between cases without leaking the 24h cap
+// across unrelated fixtures.
+export const mateNotifyCache = new Map<string, number>()
 
 const expo = new Expo()
 
@@ -149,53 +151,55 @@ export class NotificationService {
 
   // Notify a user's friends when they complete a study session.
   // Called fire-and-forget from the POST /v1/review/submit route.
-  // Respects: notificationsEnabled, pushToken validity, 24-hour frequency cap.
+  // Respects: notificationsEnabled, per-friendship mute, 24-hour frequency cap.
   async notifyStudyMates(submitterId: string, reviewedCount: number): Promise<void> {
-    // Get submitter's display name for the notification copy
     const submitter = await this.db.query.userProfiles.findFirst({
       where: eq(userProfiles.id, submitterId),
       columns: { displayName: true },
     })
     const name = submitter?.displayName ?? 'Your study mate'
 
-    // Find all accepted friends (bidirectional)
     const rows = await this.db.query.friendships.findMany({
       where: and(
         or(
           eq(friendships.requesterId, submitterId),
-          eq(friendships.addresseeId, submitterId)
+          eq(friendships.addresseeId, submitterId),
         ),
-        eq(friendships.status, 'accepted')
+        eq(friendships.status, 'accepted'),
       ),
       with: { requester: true, addressee: true },
     })
 
-    const messages: ExpoPushMessage[] = []
     const now = Date.now()
     const oneDayMs = 24 * 60 * 60 * 1000
 
     for (const row of rows) {
       const friend = row.requesterId === submitterId ? row.addressee : row.requester
-      if (!friend.pushToken || !friend.notificationsEnabled) continue
-      if (!Expo.isExpoPushToken(friend.pushToken)) continue
 
-      // Frequency cap: max 1 alert per submitter–recipient pair per 24 hours
+      // Master switch — kills all pushes to this user.
+      if (!friend.notificationsEnabled) continue
+
+      // Per-friendship mute — recipient controls their own side. If submitter is
+      // the requester, the recipient is the addressee, so read the addressee's column.
+      const recipientNotifyOn = row.requesterId === submitterId
+        ? row.addresseeNotifyOfActivity
+        : row.requesterNotifyOfActivity
+      if (!recipientNotifyOn) continue
+
+      // Frequency cap: max 1 alert per submitter–recipient pair per 24 hours.
+      // Check AFTER mute — muted sends never enter the cache so unmuting takes
+      // effect immediately, not after a 24h cooldown.
       const cacheKey = `${submitterId}:${friend.id}`
       const lastSent = mateNotifyCache.get(cacheKey) ?? 0
       if (now - lastSent < oneDayMs) continue
 
-      messages.push({
-        to: friend.pushToken,
+      await this.sendToUserTokens(friend.id, {
         title: `📚 ${name} just studied!`,
         body: `They reviewed ${reviewedCount} kanji today. Ready to match them?`,
         sound: 'default',
         data: { type: 'mate_activity', friendId: submitterId },
       })
       mateNotifyCache.set(cacheKey, now)
-    }
-
-    if (messages.length > 0) {
-      await this.sendMessages(messages)
     }
   }
 
@@ -318,10 +322,13 @@ export class NotificationService {
     userId: string,
     message: Omit<ExpoPushMessage, 'to'>,
   ): Promise<{ sent: number; pruned: number }> {
+    // Cap at 100 rows — Expo's batch API hard limit. At ~2 devices/user today
+    // this can't trip, but it's cheap defense against sticky-token leaks.
     const rows = await this.db
       .select({ token: userPushTokens.token })
       .from(userPushTokens)
       .where(eq(userPushTokens.userId, userId))
+      .limit(100)
 
     if (rows.length === 0) {
       return { sent: 0, pruned: 0 }
@@ -343,7 +350,11 @@ export class NotificationService {
         .where(and(eq(userPushTokens.userId, userId), inArray(userPushTokens.token, dead)))
     }
 
-    console.log(`[Push] userId=${userId} sent=${tickets.length} pruned=${dead.length}`)
+    // Only log when something observable happened — avoids log spam from the
+    // common zero-activity path.
+    if (tickets.length > 0 || dead.length > 0) {
+      console.log(`[Push] userId=${userId} sent=${tickets.length} pruned=${dead.length}`)
+    }
     return { sent: tickets.length, pruned: dead.length }
   }
 
