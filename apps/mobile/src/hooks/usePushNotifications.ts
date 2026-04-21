@@ -4,6 +4,7 @@ import * as Device from 'expo-device'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import { api } from '../lib/api'
+import { storage } from '../lib/storage'
 
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -67,7 +68,9 @@ export function usePushNotifications(isAuthenticated: boolean): void {
       .then(async (token) => {
         if (!token) return
         savedRef.current = true
-        await api.patch('/v1/user/profile', { pushToken: token })
+        const platform = Platform.OS === 'ios' ? 'ios' : 'android'
+        await api.post('/v1/push-tokens', { token, platform })
+        await storage.setItem('kl:last_push_token', token)
         console.log('[Push] Token registered:', token.slice(0, 30) + '…')
       })
       .catch((err) => {
