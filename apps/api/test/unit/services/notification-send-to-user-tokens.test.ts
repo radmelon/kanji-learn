@@ -223,3 +223,70 @@ describe('notifyStudyMates — per-friendship mute', () => {
     expect(args).toHaveLength(2)
   })
 })
+
+describe('sendDailyReminders — multi-device', () => {
+  const REMINDER_USER = '00000000-0000-0000-0000-0000000000f4'
+
+  beforeEach(async () => {
+    mockSendPushNotificationsAsync.mockReset()
+    await db.execute(sql`DELETE FROM user_push_tokens WHERE user_id = ${REMINDER_USER}`)
+    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${REMINDER_USER}`)
+  })
+
+  it('fans the reminder out to all of the user\'s tokens', async () => {
+    const hourNow = new Date().getUTCHours()
+    await db.insert(userProfiles).values({
+      id: REMINDER_USER,
+      displayName: 'R',
+      timezone: 'UTC',
+      reminderHour: hourNow,
+      notificationsEnabled: true,
+    })
+    await db.insert(userPushTokens).values([
+      { userId: REMINDER_USER, token: TOKEN_A, platform: 'ios' },
+      { userId: REMINDER_USER, token: TOKEN_B, platform: 'ios' },
+    ])
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok' }, { status: 'ok' }])
+
+    await service.sendDailyReminders()
+
+    const allTos = mockSendPushNotificationsAsync.mock.calls.flatMap((c) => c[0]).map((m: any) => m.to)
+    expect(allTos).toEqual(expect.arrayContaining([TOKEN_A, TOKEN_B]))
+    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${REMINDER_USER}`)
+  })
+})
+
+describe('sendRestDaySummaries — multi-device', () => {
+  const REST_USER = '00000000-0000-0000-0000-0000000000f5'
+
+  beforeEach(async () => {
+    mockSendPushNotificationsAsync.mockReset()
+    await db.execute(sql`DELETE FROM user_push_tokens WHERE user_id = ${REST_USER}`)
+    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${REST_USER}`)
+  })
+
+  it('fans the rest-day summary out to all of the user\'s tokens', async () => {
+    const now = new Date()
+    const hourNow = now.getUTCHours()
+    const weekdayNow = now.getUTCDay()
+    await db.insert(userProfiles).values({
+      id: REST_USER,
+      displayName: 'S',
+      timezone: 'UTC',
+      reminderHour: hourNow,
+      restDay: weekdayNow,
+      notificationsEnabled: true,
+    })
+    await db.insert(userPushTokens).values([
+      { userId: REST_USER, token: TOKEN_A, platform: 'ios' },
+      { userId: REST_USER, token: TOKEN_B, platform: 'ios' },
+    ])
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok' }, { status: 'ok' }])
+
+    await service.sendRestDaySummaries()
+
+    const allTos = mockSendPushNotificationsAsync.mock.calls.flatMap((c) => c[0]).map((m: any) => m.to)
+    expect(allTos).toEqual(expect.arrayContaining([TOKEN_A, TOKEN_B]))
+    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${REST_USER}`)
+  })
+})

@@ -1,5 +1,5 @@
 import { Expo, type ExpoPushMessage } from 'expo-server-sdk'
-import { and, eq, gte, inArray, isNotNull, or, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, or, sql } from 'drizzle-orm'
 import { userProfiles, dailyStats, friendships, userPushTokens } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 
@@ -12,6 +12,7 @@ const DEAD_TOKEN_ERRORS = new Set(['DeviceNotRegistered', 'InvalidCredentials', 
 // Lives for process lifetime; restarts reset it (acceptable for a 24-hour cap).
 // Exported so tests can reset between cases without leaking the 24h cap
 // across unrelated fixtures.
+/** @internal — exported only for tests (beforeEach clear). Do not call from production code. */
 export const mateNotifyCache = new Map<string, number>()
 
 const expo = new Expo()
@@ -93,11 +94,11 @@ export class NotificationService {
     const nowUtc = new Date()
     const today = nowUtc.toISOString().slice(0, 10)
 
-    // Find users with push tokens who haven't reviewed today
+    // Find users who haven't reviewed today. Multi-device fan-out happens in
+    // sendToUserTokens — we no longer filter by a profile-level push token.
     const users = await this.db
       .select({
         id: userProfiles.id,
-        pushToken: userProfiles.pushToken,
         timezone: userProfiles.timezone,
         reminderHour: userProfiles.reminderHour,
         restDay: userProfiles.restDay,
@@ -106,7 +107,6 @@ export class NotificationService {
       .where(
         and(
           eq(userProfiles.notificationsEnabled, true),
-          isNotNull(userProfiles.pushToken),
           // not in daily_stats for today (i.e., hasn't studied)
           sql`${userProfiles.id} NOT IN (
             SELECT user_id FROM daily_stats WHERE date = ${today} AND reviewed > 0
@@ -131,21 +131,23 @@ export class NotificationService {
 
     if (eligibleUsers.length === 0) return
 
-    const messages: ExpoPushMessage[] = []
-
+    let sent = 0
     for (const user of eligibleUsers) {
-      if (!user.pushToken || !Expo.isExpoPushToken(user.pushToken)) continue
-
       const streak = await this.getUserStreak(user.id)
       const dueCount = await this.getDueCount(user.id)
       const { title, body } = buildMessage(streak, dueCount)
 
-      messages.push({ to: user.pushToken, title, body, sound: 'default' })
+      const result = await this.sendToUserTokens(user.id, {
+        title,
+        body,
+        sound: 'default',
+        data: { type: 'daily_reminder' },
+      })
+      if (result.sent > 0) sent++
     }
 
-    if (messages.length > 0) {
-      await this.sendMessages(messages)
-      console.log(`[Notifications] Sent ${messages.length} daily reminders (UTC ${utcHour}:00)`)
+    if (sent > 0) {
+      console.log(`[Notifications] Sent ${sent} daily reminders (UTC ${utcHour}:00)`)
     }
   }
 
@@ -167,7 +169,10 @@ export class NotificationService {
         ),
         eq(friendships.status, 'accepted'),
       ),
-      with: { requester: true, addressee: true },
+      with: {
+        requester: { columns: { id: true, notificationsEnabled: true } },
+        addressee: { columns: { id: true, notificationsEnabled: true } },
+      },
     })
 
     const now = Date.now()
@@ -199,6 +204,12 @@ export class NotificationService {
         sound: 'default',
         data: { type: 'mate_activity', friendId: submitterId },
       })
+      // Best-effort prune: sweep entries older than 24h. Called from the write path
+      // so the sweep cost scales with actual send volume, not a separate timer.
+      const cutoff = now - oneDayMs
+      for (const [key, ts] of mateNotifyCache) {
+        if (ts < cutoff) mateNotifyCache.delete(key)
+      }
       mateNotifyCache.set(cacheKey, now)
     }
   }
@@ -209,11 +220,12 @@ export class NotificationService {
   async sendRestDaySummaries(): Promise<void> {
     const nowUtc = new Date()
 
-    // Fetch users who have a rest day configured, notifications on, and a push token
+    // Fetch users who have a rest day configured and notifications on.
+    // Multi-device fan-out happens in sendToUserTokens — we no longer filter
+    // by a profile-level push token.
     const users = await this.db
       .select({
         id:          userProfiles.id,
-        pushToken:   userProfiles.pushToken,
         timezone:    userProfiles.timezone,
         reminderHour: userProfiles.reminderHour,
         restDay:     userProfiles.restDay,
@@ -222,7 +234,6 @@ export class NotificationService {
       .where(
         and(
           eq(userProfiles.notificationsEnabled, true),
-          isNotNull(userProfiles.pushToken),
           sql`${userProfiles.restDay} IS NOT NULL`
         )
       )
@@ -230,7 +241,6 @@ export class NotificationService {
     const utcHour = nowUtc.getUTCHours()
 
     for (const user of users) {
-      if (!user.pushToken || !Expo.isExpoPushToken(user.pushToken)) continue
       if (user.restDay == null) continue
 
       // Determine local hour and weekday for this user
@@ -253,7 +263,12 @@ export class NotificationService {
       const stats = await this.getWeeklyStats(user.id)
       const { title, body } = buildRestDayMessage(stats)
 
-      await this.sendMessages([{ to: user.pushToken, title, body, sound: 'default' }])
+      await this.sendToUserTokens(user.id, {
+        title,
+        body,
+        sound: 'default',
+        data: { type: 'rest_day_summary' },
+      })
     }
   }
 
@@ -285,11 +300,14 @@ export class NotificationService {
   }
 
   private async getDueCount(userId: string): Promise<number> {
-    const now = new Date()
+    // Use ISO string so postgres.js binds the timestamp param correctly — a raw
+    // Date object throws "argument must be of type string" when the driver
+    // tries to serialize it for the Bind message.
+    const nowIso = new Date().toISOString()
     const [row] = await this.db.execute<{ count: number }>(
       sql`SELECT COUNT(*)::int as count FROM user_kanji_progress
           WHERE user_id = ${userId}
-          AND (next_review_at IS NULL OR next_review_at <= ${now})`
+          AND (next_review_at IS NULL OR next_review_at <= ${nowIso})`
     )
     return Number(row?.count ?? 0)
   }
