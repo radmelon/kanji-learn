@@ -221,6 +221,9 @@ export async function kanjiRoutes(server: FastifyInstance) {
           morohashiIndex: kanji.morohashiIndex,
           morohashiVolume: kanji.morohashiVolume,
           morohashiPage: kanji.morohashiPage,
+          grade: kanji.grade,
+          frequencyRank: kanji.frequencyRank,
+          hadamitzkySpahn: kanji.hadamitzkySpahn,
           // SRS progress
           srsStatus: userKanjiProgress.status,
           srsInterval: userKanjiProgress.interval,
