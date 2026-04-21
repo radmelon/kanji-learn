@@ -36,10 +36,11 @@ The current push architecture stores exactly one Expo push token per user (`user
 | 2 | Data model for tokens? | **Simple `(user_id, token)` schema.** Prune via Expo ticket errors (`DeviceNotRegistered`, `InvalidCredentials`, `MessageTooBig`). Add `device_id` later if scale demands. |
 | 3 | Handling sign-out on a device? | **Both active DELETE and receipt pruning.** Explicit logout calls the API best-effort; receipt pruning is the safety net. |
 | 4 | API shape? | **Dedicated `POST /v1/push-tokens` + `DELETE /v1/push-tokens`.** `PATCH /v1/user/profile` no longer accepts `pushToken`. |
+| 5 | Per-category notification preferences? | **Per-study-mate mute, not a global category toggle.** Each accepted friendship carries a "notify me when they study" flag the owning user controls from their Study Mates list (bell-icon toggle on each row). Scales cleanly as the mate count grows. The master `notificationsEnabled` remains the all-or-nothing master switch; daily reminders and rest-day summaries continue honoring only the master. |
 
 ## Architecture
 
-### Database (migration `0021_multi_device_push_tokens.sql`)
+### Database (migration `0021_push_tokens_and_mate_mute.sql`)
 
 ```sql
 CREATE TABLE user_push_tokens (
@@ -59,6 +60,15 @@ CREATE POLICY user_push_tokens_self_delete ON user_push_tokens FOR DELETE USING 
 -- No UPDATE policy: tokens are immutable; rotation creates a new row.
 
 ALTER TABLE user_profiles DROP COLUMN push_token;
+
+-- Per-side mate-alert mute, stored on the existing directed friendship row.
+-- `requester_notify_of_activity` is the requester's preference ("notify me when
+-- the addressee studies"); `addressee_notify_of_activity` mirrors it for the
+-- addressee. Two columns avoid reshaping friendships into an undirected model
+-- and keep the per-side toggle a single join-less UPDATE.
+ALTER TABLE friendships
+  ADD COLUMN requester_notify_of_activity boolean NOT NULL DEFAULT true,
+  ADD COLUMN addressee_notify_of_activity boolean NOT NULL DEFAULT true;
 ```
 
 Notes:
@@ -81,6 +91,19 @@ Validation:
 - Write operations dedupe on `UNIQUE (user_id, token)`.
 
 **Removed behavior:** `PATCH /v1/user/profile` no longer accepts `pushToken`. The field is dropped from the `UserProfile` DTO in both API and `@kanji-learn/shared`. If an older mobile client still sends it, the server silently drops the field (defensive — but we ship mobile in lockstep, so this won't happen in practice).
+
+**New endpoint for per-mate mute** on the existing `apps/api/src/routes/social.ts`:
+
+| Verb | Path | Auth | Body | Response |
+|---|---|---|---|---|
+| PATCH | `/v1/social/friends/:friendId` | `server.authenticate` | `{ notifyOfActivity: boolean }` | 200 with updated friend record |
+
+Handler logic:
+- Look up the friendship row by `(requesterId = currentUser AND addresseeId = :friendId) OR (addresseeId = currentUser AND requesterId = :friendId)` with `status = 'accepted'`.
+- If the caller is the requester, UPDATE `requester_notify_of_activity`; otherwise UPDATE `addressee_notify_of_activity`.
+- 404 if no accepted friendship exists.
+
+`GET /v1/social/friends` is extended to return each row's `notifyOfActivity` — resolved server-side from the caller's perspective, so the client just consumes a single boolean per friend.
 
 ### Notification send path
 
@@ -121,7 +144,14 @@ async function sendToUserTokens(userId: string, message: Omit<ExpoPushMessage, '
 
 **Callers that change:**
 
-1. `notifyStudyMates` (mate-alert) — replace the single-token push at [notification.service.ts:183-190](../../../apps/api/src/services/notification.service.ts) with `sendToUserTokens(friend.id, { title, body, sound, data })`. The 24h `mateNotifyCache` frequency cap is keyed on `(submitterId, friend.id)` and stays unchanged.
+1. `notifyStudyMates` (mate-alert) — replace the single-token push at [notification.service.ts:183-190](../../../apps/api/src/services/notification.service.ts) with `sendToUserTokens(friend.id, { title, body, sound, data })`. The 24h `mateNotifyCache` frequency cap is keyed on `(submitterId, friend.id)` and stays unchanged. Add a **per-side mute check** before the cap lookup:
+   ```ts
+   const recipientNotifyOn = row.requesterId === submitterId
+     ? row.addresseeNotifyOfActivity
+     : row.requesterNotifyOfActivity
+   if (!recipientNotifyOn) continue
+   ```
+   Short-circuits earliest (no cache entry consumed, no send, no prune). The existing `notificationsEnabled` master check stays as the first guard.
 2. `sendDailyReminders` / `sendRestDaySummaries` — replace per-user `pushToken` reads with `sendToUserTokens(user.id, ...)`. Hourly-gate and restDay filters stay unchanged.
 3. `apps/lambda/daily-reminders` — same swap pattern. The lambda stops selecting `pushToken` and instead joins `user_push_tokens` by `user_id`, fanning out per user.
 
@@ -161,7 +191,11 @@ signOut: async () => {
 
 `deleteAccount` requires no explicit DELETE call — `ON DELETE CASCADE` removes all the user's tokens when the profile row is deleted.
 
-**Types cleanup:** drop `pushToken` from the `UserProfile` interface in [`apps/mobile/app/(tabs)/profile.tsx`](../../../apps/mobile/app/(tabs)/profile.tsx) and from `@kanji-learn/shared`.
+**Types cleanup:** drop `pushToken` from the `UserProfile` interface in [`apps/mobile/app/(tabs)/profile.tsx`](../../../apps/mobile/app/(tabs)/profile.tsx) and from `@kanji-learn/shared`. The `Friend` / friendship DTO gains `notifyOfActivity: boolean` (resolved server-side from the caller's perspective).
+
+**Per-mate mute UI in the Study Mates panel** (already inside the Profile screen at [profile.tsx:614](../../../apps/mobile/app/(tabs)/profile.tsx:614)): each accepted friend row gets a bell-icon toggle on the right edge. Tap flips `notifyOfActivity` via `PATCH /v1/social/friends/:friendId`. Optimistic UI update; revert on error. When the master `notificationsEnabled` is off, the bell renders in a dimmed/disabled state with a caption explaining that all notifications are off (tapping the row reveals "Turn on notifications in the Notifications section above"). Pending friend requests don't show the bell — only accepted friendships.
+
+**No Notifications-panel changes** for this feature beyond the existing master toggle. All mate-alert control lives in the Study Mates panel.
 
 **Watch app:** unchanged. The Watch doesn't register its own Expo token; it relies on iOS auto-forwarding from the iPhone. Since iPhone now receives reliably, Watch inherits.
 
@@ -186,6 +220,13 @@ signOut: async () => {
 | API integration | `DELETE /v1/push-tokens` removes the row; missing token returns 204 | same file |
 | API auth | Both endpoints 401 without JWT | same file |
 | API validation | Malformed token / unknown platform returns 400 | same file |
+| API integration | `PATCH /v1/social/friends/:friendId` with `{ notifyOfActivity: false }` updates the caller's side of the friendship row | `apps/api/src/routes/social.integration.test.ts` |
+| API integration | `PATCH` from the other side of the same friendship updates the opposite column — the two sides are independent | same file |
+| API integration | `PATCH` against a non-accepted or non-existent friendship returns 404 | same file |
+| API integration | `GET /v1/social/friends` returns `notifyOfActivity` resolved from the caller's perspective | same file |
+| Service unit | `notifyStudyMates` short-circuits without touching the 24h cache when the recipient has muted the submitter on their side of the friendship | `apps/api/src/services/notification.service.test.ts` |
+| Service unit | Recipient muting submitter does not affect the submitter's own alerts when the recipient studies | same file |
+| Service unit | Daily reminders + rest-day summaries fire regardless of any per-mate mute state (master `notificationsEnabled` still on) | same file |
 | Service unit | `sendToUserTokens` fans out to N tokens in a single Expo batch | `apps/api/src/services/notification.service.test.ts` |
 | Service unit | Tickets with `DeviceNotRegistered` / `InvalidCredentials` / `MessageTooBig` prune those specific rows; success tickets leave rows intact | same file |
 | Service unit | `sendToUserTokens(userId)` with zero tokens is a safe no-op | same file |
@@ -197,7 +238,8 @@ signOut: async () => {
 ## Preserved invariants
 
 - **24h mate-alert cap** keyed on `(submitterId, recipientId)` at [notification.service.ts:178-181](../../../apps/api/src/services/notification.service.ts) — unchanged. Fan-out does not re-trigger the cap; it replaces a single-token send with a multi-token send for the same logical alert.
-- **`notificationsEnabled=false`** still suppresses all pushes to that user — check happens before `sendToUserTokens`.
+- **`notificationsEnabled=false`** still suppresses *all* pushes to that user — master switch, checked before `sendToUserTokens` in every send path.
+- **Per-friendship mute** (recipient's `*_notify_of_activity = false`) suppresses *only* mate alerts from that specific submitter to that specific recipient. Daily reminders and rest-day summaries continue. Checked inside `notifyStudyMates` before the 24h cap so cache entries aren't consumed by suppressed alerts. Mute is directional: each side of the friendship toggles their own preference independently.
 - **Daily-reminder hour-gate** (user's local `reminderHour`) — unchanged.
 - **Rest-day filter** on `sendRestDaySummaries` — unchanged.
 
