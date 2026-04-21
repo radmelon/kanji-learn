@@ -74,6 +74,42 @@ export async function socialRoutes(server: FastifyInstance) {
     }
   )
 
+  // PATCH /v1/social/friends/:friendId — per-friendship mute toggle
+  // Body: { notifyOfActivity: boolean }. Flips the caller's side of the
+  // friendship (requester_notify_of_activity or addressee_notify_of_activity
+  // depending on which side the caller is on).
+  const muteSchema = z.object({ notifyOfActivity: z.boolean() })
+  server.patch<{
+    Params: { friendId: string }
+    Body: { notifyOfActivity: boolean }
+  }>(
+    '/friends/:friendId',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const parsed = muteSchema.safeParse(req.body)
+      if (!parsed.success) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'Invalid body',
+          code: 'VALIDATION_ERROR',
+          details: parsed.error.issues,
+        })
+      }
+      const ok = await service.setNotifyOfActivity(
+        req.userId!,
+        req.params.friendId,
+        parsed.data.notifyOfActivity,
+      )
+      if (!ok) {
+        return reply.code(404).send({ ok: false, error: 'friendship not found', code: 'NOT_FOUND' })
+      }
+      return reply.send({
+        ok: true,
+        data: { friendId: req.params.friendId, notifyOfActivity: parsed.data.notifyOfActivity },
+      })
+    }
+  )
+
   // GET /v1/social/leaderboard
   server.get(
     '/leaderboard',

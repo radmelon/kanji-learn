@@ -15,7 +15,9 @@ export interface FriendRequest {
 
 export interface Friend {
   id: string
+  userId: string
   displayName: string | null
+  notifyOfActivity: boolean
 }
 
 export interface LeaderboardEntry {
@@ -38,7 +40,7 @@ export class SocialService {
   // ── Search for a user by email ─────────────────────────────────────────────
 
   async searchByEmail(email: string, currentUserId: string): Promise<{
-    user: Friend | null
+    user: { id: string; displayName: string | null } | null
     friendshipStatus: string | null
   }> {
     const normalised = email.trim().toLowerCase()
@@ -131,8 +133,45 @@ export class SocialService {
 
     return rows.map((r) => {
       const friend = r.requesterId === userId ? r.addressee : r.requester
-      return { id: friend.id, displayName: friend.displayName }
+      const notifyOfActivity = r.requesterId === userId
+        ? r.requesterNotifyOfActivity
+        : r.addresseeNotifyOfActivity
+      // `id` preserved for existing clients; `userId` + `notifyOfActivity`
+      // added for multi-device push (per-mate mute on GET + PATCH).
+      return {
+        id: friend.id,
+        userId: friend.id,
+        displayName: friend.displayName,
+        notifyOfActivity,
+      }
     })
+  }
+
+  // ── Per-friendship mute control ────────────────────────────────────────────
+  // Returns false if no accepted friendship is found (route maps to 404).
+
+  async setNotifyOfActivity(
+    userId: string,
+    friendUserId: string,
+    notifyOfActivity: boolean,
+  ): Promise<boolean> {
+    const row = await this.db.query.friendships.findFirst({
+      where: and(
+        or(
+          and(eq(friendships.requesterId, userId), eq(friendships.addresseeId, friendUserId)),
+          and(eq(friendships.addresseeId, userId), eq(friendships.requesterId, friendUserId)),
+        ),
+        eq(friendships.status, 'accepted'),
+      ),
+    })
+    if (!row) return false
+
+    const patch = row.requesterId === userId
+      ? { requesterNotifyOfActivity: notifyOfActivity }
+      : { addresseeNotifyOfActivity: notifyOfActivity }
+
+    await this.db.update(friendships).set(patch).where(eq(friendships.id, row.id))
+    return true
   }
 
   // ── Remove a friend ────────────────────────────────────────────────────────
