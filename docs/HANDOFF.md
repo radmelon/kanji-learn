@@ -1,314 +1,162 @@
-# Session Handoff — 2026-04-20 (Build 3-C all phases shipped + B126 UX polish in flight)
+# Session Handoff — 2026-04-20
 
-## Current State
+## TL;DR
 
-**Branch:** `main` — Build 3-C complete (Phases 1–4 all shipped). B126 UX polish bundle submitted to TestFlight.
-**Latest TestFlight build in flight:** **B126** (iOS) — EAS build `24bc4061-b0f1-4e43-91c2-96b0c5292b7b`, auto-submit scheduled `a8da4420-9c13-4404-855c-bb3350384411`. Bundles pitch-overlay contrast fix + daily-goal celebration + flash-race fix + study-card vocab speak icons + Kanjidic2 reference codes on kanji details page. B125 preceded it with the full Phase 4 vocab-drill + pitch overlay arc.
-**API:** App Runner `us-east-1` — Phase 1 shipped via two deploys:
-- op `53710d9b…` — initial Phase 1 deploy (2026-04-19 15:59→16:03 PT, SUCCEEDED).
-- op `e24febc1…` — hotfix normalizing expanded candidates through hiragana before comparison (fixed katakana on-yomi mismatch caught during on-device verification). Deploy 16:16→16:20 PT, SUCCEEDED, health check HTTP 200 in 409ms.
+Build 3-C is shipped in full (Phases 1–4) and B126 UX polish is in flight to TestFlight. The next session's work is on-device verification of B126, Phase 5 tracker hygiene, and — when you have the window — rotating the seven exposed secrets that accumulated across this sprint.
 
-Earlier in the day the following also shipped (context preserved):
-- op `03b663dd…` — toArr defense on kanji routes (paired with 1185-row radicals repair).
-- op `fed113f85b…` — Groq + Gemini env vars now injected; health check HTTP 200 in 470ms.
-**DB:** two migrations applied to prod 2026-04-19.
-- `0017_user_profiles_auth_users_cascade.sql` — adds missing FK so account deletes fully cascade through friendships / tutor_shares / placement / daily_stats / review_logs / learner_identity. Deleted 2 pre-existing orphan `user_profiles` rows as part of the apply.
-- `0018_rls_placement_tutor_tables.sql` — enables RLS + authenticated-user + service_role policies on `placement_sessions`, `placement_results`, `tutor_shares`, `tutor_notes`, `tutor_analysis_cache`. RLS coverage now **35 / 35** public tables.
+## Current state
 
-## Build 3-C Phase 2 — data layer (SHIPPED 2026-04-20)
+- **Branch:** `main`.
+- **TestFlight builds this session:**
+  - **B125** — Build 3-C Phase 4 (mobile vocab-drill + pitch overlay). Build ID `f027ab70-823e-4143-b15c-7f8d62105358`. User verified most surfaces; the pitch overlay itself rendered with invisible text (contrast bug), which drove B126.
+  - **B126** — UX polish bundle. Build ID `24bc4061-b0f1-4e43-91c2-96b0c5292b7b`. Submission ID `a8da4420-9c13-4404-855c-bb3350384411`. Fixes contrast + daily-goal progress + flash-race + study-card vocab speak icons + Kanjidic2 refs on details page.
+- **API deploys this session:**
+  - `03b663dd…` — toArr defense on kanji routes (radicals repair).
+  - `fed113f85b…` — Groq + Gemini env vars injected.
+  - `53710d9b…` + `e24febc1…` — Build 3-C Phase 1 (homophone workaround).
+  - `24f17892…` — Build 3-C Phase 3 (`voicePrompt` + `showPitchAccent` PATCH).
+  - `4df7047c…` — B126 `/v1/kanji/:id` extension (grade, frequencyRank, hadamitzkySpahn).
+- **Prod API URL:** `https://73x3fcaaze.us-east-1.awsapprunner.com` — health HTTP 200 as of 420ms.
+- **DB migrations shipped this session (prod):** 0017 (auth cascade FK), 0018 (RLS on last 5 tables — 35/35 coverage), 0019 (kanji Kanjidic2 refs), 0020 (`user_profiles.show_pitch_accent`).
 
-Phase 2 of the Build 3-C umbrella landed — migrations 0019 + 0020 applied to Supabase prod, Kanjidic2 seed extended (grade + frequency_rank + hadamitzky_spahn), vocab seed upgraded to 5 entries per kanji with self-containment validator (closes B4) and Kanjium pitch merge, Tatoeba sentence seed raised 2→5 per kanji.
+---
 
-**Code commits (9):**
-- `f4d8a8b` feat(db): migration 0019 — add kanjidic2 refs (grade, frequency_rank, hadamitzky_spahn)
-- `855d163` feat(db): migration 0020 — add user_profiles.show_pitch_accent
-- `d3346b9` chore(db): vendor Kanjium pitch-accent snapshot
-- `2eacf05` feat(db): expand vocab seed to 5-10 per kanji + self-containment validator + Kanjium pitch merge
-- `1d5dc10` fix(db): correct seed-output path + raise Claude max_tokens for full batches
-- `7c560f1` feat(db): extend import-kanjidic2 with grade, frequency_rank, hadamitzky_spahn
-- `7ff7f5a` feat(db): raise sentence cap to 5 per kanji + defensive self-containment validator
-- `e36fd5d` fix(db): use sql.json() for example_vocab writes to prevent jsonb double-encoding
-- `a118498` fix(db): let Drizzle serialize example_sentences directly to prevent jsonb double-encoding
+## What shipped today
 
-**Prod state after seed + repair + top-up (2026-04-20 — final):**
-- `example_vocab`: 2,294 rows, all array-typed (manual repair during session via `#>> '{}'` pattern, then top-up run for 112 stragglers). Final distribution: **2,120 kanji with 5 entries, 158 with 4, 13 with 3, 3 below-floor (倖=1, 嚇=2, 錬=2 — all N1/Jinmeiyō with unavoidable Claude coverage gaps).** 2,291/2,294 (99.9%) meet the 3-entry floor.
-- `example_sentences`: 2,294 rows, all array-typed (manual repair similarly). Distribution: 1,906 kanji with 5 sentences, 41 with 4, 49 with 3, 53 with 2, 67 with 1, 178 with 0 (rare kanji with no Tatoeba coverage).
-- `kanji.grade`: 2,275 / 2,294 populated (99.2%).
-- `kanji.frequency_rank`: 2,152 / 2,294 (93.8%).
-- `kanji.hadamitzky_spahn`: 2,254 / 2,294 (98.3%).
-- Pitch accent patterns: 8,053 vocab entries have `pitchPattern` attached (~75% of accepted entries).
-- B4 validator: 2,288 / 2,294 kanji have ALL example_vocab entries containing the target kanji ✅ (closes the long-standing "kanji doesn't contain itself" bug).
+### Build 3-C — all phases complete
 
-**Two seed bugs found and fixed during the run:**
-1. `enrich-vocab.ts` — raw postgres.js `JSON.stringify(x)::jsonb` pattern produced jsonb strings instead of arrays. 2,193 rows corrupted mid-run, manually repaired, write pattern changed to `sql.json()` + post-write `jsonb_typeof` assertion (commit `e36fd5d`).
-2. `seed-sentences.ts` — Drizzle's `sql\`${JSON.stringify(x)}::jsonb\`` pattern hit the same class of bug. 2,116 rows corrupted during Tatoeba re-seed, manually repaired, write pattern changed to plain `.set({ exampleSentences: sentences })` + post-write assertion (commit `a118498`).
+Plan: [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md). Spec: [docs/superpowers/specs/2026-04-19-vocab-as-drill-unit-design.md](superpowers/specs/2026-04-19-vocab-as-drill-unit-design.md).
 
-Both were "papered over" previously by startup `#>> '{}'` repair — those repairs run at seed start, not during the loop, so `--force` re-seeds re-corrupted faster than the startup repair could help. Fixes now do the write correctly AND assert post-write that the type is `'array'`.
+- **Phase 1** (server homophone workaround): 9 commits on main. In-memory kanji→readings index loaded at API boot; evaluator expands CJK transcripts through the index. Verified on B124: `缶` transcript for `感` now grades Perfect. 109/109 unit tests.
+- **Phase 2** (data layer): 9 commits. Migrations 0019 + 0020 applied to prod. Vocab seed expanded (5-entry target, self-containment validator closed B4), Tatoeba cap raised to 5, Kanjium pitch merge. Two jsonb double-encoding seed bugs discovered and fixed mid-run. Prod state: 99.9% of kanji meet 3-entry vocab floor; `grade` 99.2%, `frequency_rank` 93.8%, `hadamitzky_spahn` 98.3% populated; 8,053 vocab entries carry `pitchPattern` (~75% of accepted entries).
+- **Phase 3** (API contract): 3 commits. `/v1/review/reading-queue` now attaches `voicePrompt` per item (round-robin by `repetitions`, not `reviewCount` — plan deviation, the spec column doesn't exist). `showPitchAccent` accepted in PATCH `/v1/user/profile`. `VoicePrompt` type exported from `@kanji-learn/shared`.
+- **Phase 4** (mobile): 8 commits. Pure helpers (`mora-alignment`, `PitchAccentReading`, `useShowPitchAccent`) + UI integration (VoiceEvaluator vocab layout, kanji details pitch chip, study-card pitch overlay, Profile tab toggle, placement-level default). Plan deviations documented in each commit (single-source-of-truth hook, `voice.tsx` consumer, Pitch chip on details page not KanjiCard, placement test supplies level not an onboarding picker). Shipped in **B125**.
 
-**Migrations applied to prod via `psql`:**
-- Migration 0019 — `kanji.grade / frequency_rank / hadamitzky_spahn` (all nullable)
-- Migration 0020 — `user_profiles.show_pitch_accent boolean NOT NULL DEFAULT true`
+### B126 UX polish bundle
 
-**Seed runs (all against Supabase prod via session-mode pooler `aws-1-ap-southeast-2.pooler.supabase.com:5432`):**
-- `pnpm seed:kanjidic2` — 2,294 rows updated with Kanjidic2 refs
-- `pnpm seed:vocab --force` — 10,752 vocab entries generated across 2,193 kanji (101 had Claude JSON-parse failures and kept prior 2-entry data)
-- `pnpm seed:sentences --force` — 2,116 kanji got Tatoeba sentences; 178 unchanged (no Tatoeba coverage)
-- Post-bug-fix top-up: cleared 112 below-floor vocab rows, re-ran `pnpm seed:vocab` (no `--force`) — 92 filled first pass, 20 hit the same JSON-parse pattern and stayed empty; second run of the 20 filled all cleanly. Net: +109 kanji upgraded from 2-entry pre-seed data to 5-entry.
+Plan: [docs/superpowers/plans/2026-04-20-b126-ux-polish-bundle.md](superpowers/plans/2026-04-20-b126-ux-polish-bundle.md). Spec: [docs/superpowers/specs/2026-04-20-daily-goal-celebration-design.md](superpowers/specs/2026-04-20-daily-goal-celebration-design.md).
 
-Total Anthropic API spend for vocab seed: ~$2–3 (Haiku).
+11 tasks executed via subagent-driven-development. Code-review pass caught two real issues (mid-file import, stale-closure on `analyticsSummary`); both fixed.
 
-## ⚠️ Security action owed
+| Commit | Change |
+|---|---|
+| `a704ad2` | fix(mobile): PitchAccentReading explicit textPrimary colour (WCAG AA) |
+| `23941b5` | feat(api): extend /v1/kanji/:id with Kanjidic2 reference fields |
+| `7a1d25f` + `5e9db98` | feat(mobile): didCrossGoal helper for daily-goal celebration |
+| `003ec81` | fix(mobile): review store isLoading initial true to prevent caught-up flash |
+| `a50cd31` + `ab870ed` | feat(mobile): daily-goal celebration banner + analyticsSummary ref |
+| `9f74917` | feat(mobile): Dashboard daily-goal progress indicator |
+| `e5e349f` | feat(mobile): speak icons on study-card reveal vocab rows |
+| `8592a7a` | feat(mobile): KanjiDetail type + formatGrade for Kanjidic2 refs |
+| `d0247f1` | feat(mobile): surface Kyōiku grade + frequency + Hadamitzky-Spahn on details page |
+| `dda6d79` | docs: log B126 fixes in trackers |
+| `065ff23` | docs(handoff): B126 EAS build submitted |
 
-The `ANTHROPIC_API_KEY` value from `packages/db/.env` was echoed into this session's transcript via a `grep` that included the line contents. Recommend rotating via https://console.anthropic.com/settings/keys (one-click regenerate), then updating the local `.env` and App Runner env var.
+### Session Complete rebalance + dailyGoal race fix
 
-## Build 3-C Phase 1 — server homophone workaround (SHIPPED)
+Plan: [docs/superpowers/plans/2026-04-20-session-complete-feedback-rebalance.md](superpowers/plans/2026-04-20-session-complete-feedback-rebalance.md). Spec: [docs/superpowers/specs/2026-04-20-session-complete-feedback-rebalance-design.md](superpowers/specs/2026-04-20-session-complete-feedback-rebalance-design.md).
 
-Full design + plan:
-- Spec: [docs/superpowers/specs/2026-04-19-vocab-as-drill-unit-design.md](superpowers/specs/2026-04-19-vocab-as-drill-unit-design.md)
-- Plan: [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md)
+All-Good sessions now render green "Solid — consistent recall" at 67% instead of amber "Decent effort — review the misses". Study screen's `useEffect` now gates on `profile` so `dailyGoal` isn't read as its 20 fallback. Shipped in B125. User confirmed the new bands + copy on-device.
 
-Phase 1 addresses the iOS speech-recognizer homophone bug surfaced on B124 testing (`感` spoken as "kan" evaluated as wrong because iOS returned the kanji `缶` as transcript and wanakana can't convert kanji to readings). The fix is server-only: `apps/api/src/services/kanji-readings-index.ts` loads an in-memory kanji→readings map at boot; the evaluator in `reading-eval.service.ts` now expands any CJK characters surviving wanakana through that index and matches against `correctReadings`.
+### Documentation landed this session
 
-Commits (all on main, 9 total):
-- `c462202` feat(api): add containsCJK helper for homophone workaround
-- `7e416dc` refactor(api): document no-g-flag intent + test CJK compat exclusion
-- `d82ee6b` feat(api): add expandReadings for homophone expansion
-- `f8210dc` refactor(api): remove dead assignment in expandReadings + tighten cap test
-- `7d0d50f` feat(api): add loadKanjiReadingsIndex from kanji table
-- `37c0a57` refactor(api): hoist loader imports to top of file
-- `628dae1` feat(api): integrate homophone workaround into evaluateReading
-- `2c18045` feat(api): wire kanji readings index through voice route
-- `af0ce9a` fix(api): normalize expanded candidates before homophone match
+- **New feedback memories:** secret hygiene (never dump plaintext to transcript), accessibility WCAG 2.1 AA (explicit theme color on every Text/icon), commit co-author attribution (Buddy added as co-author on every commit).
+- **ROADMAP + ENHANCEMENTS entries:** Three-Modality Learning Loop (owner-proposed post-Build-3-C initiative), Dark/Light theme toggle (annotated with the WCAG accent-color problem), Secrets Management (rewritten around SSM Parameter Store instead of Secrets Manager).
+- **Specs and plans:** four new artifacts under `docs/superpowers/` — the Build 3-C design/plan from yesterday, the Session Complete rebalance, and the B126 bundle.
 
-Test coverage: 109/109 unit tests passing. New suites:
-- 13 tests in [kanji-readings-index.test.ts](../apps/api/test/unit/services/kanji-readings-index.test.ts) (containsCJK + expandReadings + cap + compat-block exclusion)
-- 7 tests in [reading-eval.homophone.test.ts](../apps/api/test/unit/reading-eval.homophone.test.ts) (hiragana fixtures + real-DB katakana fixture regression test)
+---
 
-On-device verification (B124, 2026-04-19): user spoke "kan" for a reading-stage card on 感 — evaluator returned Perfect (previously returned "Not quite. Heard: 缶"). Confirmed the fix accepts homophone-kanji transcripts across the common-reading families (感/缶, 紙/髪, 橋/箸, etc.).
+## ⚠️ Security actions owed (unchanged from earlier in the session)
 
-Status of the rest of Build 3-C:
-- **Phase 2** (data layer): ✅ SHIPPED 2026-04-20 — see section above.
-- **Phase 3** (API `voicePrompt` + `showPitchAccent` PATCH): ✅ SHIPPED 2026-04-20 — see section above.
-- **Phase 4** (mobile vocab-as-prompt + pitch component + toggle): 🚀 **B125 EAS build in flight 2026-04-20** — all code committed (Tasks 18–25). EAS build ID `f027ab70-823e-4143-b15c-7f8d62105358`, auto-submitting to TestFlight. On-device verification (Task 27) pending once TestFlight push lands.
-- **Phase 5** (verification + tracker closure): not started; lands after B125 on-device sign-off.
+Seven keys exposed through this sprint, pending rotation. Buddy will rotate at end of day / when convenient; Claude does not touch the values.
 
-## B126 UX Polish Bundle (2026-04-20)
+| Key | Regenerate |
+|---|---|
+| `GROQ_API_KEY` | https://console.groq.com/keys |
+| `GEMINI_API_KEY` | https://aistudio.google.com/app/apikey |
+| `ANTHROPIC_API_KEY` | https://console.anthropic.com/settings/keys (also update local `packages/db/.env`) |
+| `DATABASE_URL` password | Supabase → Database → Reset password |
+| `INTERNAL_SECRET` | `openssl rand -hex 32` locally |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → API → service_role → Regenerate |
+| `SUPABASE_JWT_SECRET` | Supabase → API → JWT Secret → Generate new secret ⚠️ **kicks all testers off — defer until ready** |
 
-Five bundled UX changes on top of B125, plus an API deploy for the Kanjidic2 refs. Spec at [docs/superpowers/specs/2026-04-20-daily-goal-celebration-design.md](superpowers/specs/2026-04-20-daily-goal-celebration-design.md); plan at [docs/superpowers/plans/2026-04-20-b126-ux-polish-bundle.md](superpowers/plans/2026-04-20-b126-ux-polish-bundle.md).
+**Rotation flow:** Buddy regenerates in provider consoles → updates values in `apprunner-env.json` in his own terminal → runs `aws apprunner update-service` himself → pings Claude. Claude then runs health check + provider-exercising smoke calls.
 
-**Commits on main:**
-- `23941b5` feat(api): extend /v1/kanji/:id with Kanjidic2 reference fields (grade, frequencyRank, hadamitzkySpahn)
-- `7a1d25f` + `5e9db98` feat(mobile): didCrossGoal helper for daily-goal celebration (TDD + import hoist)
-- `003ec81` fix(mobile): review store isLoading initial true to prevent caught-up flash
-- `a50cd31` + `ab870ed` feat(mobile): daily-goal celebration banner in SessionComplete (+ useRef fix for stale closure on analyticsSummary)
-- `9f74917` feat(mobile): Dashboard daily-goal progress indicator
-- `e5e349f` feat(mobile): speak icons on study-card reveal vocab rows
-- `8592a7a` feat(mobile): KanjiDetail type + formatGrade for Kanjidic2 refs
-- `d0247f1` feat(mobile): surface Kyōiku grade + frequency + Hadamitzky-Spahn on details page
-- `dda6d79` docs: log B126 fixes in trackers
-- `a704ad2` fix(mobile): PitchAccentReading explicit textPrimary colour (WCAG AA — carried over from earlier today's fast fix between B125 and B126)
+**Long-term fix** tracked under ROADMAP + ENHANCEMENTS "Secrets Management — SSM Parameter Store" with full migration plan.
 
-**API deploy (Task 2):** op `4df7047c9d744e1488a79a740c1cb49f` — SUCCEEDED, health HTTP 200 in 420ms, route HTTP 401 (auth-gated as expected).
+---
 
-**B126 EAS build:**
-- Build ID: `24bc4061-b0f1-4e43-91c2-96b0c5292b7b`
-- Submission: `a8da4420-9c13-4404-855c-bb3350384411`
-- Logs: https://expo.dev/accounts/radmelon/projects/kanji-learn/builds/24bc4061-b0f1-4e43-91c2-96b0c5292b7b
+## 🧪 On-device verification checklist for B126
 
-**On-device verification checklist (once B126 lands in TestFlight):**
-- Pitch overlay on study card, details page, and VoiceEvaluator vocab prompt is now legible (textPrimary on bgCard).
-- Dashboard shows `N / M today` under "Start Today's Reviews"; checkmark renders when goal is met.
-- Finishing the session that crosses the daily goal shows 🎉 banner in SessionComplete; banner suppressed on subsequent sessions same day; burned-kanji override still wins.
-- Cold-open Study tab does NOT briefly flash "All caught up!" before cards load.
-- Study-card reveal panel's vocab rows each show a speak icon (tap plays TTS like the details page).
-- Kanji details Cross-references card shows Kyōiku Grade, Frequency, and Hadamitzky-Spahn rows alongside JIS / Nelson / Morohashi. Try `水` (Kyōiku 1), `憂` (Junior High), `倖` (Jinmeiyō).
-- VoiceEvaluator vocab prompt still functions after the speak evaluation.
+When TestFlight delivers B126 (typically 20–40 min end to end):
 
-**Known deferred items not in B126:** timezone-sensitive "today" date — currently uses UTC via `toISOString().slice(0, 10)`. In non-UTC timezones the date rollover is off by the TZ offset. Acceptable for current 2-user scale; worth filing as a future cleanup if more users arrive across timezones.
+**Pitch overlay (contrast regression — main B126 driver):**
+- [ ] Study card reveal: vocab reading shows readable kana with amber overline + drop hook (was invisible in B125).
+- [ ] Kanji details page vocab rows: same, at `size="small"`.
+- [ ] VoiceEvaluator vocab prompt: same, at `size="large"`.
+- [ ] Pitch toggle chip on kanji details flips all three surfaces atomically.
 
-## Build 3-C Phase 4 — code complete; B125 in flight (2026-04-20)
+**Daily-goal UX:**
+- [ ] Dashboard under "Start Today's Reviews" shows `N / M today`; green checkmark appears when N ≥ M.
+- [ ] Finishing the session that crosses the goal for the first time that day renders the 🎉 "Daily goal met — nice work." banner above the confidence ring.
+- [ ] Subsequent sessions that day do NOT render the banner again.
+- [ ] Burned-kanji message still takes precedence when both would apply.
 
-All Phase 4 implementation committed to main. EAS build submitted; auto-submit to TestFlight scheduled.
+**Flash-race fix:**
+- [ ] Background app 10+ min, cold-open Study tab. Should show loading spinner briefly, then cards. No "All caught up!" flash.
 
-**Pure-logic scaffolding:**
-- `25f134c` feat(mobile): mora-alignment helper — 8 unit tests.
-- `30bfb92` feat(mobile): PitchAccentReading component — NHK overline + drop-hook, 3 size variants.
-- `f4b6e1d` feat(mobile): useShowPitchAccent hook + UserProfile.showPitchAccent field. **Plan deviation:** single source of truth via `useProfile().update()` instead of a duplicate Zustand store.
+**Study-card vocab speak icons:**
+- [ ] Reveal a study card with example vocab. Each vocab row shows a speak icon. Tapping plays TTS; icon state cycles `volume-medium-outline → volume-high → back` as it plays. Tapping a different row cancels the previous playback.
 
-**UI integration + onboarding (Tasks 21–25):**
-- `61131a4` feat(mobile): VoiceEvaluator vocab prompt path. **Plan deviation:** voice.tsx is the actual consumer, not study.tsx. Vocab mode renders word + PitchAccentReading + "Say this word" + hint + meaning.
-- `960806a` feat(mobile): kanji details page — vocab readings wrapped in PitchAccentReading; Pitch toggle chip in Example Vocabulary card header; Card sub-component extended with `headerRight` slot. **Plan deviation:** the Rōmaji chip actually lives on KanjiCard, not the details page.
-- `6e0c3da` feat(mobile): study-card reveal panel — vocab readings wrapped in PitchAccentReading. Deprecated RevealAllDrawer untouched.
-- `d9bc2b3` feat(mobile): Profile tab → Study Preferences section with single pitch toggle.
-- `27ef49a` feat(mobile): placement sets pitch default from passedByLevel. **Plan deviation:** onboarding.tsx just routes to placement; level is inferred from test results. N5/N4 → off; N3/N2/N1/unsure → on.
+**Kanjidic2 references on kanji details:**
+- [ ] Open `水` (or any common elementary kanji): Cross-references card shows `Kyōiku Grade 1`, `Frequency #{small}`, `Hadamitzky-Spahn #{small}` alongside JIS / Nelson / Morohashi.
+- [ ] Open `憂` (or any JHS-only Jōyō): Kyōiku Grade reads `Junior High`.
+- [ ] Open `倖` (Jinmeiyō): Kyōiku Grade reads `Jinmeiyō`; Frequency row absent (Jinmeiyō kanji rarely in the 2,500-frequency corpus).
 
-**B125 EAS build (2026-04-20):**
-- Build ID: `f027ab70-823e-4143-b15c-7f8d62105358`
-- Logs: https://expo.dev/accounts/radmelon/projects/kanji-learn/builds/f027ab70-823e-4143-b15c-7f8d62105358
-- Submission: `c8ba5295-56b7-440c-ad1e-a887e98c2b07` (auto-submit to TestFlight)
-- 100% of monthly EAS credits used; this build is pay-as-you-go (~$2).
+**Outstanding from B124/B125 that B126 does not change:**
+- [ ] Amber reading-prompt cue (should show on a reading-stage card). Still unverified — the code path lands via `colors.accent`. Close the amber-cue ENHANCEMENTS entry after confirmation.
 
-**Task 27 — on-device verification checklist (user-side, once B125 is in TestFlight):**
-- Reading-stage card surfaces a vocab word with PitchAccentReading overlay; mic accepts the vocab reading.
-- Pitch toggle OFF hides overline on all three surfaces: study-card reveal, kanji details, VoiceEvaluator vocab layout.
-- Kanji details shows 5–10 vocab entries, all containing the target kanji (B4 closure confirmation).
-- Rōmaji toggle still works on KanjiCard.
-- Pitch chip in kanji-details Example Vocabulary header toggles the state across surfaces.
-- 20-card reading session → daily_stats.reviewed matches server.
-- Placement test: completing at N3+ defaults pitch ON; skip defaults pitch ON; completing at N5/N4 defaults pitch OFF.
-
-**Local-dev tooling status:** user has been direct-to-prod because iOS local dev has been flakey (`ios/Pods` wiped, last successful Xcode build Apr 10). Fixable separately; `pod install` + `pnpm ios` is the starting point but may need a multi-step tooling pass. Not on the critical path for Build 3-C; tracked as a post-launch cleanup item.
-
-Plan entry point: [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md) § Phase 4 (Tasks 21–27).
-
-## Build 3-C Session Complete rebalance + dailyGoal race fix (SHIPPED 2026-04-20)
-
-Small bundled fix that ships in B125 alongside Phase 4. Motivational copy + colour bands rebalanced so all-Good sessions (67%) render green "Solid — consistent recall" instead of amber "Decent effort — review the misses". Also fixes the `study.tsx` useEffect race that surfaced 20-card queues when profile cache was evicted.
-
-- Spec: [docs/superpowers/specs/2026-04-20-session-complete-feedback-rebalance-design.md](superpowers/specs/2026-04-20-session-complete-feedback-rebalance-design.md)
-- Plan: [docs/superpowers/plans/2026-04-20-session-complete-feedback-rebalance.md](superpowers/plans/2026-04-20-session-complete-feedback-rebalance.md)
-- Commits: `6a4b74d`, `9c086d2`, `a9c91fd`, `70d1edb`
-
-## What shipped this session (earlier, pre-Build-3-C)
-
-### Mobile (in B124 TestFlight)
-- `5d81768` — fix(mobile)+docs: Remembered/Missed labels on Session Complete; `loadMissedQueue` threshold aligned from `q<3` to `q<4` so "Drill N missed cards" matches its label.
-- `dd6c5f7` — feat(mobile): consolidate kanji details to one canonical page (`/kanji/[id]`); the study card's magnifying-glass icon now navigates there instead of opening the inferior in-card drawer. Speak icons added to every vocab row + sentence row (tap to play Japanese TTS, tap again to stop).
-
-### API / data
-- `5f1b043` — fix(api,data): repaired 1185 corrupted `kanji.radicals` rows (double-encoded JSON string → real array) + added `toArr` defense to `/v1/kanji/browse`, `/v1/kanji/:id`, and `/v1/kanji/:id/related`.
-- Migrations 0017 + 0018 (applied manually to Supabase via `psql`).
-- App Runner env-var update adding `GROQ_API_KEY` + `GEMINI_API_KEY` (redeploy op `fed113f85b…`).
-
-### Tracker hygiene
-- Closed 6 bug entries: post-delete relational cascade (root cause was the missing FK, not the downstream cascades); umbrella Delete Account entry; SessionComplete 20/0 counts; browse-crash on corrupted kanji; stale Session Complete after navigation; daily-goal hardcoded-20.
-- Flipped 4 enhancement entries to Shipped: Remembered/Missed / Drill fix; reveal-drawer consolidation; speak-icons scope extension; RLS on last 5 tables; Groq/Gemini keys.
-- Added 3 new items: gesture-mapping refinement; speak-icons scope extension (already shipped as part of B124); expand vocab/sentences from JMdict-Kanjidic-Tatoeba; **secrets-management + rotation policy** (see ROADMAP pre-launch section).
-- Updated E11 (Grade-level Kyouiku) with silver/gold badge + social-share design.
-
-## B124 verification results (TestFlight, 2026-04-19)
-
-**Confirmed on device:**
-- ✅ SessionComplete counts (`q>=4`) show 10/10 for 5-Again+5-Hard+5-Good+5-Easy.
-- ✅ Dashboard confidence ring updates post-session (~3s refresh).
-- ✅ dailyGoal=5 → study session loads 5 cards.
-- ✅ Session Complete → Done → Dashboard → Start Today's Reviews → "up to date" message (goal met); Study tab loads fresh deck.
-- ✅ Browse `息` (and other previously-corrupted kanji) renders `["心"]` radicals correctly — no crash.
-
-**Pending verification (user will catch in next study session):**
-- 🧪 Amber reading-prompt cue (when a reading-stage card surfaces naturally).
-- 🧪 B124 changes: Remembered/Missed labels, Drill N missed button works (even with all-Hard session), magnifying-glass navigation, speak icons on vocab/sentences on `/kanji/[id]`.
-
-## Sub-Sprint A1 — Pre-launch readiness (shipped today)
-
-Of the Option A (App Store readiness) plan, three of four items are now **done**:
-
-1. ✅ **B1 — Post-delete relational cascade** (migration 0017). Real root cause: `user_profiles` had no FK to `auth.users` at all. Downstream CASCADEs were there; the chain just never started. Migration adds the one missing FK + cleaned up 2 orphan rows.
-2. ✅ **E21 — RLS on last 5 tables** (migration 0018). 35/35 tables now covered.
-3. ✅ **E23 — Groq + Gemini keys** on App Runner (op `fed113f85b…`). Tier-2 LLM fallback is now live.
-4. 🚀 **E22 — Supabase us-east-1 migration** — still pending; needs coordinated EAS rebuild + DB dump/restore. See ROADMAP pre-launch section.
-
-Plus a late addition:
-
-5. 🚀 **Secrets management — rotate + migrate to AWS Secrets Manager** — new ENHANCEMENTS entry and a ROADMAP pre-launch bullet. Immediate one-time rotation recommended for the Groq + Gemini keys that were pasted through chat this session. Longer-term: move all provider keys into AWS Secrets Manager, document a quarterly rotation policy, and establish chat-hygiene for secrets.
-
-## ⚠️ Immediate security action owed
-
-Three provider keys need rotation from two separate chat exposures over this sprint:
-
-- **Groq** (exposed 2026-04-19 when added to App Runner via chat): https://console.groq.com/keys → Regenerate
-- **Gemini AI Studio** (exposed 2026-04-19 same flow): https://aistudio.google.com/app/apikey → Regenerate
-- **Anthropic** (exposed 2026-04-20 via an unmasked `grep` on `packages/db/.env`): https://console.anthropic.com/settings/keys → Regenerate
-
-Takes ~30 seconds per key. When rotated, ping for a single `aws apprunner update-service` pass to inject the new values + update `.env` locally.
-
-Longer-term follow-up: move all provider keys into AWS Secrets Manager (see ENHANCEMENTS secrets-management entry) and establish a quarterly rotation policy + chat hygiene.
-
-## Build 3-C Phase 3 — API contract (SHIPPED 2026-04-20)
-
-Phase 3 of Build 3-C landed — API now attaches `voicePrompt` to every `/v1/review/reading-queue` item (round-robin by `repetitions`) and accepts `showPitchAccent` in the PATCH `/v1/user/profile` validator. No user-visible change on its own; this is the API contract Phase 4 mobile depends on.
-
-**Code commits (3):**
-- `474ad94` feat(api): attach voicePrompt to reading queue (round-robin by repetitions)
-- `b60c2ba` feat(shared): export VoicePrompt types from @kanji-learn/shared
-- `43c8f9d` feat(api): allow showPitchAccent in PATCH /v1/user/profile
-
-**Plan deviation to note:** Phase 3 Task 15 called for `userKanjiProgress.reviewCount`, which doesn't exist in the schema — only `repetitions` (SM-2 consecutive-success counter) does. Used `repetitions` as the rotation index. Zero-cost, migration-free, good-enough variety. If strict monotonic round-robin ever matters, add a `review_count` column later.
-
-**Deploy:** App Runner op `24f17892fa1e4641bc4c2d1a8a39974c` — SUCCEEDED in ~4.5 min. Health check HTTP 200 in 427ms. Both new surfaces reachable (401 unauthed, as expected).
-
-**Test status:** 169/170 unit + integration tests pass. The 1 remaining failure (`user-delete` test, `learner_identity_pkey` duplicate) is a test-pollution issue unrelated to Phase 3 — pre-existing, will clear with a fresh TEST_DATABASE reset.
-
-**Local dev DB fix:** migration 0020 (`user_profiles.show_pitch_accent`) applied to `TEST_DATABASE_URL` this session; `.env.test`-backed integration tests now clear the 3 `show_pitch_accent column does not exist` errors they previously failed on.
+---
 
 ## 🚦 Next-session first tasks
 
-1. **Verify B126 on device** once TestFlight delivers it. Pitch overlay should now be legible; daily-goal banner should fire once per crossing; flash-race should be gone; study-card vocab rows should have speak icons; kanji details should surface Hadamitzky-Spahn + Kyōiku Grade + Frequency. On-device checklist above.
-2. **Close Build 3-C Phase 5 tracker items** once B126 is verified: flip the homophone bug (Phase 1 workaround + Phase 4 structural shift) fully Fixed, close B4 (kanji-doesn't-contain-itself — already fully closed during Phase 2), flip E5 / E6 to `✅ Shipped` if not already, and make sure the amber reading-prompt cue is verified.
-3. **Rotate the 7 exposed secrets** whenever you have the ~10 min window (still pending from this session — plan details in ROADMAP "Secrets Management").
-2. **Rotate secrets** — seven keys exposed this sprint (Groq + Gemini + Anthropic + Supabase DATABASE_URL/JWT_SECRET/SERVICE_ROLE_KEY + INTERNAL_SECRET). See ROADMAP.md / ENHANCEMENTS.md "Secrets Management" for the rotation order and the SSM Parameter Store migration plan.
-3. **Verify B124 amber reading-prompt cue** once a reading-stage card surfaces naturally in normal study; close the amber-cue enhancement after.
-4. **(Optional follow-up)** Re-run `pnpm seed:vocab` (no `--force`) to top up the 6 kanji with <3 vocab entries, now that the write bug is fixed.
+1. **Verify B126 on device** using the checklist above.
+2. **Close Build 3-C Phase 5** tracker items once B126 verification passes: flip the homophone bug fully Fixed (Phase 1 workaround + Phase 4 structural shift), confirm B4 is fully closed, flip E5 / E6 / speak-icons-scope to `✅ Shipped & Verified`, and verify the amber reading-prompt cue.
+3. **Rotate the 7 exposed secrets** whenever the ~10 min window opens up.
+4. **(Optional)** Re-run `pnpm seed:vocab` (no `--force`) to top up the 3 kanji still below the 3-entry floor (倖, 嚇, 錬). Cost: negligible.
+5. **(Optional)** File a follow-up for the timezone-sensitive "today" date string — current code uses `toISOString().slice(0, 10)` (UTC), which mis-rolls for non-UTC users in a ~7h window around midnight. Acceptable for current 2-user scale; worth cleaning up before a broader launch.
 
-## Build 3 recommendation — Option C (Data enrichment)
+---
 
-### Why C over D
+## Known deferred items and technical debt
 
-Option D (social push — nudges / invite notifications / study group badges) assumes two things that aren't currently true:
-
-- **Daily push notifications work.** Currently broken (`BUGS.md`: "Daily push notifications not firing" — active since Build 103). Nudges are push-notification-first, so D has a blocking dependency that needs repair before its headline features work.
-- **There's a social graph to engage.** In today's user base (owner + a handful of test accounts), social engagement features don't have anyone to engage with. Option D's ROI grows dramatically with user count and is best timed closer to launch.
-
-Option C's items sharpen the already-shipped study loop:
-- **E5 Expand vocab + sentences** (5–10 vocab, 3–5 sentences per kanji) subsumes B4 (the kanji-doesn't-contain-itself data-quality bug) and multiplies the value of the speak-icons we just shipped in B124 (more things to hear).
-- **E6 Pitch accent indicator** — once we have richer readings, adding pitch accent turns reading practice into natural-speech practice. Complements E5.
-- **E8 Drill Weak Spots scope** — recent-session vs. cumulative threshold is a day-to-day UX win, single-endpoint change.
-- **E16 Broaden streak** — counts placement / quiz / writing toward the streak. Closes a long-standing complaint and is 1–2 hours of work.
-
-None of C's items require push notifications. None are blocked by open bugs. Every one of them makes the existing app more useful to the solo learner that most users are today.
-
-### Suggested C sequencing (one focused session each)
-
-1. **E8 Drill Weak Spots scope** — smallest win, warm-up.
-2. **E16 Broaden streak** — analytics query + mobile widget tweak, same pattern as E8.
-3. **E5 Expand vocab + sentences** — biggest value. Seed script rework + validator for "word contains kanji". Closes B4 bug as a bonus.
-4. **E6 Pitch accent indicator** — last because it requires sourcing a pitch accent dataset (Wadoku or similar) and has external-data uncertainty.
-
-### When to do D
-
-After Option C ships AND the daily-push-notifications bug is fixed. Fixing that bug is the cheaper of the two and unblocks D's entire feature set.
+- **Local iOS dev tooling is flakey.** `ios/Pods` wiped, last successful Xcode build Apr 10. Starting point: `pod install` then `pnpm ios`. Not on the critical path; track as a post-launch cleanup so Buddy can get back to a systematic dev-then-ship cycle instead of direct-to-prod builds.
+- **Three-Modality Learning Loop** — owner-proposed 2026-04-20. Pedagogical gate: after each daily-goal flashcard batch, require the same kanji to be practiced in writing + speaking before the next batch unlocks. ROADMAP Phase 6 row 23 + ENHANCEMENTS Future entry. Prerequisites: reliable writing eval audit, B125+ voice eval bake, cross-tab session state. 1–2 week scope in its own brainstorm → spec → plan cycle.
+- **Integration test gap at `/v1/kanji/:id`.** Pre-existing — B126 is the first task to add fields the mobile UI depends on. A single integration assertion that the response contains `grade`, `frequencyRank`, `hadamitzkySpahn` (null OK) would protect the endpoint going forward. Not blocking.
+- **`user-delete` integration test fails on `learner_identity_pkey` duplicate.** Pre-existing test-cleanup issue. Masked during Phase 3 verification; will clear with a TEST_DATABASE reset.
+- **Migration 0020 applied to `TEST_DATABASE_URL` this session** — local integration tests no longer fail on the missing `show_pitch_accent` column.
 
 ---
 
 ## Working environment notes
 
-- **API URL (production):** `https://73x3fcaaze.us-east-1.awsapprunner.com` — health check OK post-redeploy.
-- **Supabase project:** `pyltysrcqvskxgumzrlg.supabase.co` (still in `ap-southeast-2`). Pre-launch migration to us-east-1 still pending.
-- **Build numbers:** EAS auto-increments. Last shipped: **B124**. Don't manually bump.
-- **Docker deploys:** `DOCKER_CONTEXT=default ./scripts/deploy-api.sh`. OrbStack's default context produces ARM images that crash App Runner.
-- **EAS builds:** from `apps/mobile/`, not repo root. Pay-as-you-go at $2/build. Last two builds ran with `eas-cli@18.7.0` (upgrade required — 18.5.0 silently fails at request submission).
-- **EAS env vars** with `EXPO_PUBLIC_` prefix are baked into each build. Changing Supabase URL (Pre-Launch item E22) requires a fresh EAS build.
-- **Test account `buddy@g.ucla.edu`** had its `user_profiles` row cleaned up by migration 0017 this session (it was orphaned — `auth.users` row had already been deleted from earlier testing). Was a test account — shouldn't impact ongoing work. If the user is still using TestFlight logged in as that email, they'll need to sign up again (a fresh account will be created).
+- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`.
+- **Supabase:** still in `ap-southeast-2`. Pre-launch us-east-1 migration remains pending (ENHANCEMENTS E22).
+- **Docker deploys:** `DOCKER_CONTEXT=default ./scripts/deploy-api.sh` from repo root. OrbStack default context produces ARM images that crash App Runner; the script forces `linux/amd64`.
+- **EAS builds:** from `apps/mobile/`. Pay-as-you-go ~$2/build (monthly credits exhausted). Require `eas-cli ≥ 18.7.0` (18.5.0 silently fails at request submission). EAS auto-bumps `ios.buildNumber`; don't hand-edit.
+- **EAS env vars** with `EXPO_PUBLIC_` prefix are baked into each build. Changing Supabase URL (pre-launch E22) requires a fresh EAS build.
+- **Monorepo test commands:** `pnpm exec jest` (mobile, not `pnpm test` — turborepo ate that). `pnpm test` works from repo root via Turbo and from `apps/api/` (vitest).
+
+---
 
 ## Tomorrow's first command
 
 ```
 cd /Users/rdennis/Documents/projects/kanji-learn
 git pull origin main
-# 1. Check B125 status in TestFlight and run Task 27 verification checklist (see Phase 4 section above)
-# 2. If visuals pass, close Build 3-C: flip B4 and homophone bug to ✅ Fixed, mark E5/E6/speak-icons ✅ Shipped
-# 3. If visuals need polish, queue a B126 with the tweaks (~$2 again — still pay-as-you-go until credits reset)
-# 4. Rotate the 7 exposed secrets at any natural checkpoint (ROADMAP.md "Secrets Management" has the runbook)
-```
-
----
-
-## Recent commits this session
-
-```
-f4882bf  fix(db)+docs: migrations 0017 (post-delete cascade) + 0018 (RLS on last 5 tables)
-a088b54  docs(enhancements): expand E11 Grade-Level Kyouiku entry with silver/gold badges + social share
-337f6eb  docs(bugs): close SessionComplete counts + reveal-drawer entries
-dd6c5f7  feat(mobile): consolidate kanji details to one page + speak icons on vocab/sentences
-5d81768  fix(mobile)+docs: Remembered/Missed labels + Drill Missed threshold align + B123 tracker updates
+# 1. Open TestFlight on device → install B126 if not auto-delivered yet.
+# 2. Walk the on-device verification checklist above (copy/paste from the section heading).
+# 3. If all pass: flip Phase 5 tracker items (homophone bug Fixed, E5/E6 Shipped & Verified, amber cue closed).
+# 4. If anything regresses: queue tweaks, cut B127 (~$2) or fold into a larger change.
+# 5. Rotate the 7 exposed secrets when the window opens.
 ```
