@@ -241,6 +241,25 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## ✅ Fixed Bugs
 
+### Multi-device push sends to only one device (B127, 2026-04-21)
+- **Symptom:** User signed in on iPhone + iPad received a "Bucky just studied" mate-alert on the iPad only. iPhone and paired Watch were silent. Root-caused 2026-04-21: single `user_profiles.push_token` column is last-write-wins; whichever device most recently registered overwrote the others.
+- **Fix (shipped B127):** Replaces the single column with a dedicated `user_push_tokens` table (migration 0021). New `POST /v1/push-tokens` / `DELETE /v1/push-tokens/:token` endpoints. New `sendToUserTokens` helper fans out across all a user's tokens in one batched Expo call and synchronously prunes tokens that ticket with `DeviceNotRegistered` / `InvalidCredentials` / `MessageTooBig`. All three production push paths (`notifyStudyMates`, `sendDailyReminders`, `sendRestDaySummaries`) swapped to use it. Mobile registers via the new endpoint on launch and best-effort DELETEs on signOut. Design spec + implementation plan under `docs/superpowers/{specs,plans}/2026-04-21-multi-device-push*`. 14 commits on main via fast-forward merge. Awaiting on-device verification once B127 installs.
+- `[Effort: L]` `[Impact: High — multi-device support for a 2-user-but-growing app]` `[Status: ✅ Fixed — pending B127 verification]`
+
+### Watch ignores user's Daily Review Goal, hardcoded 10-card sessions (B127, 2026-04-21)
+- **Symptom:** User set `dailyGoal=5` on Profile; Watch home hero showed "20 cards due" and the study session presented 10 cards, then returned to "20 cards due" on completion. Two separate issues rolled up:
+- **Root cause 1 — cache schema mismatch.** `profile.tsx:159` wrote `kl:profile_cache` as `{ data: UserProfile }` (wrapped). `auth.store.ts:45-49`'s WatchConnectivity-sync reader expected `{ dailyGoal, reminderHour, restDay }` at the top level. `profile?.dailyGoal` therefore always resolved to `undefined`, falling through the `?? 20` fallback. Every Watch sync since the cache wrapping landed has sent `dailyGoal=20` regardless of the user's actual setting.
+- **Root cause 2 — no re-sync on save.** `save()` in `profile.tsx` PATCHed the server and updated local state but did NOT update the cache or ping the Watch. Changes took effect only on the next auth refresh / sign-in / manual force-sync.
+- **Root cause 3 — hardcoded 10-card session.** `StudyViewModel.swift:87` called `fetchQueue(limit: 10)` regardless of dailyGoal. Decoupled from the display in `HomeView.swift`, which capped at `min(dueCount, dailyGoal)`.
+- **Fix (shipped B127, commit `23ec881`):** Unwrap `.data` in the cache reader; add a new `syncToWatch()` auth-store action that respects `kl:watch_enabled`; call it from `save()` after a successful PATCH and write the updated profile to cache; replace the hardcoded `10` in `StudyViewModel.swift` with `dailyGoal` read from `UserDefaults("kl_daily_goal")`; tighten `HomeView.swift` hero subtitle to show "`N` of `M` today" with an "All caught up" state at zero.
+- **Known limitation:** when the server-side overdue backlog exceeds the daily goal, the hero won't decrement after a session because `/v1/review/status` doesn't yet return `todayReviewed`. Separate follow-up task filed to populate that field from `daily_stats`.
+- `[Effort: M]` `[Impact: High — Watch was silently ignoring a core user preference]` `[Status: ✅ Fixed — pending B127 verification]`
+
+### Hadamitzky-Spahn citation missing from kanji details footer (B127, 2026-04-21)
+- **Symptom:** Commit `d0247f1` surfaced the H-S reference number on the kanji details References card but forgot to add an attribution line to the footer. Card displayed `"Hadamitzky-Spahn #123"` while the footer only cited Nelson and Morohashi.
+- **Fix (shipped B127, commit `5d900a0`):** Added one line to `apps/mobile/app/kanji/[id].tsx:539`: `Hadamitzky-Spahn: Wolfgang Hadamitzky & Mark Spahn, Kanji & Kana (1981; rev. eds.).`
+- `[Effort: XS]` `[Impact: Low — cosmetic omission]` `[Status: ✅ Fixed — pending B127 verification]`
+
 ### OAuth post-login navigation regression (B116)
 - **Symptom:** After Google or Apple Sign-In completed successfully, the user was returned to the sign-in screen with no visible change. Initially diagnosed as "OAuth broken"; actually a routing-gate race introduced when the onboarding feature merged.
 - **Root cause:** `useProfile` mounted at the root with `useEffect(…, [])` (empty deps) fired its fetch exactly once at app launch — before `initialize()` had hydrated the session from SecureStore. The fetch went out without a token, got 401, swallowed the error, and left `_cache = null`. After OAuth set the session, the routing effect in `_layout.tsx` checked `profile === null` and returned early without navigating. Compounding factor: the `on_auth_user_created` Postgres trigger had been dropped from prod, so any new OAuth user also lacked a `user_profiles` row.

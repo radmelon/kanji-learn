@@ -220,6 +220,9 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 🔧 Backend & Data
 
+- [x] **Multi-Device Push Notifications + Per-Study-Mate Mute** — ~~SHIPPED~~ 2026-04-21 in B127. Replaces the single `user_profiles.push_token` column (last-write-wins across devices) with a dedicated `user_push_tokens` table (migration 0021). New `POST /v1/push-tokens` + `DELETE /v1/push-tokens/:token` endpoints; new `sendToUserTokens` service helper fans out across all a user's tokens in one batched Expo call and synchronously prunes dead tokens on `DeviceNotRegistered` / `InvalidCredentials` / `MessageTooBig`. All three production push paths migrated. Per-friendship mute stored as two directional columns on `friendships` (`requester_notify_of_activity` + `addressee_notify_of_activity`); exposed via new `PATCH /v1/social/friends/:friendId` and rendered as a bell toggle on each accepted-friend row in the mobile Study Mates panel. Spec + plan at `docs/superpowers/{specs,plans}/2026-04-21-multi-device-push*`. Awaiting on-device verification once B127 installs.
+  `[Effort: L]` `[Impact: High]` `[Backend: Yes]` `[Status: ✅ Shipped — pending B127 verification]`
+
 - [x] **Example Sentences API Integration** — Integrate a sentence corpus (Tatoeba CC-BY or a curated JLPT sentence dataset) into the backend. Index sentences by vocabulary and expose a `/sentences?vocab=xxx` endpoint for the card UI to call. Consider pre-caching at the kanji/vocab level to avoid latency during review.
   `[Effort: L]` `[Impact: High]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 

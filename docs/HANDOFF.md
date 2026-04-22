@@ -1,140 +1,144 @@
-# Session Handoff — 2026-04-20
+# Session Handoff — 2026-04-21
 
 ## TL;DR
 
-Build 3-C is shipped in full (Phases 1–4) and B126 UX polish is in flight to TestFlight. The next session's work is on-device verification of B126, Phase 5 tracker hygiene, and — when you have the window — rotating the seven exposed secrets that accumulated across this sprint.
+Three bugs landed this session: **Bug 1** (Watch ignoring the user's Daily Review Goal, plus a hardcoded 10-card session), **Bug 2** (missing Hadamitzky-Spahn citation on kanji details), and **Bug 3** (multi-device push fan-out with per-friendship mute). All three shipped together in **B127**, TestFlight-submitted end of session. User foreshadowed the on-device experience: *"looks very good. No bugs discovered, yet."* Next session opens with formal B127 verification.
 
 ## Current state
 
-- **Branch:** `main`.
-- **TestFlight builds this session:**
-  - **B125** — Build 3-C Phase 4 (mobile vocab-drill + pitch overlay). Build ID `f027ab70-823e-4143-b15c-7f8d62105358`. User verified most surfaces; the pitch overlay itself rendered with invisible text (contrast bug), which drove B126.
-  - **B126** — UX polish bundle. Build ID `24bc4061-b0f1-4e43-91c2-96b0c5292b7b`. Submission ID `a8da4420-9c13-4404-855c-bb3350384411`. Fixes contrast + daily-goal progress + flash-race + study-card vocab speak icons + Kanjidic2 refs on details page.
-- **API deploys this session:**
-  - `03b663dd…` — toArr defense on kanji routes (radicals repair).
-  - `fed113f85b…` — Groq + Gemini env vars injected.
-  - `53710d9b…` + `e24febc1…` — Build 3-C Phase 1 (homophone workaround).
-  - `24f17892…` — Build 3-C Phase 3 (`voicePrompt` + `showPitchAccent` PATCH).
-  - `4df7047c…` — B126 `/v1/kanji/:id` extension (grade, frequencyRank, hadamitzkySpahn).
-- **Prod API URL:** `https://73x3fcaaze.us-east-1.awsapprunner.com` — health HTTP 200 as of 420ms.
-- **DB migrations shipped this session (prod):** 0017 (auth cascade FK), 0018 (RLS on last 5 tables — 35/35 coverage), 0019 (kanji Kanjidic2 refs), 0020 (`user_profiles.show_pitch_accent`).
+- **Branch:** `main` at `af5d552`. `origin/main` in sync. Feature branch `feature/bug3-multi-device-push` deleted locally.
+- **TestFlight build this session:**
+  - **B127** — triple-bug bundle (Watch daily-goal pipeline, H-S citation, multi-device push + per-mate mute).
+    - Build ID: `4641b5ed-85a6-4235-b31f-0b764b361fb7`
+    - Submission ID: `929a3681-014e-443f-9d66-2cd5f45910df`
+    - Apple processing finished mid-session; ready for installation. Bucky is standing by in Japan to update.
+- **Prod DB:** migration `0021_push_tokens_and_mate_mute.sql` applied. Adds `user_push_tokens` (id, user_id, token, platform, created_at) with self-scoped RLS + service_role bypass. Drops `user_profiles.push_token`. Adds `requester_notify_of_activity` + `addressee_notify_of_activity` booleans to `friendships` (default true).
+- **API deploys this session:** `33cbc159afdf4543b634c5f0d9042701` — Build 3 full rollout. Image digest `sha256:f8441277…`. Post-deploy health 200; all three new endpoints return 401 (not 404): `POST/DELETE /v1/push-tokens`, `PATCH /v1/social/friends/:friendId`.
+- **Prod API URL:** `https://73x3fcaaze.us-east-1.awsapprunner.com` — healthy.
 
 ---
 
 ## What shipped today
 
-### Build 3-C — all phases complete
+### Bug 2 — Hadamitzky-Spahn citation
 
-Plan: [docs/superpowers/plans/2026-04-19-vocab-as-drill-unit.md](superpowers/plans/2026-04-19-vocab-as-drill-unit.md). Spec: [docs/superpowers/specs/2026-04-19-vocab-as-drill-unit-design.md](superpowers/specs/2026-04-19-vocab-as-drill-unit-design.md).
+One-line add to the kanji details References card footer. The cross-reference card already displayed the H-S index (from commit `d0247f1`), but the citation footer still only credited Nelson and Morohashi. Now reads: *"Hadamitzky-Spahn: Wolfgang Hadamitzky & Mark Spahn, Kanji & Kana (1981; rev. eds.)"*. Commit `5d900a0`.
 
-- **Phase 1** (server homophone workaround): 9 commits on main. In-memory kanji→readings index loaded at API boot; evaluator expands CJK transcripts through the index. Verified on B124: `缶` transcript for `感` now grades Perfect. 109/109 unit tests.
-- **Phase 2** (data layer): 9 commits. Migrations 0019 + 0020 applied to prod. Vocab seed expanded (5-entry target, self-containment validator closed B4), Tatoeba cap raised to 5, Kanjium pitch merge. Two jsonb double-encoding seed bugs discovered and fixed mid-run. Prod state: 99.9% of kanji meet 3-entry vocab floor; `grade` 99.2%, `frequency_rank` 93.8%, `hadamitzky_spahn` 98.3% populated; 8,053 vocab entries carry `pitchPattern` (~75% of accepted entries).
-- **Phase 3** (API contract): 3 commits. `/v1/review/reading-queue` now attaches `voicePrompt` per item (round-robin by `repetitions`, not `reviewCount` — plan deviation, the spec column doesn't exist). `showPitchAccent` accepted in PATCH `/v1/user/profile`. `VoicePrompt` type exported from `@kanji-learn/shared`.
-- **Phase 4** (mobile): 8 commits. Pure helpers (`mora-alignment`, `PitchAccentReading`, `useShowPitchAccent`) + UI integration (VoiceEvaluator vocab layout, kanji details pitch chip, study-card pitch overlay, Profile tab toggle, placement-level default). Plan deviations documented in each commit (single-source-of-truth hook, `voice.tsx` consumer, Pitch chip on details page not KanjiCard, placement test supplies level not an onboarding picker). Shipped in **B125**.
+### Bug 1 — Watch honors the user's Daily Review Goal
 
-### B126 UX polish bundle
+Three coupled issues, fixed as one commit (`23ec881`):
+- **Cache schema mismatch** — `profile.tsx` wrote `kl:profile_cache` as `{ data: UserProfile }` but `auth.store.ts`'s Watch-sync reader expected `{ dailyGoal, reminderHour, restDay }` at the top level. Every Watch sync therefore fell back to `dailyGoal=20` regardless of the user's actual setting. Fix: unwrap `.data` in the reader.
+- **No re-sync on profile save** — `save()` PATCHed the server and updated React state but neither refreshed the cache nor pinged the Watch. Fix: after a successful PATCH, write the cache and call a new `syncToWatch()` action.
+- **Hardcoded 10-card Watch session** — `StudyViewModel.swift` called `fetchQueue(limit: 10)` regardless of user preference. Fix: read `dailyGoal` from UserDefaults (populated by the Watch-connectivity bridge). Home hero now shows "`N` of `M` today" and "All caught up" at zero.
 
-Plan: [docs/superpowers/plans/2026-04-20-b126-ux-polish-bundle.md](superpowers/plans/2026-04-20-b126-ux-polish-bundle.md). Spec: [docs/superpowers/specs/2026-04-20-daily-goal-celebration-design.md](superpowers/specs/2026-04-20-daily-goal-celebration-design.md).
+Follow-up filed (separate task): `todayReviewed` needs to be populated on `/v1/review/status` so the Watch home hero actually decrements across sessions when the backlog exceeds the goal. Not in B127.
 
-11 tasks executed via subagent-driven-development. Code-review pass caught two real issues (mid-file import, stale-closure on `analyticsSummary`); both fixed.
+### Bug 3 — Multi-device push + per-friendship mute
 
-| Commit | Change |
-|---|---|
-| `a704ad2` | fix(mobile): PitchAccentReading explicit textPrimary colour (WCAG AA) |
-| `23941b5` | feat(api): extend /v1/kanji/:id with Kanjidic2 reference fields |
-| `7a1d25f` + `5e9db98` | feat(mobile): didCrossGoal helper for daily-goal celebration |
-| `003ec81` | fix(mobile): review store isLoading initial true to prevent caught-up flash |
-| `a50cd31` + `ab870ed` | feat(mobile): daily-goal celebration banner + analyticsSummary ref |
-| `9f74917` | feat(mobile): Dashboard daily-goal progress indicator |
-| `e5e349f` | feat(mobile): speak icons on study-card reveal vocab rows |
-| `8592a7a` | feat(mobile): KanjiDetail type + formatGrade for Kanjidic2 refs |
-| `d0247f1` | feat(mobile): surface Kyōiku grade + frequency + Hadamitzky-Spahn on details page |
-| `dda6d79` | docs: log B126 fixes in trackers |
-| `065ff23` | docs(handoff): B126 EAS build submitted |
+14 commits on `feature/bug3-multi-device-push`, merged fast-forward into main. Full design at [docs/superpowers/specs/2026-04-21-multi-device-push-design.md](superpowers/specs/2026-04-21-multi-device-push-design.md). Implementation plan at [docs/superpowers/plans/2026-04-21-multi-device-push.md](superpowers/plans/2026-04-21-multi-device-push.md). Executed via subagent-driven-development with spec + code review gates between each task.
 
-### Session Complete rebalance + dailyGoal race fix
+**Schema:** new `user_push_tokens` table replaces the single `user_profiles.push_token` column. Per-friendship mute stored as two booleans on the existing directed `friendships` row — `requester_notify_of_activity` and `addressee_notify_of_activity` — so each side controls their own preference independently.
 
-Plan: [docs/superpowers/plans/2026-04-20-session-complete-feedback-rebalance.md](superpowers/plans/2026-04-20-session-complete-feedback-rebalance.md). Spec: [docs/superpowers/specs/2026-04-20-session-complete-feedback-rebalance-design.md](superpowers/specs/2026-04-20-session-complete-feedback-rebalance-design.md).
+**API:**
+- `POST /v1/push-tokens` (idempotent on `(user_id, token)`) and `DELETE /v1/push-tokens/:token` (URL-encoded) replace the prior `PATCH /v1/user/profile { pushToken }`. Validates Expo token format + platform enum.
+- `PATCH /v1/social/friends/:friendId` with `{ notifyOfActivity: boolean }` — handler auto-detects whether caller is requester or addressee of the friendship row and writes the matching column. `GET /v1/social/friends` now projects `notifyOfActivity` from the caller's perspective.
+- `sendToUserTokens(userId, message)` helper in `NotificationService` — reads all tokens, sends ONE batched Expo call, synchronously prunes tokens that ticket with `DeviceNotRegistered` / `InvalidCredentials` / `MessageTooBig`. All three production push paths (`notifyStudyMates`, `sendDailyReminders`, `sendRestDaySummaries`) swapped to use it.
+- Dead `sendToUser` + `sendMessages` helpers removed after the swap was complete.
+- `PATCH /v1/user/profile` no longer accepts `pushToken` — silently stripped by Zod's default.
 
-All-Good sessions now render green "Solid — consistent recall" at 67% instead of amber "Decent effort — review the misses". Study screen's `useEffect` now gates on `profile` so `dailyGoal` isn't read as its 20 fallback. Shipped in B125. User confirmed the new bands + copy on-device.
+**Mobile:**
+- `usePushNotifications` POSTs to the new endpoint on launch and persists the token to `kl:last_push_token`.
+- `signOut` best-effort DELETEs the stored token before clearing the Supabase session. Swallows network errors; receipt pruning is the safety net. `deleteAccount` unchanged — cascade handles cleanup.
+- Study Mates panel: each accepted-friend row gains a bell icon (right edge). Tap flips `notifyOfActivity` via the new PATCH with optimistic UI + revert on error. Dimmed with a caption when master `notificationsEnabled` is off. Pending requests don't get a bell.
 
-### Documentation landed this session
-
-- **New feedback memories:** secret hygiene (never dump plaintext to transcript), accessibility WCAG 2.1 AA (explicit theme color on every Text/icon), commit co-author attribution (Buddy added as co-author on every commit).
-- **ROADMAP + ENHANCEMENTS entries:** Three-Modality Learning Loop (owner-proposed post-Build-3-C initiative), Dark/Light theme toggle (annotated with the WCAG accent-color problem), Secrets Management (rewritten around SSM Parameter Store instead of Secrets Manager).
-- **Specs and plans:** four new artifacts under `docs/superpowers/` — the Build 3-C design/plan from yesterday, the Session Complete rebalance, and the B126 bundle.
+**Test coverage:** ~17 new tests across Tasks 2-6 (push-tokens routes, sendToUserTokens fan-out + pruning, notifyStudyMates per-mate mute, daily + rest-day fan-out, PATCH + GET social projection). API suite: 199/200 passing — the one failing test (`user-delete.test.ts` `learner_identity_pkey` duplicate) is pre-existing and verified unchanged through all 14 branch commits.
 
 ---
 
-## ⚠️ Security actions owed (unchanged from earlier in the session)
+## Minor follow-ups from Bug 3 review (non-blocking)
 
-Seven keys exposed through this sprint, pending rotation. Buddy will rotate at end of day / when convenient; Claude does not touch the values.
+Flagged during the final code review. All fine at 2-user scale; worth filing separately when the window opens.
+
+- `apps/api/test/helpers/test-app.ts` — `FastifyRegisterOptions<Record<string, never>>` rejects `{ prefix: '/v1/social' }` at the type level. Tests pass at runtime; the typecheck error is in `social-mute.test.ts:25`. Fix: loosen to `FastifyRegisterOptions<any>` or parameterize with `{ prefix: string }`.
+- No test yet covers the defensive `LIMIT 100` cap in `sendToUserTokens`. Fix: insert 101 rows, assert `tickets.length === 100`.
+- No mobile test covers the bell toggle's optimistic-revert path. Fix: RTL test with a mocked `api.patch` that throws.
+- `sendDailyReminders` / `sendRestDaySummaries` fan out per-user (one Expo call per recipient) rather than batching across recipients. Fine at tens of users; revisit at scale.
+- `mateNotifyCache` is bounded by a write-time 24h sweep but has no hard size cap.
+- Vestigial `apps/lambda/daily-reminders/` — the zip exists but no EventBridge rule deploys it. The actual cron runs in-API at `cron.ts:15`. Should be removed for clarity.
+
+Also carry-forward from earlier in the session: **the daily-reminder "miss me when I've studied" filter** at [notification.service.ts:126](../apps/api/src/services/notification.service.ts) is working as designed but effectively suppresses reminders for users who study every day. Product question Buddy planned to pressure-test with Bucky before deciding whether to change the behavior.
+
+---
+
+## ⚠️ Security actions owed (unchanged — carry forward)
+
+Seven keys still pending rotation from the prior sprint. Bug 3 work added no new secrets.
 
 | Key | Regenerate |
 |---|---|
 | `GROQ_API_KEY` | https://console.groq.com/keys |
 | `GEMINI_API_KEY` | https://aistudio.google.com/app/apikey |
-| `ANTHROPIC_API_KEY` | https://console.anthropic.com/settings/keys (also update local `packages/db/.env`) |
+| `ANTHROPIC_API_KEY` | https://console.anthropic.com/settings/keys |
 | `DATABASE_URL` password | Supabase → Database → Reset password |
 | `INTERNAL_SECRET` | `openssl rand -hex 32` locally |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → API → service_role → Regenerate |
-| `SUPABASE_JWT_SECRET` | Supabase → API → JWT Secret → Generate new secret ⚠️ **kicks all testers off — defer until ready** |
+| `SUPABASE_JWT_SECRET` | Supabase → API → JWT Secret ⚠️ **kicks all testers off — defer until ready** |
 
-**Rotation flow:** Buddy regenerates in provider consoles → updates values in `apprunner-env.json` in his own terminal → runs `aws apprunner update-service` himself → pings Claude. Claude then runs health check + provider-exercising smoke calls.
+Rotation flow: Buddy regenerates → updates `apprunner-env.json` in his own terminal → runs `aws apprunner update-service` himself → pings Claude for health check + provider-exercising smoke calls.
 
-**Long-term fix** tracked under ROADMAP + ENHANCEMENTS "Secrets Management — SSM Parameter Store" with full migration plan.
+Long-term fix tracked under ROADMAP + ENHANCEMENTS "Secrets Management — SSM Parameter Store".
 
 ---
 
-## 🧪 On-device verification checklist for B126
+## 🧪 On-device verification checklist for B127
 
-When TestFlight delivers B126 (typically 20–40 min end to end):
+**Bug 2 — H-S citation** (smallest, confirm first):
+- [ ] Any kanji details page → References card footer shows Nelson, Hadamitzky-Spahn, and Morohashi citations.
 
-**Pitch overlay (contrast regression — main B126 driver):**
-- [ ] Study card reveal: vocab reading shows readable kana with amber overline + drop hook (was invisible in B125).
-- [ ] Kanji details page vocab rows: same, at `size="small"`.
-- [ ] VoiceEvaluator vocab prompt: same, at `size="large"`.
-- [ ] Pitch toggle chip on kanji details flips all three surfaces atomically.
+**Bug 1 — Watch daily goal:**
+- [ ] Profile set to dailyGoal = 5 (or whatever the user's goal is).
+- [ ] Watch home hero shows "`5` of `5` today" (replace 5 with actual goal), not the old "20".
+- [ ] Start Study → session presents exactly `dailyGoal` cards, not 10.
+- [ ] Complete the session → hero transitions to "All caught up" (when server backlog ≤ goal) or continues to show the remaining count (when backlog > goal — known limitation, `todayReviewed` follow-up).
 
-**Daily-goal UX:**
-- [ ] Dashboard under "Start Today's Reviews" shows `N / M today`; green checkmark appears when N ≥ M.
-- [ ] Finishing the session that crosses the goal for the first time that day renders the 🎉 "Daily goal met — nice work." banner above the confidence ring.
-- [ ] Subsequent sessions that day do NOT render the banner again.
-- [ ] Burned-kanji message still takes precedence when both would apply.
+**Bug 3 — multi-device push + per-mate mute** (the headliner):
+- [ ] iPhone launch: console log `[Push] Token registered: ExponentPushToken[…]`.
+- [ ] iPad launch: same log; verify two rows in prod:
+  ```
+  psql "$DATABASE_URL" -c "SELECT platform, created_at FROM user_push_tokens WHERE user_id = '<your id>' ORDER BY created_at DESC;"
+  ```
+- [ ] Bucky submits a review → **both** iPhone and iPad banner within ~5s. Watch also banners via iOS auto-forward from iPhone.
+- [ ] Profile → Study Mates → Bucky's row shows a filled bell icon on the right edge.
+- [ ] Tap the bell → icon flips to outline (muted), optimistic. Check prod: `addressee_notify_of_activity` (or `requester_notify_of_activity`, whichever side Buddy is) flipped to `false` on the friendship row.
+- [ ] Bucky submits another review (wait for the 24h cap to lapse OR accept the cap suppresses it anyway) → no banner.
+- [ ] Tap bell back on → next mate alert arrives as expected.
+- [ ] Sign out on iPad → iPad row deleted from `user_push_tokens`. Bucky submits → only iPhone banners.
+- [ ] Turn master `notificationsEnabled` off → bells in Study Mates dim + caption "Turn on notifications above to control mate alerts per friend" appears.
 
-**Flash-race fix:**
-- [ ] Background app 10+ min, cold-open Study tab. Should show loading spinner briefly, then cards. No "All caught up!" flash.
-
-**Study-card vocab speak icons:**
-- [ ] Reveal a study card with example vocab. Each vocab row shows a speak icon. Tapping plays TTS; icon state cycles `volume-medium-outline → volume-high → back` as it plays. Tapping a different row cancels the previous playback.
-
-**Kanjidic2 references on kanji details:**
-- [ ] Open `水` (or any common elementary kanji): Cross-references card shows `Kyōiku Grade 1`, `Frequency #{small}`, `Hadamitzky-Spahn #{small}` alongside JIS / Nelson / Morohashi.
-- [ ] Open `憂` (or any JHS-only Jōyō): Kyōiku Grade reads `Junior High`.
-- [ ] Open `倖` (Jinmeiyō): Kyōiku Grade reads `Jinmeiyō`; Frequency row absent (Jinmeiyō kanji rarely in the 2,500-frequency corpus).
-
-**Outstanding from B124/B125 that B126 does not change:**
-- [ ] Amber reading-prompt cue (should show on a reading-stage card). Still unverified — the code path lands via `colors.accent`. Close the amber-cue ENHANCEMENTS entry after confirmation.
+**Pre-existing items that B127 does not change** — still verify if the user wants:
+- [ ] Amber reading-prompt cue on a reading-stage card (colors.accent path). Outstanding from B121.
 
 ---
 
 ## 🚦 Next-session first tasks
 
-1. **Verify B126 on device** using the checklist above.
-2. **Close Build 3-C Phase 5** tracker items once B126 verification passes: flip the homophone bug fully Fixed (Phase 1 workaround + Phase 4 structural shift), confirm B4 is fully closed, flip E5 / E6 / speak-icons-scope to `✅ Shipped & Verified`, and verify the amber reading-prompt cue.
-3. **Rotate the 7 exposed secrets** whenever the ~10 min window opens up.
-4. **(Optional)** Re-run `pnpm seed:vocab` (no `--force`) to top up the 3 kanji still below the 3-entry floor (倖, 嚇, 錬). Cost: negligible.
-5. **(Optional)** File a follow-up for the timezone-sensitive "today" date string — current code uses `toISOString().slice(0, 10)` (UTC), which mis-rolls for non-UTC users in a ~7h window around midnight. Acceptable for current 2-user scale; worth cleaning up before a broader launch.
+1. **Walk the B127 verification checklist above** on both iPhone and iPad. Coordinate with Bucky so the mate-alert flow can be exercised.
+2. **If all pass:** close these tracker entries: Bug 1/Watch daily goal, Bug 2/H-S citation, Bug 3/multi-device push, and the separate "per-mate mute control" ENHANCEMENTS idea surfaced during Bug 3 brainstorm.
+3. **If anything regresses:** queue fixes, evaluate whether to cut B128 (~$2) or bundle with other pending work.
+4. **File the minor follow-ups** listed above as their own tracker entries or spawned tasks.
+5. **Rotate the 7 exposed secrets** when the ~10 min window opens.
+6. **(Optional)** Delete vestigial `apps/lambda/daily-reminders/` — no EventBridge rule deploys it; actual cron runs in-API.
 
 ---
 
 ## Known deferred items and technical debt
 
-- **Local iOS dev tooling is flakey.** `ios/Pods` wiped, last successful Xcode build Apr 10. Starting point: `pod install` then `pnpm ios`. Not on the critical path; track as a post-launch cleanup so Buddy can get back to a systematic dev-then-ship cycle instead of direct-to-prod builds.
-- **Three-Modality Learning Loop** — owner-proposed 2026-04-20. Pedagogical gate: after each daily-goal flashcard batch, require the same kanji to be practiced in writing + speaking before the next batch unlocks. ROADMAP Phase 6 row 23 + ENHANCEMENTS Future entry. Prerequisites: reliable writing eval audit, B125+ voice eval bake, cross-tab session state. 1–2 week scope in its own brainstorm → spec → plan cycle.
-- **Integration test gap at `/v1/kanji/:id`.** Pre-existing — B126 is the first task to add fields the mobile UI depends on. A single integration assertion that the response contains `grade`, `frequencyRank`, `hadamitzkySpahn` (null OK) would protect the endpoint going forward. Not blocking.
-- **`user-delete` integration test fails on `learner_identity_pkey` duplicate.** Pre-existing test-cleanup issue. Masked during Phase 3 verification; will clear with a TEST_DATABASE reset.
-- **Migration 0020 applied to `TEST_DATABASE_URL` this session** — local integration tests no longer fail on the missing `show_pitch_accent` column.
+- **Local iOS dev tooling is flakey.** `ios/Pods` wiped; last successful Xcode build Apr 10. Not on the critical path.
+- **Three-Modality Learning Loop** — proposed 2026-04-20; ROADMAP Phase 6 row 23 + ENHANCEMENTS Future entry. Prerequisites: writing eval audit, voice eval bake, cross-tab session state. 1–2 week scope in its own brainstorm → spec → plan cycle.
+- **Integration test gap at `/v1/kanji/:id`.** Pre-existing — B126 was the first task to add fields the mobile UI depends on. Not blocking.
+- **`user-delete` integration test fails on `learner_identity_pkey` duplicate.** Pre-existing test-cleanup issue. Cleared only by a TEST_DATABASE reset.
+- **TEST_DATABASE drift from supabase migrations.** The local test DB was bootstrapped from drizzle migrations and lacks an `auth.uid()` stub + later supabase migrations (0016, 0018). Implementer stubbed during Task 1. Worth a dev-env hygiene follow-up.
+- **`todayReviewed` on `/v1/review/status`** — separate follow-up already filed; unblocks Watch home hero decrementing when backlog exceeds goal.
 
 ---
 
@@ -142,8 +146,8 @@ When TestFlight delivers B126 (typically 20–40 min end to end):
 
 - **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`.
 - **Supabase:** still in `ap-southeast-2`. Pre-launch us-east-1 migration remains pending (ENHANCEMENTS E22).
-- **Docker deploys:** `DOCKER_CONTEXT=default ./scripts/deploy-api.sh` from repo root. OrbStack default context produces ARM images that crash App Runner; the script forces `linux/amd64`.
-- **EAS builds:** from `apps/mobile/`. Pay-as-you-go ~$2/build (monthly credits exhausted). Require `eas-cli ≥ 18.7.0` (18.5.0 silently fails at request submission). EAS auto-bumps `ios.buildNumber`; don't hand-edit.
+- **Docker deploys:** `DOCKER_CONTEXT=default ./scripts/deploy-api.sh` from repo root.
+- **EAS builds:** from `apps/mobile/`. Pay-as-you-go ~$2/build (monthly credits exhausted). `eas-cli 18.7.0` verified working this session. EAS auto-bumps `ios.buildNumber`; don't hand-edit. Current build number: **127**.
 - **EAS env vars** with `EXPO_PUBLIC_` prefix are baked into each build. Changing Supabase URL (pre-launch E22) requires a fresh EAS build.
 - **Monorepo test commands:** `pnpm exec jest` (mobile, not `pnpm test` — turborepo ate that). `pnpm test` works from repo root via Turbo and from `apps/api/` (vitest).
 
@@ -154,9 +158,10 @@ When TestFlight delivers B126 (typically 20–40 min end to end):
 ```
 cd /Users/rdennis/Documents/projects/kanji-learn
 git pull origin main
-# 1. Open TestFlight on device → install B126 if not auto-delivered yet.
-# 2. Walk the on-device verification checklist above (copy/paste from the section heading).
-# 3. If all pass: flip Phase 5 tracker items (homophone bug Fixed, E5/E6 Shipped & Verified, amber cue closed).
-# 4. If anything regresses: queue tweaks, cut B127 (~$2) or fold into a larger change.
-# 5. Rotate the 7 exposed secrets when the window opens.
+# 1. Open TestFlight on device → install B127 if not auto-delivered.
+# 2. Walk the on-device verification checklist above.
+# 3. If all pass: close Bug 1/2/3 tracker entries.
+# 4. If anything regresses: cut B128 or bundle with other pending work.
+# 5. File the 6 minor follow-ups as tracker entries.
+# 6. Rotate the 7 exposed secrets when the window opens.
 ```
