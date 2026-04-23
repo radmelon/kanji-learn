@@ -132,6 +132,46 @@ export function VoiceEvaluator({
     }
   }, [phase, reduceMotion])
 
+  // ── Core eval POST ────────────────────────────────────────────────────────
+  // Extracted so the 'end' event handler AND the dev force-buttons share the
+  // same POST + haptic + onResult plumbing without duplication.
+
+  const submitEval = useCallback(async (spokenTranscript: string) => {
+    setPhase('evaluating')
+    try {
+      const eval_ = await api.post<EvalResult>('/v1/review/voice', {
+        kanjiId,
+        transcript: spokenTranscript,
+        correctReadings: effectiveCorrectReadings,
+        strict,
+        attemptsCount: computeAttemptsCount(attempts),
+      })
+      Haptics.notificationAsync(
+        eval_.correct
+          ? Haptics.NotificationFeedbackType.Success
+          : Haptics.NotificationFeedbackType.Warning
+      )
+      onResult?.(eval_)
+      setPhase('idle')
+    } catch {
+      // Network error — fall back to idle so user can retry
+      setPhase('idle')
+    }
+  }, [kanjiId, effectiveCorrectReadings, strict, attempts, onResult])
+
+  // ── Dev-only simulator force-buttons ─────────────────────────────────────
+
+  const forceWrong = useCallback(() => {
+    void submitEval('xxxxxxxx')
+  }, [submitEval])
+
+  const forceCorrect = useCallback(() => {
+    const expected = voicePrompt?.type === 'vocab'
+      ? voicePrompt.reading
+      : effectiveCorrectReadings[0]
+    void submitEval(expected ?? '')
+  }, [submitEval, voicePrompt, effectiveCorrectReadings])
+
   // ── Speech recognition events ─────────────────────────────────────────────
   // These hooks MUST be called unconditionally. When _mod is null they are
   // no-ops, so they satisfy React's rules-of-hooks without crashing.
@@ -142,36 +182,13 @@ export function VoiceEvaluator({
     setTranscript(text)
   })
 
-  _useSpeechRecognitionEvent('end', async () => {
+  _useSpeechRecognitionEvent('end', () => {
     const currentTranscript = transcriptRef.current
     if (!currentTranscript) {
       setPhase('idle')
       return
     }
-
-    // Show spinner while server evaluates
-    setPhase('evaluating')
-
-    try {
-      const eval_ = await api.post<EvalResult>('/v1/review/voice', {
-        kanjiId,
-        transcript: currentTranscript,
-        correctReadings: effectiveCorrectReadings,
-        strict,
-        attemptsCount: computeAttemptsCount(attempts),
-      })
-      Haptics.notificationAsync(
-        eval_.correct
-          ? Haptics.NotificationFeedbackType.Success
-          : Haptics.NotificationFeedbackType.Warning
-      )
-
-      onResult?.(eval_)
-      setPhase('idle')
-    } catch {
-      // Network error — fall back to idle so user can retry
-      setPhase('idle')
-    }
+    void submitEval(currentTranscript)
   })
 
   _useSpeechRecognitionEvent('error', () => {
@@ -309,6 +326,28 @@ export function VoiceEvaluator({
           Microphone permission required for voice evaluation
         </Text>
       )}
+
+      {/* Dev-only simulator helpers — stripped from release builds via __DEV__.
+          Useful when iOS simulator can't capture real speech. Remove after
+          smoke-testing is complete. */}
+      {__DEV__ && phase !== 'listening' && phase !== 'evaluating' && (
+        <View style={styles.devRow}>
+          <TouchableOpacity
+            style={[styles.devBtn, styles.devBtnWrong]}
+            onPress={forceWrong}
+            accessibilityLabel="Dev only: force wrong result"
+          >
+            <Text style={styles.devBtnText}>💥 Force wrong</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.devBtn, styles.devBtnCorrect]}
+            onPress={forceCorrect}
+            accessibilityLabel="Dev only: force correct result"
+          >
+            <Text style={styles.devBtnText}>✅ Force correct</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   )
 }
@@ -341,6 +380,33 @@ const styles = StyleSheet.create({
   listeningDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.error },
   listeningText: { ...typography.bodySmall, color: colors.textSecondary, maxWidth: 240 },
   permissionWarning: { ...typography.caption, color: colors.warning, textAlign: 'center' },
+
+  // Dev-only simulator force-button styles
+  devRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+    justifyContent: 'center',
+  },
+  devBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  devBtnWrong: {
+    backgroundColor: 'rgba(166, 61, 61, 0.15)',
+    borderColor: 'rgba(166, 61, 61, 0.5)',
+  },
+  devBtnCorrect: {
+    backgroundColor: 'rgba(60, 160, 100, 0.15)',
+    borderColor: 'rgba(60, 160, 100, 0.5)',
+  },
+  devBtnText: {
+    fontSize: 11,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
 
   // Dev-build unavailable state
   unavailable: {
