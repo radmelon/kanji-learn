@@ -154,9 +154,12 @@ export function VoiceEvaluator({
       onResult?.(eval_)
       setPhase('idle')
     } catch (err) {
-      // Surface in Metro console during dev; in prod builds __DEV__ logs are
-      // stripped but the graceful idle-reset is preserved.
-      console.error('[VoiceEvaluator] submitEval failed', { transcript: spokenTranscript, err })
+      // Dev-only log. Expo's default babel config does NOT strip console
+      // calls, so we gate explicitly on __DEV__ to keep release bundles
+      // quiet. The graceful idle-reset is preserved in both environments.
+      if (__DEV__) {
+        console.error('[VoiceEvaluator] submitEval failed', { transcript: spokenTranscript, err })
+      }
       setPhase('idle')
     }
   }, [kanjiId, effectiveCorrectReadings, strict, attempts, onResult])

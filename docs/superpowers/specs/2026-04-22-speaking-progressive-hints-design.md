@@ -65,7 +65,7 @@ Mobile receives result:
     render Success card with kanji + vocab meanings → manual Next Kanji tap
   else:
     attempts += 1
-    show "Not quite. Try again." inline interstitial (~1.5s)
+    show "Not quite. Try again." inline interstitial (~3s)
     re-render card with attempt-N scaffolds visible
 ```
 
@@ -188,7 +188,7 @@ targetChip: {
 
 ### "Not quite. Try again." interstitial
 
-Inline warning-tinted (muted red background, amber accent text) banner rendered below the evaluator, above the mic, on `attempts > 0 && !evaluated && lastResult?.correct === false`. Auto-dismisses after ~1.5s or on next mic tap, whichever comes first. Single line of copy, no buttons.
+Inline warning-tinted (muted red background, amber accent text) banner rendered below the evaluator, above the mic, on `attempts > 0 && !evaluated && lastResult?.correct === false`. Auto-dismisses after ~3s or on next mic tap, whichever comes first. Single line of copy, no buttons.
 
 ### Difficulty picker disposal
 
@@ -508,5 +508,5 @@ All manual-verification checkboxes green. Specifically:
 | Difficulty picker | JSX removed; state + SecureStore preserved for future restoration |
 | Meaning semantics | Kanji meaning on try 2+; vocab meaning on try 4+ and Success card; both labelled on Success card |
 | Pre-work DELETE scope | Cross-user — all pre-2026-04-19 `voice_attempts` rows wiped |
-| Interstitial style | Inline banner, not full-screen modal; auto-dismisses ~1.5s |
+| Interstitial style | Inline banner, not full-screen modal; auto-dismisses ~3s |
 | Target chip multi-occurrence | Chip every occurrence of target kanji within the word |
