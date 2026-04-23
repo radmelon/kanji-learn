@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView,
+  AccessibilityInfo,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -112,6 +113,18 @@ export default function VoiceSession() {
       if (parsed >= 1 && parsed <= 4) setDifficulty(parsed as Difficulty)
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    const item = queue[currentIndex]
+    if (attempts === 2 && item?.voicePrompt?.type === 'vocab') {
+      AccessibilityInfo.announceForAccessibility(
+        `Reading hint: ${item.voicePrompt.reading}`
+      )
+    }
+    if (attempts === 3) {
+      AccessibilityInfo.announceForAccessibility('Pitch accent revealed')
+    }
+  }, [attempts, currentIndex, queue])
 
   const loadQueue = useCallback(async () => {
     setIsLoading(true)
