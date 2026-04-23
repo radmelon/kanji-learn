@@ -5,13 +5,13 @@ import { colors, spacing, radius } from '../../theme'
 interface Props {
   /** When truthy, the banner is visible and the auto-dismiss timer runs. */
   visible: boolean
-  /** Fires when the 1500ms auto-dismiss timer elapses. */
+  /** Fires when the 3000ms auto-dismiss timer elapses. */
   onAutoDismiss: () => void
 }
 
 /**
  * Inline "Not quite. Try again." banner shown briefly between wrong attempts.
- * Auto-dismisses after ~1.5s. The parent may also dismiss on next mic tap;
+ * Auto-dismisses after ~3s. The parent may also dismiss on next mic tap;
  * this component only owns the timer.
  */
 export function NotQuiteBanner({ visible, onAutoDismiss }: Props) {
@@ -28,7 +28,7 @@ export function NotQuiteBanner({ visible, onAutoDismiss }: Props) {
     if (!visible) return
     // Announce the transition so VoiceOver users hear the hint-reveal cue.
     AccessibilityInfo.announceForAccessibility('Not quite. Try again.')
-    const id = setTimeout(() => onAutoDismissRef.current(), 1500)
+    const id = setTimeout(() => onAutoDismissRef.current(), 3000)
     return () => clearTimeout(id)
   }, [visible])
 
