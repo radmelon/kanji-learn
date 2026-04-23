@@ -100,6 +100,7 @@ export interface VoicePromptVocab {
   reading: string
   meaning: string
   pitchPattern?: number[]
+  targetKanji: string   // Always a single character drawn from `word`. Invariant: word.includes(targetKanji).
 }
 
 export type VoicePrompt = VoicePromptVocab | { type: 'kanji' }
