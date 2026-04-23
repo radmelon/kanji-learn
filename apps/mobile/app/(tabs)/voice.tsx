@@ -7,6 +7,10 @@ import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as SecureStore from 'expo-secure-store'
 import { VoiceEvaluator } from '../../src/components/voice/VoiceEvaluator'
+import type { EvalResult } from '../../src/components/voice/VoiceEvaluator'
+import { computeReveals } from '../../src/components/voice/voiceReveal.logic'
+import { NotQuiteBanner } from '../../src/components/voice/NotQuiteBanner'
+import { VoiceSuccessCard } from '../../src/components/voice/VoiceSuccessCard'
 import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { VoicePrompt } from '@kanji-learn/shared'
@@ -85,9 +89,17 @@ export default function VoiceSession() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [evaluated, setEvaluated] = useState(false)
+  // Difficulty state and SecureStore persistence are retained for future
+  // restoration as a "starting-tier" preference; the picker UI and
+  // changeDifficulty callback were removed during the progressive-hints
+  // refactor. See ENHANCEMENTS.md — "Voice drill: restore difficulty-picker
+  // as a starting-tier preference".
   const [difficulty, setDifficulty] = useState<Difficulty>(1)
   const [showDifficultyPicker, setShowDifficultyPicker] = useState(false)
   const [activeInfo, setActiveInfo] = useState<string | null>(null)
+  const [attempts, setAttempts] = useState(0)
+  const [showInterstitial, setShowInterstitial] = useState(false)
+  const [lastResult, setLastResult] = useState<EvalResult | null>(null)
 
   const toggleInfo = useCallback((id: string) => {
     setActiveInfo((prev) => (prev === id ? null : id))
@@ -101,12 +113,6 @@ export default function VoiceSession() {
     }).catch(() => {})
   }, [])
 
-  const changeDifficulty = useCallback((d: Difficulty) => {
-    setDifficulty(d)
-    setShowDifficultyPicker(false)
-    SecureStore.setItemAsync(DIFFICULTY_KEY, String(d)).catch(() => {})
-  }, [])
-
   const loadQueue = useCallback(async () => {
     setIsLoading(true)
     setError(null)
@@ -114,6 +120,9 @@ export default function VoiceSession() {
     setCurrentIndex(0)
     setResults([])
     setEvaluated(false)
+    setAttempts(0)
+    setShowInterstitial(false)
+    setLastResult(null)
     try {
       const data = await api.get<ReadingQueueItem[]>('/v1/review/reading-queue?limit=8')
       setQueue(data)
@@ -124,11 +133,16 @@ export default function VoiceSession() {
     }
   }, [])
 
-  const handleResult = useCallback((evalResult: { correct: boolean }) => {
+  const handleResult = useCallback((result: EvalResult) => {
     const item = queue[currentIndex]
     if (!item) return
-    setResults((prev) => [...prev, { kanjiId: item.kanjiId, passed: evalResult.correct }])
+    setResults((prev) => [...prev, { kanjiId: item.kanjiId, passed: result.correct }])
     setEvaluated(true)
+    setLastResult(result)
+    if (!result.correct) {
+      setAttempts((a) => a + 1)
+      setShowInterstitial(true)
+    }
   }, [queue, currentIndex])
 
   const handleNext = useCallback(() => {
@@ -137,6 +151,9 @@ export default function VoiceSession() {
     } else {
       setCurrentIndex((i) => i + 1)
       setEvaluated(false)
+      setAttempts(0)
+      setShowInterstitial(false)
+      setLastResult(null)
     }
   }, [currentIndex, queue.length])
 
@@ -217,9 +234,10 @@ export default function VoiceSession() {
   const currentItem = queue[currentIndex]
   if (!currentItem) return null
 
-  const { reading, label } = pickReading(currentItem)
+  const { label } = pickReading(currentItem)
   const progress = currentIndex / queue.length
   const isLast = currentIndex + 1 >= queue.length
+  const reveals = computeReveals(attempts)
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -232,36 +250,11 @@ export default function VoiceSession() {
           <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
         <Text style={styles.progressCount}>{currentIndex + 1} / {queue.length}</Text>
-        <TouchableOpacity
-          style={styles.diffBadge}
-          onPress={() => setShowDifficultyPicker((v) => !v)}
-          hitSlop={8}
-        >
-          <Text style={styles.diffBadgeText}>{DIFFICULTY_LABELS[difficulty]}</Text>
-          <Ionicons name={showDifficultyPicker ? 'chevron-up' : 'chevron-down'} size={12} color={colors.textMuted} />
-        </TouchableOpacity>
         <InfoButton id="voice" activeInfo={activeInfo} onToggle={toggleInfo} />
       </View>
       {activeInfo === 'voice' && (
         <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}>
           <InfoPanel sections={INFO_VOICE} />
-        </View>
-      )}
-
-      {/* Difficulty picker */}
-      {showDifficultyPicker && (
-        <View style={styles.diffPicker}>
-          {([1, 2, 3, 4] as Difficulty[]).map((d) => (
-            <TouchableOpacity
-              key={d}
-              style={[styles.diffOption, difficulty === d && styles.diffOptionActive]}
-              onPress={() => changeDifficulty(d)}
-            >
-              <Text style={[styles.diffOptionText, difficulty === d && styles.diffOptionTextActive]}>
-                {DIFFICULTY_LABELS[d]}
-              </Text>
-            </TouchableOpacity>
-          ))}
         </View>
       )}
 
@@ -276,13 +269,10 @@ export default function VoiceSession() {
           <View style={styles.levelBadge}>
             <Text style={styles.levelText}>{currentItem.jlptLevel}</Text>
           </View>
-          {difficulty < 4 && (
-            <Text style={styles.meaningText}>{currentItem.meanings.slice(0, 3).join(', ')}</Text>
-          )}
         </View>
 
-        {/* Reading chips — shown for level 1 upfront, always shown after evaluation */}
-        {(difficulty === 1 || evaluated) ? (
+        {/* Reading chips — shown from try 2 onward (kun/on + kanji-level meaning) */}
+        {reveals.showKunOn && (
           <View style={styles.readingChips}>
             {currentItem.kunReadings.length > 0 && (
               <View style={styles.readingGroup}>
@@ -305,52 +295,61 @@ export default function VoiceSession() {
               </View>
             )}
           </View>
-        ) : difficulty === 2 ? (
-          /* Level 2 — show group labels only, not kana */
-          <View style={styles.readingChips}>
-            {currentItem.kunReadings.length > 0 && (
-              <View style={styles.readingGroup}>
-                <Text style={styles.readingGroupLabel}>Kun</Text>
-                <View style={[styles.readingChip, styles.readingChipHidden]}>
-                  <Text style={styles.readingChipHiddenText}>???</Text>
-                </View>
-              </View>
-            )}
-            {currentItem.onReadings.length > 0 && (
-              <View style={styles.readingGroup}>
-                <Text style={styles.readingGroupLabel}>On</Text>
-                <View style={[styles.readingChip, styles.readingChipOn, styles.readingChipHidden]}>
-                  <Text style={styles.readingChipHiddenText}>???</Text>
-                </View>
-              </View>
+        )}
+
+        {/* Kanji-level meaning — also from try 2 onward */}
+        {reveals.showKanjiMeaning && (
+          <Text style={styles.meaningText}>
+            {currentItem.meanings.slice(0, 3).join(', ')}
+          </Text>
+        )}
+
+        {/* Success — shown when the current attempt was correct */}
+        {evaluated && lastResult?.correct && (
+          <VoiceSuccessCard
+            word={currentItem.voicePrompt?.type === 'vocab' ? currentItem.voicePrompt.word : currentItem.character}
+            reading={currentItem.voicePrompt?.type === 'vocab' ? currentItem.voicePrompt.reading : (currentItem.kunReadings[0] ?? currentItem.onReadings[0] ?? '')}
+            targetKanji={currentItem.voicePrompt?.type === 'vocab' ? (currentItem.voicePrompt.targetKanji ?? currentItem.character) : currentItem.character}
+            kanjiMeaning={currentItem.meanings.slice(0, 3).join(', ')}
+            vocabMeaning={currentItem.voicePrompt?.type === 'vocab' ? currentItem.voicePrompt.meaning : ''}
+            isLast={isLast}
+            onNext={handleNext}
+          />
+        )}
+
+        {/* Drill — shown while evaluating or after a wrong result */}
+        {(!evaluated || !lastResult?.correct) && (
+          <View style={styles.evaluatorWrapper}>
+            <VoiceEvaluator
+              key={currentItem.kanjiId}
+              kanjiId={currentItem.kanjiId}
+              character={currentItem.character}
+              correctReadings={[
+                ...currentItem.kunReadings.map((r) => r.replace(/\..+$/, '')),
+                ...currentItem.onReadings,
+              ].filter(Boolean)}
+              readingLabel={label}
+              onResult={handleResult}
+              voicePrompt={currentItem.voicePrompt}
+              attempts={attempts}
+              revealHiragana={reveals.showHiragana}
+              revealPitch={reveals.forcePitch}
+              revealVocabMeaning={reveals.showVocabMeaning}
+            />
+
+            <NotQuiteBanner
+              visible={showInterstitial}
+              onAutoDismiss={() => setShowInterstitial(false)}
+            />
+
+            {/* Bail option — Next Kanji visible from try 4+ (attempts >= 3) */}
+            {reveals.canBail && (
+              <TouchableOpacity style={styles.nextBtn} onPress={handleNext} accessibilityHint="Advances to the next kanji">
+                <Text style={styles.nextBtnText}>{isLast ? 'Finish session' : 'Next kanji'}</Text>
+                <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={18} color="#fff" />
+              </TouchableOpacity>
             )}
           </View>
-        ) : null}
-
-        {/* Voice evaluator */}
-        <View style={styles.evaluatorWrapper}>
-          <VoiceEvaluator
-            key={currentItem.kanjiId}
-            kanjiId={currentItem.kanjiId}
-            character={currentItem.character}
-            correctReadings={[
-              // All valid readings for this kanji, cleaned of okurigana markers
-              ...currentItem.kunReadings.map((r) => r.replace(/\..+$/, '')),
-              ...currentItem.onReadings,
-            ].filter(Boolean)}
-            readingLabel={label}
-            hideHint={difficulty > 1}
-            onResult={handleResult}
-            voicePrompt={currentItem.voicePrompt}
-          />
-        </View>
-
-        {/* Next / Finish button — shown after evaluation */}
-        {evaluated && (
-          <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
-            <Text style={styles.nextBtnText}>{isLast ? 'Finish session' : 'Next kanji'}</Text>
-            <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={18} color="#fff" />
-          </TouchableOpacity>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -430,40 +429,6 @@ const styles = StyleSheet.create({
   readingChipOn: { backgroundColor: colors.bgElevated, borderColor: colors.accent + '66' },
   readingChipText: { ...typography.reading, color: colors.textSecondary },
   readingChipOnText: { color: colors.accent },
-
-  diffBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: colors.bgSurface,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-  },
-  diffBadgeText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
-  diffPicker: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xs,
-  },
-  diffOption: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
-    backgroundColor: colors.bgSurface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  diffOptionActive: {
-    backgroundColor: colors.primary + '22',
-    borderColor: colors.primary + '66',
-  },
-  diffOptionText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
-  diffOptionTextActive: { color: colors.primary },
-  readingChipHidden: { opacity: 0.35 },
-  readingChipHiddenText: { ...typography.reading, color: colors.textMuted },
 
   evaluatorWrapper: {
     backgroundColor: colors.bgCard,

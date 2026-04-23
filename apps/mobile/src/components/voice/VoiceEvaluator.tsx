@@ -38,7 +38,7 @@ const _SpeechRecognitionModule = _mod?.ExpoSpeechRecognitionModule ?? null
 
 type Phase = 'idle' | 'listening' | 'evaluating' | 'result'
 
-interface EvalResult {
+export interface EvalResult {
   correct:         boolean
   quality:         number   // SM-2 0–5
   feedback:        string
