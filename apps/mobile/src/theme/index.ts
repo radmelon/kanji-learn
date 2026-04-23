@@ -8,6 +8,16 @@ export const colors = {
   accentDark: '#E07B2A',
   meaningCue: '#7C3AED',   // violet — meaning-prompt cue (reading uses accent amber)
 
+  // Target-kanji chip (Speaking drill — highlights the drilled kanji inside the vocab word).
+  // Dark theme: amber chip with near-black text (~8.3:1 contrast, clears AA normal).
+  // Light theme: values TBD when the Dark/Light toggle ships. The first-pass
+  // pairing in the design spec (accentDark #E07B2A on white) only reaches ~3:1
+  // which does NOT clear AA normal and barely clears AA-large — a darker amber
+  // will be needed. See ENHANCEMENTS.md "Dark / Light Theme Toggle" for the
+  // WCAG audit requirement.
+  targetChipBg:   '#F4A261',   // matches colors.accent
+  targetChipText: '#1A1A2E',   // near-black; high contrast on amber
+
   // Backgrounds
   bg: '#0F0F1A',           // deep indigo-black
   bgCard: '#1A1A2E',

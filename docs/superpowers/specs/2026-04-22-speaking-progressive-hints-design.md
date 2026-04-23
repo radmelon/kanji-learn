@@ -318,8 +318,10 @@ Add to `apps/mobile/src/theme/index.ts`:
 targetChipBg:   '#F4A261',  // accent (amber)
 targetChipText: '#1A1A2E',  // dark
 
-// Light theme (when light theme ships):
-targetChipBg:   '#E07B2A',  // accentDark
+// Light theme (when shipped): pair TBD. The first-pass accentDark (#E07B2A) + white
+// in the earlier draft only reaches ~3:1 — the Dark/Light toggle implementation
+// must pick a darker amber. See ENHANCEMENTS.md audit requirement.
+targetChipBg:   '#E07B2A',  // accentDark — placeholder ONLY; fails AA (see above)
 targetChipText: '#FFFFFF',  // white
 ```
 
@@ -327,8 +329,8 @@ Contrast validation:
 
 | Pair | Dark theme | Light theme |
 |---|---|---|
-| Chip bg vs chip text | `#F4A261` on `#1A1A2E` = ~7.9:1 (AA normal) | `#E07B2A` on `#FFFFFF` = ~4:1 (AA-large; vocab is ≥18pt) |
-| Chip bg vs card bg | `#F4A261` on `#1A1A2E` = ~7.9:1 | `#E07B2A` on `#F5F5F5` = ~4.1:1 (AA graphical) |
+| Chip bg vs chip text | `#F4A261` on `#1A1A2E` = ~8.3:1 (AA normal) | TBD — `accentDark #E07B2A` on `#FFFFFF` is only ~3:1; needs a darker accent |
+| Chip bg vs card bg | `#F4A261` on `#1A1A2E` = ~8.3:1 | TBD — light-theme background not yet finalized |
 
 ---
 
@@ -372,7 +374,7 @@ Contrast validation:
 
 **Reduced motion:** Mic-pulse `Animated` loop gated on `AccessibilityInfo.isReduceMotionEnabled()`. Fallback: static mic icon.
 
-**Contrast:** See theme-token table above. Both themes clear WCAG 2.1 AA for their respective type-size category.
+**Contrast:** Dark theme clears WCAG 2.1 AA normal (~8.3:1). Light-theme chip tokens are a placeholder — the first-pass `accentDark #E07B2A` on white only reaches ~3:1 and does NOT clear AA. A darker amber must be chosen when the Dark/Light toggle ships. See ENHANCEMENTS.md "Dark / Light Theme Toggle" for the required WCAG audit.
 
 **Haptics:**
 - Wrong result → `Haptics.NotificationFeedbackType.Warning`.
