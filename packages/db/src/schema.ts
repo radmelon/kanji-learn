@@ -379,6 +379,7 @@ export const voiceAttempts = pgTable(
     expected: text('expected').notNull(),
     distance: smallint('distance').notNull(), // Levenshtein distance
     passed: boolean('passed').notNull(),
+    attemptsCount: smallint('attempts_count').notNull().default(1),
     attemptedAt: timestamp('attempted_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
