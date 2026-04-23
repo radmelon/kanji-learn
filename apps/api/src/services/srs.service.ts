@@ -38,10 +38,11 @@ type ExampleVocabEntry = {
 export function selectVoicePrompt(
   exampleVocab: ExampleVocabEntry[] | null,
   reviewCount: number,
+  targetKanji: string,
 ): VoicePrompt {
   if (!exampleVocab?.length) return { type: 'kanji' }
   const idx = (reviewCount ?? 0) % exampleVocab.length
-  return { type: 'vocab', ...exampleVocab[idx] }
+  return { type: 'vocab', ...exampleVocab[idx], targetKanji }
 }
 
 // ─── SRS Service ──────────────────────────────────────────────────────────────
@@ -465,7 +466,7 @@ export class SrsService {
         return {
           ...r,
           exampleVocab,
-          voicePrompt: selectVoicePrompt(exampleVocab, r.repetitions),
+          voicePrompt: selectVoicePrompt(exampleVocab, r.repetitions, r.character),
         }
       })
   }
