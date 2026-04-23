@@ -22,6 +22,15 @@ const submitReviewSchema = z.object({
   studyTimeMs: z.number().int().nonnegative(),
 })
 
+// Exported so unit tests can import it directly and stay in sync automatically.
+export const voiceSchema = z.object({
+  kanjiId:        z.number().int().positive(),
+  transcript:     z.string(),
+  correctReadings: z.array(z.string()).min(1),
+  strict:         z.boolean().optional().default(false),
+  attemptsCount:  z.number().int().min(1).max(50).optional().default(1),  // 50 = pathological-value guard; real drills rarely exceed 10
+})
+
 export async function reviewRoutes(server: FastifyInstance) {
   // Reuse the DualWriteService instance composed in server.ts (Task 22) so
   // there's a single source of truth for the buddy layer. Previously this
@@ -129,20 +138,13 @@ export async function reviewRoutes(server: FastifyInstance) {
   // POST /v1/review/voice — evaluate a spoken reading and log the attempt
   // The server runs wanakana normalisation + Levenshtein so the mobile
   // doesn't need to bundle the evaluation logic.
-  const voiceSchema = z.object({
-    kanjiId:        z.number().int().positive(),
-    transcript:     z.string(),
-    correctReadings: z.array(z.string()).min(1),
-    strict:         z.boolean().optional().default(false),
-  })
-
   server.post('/voice', { preHandler: [server.authenticate] }, async (req, reply) => {
     const body = voiceSchema.safeParse(req.body)
     if (!body.success) {
       return reply.code(400).send({ ok: false, error: 'Validation error', code: 'VALIDATION_ERROR' })
     }
 
-    const { kanjiId, transcript, correctReadings, strict } = body.data
+    const { kanjiId, transcript, correctReadings, strict, attemptsCount } = body.data
 
     // Evaluate server-side (wanakana + Levenshtein)
     const result = evaluateReading(transcript, correctReadings, strict, server.kanjiReadingsIndex)
@@ -154,12 +156,13 @@ export async function reviewRoutes(server: FastifyInstance) {
 
     // Log attempt
     await server.db.insert(voiceAttempts).values({
-      userId:     req.userId!,
+      userId:        req.userId!,
       kanjiId,
       transcript,
-      expected:   result.closestCorrect,
+      expected:      result.closestCorrect,
       distance,
-      passed:     result.correct,
+      passed:        result.correct,
+      attemptsCount, // NEW — default 1 when omitted by older clients
     })
 
     return reply.code(201).send({ ok: true, data: result })
