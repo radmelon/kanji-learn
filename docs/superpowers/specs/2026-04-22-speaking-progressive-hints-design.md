@@ -188,7 +188,7 @@ targetChip: {
 
 ### "Not quite. Try again." interstitial
 
-Inline amber-tinted banner rendered below the evaluator, above the mic, on `attempts > 0 && !evaluated && lastResult?.correct === false`. Auto-dismisses after ~1.5s or on next mic tap, whichever comes first. Single line of copy, no buttons.
+Inline warning-tinted (muted red background, amber accent text) banner rendered below the evaluator, above the mic, on `attempts > 0 && !evaluated && lastResult?.correct === false`. Auto-dismisses after ~1.5s or on next mic tap, whichever comes first. Single line of copy, no buttons.
 
 ### Difficulty picker disposal
 
