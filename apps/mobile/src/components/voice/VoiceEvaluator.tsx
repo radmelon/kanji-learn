@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Animated, AccessibilityInfo } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { api } from '../../lib/api'
@@ -7,6 +7,8 @@ import { colors, spacing, radius, typography } from '../../theme'
 import { PitchAccentReading } from '../kanji/PitchAccentReading'
 import { useShowPitchAccent } from '../../hooks/useShowPitchAccent'
 import type { VoicePrompt } from '@kanji-learn/shared'
+import { TargetChip } from './TargetChip'
+import { computeAttemptsCount, targetChipMask } from './voiceReveal.logic'
 
 // ─── Safe native module loading ───────────────────────────────────────────────
 // expo-speech-recognition calls requireNativeModule at import time, which
@@ -47,23 +49,17 @@ interface EvalResult {
 interface Props {
   kanjiId: number
   character: string
-  /** All accepted readings in hiragana, e.g. ['みず'] or ['すい','みず']
-   *  Used when voicePrompt is absent or of type 'kanji'. When voicePrompt
-   *  is of type 'vocab', only [voicePrompt.reading] is sent to the server. */
   correctReadings: string[]
-  /** Label shown in the prompt, e.g. 'kun'yomi' or 'reading' */
   readingLabel?: string
-  /** Called when server returns an evaluation result */
   onResult?: (result: EvalResult) => void
-  /** Whether to use strict mode (no near-matches) — for checkpoint tests */
   strict?: boolean
-  /** Hide the expected reading hint below the prompt (for Prompted/Recall/Challenge difficulty) */
-  hideHint?: boolean
-  /** Attached by the API to each reading-queue item. When present and of
-   *  type 'vocab', the evaluator renders a vocab-word layout (glyph =
-   *  vocab.word, pitch overlay, meaning line). Fallback to kanji layout
-   *  when absent or of type 'kanji'. */
   voicePrompt?: VoicePrompt
+
+  // ── Progressive-hints props (drive the 4-tier reveal ladder) ──
+  attempts: number
+  revealHiragana: boolean
+  revealPitch: boolean
+  revealVocabMeaning: boolean
 }
 
 // ─── Voice Evaluator ──────────────────────────────────────────────────────────
@@ -75,8 +71,11 @@ export function VoiceEvaluator({
   readingLabel = 'reading',
   onResult,
   strict = false,
-  hideHint = false,
   voicePrompt,
+  attempts,
+  revealHiragana,
+  revealPitch,
+  revealVocabMeaning,
 }: Props) {
   const [showPitchAccent] = useShowPitchAccent()
   const isVocabMode = voicePrompt?.type === 'vocab'
@@ -91,6 +90,7 @@ export function VoiceEvaluator({
   const transcriptRef = useRef('')          // always-current mirror of transcript state
   const [permissionGranted, setPermissionGranted] = useState(false)
   const [pulseAnim] = useState(new Animated.Value(1))
+  const [reduceMotion, setReduceMotion] = useState(false)
 
   // ── Permissions (skipped when module is unavailable) ───────────────────────
 
@@ -101,20 +101,37 @@ export function VoiceEvaluator({
     })
   }, [])
 
+  // ── Reduce-motion accessibility preference ────────────────────────────────
+
+  useEffect(() => {
+    let cancelled = false
+    AccessibilityInfo.isReduceMotionEnabled().then((v) => {
+      if (!cancelled) setReduceMotion(v)
+    })
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion)
+    return () => { cancelled = true; sub.remove() }
+  }, [])
+
   // ── Pulse animation while listening ───────────────────────────────────────
 
   useEffect(() => {
     if (phase === 'listening') {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.15, duration: 600, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-        ])
-      ).start()
+      if (!reduceMotion) {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulseAnim, { toValue: 1.15, duration: 600, useNativeDriver: true }),
+            Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+          ])
+        ).start()
+      } else {
+        // User toggled Reduce Motion on mid-session — stop the running pulse.
+        pulseAnim.stopAnimation()
+        pulseAnim.setValue(1)
+      }
     } else {
       pulseAnim.setValue(1)
     }
-  }, [phase])
+  }, [phase, reduceMotion])
 
   // ── Speech recognition events ─────────────────────────────────────────────
   // These hooks MUST be called unconditionally. When _mod is null they are
@@ -142,6 +159,7 @@ export function VoiceEvaluator({
         transcript: currentTranscript,
         correctReadings: effectiveCorrectReadings,
         strict,
+        attemptsCount: computeAttemptsCount(attempts),
       })
       setResult(eval_)
       setPhase('result')
@@ -227,26 +245,37 @@ export function VoiceEvaluator({
       {/* Prompt — vocab layout when voicePrompt is present, else legacy kanji layout */}
       {isVocabMode ? (
         <View style={styles.prompt}>
-          <Text style={styles.character}>{voicePrompt.word}</Text>
+          <Text style={styles.character}>
+            {(() => {
+              const tk = voicePrompt.targetKanji ?? character
+              const mask = targetChipMask(voicePrompt.word, tk)
+              return Array.from(voicePrompt.word).map((c, i) =>
+                mask[i]
+                  ? <TargetChip key={i}>{c}</TargetChip>
+                  : <Text key={i}>{c}</Text>
+              )
+            })()}
+          </Text>
           <PitchAccentReading
             reading={voicePrompt.reading}
             pattern={voicePrompt.pitchPattern}
-            enabled={showPitchAccent}
+            enabled={showPitchAccent || revealPitch}
             size="large"
           />
           <Text style={styles.promptLabel}>Say this word</Text>
-          {!hideHint && (
-            <>
-              <Text style={styles.expectedHint}>({voicePrompt.reading})</Text>
-              <Text style={styles.meaningHint}>{voicePrompt.meaning}</Text>
-            </>
+          {revealHiragana && (
+            <Text style={styles.expectedHint}>({voicePrompt.reading})</Text>
+          )}
+          {revealVocabMeaning && (
+            <Text style={styles.meaningHint}>{voicePrompt.meaning}</Text>
           )}
         </View>
       ) : (
+        // Legacy kanji-only branch — still gated by revealHiragana for consistency.
         <View style={styles.prompt}>
           <Text style={styles.character}>{character}</Text>
           <Text style={styles.promptLabel}>Say the {readingLabel}</Text>
-          {!hideHint && <Text style={styles.expectedHint}>({correctReadings[0]})</Text>}
+          {revealHiragana && <Text style={styles.expectedHint}>({correctReadings[0]})</Text>}
         </View>
       )}
 
