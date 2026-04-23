@@ -26,10 +26,11 @@ export function VoiceSuccessCard({
   useEffect(() => {
     // Announce once on mount — the card is rendered when a correct result
     // arrives and unmounts on advance, so this captures the result exactly.
-    AccessibilityInfo.announceForAccessibility(
-      `Correct. The word is ${word}, ${reading}. ` +
-      `Kanji meaning: ${kanjiMeaning}. Word meaning: ${vocabMeaning}.`
-    )
+    const baseAnnouncement = `Correct. The word is ${word}, ${reading}. Kanji meaning: ${kanjiMeaning}.`
+    const fullAnnouncement = vocabMeaning
+      ? `${baseAnnouncement} Word meaning: ${vocabMeaning}.`
+      : baseAnnouncement
+    AccessibilityInfo.announceForAccessibility(fullAnnouncement)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -55,10 +56,12 @@ export function VoiceSuccessCard({
         <Text style={styles.meaningLabel}>Kanji ({targetKanji}):</Text>
         <Text>  {kanjiMeaning}</Text>
       </Text>
-      <Text style={styles.meaningRow}>
-        <Text style={styles.meaningLabel}>Word ({word}):</Text>
-        <Text>  {vocabMeaning}</Text>
-      </Text>
+      {vocabMeaning ? (
+        <Text style={styles.meaningRow}>
+          <Text style={styles.meaningLabel}>Word ({word}):</Text>
+          <Text>  {vocabMeaning}</Text>
+        </Text>
+      ) : null}
 
       <TouchableOpacity
         style={styles.nextBtn}

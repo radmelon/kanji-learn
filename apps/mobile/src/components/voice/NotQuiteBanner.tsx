@@ -27,7 +27,7 @@ export function NotQuiteBanner({ visible, onAutoDismiss }: Props) {
   useEffect(() => {
     if (!visible) return
     // Announce the transition so VoiceOver users hear the hint-reveal cue.
-    AccessibilityInfo.announceForAccessibility('Not quite. Try again. More hints revealed.')
+    AccessibilityInfo.announceForAccessibility('Not quite. Try again.')
     const id = setTimeout(() => onAutoDismissRef.current(), 1500)
     return () => clearTimeout(id)
   }, [visible])
@@ -35,7 +35,7 @@ export function NotQuiteBanner({ visible, onAutoDismiss }: Props) {
   if (!visible) return null
 
   return (
-    <View style={styles.banner} accessibilityLiveRegion="assertive" accessibilityRole="alert">
+    <View style={styles.banner} accessibilityLiveRegion="assertive">
       <Text style={styles.main}>Not quite. Try again.</Text>
     </View>
   )

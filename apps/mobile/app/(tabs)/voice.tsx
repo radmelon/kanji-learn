@@ -41,13 +41,6 @@ interface Result {
 
 type Difficulty = 1 | 2 | 3 | 4
 
-const DIFFICULTY_LABELS: Record<Difficulty, string> = {
-  1: 'Guided',
-  2: 'Prompted',
-  3: 'Recall',
-  4: 'Challenge',
-}
-
 const DIFFICULTY_KEY = 'kl_voice_difficulty'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -68,8 +61,11 @@ function pickReading(item: ReadingQueueItem): { reading: string; label: string }
 
 const INFO_VOICE = [
   {
-    title: 'Difficulty levels',
-    body: "Easy: individual kanji readings. Medium: short compounds. Hard: full sentences with multiple kanji. Higher difficulties award more XP.",
+    title: 'Speaking drill · Progressive hints',
+    body: "Each kanji shows one vocabulary word containing it (highlighted with an amber chip). Tap the mic and speak the word.",
+  },
+  {
+    body: "If you're not sure, try anyway! We reveal more hints each time:\n• Try 2: kun/on readings + kanji meaning\n• Try 3: expected reading in hiragana\n• Try 4+: pitch accent + vocab meaning; Next Kanji button appears if you want to skip",
   },
   {
     title: 'How evaluation works',
@@ -95,8 +91,12 @@ export default function VoiceSession() {
   // changeDifficulty callback were removed during the progressive-hints
   // refactor. See ENHANCEMENTS.md — "Voice drill: restore difficulty-picker
   // as a starting-tier preference".
+  // `difficulty` and its SecureStore persistence are retained for future
+  // restoration as a "starting-tier" preference. The picker UI and
+  // changeDifficulty callback were removed during the progressive-hints
+  // refactor. See ENHANCEMENTS.md — "Voice drill: restore difficulty-picker
+  // as a starting-tier preference".
   const [difficulty, setDifficulty] = useState<Difficulty>(1)
-  const [showDifficultyPicker, setShowDifficultyPicker] = useState(false)
   const [activeInfo, setActiveInfo] = useState<string | null>(null)
   const [attempts, setAttempts] = useState(0)
   const [showInterstitial, setShowInterstitial] = useState(false)
@@ -149,16 +149,23 @@ export default function VoiceSession() {
   const handleResult = useCallback((result: EvalResult) => {
     const item = queue[currentIndex]
     if (!item) return
-    setResults((prev) => [...prev, { kanjiId: item.kanjiId, passed: result.correct }])
     setEvaluated(true)
     setLastResult(result)
-    if (!result.correct) {
+    if (result.correct) {
+      // Card closed by success — record exactly once per card.
+      setResults((prev) => [...prev, { kanjiId: item.kanjiId, passed: true }])
+    } else {
       setAttempts((a) => a + 1)
       setShowInterstitial(true)
     }
   }, [queue, currentIndex])
 
   const handleNext = useCallback(() => {
+    // If the card was never answered correctly (bail-out), record it as missed.
+    // When lastResult.correct === true, handleResult already recorded a passed:true row.
+    if (!lastResult?.correct && queue[currentIndex]) {
+      setResults((prev) => [...prev, { kanjiId: queue[currentIndex].kanjiId, passed: false }])
+    }
     if (currentIndex + 1 >= queue.length) {
       setDone(true)
     } else {
@@ -168,7 +175,7 @@ export default function VoiceSession() {
       setShowInterstitial(false)
       setLastResult(null)
     }
-  }, [currentIndex, queue.length])
+  }, [lastResult, currentIndex, queue])
 
   // ── Loading ──────────────────────────────────────────────────────────────
 

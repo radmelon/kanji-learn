@@ -36,7 +36,7 @@ const _SpeechRecognitionModule = _mod?.ExpoSpeechRecognitionModule ?? null
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Phase = 'idle' | 'listening' | 'evaluating' | 'result'
+type Phase = 'idle' | 'listening' | 'evaluating'
 
 export interface EvalResult {
   correct:         boolean
@@ -85,7 +85,6 @@ export function VoiceEvaluator({
   const effectiveCorrectReadings = isVocabMode ? [voicePrompt.reading] : correctReadings
 
   const [phase, setPhase] = useState<Phase>('idle')
-  const [result, setResult] = useState<EvalResult | null>(null)
   const [transcript, setTranscript] = useState('')
   const transcriptRef = useRef('')          // always-current mirror of transcript state
   const [permissionGranted, setPermissionGranted] = useState(false)
@@ -161,16 +160,14 @@ export function VoiceEvaluator({
         strict,
         attemptsCount: computeAttemptsCount(attempts),
       })
-      setResult(eval_)
-      setPhase('result')
-
       Haptics.notificationAsync(
         eval_.correct
           ? Haptics.NotificationFeedbackType.Success
-          : Haptics.NotificationFeedbackType.Error
+          : Haptics.NotificationFeedbackType.Warning
       )
 
       onResult?.(eval_)
+      setPhase('idle')
     } catch {
       // Network error — fall back to idle so user can retry
       setPhase('idle')
@@ -194,7 +191,6 @@ export function VoiceEvaluator({
 
     setTranscript('')
     transcriptRef.current = ''
-    setResult(null)
     setPhase('listening')
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
 
@@ -207,11 +203,6 @@ export function VoiceEvaluator({
 
   const stopListening = useCallback(() => {
     _SpeechRecognitionModule?.stop()
-    setPhase('idle')
-  }, [])
-
-  const retry = useCallback(() => {
-    setResult(null)
     setPhase('idle')
   }, [])
 
@@ -279,8 +270,8 @@ export function VoiceEvaluator({
         </View>
       )}
 
-      {/* Mic button — hidden while evaluating or showing result */}
-      {phase !== 'result' && phase !== 'evaluating' && (
+      {/* Mic button — hidden while evaluating */}
+      {phase !== 'evaluating' && (
         <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
           <TouchableOpacity
             style={[styles.micBtn, phase === 'listening' && styles.micBtnActive]}
@@ -313,33 +304,6 @@ export function VoiceEvaluator({
         </View>
       )}
 
-      {/* Result */}
-      {phase === 'result' && result && (
-        <View style={styles.resultCard}>
-          <View style={styles.resultHeader}>
-            <Ionicons
-              name={result.correct ? 'checkmark-circle' : 'close-circle'}
-              size={28}
-              color={result.correct ? colors.success : colors.error}
-            />
-            <Text style={[styles.resultTitle, { color: result.correct ? colors.success : colors.error }]}>
-              {result.correct ? 'Correct!' : 'Not quite'}
-            </Text>
-          </View>
-
-          <View style={styles.comparison}>
-            <ComparisonRow label="You said"  value={result.normalizedSpoken} />
-            <ComparisonRow label="Expected"  value={result.closestCorrect} isExpected />
-            <ComparisonRow label="Feedback"  value={result.feedback} />
-          </View>
-
-          <TouchableOpacity style={styles.retryBtn} onPress={retry}>
-            <Ionicons name="refresh" size={16} color={colors.accent} />
-            <Text style={styles.retryText}>Try again</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {!permissionGranted && phase === 'idle' && (
         <Text style={styles.permissionWarning}>
           Microphone permission required for voice evaluation
@@ -348,24 +312,6 @@ export function VoiceEvaluator({
     </View>
   )
 }
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function ComparisonRow({ label, value, isExpected }: { label: string; value: string; isExpected?: boolean }) {
-  return (
-    <View style={cmpStyles.row}>
-      <Text style={cmpStyles.label}>{label}</Text>
-      <Text style={[cmpStyles.value, isExpected && cmpStyles.expectedValue]}>{value}</Text>
-    </View>
-  )
-}
-
-const cmpStyles = StyleSheet.create({
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { ...typography.bodySmall, color: colors.textMuted },
-  value: { ...typography.body, color: colors.textPrimary },
-  expectedValue: { color: colors.success },
-})
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -394,18 +340,6 @@ const styles = StyleSheet.create({
   },
   listeningDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.error },
   listeningText: { ...typography.bodySmall, color: colors.textSecondary, maxWidth: 240 },
-  resultCard: {
-    width: '100%', backgroundColor: colors.bgCard, borderRadius: radius.lg,
-    padding: spacing.md, gap: spacing.md, borderWidth: 1, borderColor: colors.border,
-  },
-  resultHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  resultTitle: { ...typography.h3 },
-  comparison: { gap: spacing.sm },
-  retryBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: spacing.sm,
-  },
-  retryText: { ...typography.bodySmall, color: colors.accent },
   permissionWarning: { ...typography.caption, color: colors.warning, textAlign: 'center' },
 
   // Dev-build unavailable state
