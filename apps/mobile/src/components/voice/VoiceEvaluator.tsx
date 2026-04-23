@@ -264,16 +264,15 @@ export function VoiceEvaluator({
               )
             })()}
           </Text>
-          <PitchAccentReading
-            reading={voicePrompt.reading}
-            pattern={voicePrompt.pitchPattern}
-            enabled={showPitchAccent || revealPitch}
-            size="large"
-          />
-          <Text style={styles.promptLabel}>Say this word</Text>
           {revealHiragana && (
-            <Text style={styles.expectedHint}>({voicePrompt.reading})</Text>
+            <PitchAccentReading
+              reading={voicePrompt.reading}
+              pattern={voicePrompt.pitchPattern}
+              enabled={showPitchAccent || revealPitch}
+              size="large"
+            />
           )}
+          <Text style={styles.promptLabel}>Say this word</Text>
           {revealVocabMeaning && (
             <Text style={styles.meaningHint}>{voicePrompt.meaning}</Text>
           )}
