@@ -33,7 +33,7 @@ This refactor completes Phase 4's pedagogical layer, captures data for the futur
 | 3 | Multi-attempt retry loop with "Not quite. Try again." interstitial | Mobile |
 | 4 | Shared Success card with both kanji-level and vocab-level meanings | Mobile |
 | 5 | `voice_attempts.attempts_count smallint NOT NULL DEFAULT 1` | DB migration |
-| 6 | `POST /v1/review/reading-eval` accepts `attemptsCount` and stores verbatim | API |
+| 6 | `POST /v1/review/voice` accepts `attemptsCount` and stores verbatim | API |
 | 7 | `voicePrompt.targetKanji` added to server response | API |
 | 8 | Force-reveal pitch accent on try 4+ regardless of user toggle | Mobile |
 | 9 | Hide difficulty picker JSX (preserve SecureStore value for future enhancement) | Mobile |
@@ -47,7 +47,7 @@ This refactor completes Phase 4's pedagogical layer, captures data for the futur
 - **No vocab-level SRS.** Reading drills still attribute progress to the target kanji, not the vocab word.
 - **No Android-specific verification** (same carve-out as the original Phase 4 spec).
 - **No fix for the TTS volume bug** logged this session. Separate investigation — manual verification of this refactor should note any volume regressions observed, not attempt to fix them.
-- **No new endpoint** — the existing reading-eval endpoint is extended in place.
+- **No new endpoint** — the existing `POST /v1/review/voice` endpoint is extended in place.
 
 ---
 
@@ -55,7 +55,7 @@ This refactor completes Phase 4's pedagogical layer, captures data for the futur
 
 ```
 Learner taps mic
-  → POST /v1/review/reading-eval { attemptsCount, spoken, ... }
+  → POST /v1/review/voice { attemptsCount, spoken, ... }
       → server evaluates (existing logic, homophone expansion intact)
       → inserts voice_attempts row with attempts_count = N
       → returns { correct, feedback, ... } (unchanged shape)
@@ -76,7 +76,7 @@ Mobile receives result:
 | DB | Migration `0022_voice_attempts_attempts_count.sql` |
 | Drizzle schema | Add `attemptsCount: smallint('attempts_count').notNull().default(1)` |
 | Shared types | `VoicePrompt.targetKanji: string` added |
-| API service | `reading-eval.service.ts` accepts + persists `attemptsCount` |
+| API route | `review.ts` Zod schema accepts `attemptsCount`; `voice_attempts` insert persists it (the service file stays pure) |
 | API route | `review.ts` Zod schema accepts `attemptsCount` |
 | API queue builder | `srs.service.ts::getReadingQueue` attaches `targetKanji` to `voicePrompt` |
 | Mobile — voice tab | `apps/mobile/app/(tabs)/voice.tsx` — attempt state, layout gating, picker removal, Success card |
@@ -156,7 +156,7 @@ Internals:
   Chip renders around **every** occurrence of the target kanji (rare edge case like 人人 drilling for 人).
 - Hiragana hint gated on `revealHiragana`.
 - `PitchAccentReading` receives `enabled={showPitchAccent || revealPitch}`.
-- `attempts` included in the request body on `POST /v1/review/reading-eval`.
+- `attempts` included in the request body on `POST /v1/review/voice`.
 - Vocab meaning line renders when `revealVocabMeaning` is true.
 
 ### Target-kanji chip (`TargetChip`)
@@ -259,7 +259,7 @@ COMMENT ON COLUMN voice_attempts.attempts_count IS
 attemptsCount: smallint('attempts_count').notNull().default(1),
 ```
 
-### `POST /v1/review/reading-eval` — request body delta
+### `POST /v1/review/voice` — request body delta
 
 ```ts
 // New field:
@@ -385,10 +385,14 @@ Contrast validation:
 
 ### Unit tests
 
-**`reading-eval.service.ts`:**
-- `attemptsCount: 1 | 3` → row has matching `attempts_count`.
+**`review.ts` route (POST /v1/review/voice):**
+- `attemptsCount: 1 | 3` in request body → row inserted into `voice_attempts` with matching `attempts_count`.
 - `attemptsCount` omitted → Zod default 1.
 - Invalid (`0`, `-1`, `51`, `"two"`) → 400.
+
+**`selectVoicePrompt` (unit):**
+- Returns `targetKanji` on vocab-type prompts when the parent kanji character is supplied.
+- Existing tests (null vocab, empty array, rotation, pitch preservation, single-entry) continue to pass with the new required parameter.
 
 **`VoiceEvaluator.tsx` (component):**
 - Target chip on target kanji only (non-target chars render plain).
@@ -460,7 +464,7 @@ All manual-verification checkboxes green. Specifically:
 ## Deploy order
 
 1. **Merge migration + schema update.** Apply to prod via Supabase migrations CLI. Verify `\d voice_attempts` shows `attempts_count`.
-2. **Deploy API.** Smoke-test that `POST /v1/review/reading-eval` accepts the new field (200 response on synthetic payload).
+2. **Deploy API.** Smoke-test that `POST /v1/review/voice` accepts the new field (200 response on synthetic payload).
 3. **Run the cross-user DELETE.** Capture row-count delta in commit/handoff.
 4. **EAS build mobile.** Install on device.
 5. **On verification pass:**
