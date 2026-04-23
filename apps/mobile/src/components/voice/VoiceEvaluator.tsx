@@ -153,8 +153,10 @@ export function VoiceEvaluator({
       )
       onResult?.(eval_)
       setPhase('idle')
-    } catch {
-      // Network error — fall back to idle so user can retry
+    } catch (err) {
+      // Surface in Metro console during dev; in prod builds __DEV__ logs are
+      // stripped but the graceful idle-reset is preserved.
+      console.error('[VoiceEvaluator] submitEval failed', { transcript: spokenTranscript, err })
       setPhase('idle')
     }
   }, [kanjiId, effectiveCorrectReadings, strict, attempts, onResult])
