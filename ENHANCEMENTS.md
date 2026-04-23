@@ -206,6 +206,58 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Onboarding findHelp Panel: Append Motivational Line** — ~~SHIPPED~~ in B121 (commit `378f85c`). Verified by user on 2026-04-18: onboarding findHelp panel footer now reads "You don't need to memorise any of this now. Studying daily is the key to making progress."
   `[Effort: XS]` `[Impact: Low]` `[Backend: No]` `[Status: ✅ Shipped]`
 
+- [ ] **Expand My Interests options (Profile + onboarding)** — Owner wants the interests list enriched so sentence seeding and (future) mnemonic generation can pull from a broader and more personally-relevant set of domains. Today `INTEREST_OPTIONS` in [profile.tsx:129](apps/mobile/app/(tabs)/profile.tsx:129) has 10 items: Manga, Anime, Gaming, Literature, Film, Travel, Business, History, Technology, Other.
+
+  **New labels to add (from 2026-04-22 owner note):**
+  - **Education cluster:** Learning & Instruction, Pedagogy, Educational Technology
+  - **STEM cluster:** AI, Algorithms & Engineering
+  - **Culture cluster:** Culture, Religion & Spirituality, Temples & Shrines
+  - **Daily-life cluster:** Food, Crafts, Pottery, Liquor (sake / beer / etc.), Customs & Etiquette
+
+  **Open decisions to resolve in the design pass (likely Journal/Mnemonic brainstorm):**
+  - Keep the flat chip grid, or group chips under collapsible cluster headings once the list grows past ~15?
+  - Profile-only (current state — wizard never asks per B118 fix) vs. re-introduce an optional interests step in onboarding? The current wizard intentionally skips interests to avoid overwriting existing selections; adding the question back requires handling the returning-user case without the B118 regression.
+  - Do any of these need to propagate to sentence-seed topic weighting or mnemonic generation prompts? That's where the value lives.
+
+  **Affected files (implementation):**
+  - `apps/mobile/app/(tabs)/profile.tsx:129` — `INTEREST_OPTIONS` array
+  - `apps/mobile/app/onboarding.tsx` — if we re-introduce interests in the wizard
+  - Any seed-topic weighting in `packages/db/src/seeds/` that references the interest list
+  - Mnemonic-generation prompt templates (future work — see the Mnemonic constructivist design)
+
+  Found 2026-04-22 (owner note, post-B127).
+
+  `[Effort: XS (chip list only) / S (chip list + onboarding step)]` `[Impact: Med — feeds downstream personalization]` `[Backend: No (chip list) / No (seed weighting)]` `[Status: 💡 Idea — decisions deferred to Journal/Mnemonic brainstorm session]`
+
+- [ ] **Voice drill: restore difficulty-picker as a "starting-tier" preference for the attempt ladder** — After the Speaking progressive-hints refactor lands, the 4-level difficulty picker at [voice.tsx:237-262](apps/mobile/app/(tabs)/voice.tsx:237) gets hidden (the attempt ladder becomes the single reveal engine). This enhancement re-introduces the picker as a user preference that shifts where on the ladder a drill *starts* — e.g., level 4 starts at try 1's layout (nothing shown), level 1 starts at try 2's layout (kun/on + meaning already visible). Maps the existing `kl:voice_difficulty` SecureStore value onto starting-tier semantics. Persisted preference is preserved across the refactor cycle even though the UI is hidden during it.
+
+  **Why separate:** the attempt-ladder's reveal semantics need to be validated in isolation first. Adding a starting-tier knob on top before the baseline is proven adds variables we can't pull apart if something feels off in testing.
+
+  Captured 2026-04-22 during Speaking refactor brainstorm.
+
+  `[Effort: S]` `[Impact: Med — power-user flexibility]` `[Backend: No]` `[Status: 💡 Staged — post Speaking refactor]`
+
+- [ ] **Clean stale `voice_attempts` rows predating the 2026-04-19 homophone fix** — Owner reports "0% speaking accuracy" on many kanji in Progress panels, driven by pre-fix `voice_attempts` rows marked `passed = false` because the old evaluator couldn't match homophone kanji transcripts. Those rows now pollute per-kanji speaking-accuracy metrics that a user cannot realistically recover from without re-drilling every affected kanji. One-shot cleanup: `DELETE FROM voice_attempts WHERE user_id = '<owner>' AND attempted_at < '2026-04-19';` (or use the homophone-fix deploy timestamp from the Bug 3-C Phase 1 release). Fold execution into the Speaking-section refactor spec as a pre-work step so the "run this once" note is captured in the same commit as the UI redesign.
+
+  **Scope decision point:** owner-only vs. all users. TestFlight cohort is small (primarily owner + Bucky) so all-users is low-risk; a WHERE on owner's user_id is safer and sufficient if we're unsure.
+
+  Found 2026-04-22 (owner note, post-B127).
+
+  `[Effort: XS]` `[Impact: Med — unblocks fair speaking metrics]` `[Backend: Yes — one SQL statement in prod]` `[Status: 💡 Idea — execute alongside Speaking refactor]`
+
+- [ ] **Review-history list (what kanji did I see in past study sessions?)** — Owner encountered a questionable vocab example on some kanji and couldn't find it again afterwards. Need a way to browse the kanji reviewed in a given past session (or within a date range) from the Progress page's session-history list — tap a session row → see the kanji that appeared in it. Related to "report questionable example" / content-quality feedback loop.
+
+  **Likely shape:**
+  - Expand each row in the session history list into a collapsible detail that lists the kanji reviewed (character, meaning, link to details page).
+  - Alternatively: tap-through to a new "Session detail" screen that lists kanji + grades given.
+  - Data is already in `srs_reviews` (or equivalent) — no new events needed, just a read endpoint or a client-side join.
+
+  **Fold into:** the Journal/Browse redesign brainstorm (this is arguably a Journal tab feature — "history of what you've studied" is a journal concept).
+
+  Found 2026-04-22 (owner note, post-B127).
+
+  `[Effort: M]` `[Impact: Med — unlocks content-quality feedback]` `[Backend: Yes — read-only endpoint to join reviews→kanji]` `[Status: 💡 Idea — merge into Journal brainstorm]`
+
 ---
 
 ## 🔐 Authentication

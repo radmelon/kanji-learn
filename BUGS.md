@@ -6,6 +6,65 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **TTS playback intermittently plays at very low volume despite system volume set high (speak icons on study cards, browse cards, kun/on rows, vocab, example sentences)** — Owner reports the speak function appears to have a *hidden volume control* independent of the device volume. Has been triggered accidentally on occasion; once in the low-volume state, all TTS (kun, on, vocab, sentence) is barely audible even at max iPhone/iPad system volume. Not reproducible on demand yet — appears latched state that persists across speak invocations until some undiscovered action resets it.
+
+  **Suspected causes (to investigate):**
+  - `expo-speech` `Speech.speak(..., { volume })` parameter — any code path passing `volume < 1.0`, or reading volume from stale state (mute toggle, pitch-accent demo, TTS rate slider if one exists).
+  - iOS `AVAudioSession` category/mode interaction — if the app ever switches to `.record` for `expo-speech-recognition` and doesn't cleanly restore `.playback`, subsequent TTS can attenuate. Same class of issue as the voice-evaluator flow.
+  - Silent/ringer switch interaction with a non-playback audio session category (we've seen this before in the "speak icons not working" entry below).
+  - A debug/dev-only volume override left in.
+
+  **Reproduction:** Unknown trigger. Next time it happens, capture: (a) which screen the user was on immediately before (study card vs. details vs. evaluator), (b) whether the mic was used recently, (c) whether toggling the physical ringer switch restores volume, (d) whether backgrounding/foregrounding the app restores it.
+
+  **Affected files (likely):**
+  - `apps/mobile/src/components/voice/VoiceEvaluator.tsx` — `AVAudioSession` transitions
+  - Anywhere `Speech.speak(` is called — grep for volume/rate/pitch overrides
+  - Any TTS wrapper (e.g., `speakKanji.ts`, `useSpeak.ts` — TBD during investigation)
+
+  Found 2026-04-22 (owner report, post-B127).
+
+  `[Effort: S–M (investigation heavy)]` `[Impact: High — TTS is unusable when triggered; core study flow]` `[Status: 🐛 Active — needs repro]`
+
+- [ ] **Progress page — Activity panel "Reviewed" vs "Correct" stacked bars: data source and terminology inconsistent with rest of app** — The green/red stacked bars label them as "Reviewed" and "Correct." Owner questions (a) whether the underlying data is quiz outcomes or self-reported confidence from study-card grading, and (b) if the latter, the term "correct" conflicts with the app's established convention (per B123/B124: study cards use "remembered/missed" based on `quality >= 4`; "correct" is reserved for quiz outcomes).
+
+  **Expected:**
+  - If data is self-reported confidence → rename bars to match the study-card vocabulary ("Remembered" / "Reviewed") and confirm thresholds match `quality >= 4`.
+  - If data is quiz outcomes → label stays "Correct/Reviewed" but that should be made explicit in the panel caption or a tooltip.
+
+  **Affected files:**
+  - `apps/mobile/app/(tabs)/progress.tsx` (Activity panel section)
+  - Wherever the Activity series is computed (client aggregator or `/v1/progress/*` endpoint)
+
+  Found 2026-04-22 (owner report, post-B127).
+
+  `[Effort: XS]` `[Impact: Low — terminology drift, not a data bug]` `[Status: 🐛 Active]`
+
+- [ ] **Progress page — Quiz Performance panel shows only green stacked bars; expected Fail (red) component is missing or invisible** — The panel is intended to show Pass/Fail as stacked bars but owner only sees green. Either the red series isn't rendering, the threshold never classifies a quiz as failed in current data, or the labels are wrong.
+
+  **To verify:**
+  - Inspect the data the panel is fed — is the `fail` count always 0 for this user? (If so, not a rendering bug; just needs a panel state for "no failures yet.")
+  - If the data has non-zero fails, the red series is broken — check the chart library props (colour, series key, stacked config).
+  - Owner also asks: should the labels be **Correct (Pass) / Wrong (Fail)** to match `Quiz Weak Spots` terminology? Recommend yes for consistency.
+
+  **Affected files:**
+  - `apps/mobile/app/(tabs)/progress.tsx` (Quiz Performance panel)
+  - Progress endpoints returning quiz pass/fail
+
+  Found 2026-04-22 (owner report, post-B127).
+
+  `[Effort: XS]` `[Impact: Low — cosmetic / label clarity]` `[Status: 🐛 Active — needs data audit first]`
+
+- [ ] **Progress page — Quiz Weak Spots caption buries the "% attempts wrong" meaning in the tooltip** — The red horizontal bars on Quiz Weak Spots show a miss-rate percentage per kanji, but the caption reads "Kanji you most often miss in quizzes (min 3 attempts)" and the definition (`miss rate = wrong answers / total quiz attempts`) is only visible via the ℹ️ tooltip.
+
+  **Fix:** Surface the definition inline. Proposed caption: *"Kanji you most often miss in quizzes (min 3 attempts; % shown is wrong / total attempts)."*
+
+  **Affected files:**
+  - `apps/mobile/app/(tabs)/progress.tsx` (Quiz Weak Spots section caption)
+
+  Found 2026-04-22 (owner report, post-B127).
+
+  `[Effort: XS]` `[Impact: Low — clarity polish]` `[Status: 🐛 Active]`
+
 - [ ] **Speak evaluation marks homophone kanji wrong — iOS recognizer returns a *kanji* transcript that wanakana can't normalize to hiragana** — ~~Short-term workaround SHIPPED 2026-04-19~~ as Build 3-C Phase 1 (App Runner ops `53710d9b` + hotfix `e24febc1`). Server-side kanji→reading expansion in `reading-eval.service.ts` now resolves homophone collisions when the iOS recognizer returns a kanji. User confirmed on device 2026-04-19: 感 spoken as "kan" (iOS returns 缶 transcript) now accepts as Perfect. Longer-term structural shift to vocab-level drilling is scheduled for Build 3-C Phase 4. Entry stays open until Phase 4 ships and the structural fix is verified. On a reading card for 感 (reading `かん`), the user speaks "kan" correctly but the Speak evaluator returns "Not quite" with feedback like `Heard "缶" — the reading is かん`. Same class of failure for any kanji with a common-reading homophone (感 / 缶 / 館 / 巻 / 漢 all read `かん`; 紙 / 髪 / 神 all read `かみ`; 橋 / 箸 read `はし`; etc.).
 
   **Root cause:** The iOS `ja-JP` speech recognizer (used via `expo-speech-recognition` in [VoiceEvaluator.tsx:165](apps/mobile/src/components/voice/VoiceEvaluator.tsx:165)) does lexical conversion, not phonetic — it returns its best-guess *kanji* string from its own language model, not the hiragana the user spoke. The server-side evaluator at [reading-eval.service.ts:51](apps/api/src/services/reading-eval.service.ts:51) calls `toHiragana(spoken)` from wanakana, which only converts romaji/katakana → hiragana. **Wanakana cannot convert kanji to its reading.** So `缶` stays as `缶`, the exact-match check against `["かん"]` fails, Levenshtein distance is 2 (full rewrite), and the card is graded wrong. The feedback string literally echoes the raw kanji back at the user, which reads as nonsense if they don't recognize what happened.
