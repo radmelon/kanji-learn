@@ -333,16 +333,23 @@ function withWatchXcodeTarget(config) {
     const codeSignStyle = hasProfile ? 'Manual' : 'Automatic'
     console.log(`[withWatchApp] Watch signing: style=${codeSignStyle} uuid=${profileUUID ?? 'n/a'}`)
 
+    // watchOS refuses to launch an embedded Watch app whose CFBundleVersion or
+    // CFBundleShortVersionString does not match its iPhone companion. Pull both
+    // from the Expo config so every EAS build produces matching pairs.
+    const appVersion  = config.version ?? '1.0.0'
+    const buildNumber = config.ios?.buildNumber ?? '1'
+    console.log(`[withWatchApp] Watch versions: MARKETING_VERSION=${appVersion} CURRENT_PROJECT_VERSION=${buildNumber}`)
+
     const commonSettings = {
       ALWAYS_SEARCH_USER_PATHS: 'NO',
       ASSETCATALOG_COMPILER_APPICON_NAME: 'AppIcon',
       CODE_SIGN_IDENTITY: hasProfile ? '"Apple Distribution"' : '"Apple Development"',
       CODE_SIGN_STYLE: codeSignStyle,
-      CURRENT_PROJECT_VERSION: '1',
+      CURRENT_PROJECT_VERSION: buildNumber,
       DEVELOPMENT_TEAM: TEAM_ID,
       ENABLE_USER_SCRIPT_SANDBOXING: 'NO',
       INFOPLIST_FILE: `"${WATCH_TARGET}/Info.plist"`,
-      MARKETING_VERSION: '1.0',
+      MARKETING_VERSION: appVersion,
       PRODUCT_BUNDLE_IDENTIFIER: `"${WATCH_BUNDLE_ID}"`,
       PRODUCT_NAME: '"$(TARGET_NAME)"',
       // Use UUID if available (avoids name-based collisions), else fall back to name
