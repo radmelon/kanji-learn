@@ -138,7 +138,7 @@ struct HomeView: View {
 
     private func refreshStatus() async {
         guard watchSession.isAuthenticated else {
-            let ts = Int(Date().timeIntervalSince1970 * 1000)
+            let ts = Int64(Date().timeIntervalSince1970 * 1000)
             print("[KL-Watch] \(ts) refreshStatus skip=not-authenticated")
             isLoadingStatus = false
             return
@@ -146,7 +146,7 @@ struct HomeView: View {
         isLoadingStatus = true
         defer { isLoadingStatus = false }
 
-        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
         do {
             status = try await api.fetchStatus()
             lastStatusError = nil

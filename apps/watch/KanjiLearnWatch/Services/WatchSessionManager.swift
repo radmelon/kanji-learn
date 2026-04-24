@@ -69,8 +69,14 @@ final class WatchSessionManager: NSObject, ObservableObject {
 
 extension WatchSessionManager: WCSessionDelegate {
 
+    // Every delegate callback opens with an Int64 millisecond timestamp.
+    // Do NOT change to Int: Apple Watch is ARM64_32 where `Int` is 32-bit and
+    // `Int(Date().timeIntervalSince1970 * 1000)` traps with EXC_BREAKPOINT
+    // because the epoch-ms value (~1.78e12) exceeds Int32.max (~2.15e9).
+    // This caused the B129/B130 launch crash on Watch.
+
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
         let stateStr: String
         switch activationState {
         case .notActivated: stateStr = "notActivated"
@@ -92,7 +98,7 @@ extension WatchSessionManager: WCSessionDelegate {
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
-        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
         print("[KL-Watch] \(ts) reachabilityDidChange reachable=\(session.isReachable)")
         DispatchQueue.main.async {
             self.isReachable = session.isReachable
@@ -102,10 +108,13 @@ extension WatchSessionManager: WCSessionDelegate {
 
     // Receives tokens + settings pushed by iPhone via updateApplicationContext()
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
-        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
         let pushReason = applicationContext["pushReason"] as? String ?? "unknown"
-        let pushTsMs   = applicationContext["pushTsMs"]   as? Int ?? 0
-        let latencyMs  = pushTsMs > 0 ? ts - pushTsMs : -1
+        // Read as Int64 — on ARM64_32 (Apple Watch) Swift's `Int` is 32-bit and
+        // cannot hold an epoch-ms value (~1.78e12), so `as? Int` silently fails
+        // and latency was always -1. Int64 succeeds via NSNumber bridging.
+        let pushTsMs   = applicationContext["pushTsMs"]   as? Int64 ?? 0
+        let latencyMs  = pushTsMs > 0 ? ts - pushTsMs : Int64(-1)
         let keys = applicationContext.keys.sorted().joined(separator: ",")
 
         guard

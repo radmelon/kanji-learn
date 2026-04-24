@@ -76,7 +76,7 @@ final class AuthService {
 
     /// Returns a valid (non-expired) access token, refreshing autonomously if needed.
     func getAccessToken() async throws -> String {
-        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
 
         guard let accessToken = load(key: KeychainKey.accessToken) else {
             print("[KL-Watch] \(ts) auth.getAccessToken result=missing")
@@ -103,7 +103,7 @@ final class AuthService {
 
     @discardableResult
     func refresh() async throws -> String {
-        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
         guard let refreshToken = load(key: KeychainKey.refreshToken),
               let supabaseURL  = load(key: KeychainKey.supabaseURL) else {
             print("[KL-Watch] \(ts) auth.refresh result=no-refresh-token-or-url")
@@ -160,7 +160,7 @@ final class AuthService {
     // ── Sign out ──────────────────────────────────────────────────────────────
 
     func clear() {
-        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
         print("[KL-Watch] \(ts) auth.clear called")
         delete(key: KeychainKey.accessToken)
         delete(key: KeychainKey.refreshToken)
