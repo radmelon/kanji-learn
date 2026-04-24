@@ -76,17 +76,24 @@ final class AuthService {
 
     /// Returns a valid (non-expired) access token, refreshing autonomously if needed.
     func getAccessToken() async throws -> String {
+        let ts = Int(Date().timeIntervalSince1970 * 1000)
+
         guard let accessToken = load(key: KeychainKey.accessToken) else {
+            print("[KL-Watch] \(ts) auth.getAccessToken result=missing")
             throw APIError.notAuthenticated
         }
 
-        // Check expiry — refresh if within 60 seconds of expiry
         if let expiresAtStr = load(key: KeychainKey.expiresAt),
            let expiresAtTs = Double(expiresAtStr) {
             let expiresAt = Date(timeIntervalSince1970: expiresAtTs)
+            let expiresInSec = Int(expiresAt.timeIntervalSinceNow)
             if Date().addingTimeInterval(60) >= expiresAt {
+                print("[KL-Watch] \(ts) auth.getAccessToken result=refreshing expiresInSec=\(expiresInSec)")
                 return try await refresh()
             }
+            print("[KL-Watch] \(ts) auth.getAccessToken result=cached expiresInSec=\(expiresInSec)")
+        } else {
+            print("[KL-Watch] \(ts) auth.getAccessToken result=cached-no-expiry")
         }
 
         return accessToken
@@ -96,10 +103,17 @@ final class AuthService {
 
     @discardableResult
     func refresh() async throws -> String {
+        let ts = Int(Date().timeIntervalSince1970 * 1000)
         guard let refreshToken = load(key: KeychainKey.refreshToken),
               let supabaseURL  = load(key: KeychainKey.supabaseURL) else {
+            print("[KL-Watch] \(ts) auth.refresh result=no-refresh-token-or-url")
             throw APIError.notAuthenticated
         }
+
+        // Log last 4 chars of the refresh token so we can spot rotation races in
+        // the log stream without leaking the full token.
+        let rtSuffix = refreshToken.count >= 4 ? String(refreshToken.suffix(4)) : "?"
+        print("[KL-Watch] \(ts) auth.refresh attempt rtSuffix=…\(rtSuffix)")
 
         guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
             throw APIError.parseError("Invalid Supabase URL")
@@ -112,8 +126,15 @@ final class AuthService {
 
         let (data, response) = try await URLSession.shared.data(for: req)
 
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            // Refresh token is invalid or expired — need re-auth via iPhone
+        guard let http = response as? HTTPURLResponse else {
+            print("[KL-Watch] \(ts) auth.refresh result=non-http")
+            clear()
+            throw APIError.notAuthenticated
+        }
+
+        if http.statusCode != 200 {
+            let bodyPreview = String(data: data, encoding: .utf8).map { String($0.prefix(160)) } ?? "<binary>"
+            print("[KL-Watch] \(ts) auth.refresh result=http-\(http.statusCode) body=\(bodyPreview)")
             clear()
             throw APIError.notAuthenticated
         }
@@ -126,17 +147,21 @@ final class AuthService {
 
         let body = try JSONDecoder().decode(RefreshResponse.self, from: data)
         let newExpiry = Date().addingTimeInterval(TimeInterval(body.expires_in))
+        let newRtSuffix = body.refresh_token.count >= 4 ? String(body.refresh_token.suffix(4)) : "?"
 
         save(key: KeychainKey.accessToken,  value: body.access_token)
         save(key: KeychainKey.refreshToken, value: body.refresh_token)
         save(key: KeychainKey.expiresAt,    value: String(newExpiry.timeIntervalSince1970))
 
+        print("[KL-Watch] \(ts) auth.refresh result=ok expiresInSec=\(body.expires_in) newRtSuffix=…\(newRtSuffix)")
         return body.access_token
     }
 
     // ── Sign out ──────────────────────────────────────────────────────────────
 
     func clear() {
+        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        print("[KL-Watch] \(ts) auth.clear called")
         delete(key: KeychainKey.accessToken)
         delete(key: KeychainKey.refreshToken)
         delete(key: KeychainKey.expiresAt)
