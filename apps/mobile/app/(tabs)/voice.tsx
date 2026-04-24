@@ -13,6 +13,7 @@ import { computeReveals } from '../../src/components/voice/voiceReveal.logic'
 import { NotQuiteBanner } from '../../src/components/voice/NotQuiteBanner'
 import { VoiceSuccessCard } from '../../src/components/voice/VoiceSuccessCard'
 import { api } from '../../src/lib/api'
+import { useProfile } from '../../src/hooks/useProfile'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { VoicePrompt } from '@kanji-learn/shared'
 
@@ -79,6 +80,8 @@ const INFO_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 }
 
 export default function VoiceSession() {
   const router = useRouter()
+  const { profile } = useProfile()
+  const dailyGoal = profile?.dailyGoal ?? 20
   const [queue, setQueue] = useState<ReadingQueueItem[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [results, setResults] = useState<Result[]>([])
@@ -107,12 +110,15 @@ export default function VoiceSession() {
   }, [])
 
   useEffect(() => {
+    // Wait for profile so dailyGoal doesn't fall back to 20 for users with a
+    // smaller goal. Mirrors the guard in study.tsx.
+    if (!profile) return
     loadQueue()
     SecureStore.getItemAsync(DIFFICULTY_KEY).then((val) => {
       const parsed = parseInt(val ?? '1', 10)
       if (parsed >= 1 && parsed <= 4) setDifficulty(parsed as Difficulty)
     }).catch(() => {})
-  }, [])
+  }, [profile])
 
   useEffect(() => {
     const item = queue[currentIndex]
@@ -137,14 +143,22 @@ export default function VoiceSession() {
     setShowInterstitial(false)
     setLastResult(null)
     try {
-      const data = await api.get<ReadingQueueItem[]>('/v1/review/reading-queue?limit=8')
+      // Pull today's Study-tab deck first so Speaking drills the same kanji at
+      // the same count. Falls back to SRS-driven selection when the Study queue
+      // is empty (all caught up) — so Speaking practice still has material.
+      const studyQueue = await api.get<{ kanjiId: number }[]>(`/v1/review/queue?limit=${dailyGoal}`)
+      const kanjiIds = studyQueue.map((q) => q.kanjiId)
+      const endpoint = kanjiIds.length > 0
+        ? `/v1/review/reading-queue?kanjiIds=${kanjiIds.join(',')}`
+        : `/v1/review/reading-queue?limit=${dailyGoal}`
+      const data = await api.get<ReadingQueueItem[]>(endpoint)
       setQueue(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load reading queue')
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [dailyGoal])
 
   const handleResult = useCallback((result: EvalResult) => {
     const item = queue[currentIndex]
