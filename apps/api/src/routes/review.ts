@@ -124,13 +124,21 @@ export async function reviewRoutes(server: FastifyInstance) {
     }
   )
 
-  // GET /v1/review/reading-queue?limit=8
-  server.get<{ Querystring: { limit?: string } }>(
+  // GET /v1/review/reading-queue?limit=8&kanjiIds=1,2,3
+  // When kanjiIds is provided, returns speaking data for exactly those kanji
+  // (used by the Speaking tab to mirror today's Study-tab deck). Otherwise
+  // falls back to SRS-driven selection.
+  server.get<{ Querystring: { limit?: string; kanjiIds?: string } }>(
     '/reading-queue',
     { preHandler: [server.authenticate] },
     async (req, reply) => {
       const limit = Math.min(Number(req.query.limit ?? 8), 20)
-      const items = await srs.getReadingQueue(req.userId!, limit)
+      const kanjiIds = req.query.kanjiIds
+        ?.split(',')
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isInteger(n) && n > 0)
+        .slice(0, 50)
+      const items = await srs.getReadingQueue(req.userId!, limit, kanjiIds)
       return reply.send({ ok: true, data: items })
     }
   )

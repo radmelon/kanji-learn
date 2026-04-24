@@ -427,9 +427,13 @@ export class SrsService {
   }
 
   // ── Get reading practice queue ──────────────────────────────────────────────
-  // Returns kanji with at least one reading, most recently reviewed first.
+  // Default: kanji with at least one reading, most recently reviewed first.
+  // When kanjiIds is provided, return speaking data for exactly those kanji
+  // (skipping the SRS selection and repetitions>0 filter) so the Speaking tab
+  // can mirror today's Study-tab deck.
 
-  async getReadingQueue(userId: string, limit: number) {
+  async getReadingQueue(userId: string, limit: number, kanjiIds?: number[]) {
+    const scopeToIds = kanjiIds && kanjiIds.length > 0
     const rows = await this.db
       .select({
         kanjiId: userKanjiProgress.kanjiId,
@@ -446,13 +450,18 @@ export class SrsService {
       .from(userKanjiProgress)
       .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
       .where(
-        and(
-          eq(userKanjiProgress.userId, userId),
-          gt(userKanjiProgress.repetitions, 0)
-        )
+        scopeToIds
+          ? and(
+              eq(userKanjiProgress.userId, userId),
+              inArray(userKanjiProgress.kanjiId, kanjiIds!),
+            )
+          : and(
+              eq(userKanjiProgress.userId, userId),
+              gt(userKanjiProgress.repetitions, 0),
+            )
       )
       .orderBy(desc(userKanjiProgress.lastReviewedAt))
-      .limit(limit)
+      .limit(scopeToIds ? kanjiIds!.length : limit)
 
     const toArr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
 
