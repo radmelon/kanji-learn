@@ -21,6 +21,7 @@ const WatchConnectivity: {
     dailyGoal: number,
     reminderHour: number,
     restDay: number,
+    reason: string,
   ) => Promise<{ sent: boolean; reason?: string }>
   getConnectionStatus: () => Promise<{
     supported: boolean
@@ -34,12 +35,19 @@ const WATCH_ENABLED_KEY = 'kl:watch_enabled'
 
 type PushResult = { sent: boolean; reason?: string }
 
-async function pushToWatch(session: Session, force = false): Promise<PushResult | null> {
+async function pushToWatch(
+  session: Session,
+  reason: string,
+  force = false,
+): Promise<PushResult | null> {
   if (!WatchConnectivity) return null
 
   try {
     const watchEnabled = (await storage.getItem<boolean>(WATCH_ENABLED_KEY)) ?? false
-    if (!force && !watchEnabled) return null
+    if (!force && !watchEnabled) {
+      console.log(`[KL-Push] ${Date.now()} skip reason=${reason} gate=watchEnabled-false force=${force}`)
+      return null
+    }
 
     // Read cached profile for settings needed by Watch encouragement messages.
     // Cache shape is `{ data: UserProfile }` (see profile.tsx PROFILE_CACHE_KEY writer).
@@ -53,8 +61,14 @@ async function pushToWatch(session: Session, force = false): Promise<PushResult 
 
     // expiresAt is a Unix timestamp in seconds (Supabase standard)
     const expiresAt = session.expires_at ?? Math.floor(Date.now() / 1000) + 3600
+    const expiresInSec = expiresAt - Math.floor(Date.now() / 1000)
 
-    console.log('[Watch] pushToWatch called, supabaseURL:', supabaseURL ? 'set' : 'EMPTY', 'apiBaseURL:', apiBaseURL ? 'set' : 'EMPTY')
+    console.log(
+      `[KL-Push] ${Date.now()} push reason=${reason} watchEnabled=${watchEnabled} ` +
+      `force=${force} dailyGoal=${profile?.dailyGoal ?? 20} ` +
+      `reminderHour=${profile?.reminderHour ?? 20} restDay=${profile?.restDay ?? -1} ` +
+      `expiresInSec=${expiresInSec} apiBaseURL=${apiBaseURL ? 'SET' : 'EMPTY'}`,
+    )
 
     const result = await WatchConnectivity.pushTokensToWatch(
       session.access_token,
@@ -66,12 +80,13 @@ async function pushToWatch(session: Session, force = false): Promise<PushResult 
       profile?.dailyGoal ?? 20,
       profile?.reminderHour ?? 20,
       profile?.restDay ?? -1,  // -1 = no rest day
+      reason,
     )
 
-    console.log('[Watch] pushTokensToWatch result:', JSON.stringify(result))
+    console.log(`[KL-Push] ${Date.now()} pushResult reason=${reason} result=${JSON.stringify(result)}`)
     return result
   } catch (err) {
-    console.warn('[Watch] pushTokensToWatch threw:', err)
+    console.warn(`[KL-Push] ${Date.now()} pushThrew reason=${reason} err=${String(err)}`)
     return { sent: false, reason: String(err) }
   }
 }
@@ -93,7 +108,7 @@ interface AuthState {
   // Watch connectivity
   setWatchEnabled: (enabled: boolean) => Promise<PushResult | null>
   forceSyncToWatch: () => Promise<PushResult | null>
-  syncToWatch: () => Promise<PushResult | null>
+  syncToWatch: (reason: string) => Promise<PushResult | null>
   getWatchConnectionStatus: () => Promise<{ supported: boolean; paired?: boolean; watchAppInstalled?: boolean; reachable?: boolean }>
 }
 
@@ -112,10 +127,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isInitialized: true,
     })
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth.onAuthStateChange((event, session) => {
       set({ session, user: session?.user ?? null })
       // Push fresh tokens to Watch whenever auth state changes (sign in, token refresh, sign out)
-      if (session) void pushToWatch(session)
+      if (session) void pushToWatch(session, `auth-${event}`)
     })
   },
 
@@ -129,7 +144,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
       set({ session: data.session, user: data.user })
-      if (data.session) void pushToWatch(data.session)
+      if (data.session) void pushToWatch(data.session, 'signIn')
     } finally {
       set({ isLoading: false })
     }
@@ -202,23 +217,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await storage.setItem(WATCH_ENABLED_KEY, enabled)
     // If enabling, immediately push current session if available
     const { session } = get()
-    if (enabled && session) return pushToWatch(session)
+    if (enabled && session) return pushToWatch(session, 'setWatchEnabled')
     return null
   },
 
   forceSyncToWatch: async () => {
     const { session } = get()
     if (!session) return { sent: false, reason: 'no_session' }
-    return pushToWatch(session, true)
+    return pushToWatch(session, 'forceSync', true)
   },
 
   // Non-forced sync — respects the kl:watch_enabled flag. Call after profile
   // edits so the Watch picks up changes to dailyGoal / reminderHour / restDay
   // without waiting for the next auth refresh.
-  syncToWatch: async () => {
+  syncToWatch: async (reason: string) => {
     const { session } = get()
     if (!session) return null
-    return pushToWatch(session, false)
+    return pushToWatch(session, `syncToWatch-${reason}`, false)
   },
 
   getWatchConnectionStatus: async () => {

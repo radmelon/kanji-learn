@@ -62,14 +62,15 @@ class WatchConnectivityModule: NSObject, WCSessionDelegate {
     watchEnabled: Bool,
     dailyGoal: Int,
     reminderHour: Int,
-    restDay: Int,   // -1 = no rest day
+    restDay: Int,
+    reason: String,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
+    let ts = Int(Date().timeIntervalSince1970 * 1000)
+
     guard let session, session.isPaired else {
-      // Not an error — Watch may not be paired yet. Resolve silently.
-      // Note: isWatchAppInstalled is unreliable for development builds so
-      // we only check isPaired and let updateApplicationContext handle delivery.
+      NSLog("[KL-Push] %d push reason=%@ skip=not-paired isPaired=0", ts, reason)
       resolve(["sent": false, "reason": "watch_not_available"])
       return
     }
@@ -83,16 +84,23 @@ class WatchConnectivityModule: NSObject, WCSessionDelegate {
       "watchEnabled": watchEnabled,
       "dailyGoal":    dailyGoal,
       "reminderHour": reminderHour,
+      // Include reason so the Watch can log the same trigger key when it arrives.
+      "pushReason":   reason,
+      // Include the push timestamp so Watch can log arrival latency.
+      "pushTsMs":     ts,
     ]
     if restDay >= 0 { context["restDay"] = restDay }
 
-    NSLog("[WatchConnectivity] Calling updateApplicationContext, isPaired=%d isReachable=%d", session.isPaired ? 1 : 0, session.isReachable ? 1 : 0)
+    let expiresInSec = Int(expiresAt - Date().timeIntervalSince1970)
+    NSLog("[KL-Push] %d push reason=%@ isPaired=%d isReachable=%d dailyGoal=%d expiresInSec=%d",
+          ts, reason, session.isPaired ? 1 : 0, session.isReachable ? 1 : 0, dailyGoal, expiresInSec)
+
     do {
       try session.updateApplicationContext(context)
-      NSLog("[WatchConnectivity] updateApplicationContext succeeded")
+      NSLog("[KL-Push] %d push reason=%@ result=ok", ts, reason)
       resolve(["sent": true])
     } catch {
-      NSLog("[WatchConnectivity] updateApplicationContext failed: %@", error.localizedDescription)
+      NSLog("[KL-Push] %d push reason=%@ result=error err=%@", ts, reason, error.localizedDescription)
       resolve(["sent": false, "reason": error.localizedDescription])
     }
   }
@@ -145,6 +153,7 @@ RCT_EXTERN_METHOD(
   dailyGoal:(NSInteger)dailyGoal
   reminderHour:(NSInteger)reminderHour
   restDay:(NSInteger)restDay
+  reason:(NSString *)reason
   resolve:(RCTPromiseResolveBlock)resolve
   reject:(RCTPromiseRejectBlock)reject
 )

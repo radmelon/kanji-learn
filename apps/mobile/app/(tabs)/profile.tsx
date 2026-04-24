@@ -203,7 +203,7 @@ export default function ProfileScreen() {
       await storage.setItem(PROFILE_CACHE_KEY, { data: updated })
       // Fan the change out to the Watch immediately so users don't have to wait
       // for the next token refresh / sign-in to see their new settings.
-      void syncToWatch()
+      void syncToWatch('profile-save')
     } catch {
       Alert.alert('Save failed', 'Could not update your profile. Please try again.')
     } finally {
