@@ -51,6 +51,53 @@ describe('evaluateReading — homophone workaround', () => {
     expect(result.correct).toBe(true)
   })
 
+  it('accepts sokuon assimilation in a compound (まつ + たん → まったん)', () => {
+    // Real B130 case. iOS speech recognizer transcribes "mattan" as the kanji
+    // 末端. Per-character expansion gives "まつたん" (no sokuon) — the index
+    // can't produce the assimilated form. 1-edit-distance acceptance closes
+    // the gap.
+    const idx: KanjiReadingsIndex = new Map([
+      ['末', new Set(['まつ', 'すえ', 'ばつ'])],
+      ['端', new Set(['たん', 'はし'])],
+    ])
+    const result = evaluateReading('末端', ['まったん'], false, idx)
+    expect(result.correct).toBe(true)
+    expect(result.quality).toBe(3)
+    expect(result.feedback).toMatch(/check your vowel length or small kana/)
+  })
+
+  it('accepts an okurigana transcript via near-match expansion (貸し付け → かしつけ)', () => {
+    // iOS recognizer returns the verbal stem with okurigana 貸し付け. Per-char
+    // expansion produces "かししつけ" (extra し from the literal okurigana char).
+    // Levenshtein 1 vs target "かしつけ" → accept.
+    const idx: KanjiReadingsIndex = new Map([
+      ['貸', new Set(['かし', 'たい'])],
+      ['付', new Set(['つ', 'ふ'])],
+    ])
+    const result = evaluateReading('貸し付け', ['かしつけ'], false, idx)
+    expect(result.correct).toBe(true)
+    expect(result.quality).toBe(3)
+  })
+
+  it('strict mode REJECTS the near-match expansion path', () => {
+    // Level checkpoints set strict=true. The near-match acceptance must NOT
+    // fire there — only exact expansion matches.
+    const idx: KanjiReadingsIndex = new Map([
+      ['末', new Set(['まつ'])],
+      ['端', new Set(['たん'])],
+    ])
+    const result = evaluateReading('末端', ['まったん'], true /* strict */, idx)
+    expect(result.correct).toBe(false)
+  })
+
+  it('still rejects when no expanded candidate is within 1 edit', () => {
+    const idx: KanjiReadingsIndex = new Map([
+      ['髪', new Set(['かみ', 'はつ'])],
+    ])
+    const result = evaluateReading('髪', ['たんすい'], false, idx)
+    expect(result.correct).toBe(false)
+  })
+
   it('accepts a kanji transcript when index stores katakana on-yomi (real DB shape)', () => {
     // Real DB stores on-yomi in katakana; evaluator receives hiragana-normalized
     // correctReadings. Both sides must end up in the same form for comparison.

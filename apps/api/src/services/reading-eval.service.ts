@@ -99,6 +99,7 @@ export function evaluateReading(
   if (kanjiIndex && containsCJK(normalizedSpoken)) {
     const normalizedCorrect = correctReadings.map(normalise)
     const candidates = expandReadings(normalizedSpoken, kanjiIndex)
+    // Pass 1: exact match wins quality=5.
     for (const raw of candidates) {
       const c = normalise(raw)
       if (normalizedCorrect.includes(c)) {
@@ -108,6 +109,41 @@ export function evaluateReading(
           correct:          true,
           quality:          5,
           feedback:         'Perfect.',
+        }
+      }
+    }
+    // Pass 2: 1-character near-match against any expanded candidate. This
+    // covers two real failure modes the per-character expansion can't
+    // reproduce on its own:
+    //   - sokuon assimilation in compounds — 末端: 末(まつ)+端(たん) → "まつたん"
+    //     vs target "まったん" (dist 1)
+    //   - okurigana mid-string from the iOS recognizer — 貸し付け: 貸(かし)+し+
+    //     付(つ)+け → "かししつけ" vs target "かしつけ" (dist 1)
+    // Gated on target length >= 3: 2-char readings have a one-third false-
+    // positive risk (e.g. かみ vs かん) and the cartesian expansion makes that
+    // multiply. Compound vocab readings are virtually always 3+ chars, so
+    // legitimate cases keep working.
+    // Strict mode (level checkpoints) still rejects, matching the policy on
+    // the raw-transcript Levenshtein path below.
+    if (!strict) {
+      let bestNear: { c: string; correct: string; dist: number } | null = null
+      for (const raw of candidates) {
+        const c = normalise(raw)
+        for (const correct of normalizedCorrect) {
+          if (correct.length < 3) continue
+          const d = levenshtein(c, correct)
+          if (d === 1 && (bestNear === null || d < bestNear.dist)) {
+            bestNear = { c, correct, dist: d }
+          }
+        }
+      }
+      if (bestNear) {
+        return {
+          normalizedSpoken: bestNear.c,
+          closestCorrect:   bestNear.correct,
+          correct:          true,
+          quality:          3,
+          feedback:         'Close — check your vowel length or small kana.',
         }
       }
     }
