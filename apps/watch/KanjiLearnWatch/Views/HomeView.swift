@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var showDelay = false
     @State private var isDelayed = NotificationService.shared.isDelayed
     @State private var delayUntil: Date? = NotificationService.shared.delayUntil
+    @State private var lastStatusError: String? = nil
 
     private let api = APIClient.shared
 
@@ -39,6 +40,13 @@ struct HomeView: View {
                     // ── Connection warning ────────────────────────────────────
                     if !watchSession.isAuthenticated {
                         NotAuthenticatedBanner()
+                    }
+
+                    // ── Sync error banner (dismissable) ───────────────────────
+                    if let err = lastStatusError {
+                        StatusErrorBanner(message: err) {
+                            lastStatusError = nil
+                        }
                     }
 
                     // ── Due count hero ────────────────────────────────────────
@@ -130,16 +138,23 @@ struct HomeView: View {
 
     private func refreshStatus() async {
         guard watchSession.isAuthenticated else {
+            let ts = Int(Date().timeIntervalSince1970 * 1000)
+            print("[KL-Watch] \(ts) refreshStatus skip=not-authenticated")
             isLoadingStatus = false
             return
         }
         isLoadingStatus = true
         defer { isLoadingStatus = false }
 
+        let ts = Int(Date().timeIntervalSince1970 * 1000)
         do {
             status = try await api.fetchStatus()
+            lastStatusError = nil
+            print("[KL-Watch] \(ts) refreshStatus result=ok dueCount=\(status?.dueCount ?? -1)")
         } catch {
-            // Keep stale status — HomeView still usable
+            let detail = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            lastStatusError = detail
+            print("[KL-Watch] \(ts) refreshStatus result=error detail=\(detail)")
         }
     }
 }
@@ -159,6 +174,40 @@ private struct NotAuthenticatedBanner: View {
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.12))
+        .cornerRadius(8)
+    }
+}
+
+private struct StatusErrorBanner: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 13))
+                .foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Sync error")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.primary)
+                Text(message)
+                    .font(.system(size: 10))
+                    .foregroundColor(.primary)
+                    .lineLimit(4)
+            }
+            Spacer(minLength: 4)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss error")
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.15))
         .cornerRadius(8)
     }
 }
