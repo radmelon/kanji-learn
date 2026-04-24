@@ -165,3 +165,56 @@ git pull origin main
 # 5. File the 6 minor follow-ups as tracker entries.
 # 6. Rotate the 7 exposed secrets when the window opens.
 ```
+
+---
+
+## B129 log-capture procedure
+
+B129 adds correlated logs on both the iPhone and Watch. When reproducing
+the Watch "0 cards / slow sync" bug, capture the full stream so the log
+lines can be paired by epoch-ms timestamp.
+
+**Steps:**
+
+1. Connect the iPhone to a Mac via USB. (Watch logs are forwarded through
+   the paired iPhone.)
+2. Open `Console.app` on the Mac.
+3. In the device sidebar, select the iPhone.
+4. In the search bar at the top, filter: `[KL-Push] OR [KL-Watch]`.
+5. Click **Start** to begin streaming.
+6. Reproduce the bug on device.
+7. Click **Pause**, ⌘A to select all, ⌘C, paste into the bug report
+   (or save to a file and attach).
+
+**What the logs prove:**
+
+- Every iPhone push line: `[KL-Push] <epoch-ms> push reason=<trigger> ...`
+- Every Watch context receipt: `[KL-Watch] <epoch-ms> contextReceived reason=<trigger> latencyMs=N ...`
+- If `latencyMs` is seconds-to-minutes, that's opportunistic-delivery lag.
+- If a push line has no matching receipt line, delivery never happened.
+- If `auth.refresh result=http-400` appears, that's the refresh-token
+  rotation race — compare the `rtSuffix` to the last pushed `refreshToken`.
+- If `auth.clear called` appears without a corresponding sign-out, auth
+  was nuked by a failed refresh — the banner on HomeView should now show
+  the error.
+
+**Reproduction protocol for B129:**
+
+Before tapping anything, start the Console.app capture above.
+
+1. Ensure `watchEnabled=true` on iPhone.
+2. Put iPhone into background for >1 hour (access token expires at ~1h on Supabase).
+3. Lift Watch → open Kanji Learn → observe.
+4. If "0 cards" or sync error banner appears, the log stream now has the cause.
+
+**Expected log signature per hypothesis:**
+
+| Hypothesis | Log signature |
+|---|---|
+| A (refresh race) | `[KL-Watch] auth.refresh result=http-400` followed by `auth.clear called`, all *before* any `[KL-Push] ... TOKEN_REFRESHED` from iPhone |
+| B (context delivery lag) | `[KL-Push] push reason=...` on iPhone with no matching `[KL-Watch] contextReceived` for seconds-to-minutes |
+| C (cold-launch, empty keychain) | `[KL-Watch] activation ... keychainHasToken=0` at launch; no `auth.refresh` attempt |
+| D (server returned 0) | `[KL-Watch] refreshStatus result=ok dueCount=0` — cleanly, no errors |
+| E (swallowed errors) — *fixed by B129* | Banner now shows the real error on HomeView |
+| F (warm foreground, no push) | Foregrounding iPhone produces no `[KL-Push] push reason=auth-INITIAL_SESSION` line |
+
