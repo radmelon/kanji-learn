@@ -70,7 +70,7 @@ class WatchConnectivityModule: NSObject, WCSessionDelegate {
     let ts = Int(Date().timeIntervalSince1970 * 1000)
 
     guard let session, session.isPaired else {
-      NSLog("[KL-Push] %d push reason=%@ skip=not-paired isPaired=0", ts, reason)
+      NSLog("[KL-Push] %ld push reason=%@ skip=not-paired isPaired=0", ts, reason)
       resolve(["sent": false, "reason": "watch_not_available"])
       return
     }
@@ -92,15 +92,15 @@ class WatchConnectivityModule: NSObject, WCSessionDelegate {
     if restDay >= 0 { context["restDay"] = restDay }
 
     let expiresInSec = Int(expiresAt - Date().timeIntervalSince1970)
-    NSLog("[KL-Push] %d push reason=%@ isPaired=%d isReachable=%d dailyGoal=%d expiresInSec=%d",
+    NSLog("[KL-Push] %ld push reason=%@ isPaired=%ld isReachable=%ld dailyGoal=%ld expiresInSec=%ld",
           ts, reason, session.isPaired ? 1 : 0, session.isReachable ? 1 : 0, dailyGoal, expiresInSec)
 
     do {
       try session.updateApplicationContext(context)
-      NSLog("[KL-Push] %d push reason=%@ result=ok", ts, reason)
+      NSLog("[KL-Push] %ld push reason=%@ result=ok", ts, reason)
       resolve(["sent": true])
     } catch {
-      NSLog("[KL-Push] %d push reason=%@ result=error err=%@", ts, reason, error.localizedDescription)
+      NSLog("[KL-Push] %ld push reason=%@ result=error err=%@", ts, reason, error.localizedDescription)
       resolve(["sent": false, "reason": error.localizedDescription])
     }
   }
