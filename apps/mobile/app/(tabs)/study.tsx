@@ -67,6 +67,11 @@ function StudySession() {
   } | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [nudgeItem, setNudgeItem] = useState<{ kanjiId: number; character: string; meaning: string } | null>(null)
+  // Dev-only: force the current card's reviewType to exercise all four modes
+  // without waiting for SRS to surface them. Visible when either __DEV__ is
+  // true (local dev) OR EXPO_PUBLIC_DEV_TOOLS=1 is set (TestFlight builds
+  // during the testing phase — remove the env var before public launch).
+  const [devForceMode, setDevForceMode] = useState<'meaning' | 'reading' | 'writing' | 'compound' | null>(null)
   const cardStartMs = useRef(Date.now())
   // Guard: ensure handleFinish is only called once per isComplete=true cycle.
   // Without this, a React-Native batching edge case can cause handleFinish to
@@ -443,6 +448,13 @@ function StudySession() {
   const currentItem = queue[currentIndex]
   if (!currentItem) return null
 
+  // Dev-only: if the tester selected a mode, shadow the item's reviewType so
+  // KanjiCard / CompoundCard render that mode instead. No effect in production
+  // — devForceMode stays null because the picker is __DEV__-gated.
+  const displayItem = devForceMode
+    ? { ...currentItem, reviewType: devForceMode }
+    : currentItem
+
   const progress = currentIndex / queue.length
 
   // ── Main review UI ────────────────────────────────────────────────────────
@@ -466,6 +478,26 @@ function StudySession() {
           </TouchableOpacity>
         )}
       </View>
+      {(__DEV__ || process.env.EXPO_PUBLIC_DEV_TOOLS === '1') && (
+        <View style={styles.devModeRow}>
+          <Text style={styles.devModeLabel}>DEV force:</Text>
+          {(['auto', 'meaning', 'reading', 'writing', 'compound'] as const).map((mode) => {
+            const selected = mode === 'auto' ? devForceMode === null : devForceMode === mode
+            return (
+              <TouchableOpacity
+                key={mode}
+                onPress={() => setDevForceMode(mode === 'auto' ? null : mode)}
+                style={[styles.devModeChip, selected && styles.devModeChipSelected]}
+                accessibilityLabel={`Force ${mode} mode`}
+              >
+                <Text style={[styles.devModeChipText, selected && styles.devModeChipTextSelected]}>
+                  {mode === 'auto' ? 'Auto' : mode[0].toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+            )
+          })}
+        </View>
+      )}
       {isOfflineQueue && (
         <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.xs }}>
           <OfflineBanner message="Offline — showing cached cards" />
@@ -499,8 +531,8 @@ function StudySession() {
           <Text style={styles.swipeBadgeText}>HARD</Text>
         </Animated.View>
 
-        {currentItem.reviewType === 'compound' ? (
-          <CompoundCard item={currentItem} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
+        {displayItem.reviewType === 'compound' ? (
+          <CompoundCard item={displayItem} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
         ) : (
           // No key prop — KanjiCard stays mounted across same-type card advances.
           // Forcing a remount via key={currentIndex} caused the cleanup to call
@@ -508,7 +540,7 @@ function StudySession() {
           // when the synthesizer was idle. speakingGroup is reset inside KanjiCard
           // via a useEffect on item.kanjiId instead.
           <KanjiCard
-            item={currentItem}
+            item={displayItem}
             isRevealed={isRevealed}
             onReveal={() => setIsRevealed(true)}
             showRomaji={showRomaji}
@@ -628,6 +660,25 @@ const styles = StyleSheet.create({
   progressTrack: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radius.full },
   counter: { ...typography.caption, color: colors.textMuted, minWidth: 36, textAlign: 'right' },
+  devModeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    width: '100%',
+  },
+  devModeLabel: { ...typography.caption, color: colors.warning, fontWeight: '700' },
+  devModeChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  devModeChipSelected: { backgroundColor: colors.warning },
+  devModeChipText: { ...typography.caption, color: colors.warning, fontWeight: '600' },
+  devModeChipTextSelected: { color: colors.bg },
   cardArea: { flex: 1, width: '100%' },
   footer: { width: '100%', paddingBottom: spacing.lg, minHeight: 90, justifyContent: 'center' },
   revealHint: { alignItems: 'center', paddingVertical: spacing.md },
