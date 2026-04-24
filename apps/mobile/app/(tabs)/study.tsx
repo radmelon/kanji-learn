@@ -71,7 +71,7 @@ function StudySession() {
   // without waiting for SRS to surface them. Visible when either __DEV__ is
   // true (local dev) OR EXPO_PUBLIC_DEV_TOOLS=1 is set (TestFlight builds
   // during the testing phase — remove the env var before public launch).
-  const [devForceMode, setDevForceMode] = useState<'meaning' | 'reading' | 'writing' | 'compound' | null>(null)
+  const [devForceMode, setDevForceMode] = useState<'meaning' | 'reading' | 'compound' | null>(null)
   const cardStartMs = useRef(Date.now())
   // Guard: ensure handleFinish is only called once per isComplete=true cycle.
   // Without this, a React-Native batching edge case can cause handleFinish to
@@ -481,7 +481,7 @@ function StudySession() {
       {(__DEV__ || process.env.EXPO_PUBLIC_DEV_TOOLS === '1') && (
         <View style={styles.devModeRow}>
           <Text style={styles.devModeLabel}>DEV force:</Text>
-          {(['auto', 'meaning', 'reading', 'writing', 'compound'] as const).map((mode) => {
+          {(['auto', 'meaning', 'reading', 'compound'] as const).map((mode) => {
             const selected = mode === 'auto' ? devForceMode === null : devForceMode === mode
             return (
               <TouchableOpacity

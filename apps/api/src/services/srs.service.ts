@@ -35,14 +35,27 @@ type ExampleVocabEntry = {
   pitchPattern?: number[]
 }
 
+// Hiragana, katakana, prolonged-sound mark, and the small/half-width forms.
+// Used to defend against vocab entries where Haiku enrichment returned the
+// kanji form as the `reading` value (a real bug seen in B130 — words like
+// 偉業 / 貸付 / 末端 had kanji in their reading field, causing the speech
+// evaluator to compare transcripts against the kanji string itself and
+// reject every native-speaker attempt).
+const KANA_ONLY_RE = /^[\u3040-\u309F\u30A0-\u30FF\u30FC\uFF66-\uFF9Fー]+$/
+
 export function selectVoicePrompt(
   exampleVocab: ExampleVocabEntry[] | null,
   reviewCount: number,
   targetKanji: string,
 ): VoicePrompt {
   if (!exampleVocab?.length) return { type: 'kanji' }
-  const idx = (reviewCount ?? 0) % exampleVocab.length
-  return { type: 'vocab', ...exampleVocab[idx], targetKanji }
+  // Skip malformed entries — `reading` MUST be kana-only. Falling through to
+  // `{ type: 'kanji' }` lets the mobile layer use the legacy kanji-level
+  // readings array as the correctReadings, which still works.
+  const valid = exampleVocab.filter((e) => typeof e.reading === 'string' && KANA_ONLY_RE.test(e.reading))
+  if (!valid.length) return { type: 'kanji' }
+  const idx = (reviewCount ?? 0) % valid.length
+  return { type: 'vocab', ...valid[idx], targetKanji }
 }
 
 // ─── SRS Service ──────────────────────────────────────────────────────────────
@@ -381,7 +394,11 @@ export class SrsService {
     if (status === 'unseen' || readingStage === 0) return 'meaning'
     if (readingStage === 1) return 'reading'
     if (readingStage === 2) return 'reading'
-    if (readingStage === 3) return 'writing'
+    // Writing prompts are not yet a real feature — Study cards have no writing
+    // input or grading surface. Stage 3 falls through to compound (a harder
+    // review than reading) so existing user state at this stage isn't stuck
+    // on a non-functional prompt. The 'writing' arm of the union is left in
+    // place for when the writing modality is implemented; nothing returns it.
     return 'compound'
   }
 
