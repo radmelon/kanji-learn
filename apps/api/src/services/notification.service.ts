@@ -9,9 +9,10 @@ const DEAD_TOKEN_ERRORS = new Set(['DeviceNotRegistered', 'InvalidCredentials', 
 
 // Module-level frequency cap for study-mate alerts.
 // Key: "${submitterId}:${recipientId}" → last-sent timestamp (ms).
-// Lives for process lifetime; restarts reset it (acceptable for a 24-hour cap).
-// Exported so tests can reset between cases without leaking the 24h cap
-// across unrelated fixtures.
+// Lives for process lifetime; restarts reset it (acceptable for the current cap).
+// Exported so tests can reset between cases without leaking entries across
+// unrelated fixtures. See mateNotifyCapMs inside notifyStudyMates() for the
+// current window length.
 /** @internal — exported only for tests (beforeEach clear). Do not call from production code. */
 export const mateNotifyCache = new Map<string, number>()
 
@@ -19,7 +20,40 @@ const expo = new Expo()
 
 // ─── Message copy ─────────────────────────────────────────────────────────────
 
-function buildMessage(streakDays: number, dueCount: number): { title: string; body: string } {
+function buildMessage(
+  streakDays: number,
+  dueCount: number,
+  reviewedToday: number,
+): { title: string; body: string } {
+  // Encouragement copy when the user has already studied today. Without this
+  // branch the daily cron was silent for daily studiers, which made reminders
+  // feel broken and prevented feedback that the streak was landing.
+  if (reviewedToday > 0) {
+    if (streakDays >= 7) {
+      return {
+        title: `🔥 ${streakDays}-day streak — keep the fire going!`,
+        body: dueCount > 0
+          ? `${reviewedToday} kanji down today. ${dueCount} more waiting — one more round?`
+          : `${reviewedToday} kanji reviewed today. Beautiful work.`,
+      }
+    }
+    if (streakDays >= 2) {
+      return {
+        title: `⚡ Nice — ${streakDays} days in a row`,
+        body: dueCount > 0
+          ? `${reviewedToday} done today. ${dueCount} more are ready when you are.`
+          : `${reviewedToday} kanji reviewed today. Extend the streak tomorrow!`,
+      }
+    }
+    return {
+      title: '✅ Nice work today!',
+      body: dueCount > 0
+        ? `${reviewedToday} kanji done — ${dueCount} more waiting if you want another round.`
+        : `${reviewedToday} kanji reviewed. Come back tomorrow to build the streak.`,
+    }
+  }
+
+  // Reminder copy when the user hasn't studied yet today.
   if (streakDays >= 7) {
     return {
       title: `🔥 ${streakDays}-day streak — don't stop now!`,
@@ -81,7 +115,10 @@ export class NotificationService {
     const nowUtc = new Date()
     const today = nowUtc.toISOString().slice(0, 10)
 
-    // Find users who haven't reviewed today. Multi-device fan-out happens in
+    // Find all notification-enabled users plus how many kanji they've reviewed
+    // today. Both "hasn't studied yet" and "already studied" paths get a push —
+    // buildMessage branches copy based on reviewedToday so daily studiers hear
+    // encouragement instead of silence. Multi-device fan-out happens in
     // sendToUserTokens — we no longer filter by a profile-level push token.
     const users = await this.db
       .select({
@@ -89,17 +126,14 @@ export class NotificationService {
         timezone: userProfiles.timezone,
         reminderHour: userProfiles.reminderHour,
         restDay: userProfiles.restDay,
+        reviewedToday: sql<number>`COALESCE(${dailyStats.reviewed}, 0)`,
       })
       .from(userProfiles)
-      .where(
-        and(
-          eq(userProfiles.notificationsEnabled, true),
-          // not in daily_stats for today (i.e., hasn't studied)
-          sql`${userProfiles.id} NOT IN (
-            SELECT user_id FROM daily_stats WHERE date = ${today} AND reviewed > 0
-          )`
-        )
+      .leftJoin(
+        dailyStats,
+        and(eq(dailyStats.userId, userProfiles.id), eq(dailyStats.date, today)),
       )
+      .where(eq(userProfiles.notificationsEnabled, true))
 
     // Filter to only users whose local hour matches their reminderHour, skipping rest days
     const utcHour = nowUtc.getUTCHours()
@@ -122,7 +156,7 @@ export class NotificationService {
     for (const user of eligibleUsers) {
       const streak = await this.getUserStreak(user.id)
       const dueCount = await this.getDueCount(user.id)
-      const { title, body } = buildMessage(streak, dueCount)
+      const { title, body } = buildMessage(streak, dueCount, user.reviewedToday)
 
       const result = await this.sendToUserTokens(user.id, {
         title,
@@ -163,7 +197,9 @@ export class NotificationService {
     })
 
     const now = Date.now()
-    const oneDayMs = 24 * 60 * 60 * 1000
+    // Testing-phase cap: 2h while Buddy + Bucky are exercising mate-alerts on a
+    // two-account, two-device setup. Restore to 24h before public launch.
+    const mateNotifyCapMs = 2 * 60 * 60 * 1000
 
     for (const row of rows) {
       const friend = row.requesterId === submitterId ? row.addressee : row.requester
@@ -178,12 +214,12 @@ export class NotificationService {
         : row.requesterNotifyOfActivity
       if (!recipientNotifyOn) continue
 
-      // Frequency cap: max 1 alert per submitter–recipient pair per 24 hours.
+      // Frequency cap: max 1 alert per submitter–recipient pair per window.
       // Check AFTER mute — muted sends never enter the cache so unmuting takes
-      // effect immediately, not after a 24h cooldown.
+      // effect immediately, not after a cooldown.
       const cacheKey = `${submitterId}:${friend.id}`
       const lastSent = mateNotifyCache.get(cacheKey) ?? 0
-      if (now - lastSent < oneDayMs) continue
+      if (now - lastSent < mateNotifyCapMs) continue
 
       await this.sendToUserTokens(friend.id, {
         title: `📚 ${name} just studied!`,
@@ -191,9 +227,9 @@ export class NotificationService {
         sound: 'default',
         data: { type: 'mate_activity', friendId: submitterId },
       })
-      // Best-effort prune: sweep entries older than 24h. Called from the write path
-      // so the sweep cost scales with actual send volume, not a separate timer.
-      const cutoff = now - oneDayMs
+      // Best-effort prune: sweep entries older than the cap. Called from the write
+      // path so the sweep cost scales with actual send volume, not a separate timer.
+      const cutoff = now - mateNotifyCapMs
       for (const [key, ts] of mateNotifyCache) {
         if (ts < cutoff) mateNotifyCache.delete(key)
       }

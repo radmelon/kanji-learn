@@ -125,7 +125,7 @@ describe('sendToUserTokens', () => {
 
 describe('notifyStudyMates — per-friendship mute', () => {
   beforeEach(async () => {
-    // Clear the module-level 24h frequency cap so each test starts clean —
+    // Clear the module-level frequency cap so each test starts clean —
     // otherwise the first successful send leaves a cache entry that blocks
     // every subsequent test using the same SUBMITTER:RECIPIENT pair.
     mateNotifyCache.clear()
