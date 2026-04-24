@@ -70,16 +70,30 @@ final class WatchSessionManager: NSObject, ObservableObject {
 extension WatchSessionManager: WCSessionDelegate {
 
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        let stateStr: String
+        switch activationState {
+        case .notActivated: stateStr = "notActivated"
+        case .inactive:     stateStr = "inactive"
+        case .activated:    stateStr = "activated"
+        @unknown default:   stateStr = "unknown(\(activationState.rawValue))"
+        }
+        let keychainHasToken = AuthService.shared.isAuthenticated ? 1 : 0
+        let errStr = error.map { $0.localizedDescription } ?? "nil"
+        print("[KL-Watch] \(ts) activation state=\(stateStr) reachable=\(session.isReachable) keychainHasToken=\(keychainHasToken) err=\(errStr)")
+
         DispatchQueue.main.async {
             self.isReachable = session.isReachable
             self.updateConnectionStatus(session)
         }
         if let error {
-            print("[WatchSessionManager] Activation error: \(error)")
+            print("[KL-Watch] \(ts) activation-error \(error)")
         }
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
+        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        print("[KL-Watch] \(ts) reachabilityDidChange reachable=\(session.isReachable)")
         DispatchQueue.main.async {
             self.isReachable = session.isReachable
             self.updateConnectionStatus(session)
@@ -88,6 +102,12 @@ extension WatchSessionManager: WCSessionDelegate {
 
     // Receives tokens + settings pushed by iPhone via updateApplicationContext()
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        let ts = Int(Date().timeIntervalSince1970 * 1000)
+        let pushReason = applicationContext["pushReason"] as? String ?? "unknown"
+        let pushTsMs   = applicationContext["pushTsMs"]   as? Int ?? 0
+        let latencyMs  = pushTsMs > 0 ? ts - pushTsMs : -1
+        let keys = applicationContext.keys.sorted().joined(separator: ",")
+
         guard
             let accessToken  = applicationContext["accessToken"]  as? String,
             let refreshToken = applicationContext["refreshToken"] as? String,
@@ -95,11 +115,12 @@ extension WatchSessionManager: WCSessionDelegate {
             let supabaseURL  = applicationContext["supabaseURL"]  as? String,
             let apiBaseURL   = applicationContext["apiBaseURL"]   as? String
         else {
-            print("[WatchSessionManager] Received applicationContext missing required token fields")
+            print("[KL-Watch] \(ts) contextReceived reason=\(pushReason) latencyMs=\(latencyMs) result=missing-fields keys=[\(keys)]")
             return
         }
 
         let expiry = Date(timeIntervalSince1970: expiresAt)
+        let expiresInSec = Int(expiry.timeIntervalSinceNow)
         AuthService.shared.store(
             accessToken:  accessToken,
             refreshToken: refreshToken,
@@ -108,26 +129,32 @@ extension WatchSessionManager: WCSessionDelegate {
             apiBaseURL:   apiBaseURL
         )
 
-        // Optionally receive cached profile settings for delay encouragement
+        var settingsApplied: [String] = []
         if let watchEnabled = applicationContext["watchEnabled"] as? Bool {
             UserDefaults.standard.set(watchEnabled, forKey: "kl_watch_enabled")
+            settingsApplied.append("watchEnabled=\(watchEnabled)")
         }
         if let dailyGoal = applicationContext["dailyGoal"] as? Int {
             UserDefaults.standard.set(dailyGoal, forKey: "kl_daily_goal")
+            settingsApplied.append("dailyGoal=\(dailyGoal)")
         }
         if let reminderHour = applicationContext["reminderHour"] as? Int {
             UserDefaults.standard.set(reminderHour, forKey: "kl_reminder_hour")
+            settingsApplied.append("reminderHour=\(reminderHour)")
         }
         if let restDay = applicationContext["restDay"] as? Int {
             UserDefaults.standard.set(restDay, forKey: "kl_rest_day")
+            settingsApplied.append("restDay=\(restDay)")
         } else {
             UserDefaults.standard.removeObject(forKey: "kl_rest_day")
+            settingsApplied.append("restDay=nil")
         }
 
         DispatchQueue.main.async {
             self.isAuthenticated = true
         }
-        print("[WatchSessionManager] Auth tokens and settings received from iPhone")
+
+        print("[KL-Watch] \(ts) contextReceived reason=\(pushReason) latencyMs=\(latencyMs) result=applied expiresInSec=\(expiresInSec) settings=[\(settingsApplied.joined(separator: ","))]")
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
