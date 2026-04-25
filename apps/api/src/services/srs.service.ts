@@ -447,10 +447,54 @@ export class SrsService {
   // Default: kanji with at least one reading, most recently reviewed first.
   // When kanjiIds is provided, return speaking data for exactly those kanji
   // (skipping the SRS selection and repetitions>0 filter) so the Speaking tab
-  // can mirror today's Study-tab deck.
+  // can mirror today's Study-tab deck. The scoped path drives off `kanji` and
+  // LEFT JOINs progress so new unseen kanji in today's Study deck still appear
+  // — without this, a fresh account whose Study deck is all-new sees an empty
+  // Speaking queue.
 
   async getReadingQueue(userId: string, limit: number, kanjiIds?: number[]) {
     const scopeToIds = kanjiIds && kanjiIds.length > 0
+    const toArr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
+
+    if (scopeToIds) {
+      const rows = await this.db
+        .select({
+          kanjiId: kanji.id,
+          character: kanji.character,
+          meanings: kanji.meanings,
+          jlptLevel: kanji.jlptLevel,
+          kunReadings: kanji.kunReadings,
+          onReadings: kanji.onReadings,
+          exampleVocab: kanji.exampleVocab,
+          status: userKanjiProgress.status,
+          lastReviewedAt: userKanjiProgress.lastReviewedAt,
+          repetitions: userKanjiProgress.repetitions,
+        })
+        .from(kanji)
+        .leftJoin(
+          userKanjiProgress,
+          and(
+            eq(userKanjiProgress.kanjiId, kanji.id),
+            eq(userKanjiProgress.userId, userId),
+          ),
+        )
+        .where(inArray(kanji.id, kanjiIds!))
+        .limit(kanjiIds!.length)
+
+      return rows
+        .filter((r) => r.kunReadings.length > 0 || r.onReadings.length > 0)
+        .map((r) => {
+          const exampleVocab = toArr<ExampleVocabEntry>(r.exampleVocab)
+          return {
+            ...r,
+            status: r.status ?? 'unseen',
+            repetitions: r.repetitions ?? 0,
+            exampleVocab,
+            voicePrompt: selectVoicePrompt(exampleVocab, r.repetitions ?? 0, r.character),
+          }
+        })
+    }
+
     const rows = await this.db
       .select({
         kanjiId: userKanjiProgress.kanjiId,
@@ -467,20 +511,13 @@ export class SrsService {
       .from(userKanjiProgress)
       .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
       .where(
-        scopeToIds
-          ? and(
-              eq(userKanjiProgress.userId, userId),
-              inArray(userKanjiProgress.kanjiId, kanjiIds!),
-            )
-          : and(
-              eq(userKanjiProgress.userId, userId),
-              gt(userKanjiProgress.repetitions, 0),
-            )
+        and(
+          eq(userKanjiProgress.userId, userId),
+          gt(userKanjiProgress.repetitions, 0),
+        )
       )
       .orderBy(desc(userKanjiProgress.lastReviewedAt))
-      .limit(scopeToIds ? kanjiIds!.length : limit)
-
-    const toArr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
+      .limit(limit)
 
     return rows
       .filter((r) => r.kunReadings.length > 0 || r.onReadings.length > 0)
