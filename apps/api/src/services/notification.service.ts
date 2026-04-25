@@ -204,6 +204,11 @@ export class NotificationService {
     for (const row of rows) {
       const friend = row.requesterId === submitterId ? row.addressee : row.requester
 
+      // Defensive self-exclusion: a friendship row with requesterId === addresseeId
+      // (or any future bug that lands the submitter in their own friend list) must
+      // never push "your mate just studied" back to the submitter.
+      if (friend.id === submitterId) continue
+
       // Master switch — kills all pushes to this user.
       if (!friend.notificationsEnabled) continue
 

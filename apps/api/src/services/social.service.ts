@@ -68,6 +68,10 @@ export class SocialService {
   // ── Send a friend request ──────────────────────────────────────────────────
 
   async sendRequest(requesterId: string, addresseeId: string): Promise<FriendRequest> {
+    if (requesterId === addresseeId) {
+      throw new Error('Cannot send a study-mate request to yourself')
+    }
+
     const [row] = await this.db
       .insert(friendships)
       .values({ requesterId, addresseeId, status: 'pending' })
