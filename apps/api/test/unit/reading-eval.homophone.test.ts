@@ -98,6 +98,54 @@ describe('evaluateReading — homophone workaround', () => {
     expect(result.correct).toBe(false)
   })
 
+  it('accepts a digit-prefixed transcript by mapping digits → kanji (7じ → しちじ)', () => {
+    // iOS recognizer renders "shichi-ji" as "7じ" (digit + hiragana). Without
+    // digit substitution, containsCJK is false and the expansion path skips,
+    // leaving Levenshtein on "7じ" vs "しちじ" — dist 2, rejected. Substituting
+    // 7→七 lets expansion produce {しちじ, ななじ}, exact match wins.
+    const idx: KanjiReadingsIndex = new Map([
+      ['七', new Set(['しち', 'なな'])],
+      ['時', new Set(['とき', 'ジ'])],
+    ])
+    const result = evaluateReading('7じ', ['しちじ'], false, idx)
+    expect(result.correct).toBe(true)
+    expect(result.quality).toBe(5)
+  })
+
+  it('accepts digit + full kanji transcript (7時 → しちじ)', () => {
+    const idx: KanjiReadingsIndex = new Map([
+      ['七', new Set(['しち', 'なな'])],
+      ['時', new Set(['とき', 'ジ'])],
+    ])
+    const result = evaluateReading('7時', ['しちじ'], false, idx)
+    expect(result.correct).toBe(true)
+  })
+
+  it('accepts a kun reading reduced to its STEM by the index loader (優れる)', () => {
+    // kanjidic stores kun readings as "<stem>.<okurigana>" (e.g. "すぐ.れる").
+    // The index loader keeps only the stem so concatenation with literal
+    // okurigana from the transcript reconstructs the full form.
+    // Transcript "優れる" → expand 優+れ+る. With stem "すぐ" in the index,
+    // the candidate is "すぐ"+"れ"+"る" = "すぐれる" — exact match.
+    const idx: KanjiReadingsIndex = new Map([
+      ['優', new Set(['すぐ', 'やさ', 'ゆう'])],  // stems only after strip
+    ])
+    const result = evaluateReading('優れる', ['すぐれる'], false, idx)
+    expect(result.correct).toBe(true)
+  })
+
+  it('still matches a single-kanji transcript against its stem in correctReadings', () => {
+    // Legacy kanji-level prompts: mobile already strips okurigana from kun
+    // readings before sending as correctReadings. e.g. for 優 the
+    // correctReadings include 'すぐ', 'やさ', 'ゆう'. With stems in the index,
+    // a transcript of just "優" expands to those same stems → exact match.
+    const idx: KanjiReadingsIndex = new Map([
+      ['優', new Set(['すぐ', 'やさ', 'ゆう'])],
+    ])
+    const result = evaluateReading('優', ['すぐ', 'やさ', 'ゆう'], false, idx)
+    expect(result.correct).toBe(true)
+  })
+
   it('accepts a kanji transcript when index stores katakana on-yomi (real DB shape)', () => {
     // Real DB stores on-yomi in katakana; evaluator receives hiragana-normalized
     // correctReadings. Both sides must end up in the same form for comparison.

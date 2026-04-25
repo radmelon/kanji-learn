@@ -71,6 +71,31 @@ export function expandReadings(input: string, index: KanjiReadingsIndex): string
  *
  * Called once at server boot, refreshed on a 6-hour interval as a safety net.
  */
+/**
+ * Reduce a kanjidic kun reading to its STEM — the part of the reading that
+ * belongs to the kanji itself, dropping the okurigana that conventionally
+ * follows (the inflected verb/adjective ending).
+ *
+ * Kanjidic format: "<stem>.<okurigana>". Examples:
+ *   "すぐ.れる" (優, "to be superior") → stem "すぐ"
+ *   "やさ.しい" (優, "kind/easy")     → stem "やさ"
+ *   "つよ.い"   (強, "strong")        → stem "つよ"
+ *   "ゆう"      (優, on-yomi)         → "ゆう" (no dot, kept whole)
+ *
+ * Why stem-only: the expansion path concatenates literal hiragana from the
+ * transcript onto these readings. A transcript "優れる" decomposes as
+ * 優 + れ + る. Concatenating the kanji's stem "すぐ" with the trailing
+ * literals reconstructs "すぐれる" — exactly what we want to match against
+ * correctReadings. Using the unstripped form "すぐ.れる" would yield the
+ * meaningless "すぐ.れるれる". Using the punctuation-stripped full form
+ * "すぐれる" would produce "すぐれるれる" (double okurigana) — no match.
+ *
+ * Also strips leading/trailing `-` markers (kanjidic's prefix/suffix hint).
+ */
+function stripOkuriganaMarkers(reading: string): string {
+  return reading.replace(/\..*$/, '').replace(/^-|-$/g, '')
+}
+
 export async function loadKanjiReadingsIndex(db: Db): Promise<KanjiReadingsIndex> {
   const rows = await db.select({
     character: kanji.character,
@@ -80,7 +105,10 @@ export async function loadKanjiReadingsIndex(db: Db): Promise<KanjiReadingsIndex
 
   const idx: KanjiReadingsIndex = new Map()
   for (const row of rows) {
-    const readings = new Set<string>([...row.kunReadings, ...row.onReadings])
+    const readings = new Set<string>([
+      ...row.kunReadings.map(stripOkuriganaMarkers),
+      ...row.onReadings.map(stripOkuriganaMarkers),
+    ])
     if (readings.size > 0) idx.set(row.character, readings)
   }
   return idx

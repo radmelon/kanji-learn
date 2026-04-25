@@ -54,6 +54,24 @@ function normalise(input: string): string {
   return toHiragana(input.trim().toLowerCase())
 }
 
+// The iOS ja-JP speech recognizer often substitutes ASCII or full-width digits
+// for kanji numerals when the transcript context is numeric (clocks, prices,
+// counters), so "shichi-ji" can come back as "7じ" and "ichi-man-en" as "1万円".
+// The CJK-expansion path can't handle digits — they're not in the index — so
+// we replace them with their kanji forms BEFORE expansion runs. This makes
+// expansion of "七" produce {しち, なな} and ultimately match "しちじ" /
+// "ななじ" against the correctReading.
+const DIGIT_TO_KANJI: Record<string, string> = {
+  '0': '〇', '1': '一', '2': '二', '3': '三', '4': '四',
+  '5': '五', '6': '六', '7': '七', '8': '八', '9': '九',
+  '０': '〇', '１': '一', '２': '二', '３': '三', '４': '四',
+  '５': '五', '６': '六', '７': '七', '８': '八', '９': '九',
+}
+
+function digitsToKanji(s: string): string {
+  return s.replace(/[0-9０-９]/g, (d) => DIGIT_TO_KANJI[d] ?? d)
+}
+
 // ─── Evaluator ────────────────────────────────────────────────────────────────
 
 /**
@@ -94,11 +112,13 @@ export function evaluateReading(
   }
 
   // ── Homophone workaround: expand any CJK chars via the kanji index ──────
-  // Runs only when the index is provided and the transcript still contains
-  // CJK after wanakana normalise. Matches against any correctReading → accept.
-  if (kanjiIndex && containsCJK(normalizedSpoken)) {
+  // Runs only when the index is provided and the transcript (after digit→
+  // kanji substitution) still contains CJK. Matches against any correct
+  // reading → accept.
+  const digitNormalized = digitsToKanji(normalizedSpoken)
+  if (kanjiIndex && containsCJK(digitNormalized)) {
     const normalizedCorrect = correctReadings.map(normalise)
-    const candidates = expandReadings(normalizedSpoken, kanjiIndex)
+    const candidates = expandReadings(digitNormalized, kanjiIndex)
     // Pass 1: exact match wins quality=5.
     for (const raw of candidates) {
       const c = normalise(raw)
