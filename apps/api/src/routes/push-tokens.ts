@@ -10,7 +10,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { userPushTokens } from '@kanji-learn/db'
 
 const EXPO_TOKEN_RE = /^ExponentPushToken\[.+\]$/
@@ -37,6 +37,19 @@ export async function pushTokensRoute(server: FastifyInstance) {
       }
       const { token, platform } = parsed.data
       const userId = req.userId!
+
+      // Reclaim: a physical device has exactly one signed-in user at a time, so
+      // this token must not remain registered to anyone else. Without this, a
+      // sign-out → sign-in-as-different-user flow leaves the previous user's
+      // row in place, and pushes for the previous user keep landing on this
+      // device. (B131: "buddydennis@me.com received a study-mate alert addressed
+      // to buddydennis@gmail.com because the iPad's token was still registered
+      // to the gmail account from a prior session.")
+      await server.db
+        .delete(userPushTokens)
+        .where(
+          and(eq(userPushTokens.token, token), ne(userPushTokens.userId, userId)),
+        )
 
       // Idempotent upsert keyed on (user_id, token). `onConflictDoNothing`
       // leaves the existing row untouched — return 200 to signal
