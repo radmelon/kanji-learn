@@ -2,11 +2,13 @@ import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Linking } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import Constants from 'expo-constants'
 import { colors, spacing, radius, typography } from '../src/theme'
 
-// ─── App metadata ─────────────────────────────────────────────────────────────
-
-const APP_VERSION = '1.0.0'
+// EAS auto-bumps ios.buildNumber on each build, so this tracks the running
+// TestFlight/App Store build automatically — never hand-edit app.json.
+const BUILD_NUMBER = Constants.expoConfig?.ios?.buildNumber ?? '0'
+const APP_VERSION = `1.0.${BUILD_NUMBER}`
 
 // ─── About Screen ─────────────────────────────────────────────────────────────
 
