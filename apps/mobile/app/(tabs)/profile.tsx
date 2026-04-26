@@ -356,7 +356,11 @@ export default function ProfileScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={loadProfile} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={() => { Promise.all([loadProfile(), loadAll()]) }}
+            tintColor={colors.primary}
+          />
         }
         showsVerticalScrollIndicator={false}
       >
