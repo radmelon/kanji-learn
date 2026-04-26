@@ -7,6 +7,14 @@
 
 import SwiftUI
 import WatchKit
+import os
+
+// watchOS suppresses print() in release/TestFlight builds, so [KL-Watch] lines
+// went missing from Console.app. Logger over Apple's unified logging system is
+// reliably captured. The .public privacy annotation keeps interpolated payloads
+// readable so the existing log filter still surfaces every value during testing.
+private let klWatchLogger = Logger(subsystem: "com.rdennis.kanjilearn2.watchkitapp", category: "kl-watch")
+private func klWatchLog(_ msg: String) { klWatchLogger.info("\(msg, privacy: .public)") }
 
 struct HomeView: View {
     @EnvironmentObject var viewModel: StudyViewModel
@@ -139,7 +147,7 @@ struct HomeView: View {
     private func refreshStatus() async {
         guard watchSession.isAuthenticated else {
             let ts = Int64(Date().timeIntervalSince1970 * 1000)
-            print("[KL-Watch] \(ts) refreshStatus skip=not-authenticated")
+            klWatchLog("[KL-Watch] \(ts) refreshStatus skip=not-authenticated")
             isLoadingStatus = false
             return
         }
@@ -150,11 +158,11 @@ struct HomeView: View {
         do {
             status = try await api.fetchStatus()
             lastStatusError = nil
-            print("[KL-Watch] \(ts) refreshStatus result=ok dueCount=\(status?.dueCount ?? -1)")
+            klWatchLog("[KL-Watch] \(ts) refreshStatus result=ok dueCount=\(status?.dueCount ?? -1)")
         } catch {
             let detail = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             lastStatusError = detail
-            print("[KL-Watch] \(ts) refreshStatus result=error detail=\(detail)")
+            klWatchLog("[KL-Watch] \(ts) refreshStatus result=error detail=\(detail)")
         }
     }
 }

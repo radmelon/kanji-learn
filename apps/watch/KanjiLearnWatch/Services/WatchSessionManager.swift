@@ -10,6 +10,14 @@
 import Foundation
 import WatchConnectivity
 import SwiftUI
+import os
+
+// watchOS suppresses print() in release/TestFlight builds, so [KL-Watch] lines
+// went missing from Console.app. Logger over Apple's unified logging system is
+// reliably captured. The .public privacy annotation keeps interpolated payloads
+// readable so the existing log filter still surfaces every value during testing.
+private let klWatchLogger = Logger(subsystem: "com.rdennis.kanjilearn2.watchkitapp", category: "kl-watch")
+private func klWatchLog(_ msg: String) { klWatchLogger.info("\(msg, privacy: .public)") }
 
 final class WatchSessionManager: NSObject, ObservableObject {
     static let shared = WatchSessionManager()
@@ -86,20 +94,20 @@ extension WatchSessionManager: WCSessionDelegate {
         }
         let keychainHasToken = AuthService.shared.isAuthenticated ? 1 : 0
         let errStr = error.map { $0.localizedDescription } ?? "nil"
-        print("[KL-Watch] \(ts) activation state=\(stateStr) reachable=\(session.isReachable) keychainHasToken=\(keychainHasToken) err=\(errStr)")
+        klWatchLog("[KL-Watch] \(ts) activation state=\(stateStr) reachable=\(session.isReachable) keychainHasToken=\(keychainHasToken) err=\(errStr)")
 
         DispatchQueue.main.async {
             self.isReachable = session.isReachable
             self.updateConnectionStatus(session)
         }
         if let error {
-            print("[KL-Watch] \(ts) activation-error \(error)")
+            klWatchLog("[KL-Watch] \(ts) activation-error \(error)")
         }
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
         let ts = Int64(Date().timeIntervalSince1970 * 1000)
-        print("[KL-Watch] \(ts) reachabilityDidChange reachable=\(session.isReachable)")
+        klWatchLog("[KL-Watch] \(ts) reachabilityDidChange reachable=\(session.isReachable)")
         DispatchQueue.main.async {
             self.isReachable = session.isReachable
             self.updateConnectionStatus(session)
@@ -124,7 +132,7 @@ extension WatchSessionManager: WCSessionDelegate {
             let supabaseURL  = applicationContext["supabaseURL"]  as? String,
             let apiBaseURL   = applicationContext["apiBaseURL"]   as? String
         else {
-            print("[KL-Watch] \(ts) contextReceived reason=\(pushReason) latencyMs=\(latencyMs) result=missing-fields keys=[\(keys)]")
+            klWatchLog("[KL-Watch] \(ts) contextReceived reason=\(pushReason) latencyMs=\(latencyMs) result=missing-fields keys=[\(keys)]")
             return
         }
 
@@ -163,7 +171,7 @@ extension WatchSessionManager: WCSessionDelegate {
             self.isAuthenticated = true
         }
 
-        print("[KL-Watch] \(ts) contextReceived reason=\(pushReason) latencyMs=\(latencyMs) result=applied expiresInSec=\(expiresInSec) settings=[\(settingsApplied.joined(separator: ","))]")
+        klWatchLog("[KL-Watch] \(ts) contextReceived reason=\(pushReason) latencyMs=\(latencyMs) result=applied expiresInSec=\(expiresInSec) settings=[\(settingsApplied.joined(separator: ","))]")
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

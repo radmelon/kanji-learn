@@ -10,6 +10,14 @@
 
 import Foundation
 import Security
+import os
+
+// watchOS suppresses print() in release/TestFlight builds, so [KL-Watch] lines
+// went missing from Console.app. Logger over Apple's unified logging system is
+// reliably captured. The .public privacy annotation keeps interpolated payloads
+// readable so the existing log filter still surfaces every value during testing.
+private let klWatchLogger = Logger(subsystem: "com.rdennis.kanjilearn2.watchkitapp", category: "kl-watch")
+private func klWatchLog(_ msg: String) { klWatchLogger.info("\(msg, privacy: .public)") }
 
 // ─── Token bundle ─────────────────────────────────────────────────────────────
 
@@ -79,7 +87,7 @@ final class AuthService {
         let ts = Int64(Date().timeIntervalSince1970 * 1000)
 
         guard let accessToken = load(key: KeychainKey.accessToken) else {
-            print("[KL-Watch] \(ts) auth.getAccessToken result=missing")
+            klWatchLog("[KL-Watch] \(ts) auth.getAccessToken result=missing")
             throw APIError.notAuthenticated
         }
 
@@ -88,12 +96,12 @@ final class AuthService {
             let expiresAt = Date(timeIntervalSince1970: expiresAtTs)
             let expiresInSec = Int(expiresAt.timeIntervalSinceNow)
             if Date().addingTimeInterval(60) >= expiresAt {
-                print("[KL-Watch] \(ts) auth.getAccessToken result=refreshing expiresInSec=\(expiresInSec)")
+                klWatchLog("[KL-Watch] \(ts) auth.getAccessToken result=refreshing expiresInSec=\(expiresInSec)")
                 return try await refresh()
             }
-            print("[KL-Watch] \(ts) auth.getAccessToken result=cached expiresInSec=\(expiresInSec)")
+            klWatchLog("[KL-Watch] \(ts) auth.getAccessToken result=cached expiresInSec=\(expiresInSec)")
         } else {
-            print("[KL-Watch] \(ts) auth.getAccessToken result=cached-no-expiry")
+            klWatchLog("[KL-Watch] \(ts) auth.getAccessToken result=cached-no-expiry")
         }
 
         return accessToken
@@ -106,14 +114,14 @@ final class AuthService {
         let ts = Int64(Date().timeIntervalSince1970 * 1000)
         guard let refreshToken = load(key: KeychainKey.refreshToken),
               let supabaseURL  = load(key: KeychainKey.supabaseURL) else {
-            print("[KL-Watch] \(ts) auth.refresh result=no-refresh-token-or-url")
+            klWatchLog("[KL-Watch] \(ts) auth.refresh result=no-refresh-token-or-url")
             throw APIError.notAuthenticated
         }
 
         // Log last 4 chars of the refresh token so we can spot rotation races in
         // the log stream without leaking the full token.
         let rtSuffix = refreshToken.count >= 4 ? String(refreshToken.suffix(4)) : "?"
-        print("[KL-Watch] \(ts) auth.refresh attempt rtSuffix=…\(rtSuffix)")
+        klWatchLog("[KL-Watch] \(ts) auth.refresh attempt rtSuffix=…\(rtSuffix)")
 
         guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
             throw APIError.parseError("Invalid Supabase URL")
@@ -127,14 +135,14 @@ final class AuthService {
         let (data, response) = try await URLSession.shared.data(for: req)
 
         guard let http = response as? HTTPURLResponse else {
-            print("[KL-Watch] \(ts) auth.refresh result=non-http")
+            klWatchLog("[KL-Watch] \(ts) auth.refresh result=non-http")
             clear()
             throw APIError.notAuthenticated
         }
 
         if http.statusCode != 200 {
             let bodyPreview = String(data: data, encoding: .utf8).map { String($0.prefix(160)) } ?? "<binary>"
-            print("[KL-Watch] \(ts) auth.refresh result=http-\(http.statusCode) body=\(bodyPreview)")
+            klWatchLog("[KL-Watch] \(ts) auth.refresh result=http-\(http.statusCode) body=\(bodyPreview)")
             clear()
             throw APIError.notAuthenticated
         }
@@ -153,7 +161,7 @@ final class AuthService {
         save(key: KeychainKey.refreshToken, value: body.refresh_token)
         save(key: KeychainKey.expiresAt,    value: String(newExpiry.timeIntervalSince1970))
 
-        print("[KL-Watch] \(ts) auth.refresh result=ok expiresInSec=\(body.expires_in) newRtSuffix=…\(newRtSuffix)")
+        klWatchLog("[KL-Watch] \(ts) auth.refresh result=ok expiresInSec=\(body.expires_in) newRtSuffix=…\(newRtSuffix)")
         return body.access_token
     }
 
@@ -161,7 +169,7 @@ final class AuthService {
 
     func clear() {
         let ts = Int64(Date().timeIntervalSince1970 * 1000)
-        print("[KL-Watch] \(ts) auth.clear called")
+        klWatchLog("[KL-Watch] \(ts) auth.clear called")
         delete(key: KeychainKey.accessToken)
         delete(key: KeychainKey.refreshToken)
         delete(key: KeychainKey.expiresAt)
