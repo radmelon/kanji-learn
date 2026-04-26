@@ -1,6 +1,9 @@
+import { useEffect } from 'react'
+import { AppState } from 'react-native'
 import { Tabs } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../../src/theme'
+import { usePendingRequestCount } from '../../src/hooks/useSocial'
 
 type IoniconsName = keyof typeof Ionicons.glyphMap
 
@@ -15,6 +18,19 @@ function TabIcon({ name, focused }: { name: IoniconsName; focused: boolean }) {
 }
 
 export default function TabsLayout() {
+  const { count: pendingRequestCount, refresh: refreshPending } = usePendingRequestCount()
+
+  // Keep the Profile-tab badge fresh: load on first mount and re-poll when the
+  // app foregrounds. Per-screen interactions (accept/decline from Profile)
+  // already drive the shared cache, so no extra refresh hooks are needed.
+  useEffect(() => {
+    refreshPending()
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') refreshPending()
+    })
+    return () => sub.remove()
+  }, [refreshPending])
+
   return (
     <Tabs
       screenOptions={{
@@ -78,6 +94,8 @@ export default function TabsLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ focused }) => <TabIcon name="person" focused={focused} />,
+          tabBarBadge: pendingRequestCount > 0 ? pendingRequestCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: colors.error, color: '#fff' },
         }}
       />
     </Tabs>

@@ -1,12 +1,14 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { SocialService } from '../services/social.service.js'
+import { NotificationService } from '../services/notification.service.js'
 
 const requestSchema = z.object({ addresseeId: z.string().uuid() })
 const respondSchema = z.object({ action: z.enum(['accept', 'decline']) })
 
 export async function socialRoutes(server: FastifyInstance) {
   const service = new SocialService(server.db)
+  const notifications = new NotificationService(server.db)
 
   // GET /v1/social/search?email=...
   server.get<{ Querystring: { email?: string } }>(
@@ -28,6 +30,13 @@ export async function socialRoutes(server: FastifyInstance) {
       const body = requestSchema.safeParse(req.body)
       if (!body.success) return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
       const request = await service.sendRequest(req.userId!, body.data.addresseeId)
+
+      // Fire-and-forget so a slow/failed push never delays or breaks the
+      // /request response. Service has its own master-toggle gate inside.
+      notifications
+        .notifyIncomingFriendRequest(body.data.addresseeId, request.requesterName)
+        .catch((err) => server.log.warn({ err }, '[social] friend-request push failed'))
+
       return reply.code(201).send({ ok: true, data: request })
     }
   )

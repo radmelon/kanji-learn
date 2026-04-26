@@ -242,6 +242,27 @@ export class NotificationService {
     }
   }
 
+  // Notify a user that someone has sent them a study-mate request.
+  // Called fire-and-forget from POST /v1/social/request after the row is
+  // created. Respects only the master notificationsEnabled switch — friend
+  // requests are a low-frequency social signal and don't merit an extra
+  // per-user mute beyond the master toggle.
+  async notifyIncomingFriendRequest(recipientId: string, requesterName: string | null): Promise<void> {
+    const recipient = await this.db.query.userProfiles.findFirst({
+      where: eq(userProfiles.id, recipientId),
+      columns: { notificationsEnabled: true },
+    })
+    if (!recipient?.notificationsEnabled) return
+
+    const name = requesterName?.trim() ? requesterName.trim() : 'Someone'
+    await this.sendToUserTokens(recipientId, {
+      title: '🤝 New study-mate request',
+      body: `${name} wants to study together. Tap to view.`,
+      sound: 'default',
+      data: { type: 'friend_request', requesterName: name },
+    })
+  }
+
   // Send rest-day weekly summary notifications.
   // Called hourly by the cron alongside sendDailyReminders().
   // Only fires for users whose local hour == reminderHour AND today == restDay.

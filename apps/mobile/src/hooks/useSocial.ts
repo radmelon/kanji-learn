@@ -35,12 +35,30 @@ export interface SearchResult {
   friendshipStatus: string | null
 }
 
+// Module-level cache of pending friend requests. Multiple consumers
+// (useSocial in Dashboard/Profile, usePendingRequestCount in the tab layout)
+// must see the same value, otherwise the badge goes stale after the user
+// accepts/declines a request from a different screen. Mirrors the
+// useProfile.ts shared-cache pattern.
+let _pendingCache: FriendRequest[] = []
+const _pendingListeners = new Set<(r: FriendRequest[]) => void>()
+function _setPending(next: FriendRequest[]) {
+  _pendingCache = next
+  _pendingListeners.forEach((fn) => fn(next))
+}
+
 export function useSocial() {
   const [friends, setFriends] = useState<Friend[]>([])
-  const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([])
+  const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>(_pendingCache)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
+
+  // Subscribe to cross-instance updates of the pending-requests cache
+  useEffect(() => {
+    _pendingListeners.add(setPendingRequests)
+    return () => { _pendingListeners.delete(setPendingRequests) }
+  }, [])
 
   const loadAll = useCallback(async () => {
     setIsLoading(true)
@@ -51,7 +69,7 @@ export function useSocial() {
         api.get<LeaderboardEntry[]>('/v1/social/leaderboard'),
       ])
       setFriends(friendsData)
-      setPendingRequests(requestsData)
+      _setPending(requestsData)
       setLeaderboard(leaderboardData)
     } catch {
       // silently fail
@@ -77,7 +95,7 @@ export function useSocial() {
 
   const respondToRequest = useCallback(async (requestId: string, action: 'accept' | 'decline') => {
     await api.patch(`/v1/social/request/${requestId}`, { action })
-    setPendingRequests((prev) => prev.filter((r) => r.id !== requestId))
+    _setPending(_pendingCache.filter((r) => r.id !== requestId))
     if (action === 'accept') await loadAll()
   }, [loadAll])
 
@@ -116,4 +134,29 @@ export function useSocial() {
     removeFriend,
     setFriendMute,
   }
+}
+
+// Lightweight subscriber for the Profile-tab badge: returns just the pending
+// count and a one-shot fetcher. Reads the same shared cache useSocial maintains
+// so accepting a request from any screen clears the badge across the app.
+// Caller must invoke `refresh()` (e.g. on app focus) to keep the count fresh
+// without mounting the heavier useSocial hook.
+export function usePendingRequestCount() {
+  const [pending, setPending] = useState<FriendRequest[]>(_pendingCache)
+
+  useEffect(() => {
+    _pendingListeners.add(setPending)
+    return () => { _pendingListeners.delete(setPending) }
+  }, [])
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await api.get<FriendRequest[]>('/v1/social/requests')
+      _setPending(data)
+    } catch {
+      // silently fail — stale count is preferable to a noisy error path
+    }
+  }, [])
+
+  return { count: pending.length, refresh }
 }
