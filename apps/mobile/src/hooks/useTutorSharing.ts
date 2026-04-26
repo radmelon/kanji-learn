@@ -7,6 +7,9 @@ interface TutorShareInfo {
   status: 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired'
   createdAt: string
   expiresAt: string
+  // Present only for live shares (pending or accepted). Server omits it for
+  // revoked/declined/expired so a stale link cannot be re-shared.
+  shareUrl?: string
 }
 
 interface TutorNote {

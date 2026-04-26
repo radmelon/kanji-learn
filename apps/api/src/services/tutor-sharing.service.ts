@@ -14,6 +14,15 @@ export interface ShareStatus {
   expiresAt: Date
   termsAcceptedAt: Date | null
   noteCount?: number
+  // Present for live shares (pending or accepted) so the mobile client can
+  // re-share the invite link without needing the raw token. Absent when the
+  // share is revoked, declined, or expired so a stale URL can't leak.
+  shareUrl?: string
+}
+
+function buildShareUrl(token: string): string {
+  const base = process.env.API_BASE_URL ?? 'http://localhost:3000'
+  return `${base}/report/${token}`
 }
 
 export interface TutorNote {
@@ -106,6 +115,8 @@ export class TutorSharingService {
       noteCount = result?.count ?? 0
     }
 
+    const isLive = share.status === 'pending' || share.status === 'accepted'
+
     return {
       id: share.id,
       teacherEmail: share.teacherEmail,
@@ -114,6 +125,7 @@ export class TutorSharingService {
       expiresAt: share.expiresAt,
       termsAcceptedAt: share.termsAcceptedAt ?? null,
       noteCount,
+      shareUrl: isLive ? buildShareUrl(share.token) : undefined,
     }
   }
 

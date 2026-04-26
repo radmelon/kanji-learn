@@ -805,6 +805,24 @@ export default function ProfileScreen() {
                   </View>
                 </View>
               </View>
+              {tutorShare.shareUrl && (
+                <TouchableOpacity
+                  style={tutorStyles.secondaryBtn}
+                  onPress={async () => {
+                    try {
+                      await Share.share({
+                        message: `Here's the link to view my Kanji Learn progress: ${tutorShare.shareUrl}`,
+                        url: tutorShare.shareUrl,
+                      })
+                    } catch {
+                      // user cancelled the share sheet — silent
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={tutorStyles.secondaryBtnText}>Resend URL</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[tutorStyles.dangerBtn, tutorSending && tutorStyles.btnDisabled]}
                 onPress={() => Alert.alert(
@@ -1069,6 +1087,19 @@ const tutorStyles = StyleSheet.create({
   dangerBtnText: {
     fontWeight: '600',
     color: colors.error,
+    fontSize: 15,
+  },
+  secondaryBtn: {
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.accent + '55',
+    backgroundColor: colors.accent + '11',
+  },
+  secondaryBtnText: {
+    fontWeight: '600',
+    color: colors.accent,
     fontSize: 15,
   },
   btnDisabled: {
