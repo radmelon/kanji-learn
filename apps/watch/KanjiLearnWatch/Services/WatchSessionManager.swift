@@ -16,8 +16,13 @@ import os
 // went missing from Console.app. Logger over Apple's unified logging system is
 // reliably captured. The .public privacy annotation keeps interpolated payloads
 // readable so the existing log filter still surfaces every value during testing.
+//
+// Use .notice (not .info): unified logging persists notice+ to disk and
+// surfaces them in Console.app without any user toggle, while .info is
+// memory-only by default and requires "Action → Include Info Messages."
+// We want testing-phase logs visible by default.
 private let klWatchLogger = Logger(subsystem: "com.rdennis.kanjilearn2.watchkitapp", category: "kl-watch")
-private func klWatchLog(_ msg: String) { klWatchLogger.info("\(msg, privacy: .public)") }
+private func klWatchLog(_ msg: String) { klWatchLogger.notice("\(msg, privacy: .public)") }
 
 final class WatchSessionManager: NSObject, ObservableObject {
     static let shared = WatchSessionManager()
