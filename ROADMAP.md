@@ -79,11 +79,50 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 | 10 | Cram Mode | Med | No | Pending |
 | 11 | Grade Level Equivalent (Kyouiku Kanji) | Med | Yes | Pending |
 | 12 | Retention Rate Over Time Graph | Med | No | Pending |
+| 13 | Milestones Panel Refactor | Med | No | Pending |
 
 **Why grouped:**
 - Leech detection first — highest-impact SRS improvement, informs the AI study plan later (Phase 6)
 - Cram mode shares UI patterns with leech review (filtered study sessions without SRS updates)
 - Grade level equivalent adds a new progress dimension; pairs naturally with the retention graph as "analytics round 2"
+- Milestones refactor (#13) shares grade-set data with #11 — likely a single implementation pass.
+
+### #13 — Milestones Panel Refactor (spec captured 2026-04-26)
+
+**Why:** Milestones are the motivational layer that recognises student progress and rewards effort. The current implementation accumulates badges without a replacement rule, so the panel will grow indefinitely as a learner advances. Refine the badge taxonomy and display rules so the panel always celebrates the freshest, most relevant achievement in each category.
+
+**Replacement rule (within category, show one):**
+- For each category, only the **most recent** milestone earned is displayed. Hitting the next threshold replaces the previous badge in that category.
+- An **"Up Next"** panel below the badges names the next threshold in each category (so retired badges remain motivating as targets).
+
+**Existing categories (preserve, apply replacement rule):**
+- **Kanji seen** — existing thresholds.
+- **Streaks** — new threshold ladder: **3, 7, 10, 14, 21, 28, 35, 42, 49, …** then increment by 7 indefinitely.
+- **Kanji burned** — new threshold ladder (see below; same as Kanji remembered).
+
+**New category — Kanji remembered:**
+- Thresholds: **10, 50, 100, 250, 500, 750, 1000, 1250, 1500, 2000.**
+
+**Kanji burned — adjust to same ladder:**
+- Thresholds: **10, 50, 100, 250, 500, 750, 1000, 1250, 1500, 2000.**
+
+**New category — Grade levels (three-tier, bronze / silver / gold):**
+- Coverage: **grades 1–6, 7, 8 (if available), 9.**
+- Tier definitions per grade:
+  - **Bronze** — `count(remembered)` > `count(reviewing)` **AND** `count(learning) == 0` within the grade.
+  - **Silver** — every kanji in the grade is **remembered or burned**.
+  - **Gold** — every kanji in the grade is **burned**.
+- Display rules:
+  - Show only the **highest tier earned** per grade.
+  - **Gating:** do not award the next grade's badge until the lower grade is at **Silver+**. Bronze at a lower grade blocks higher-grade badges.
+  - **Display cap:** at most **three grade-level badges** visible at any time.
+
+**Open design questions (revisit when planning):**
+- "Up Next" placement and visual treatment for the new categories (especially the multi-tier grade-level ladder).
+- Grade availability detection — gracefully handle absent grades (e.g. Grade 8 not in the curriculum / dataset).
+- Tie-break rule when capping to three grade-level badges (highest grade? most recently advanced? mix of tiers?).
+- Should the **Kanji burned** ladder match **remembered** numerically, or be a tighter / harder ladder given burned is the rarer outcome?
+- Backfill on first launch of the feature: re-evaluate existing user data and award all qualifying badges retroactively (likely yes), vs. forward-only.
 
 ---
 
@@ -238,9 +277,9 @@ Tracked in [BUGS.md](BUGS.md) — see that file for current open and recently-fi
 | **0** | **2** | **M** | **🚨 Security — RLS & sensitive data** |
 | 1 | 4 | S | Polish & consistency |
 | 2 | 8 | M | Onboarding & daily UX |
-| 3 | 4 | M | Smarter SRS & analytics |
+| 3 | 5 | M | Smarter SRS & analytics |
 | 4 | 5 | M–L | Advanced study & data |
 | 5 | 3 | M–L | Scale & multi-device |
 | 6 | 3 | XL | Transformative features |
 | D | 2 | M–XL | Deprioritized |
-| **Total** | **31** | | |
+| **Total** | **32** | | |
