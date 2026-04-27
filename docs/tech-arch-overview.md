@@ -14,6 +14,7 @@ This is **not** an exhaustive code-tour. The goal is the level of detail a senio
 ## Sections
 
 - [Apple Watch](#apple-watch)
+- [Pedagogy](#pedagogy)
 
 ---
 
@@ -128,3 +129,74 @@ sequenceDiagram
 - `apps/watch/KanjiLearnWatch/Services/NotificationService.swift` — Watch-side delay state for snoozed sessions.
 - `apps/watch/project.yml`, `apps/watch/KanjiLearnWatch.xcodeproj/project.pbxproj` — bundle id and build settings.
 - iPhone counterpart: `apps/mobile/src/services/WatchConnectivityModule.*` (the `updateApplicationContext` caller; native module bridged into JS).
+
+---
+
+## Pedagogy
+
+> **Status:** scaffold. This section captures the *learning and instruction principles* that drive Kanji Buddy's design, and how each principle is implemented in the codebase. It will be filled in across sessions as principles are made explicit. Cross-references point at the concrete file:line where a principle is encoded so the doc and the code stay synchronised.
+
+### Why pedagogy is its own section
+
+Kanji Buddy is not a flashcard app with social features bolted on; it's an opinionated learning tool whose product decisions are downstream of a pedagogical thesis. Capturing that thesis explicitly:
+
+- prevents future feature work from drifting into "what other apps do" instead of "what helps the learner";
+- gives reviewers a yardstick to push back when an implementation contradicts a principle;
+- documents the *reasons* behind opinionated UX choices (e.g. why the queue isn't pure SRS, why writing prompts were dropped from Study) so future engineers don't accidentally undo them.
+
+### Principles (to be detailed)
+
+Subsections to expand over time. Each will end with a "How it shows up" pointer at the relevant file:line.
+
+- **Multi-modal encoding** — the Study / Speaking / Writing split, and the explicit thesis that recognition + production + vocalisation each strengthen retention through different cognitive pathways. Implemented partially today (separate Study and Speaking tabs); fully realised by the planned **Three-Modality Learning Loop** (ROADMAP Phase 6 #23).
+- **Confidence over correctness** — graded recall (Again / Hard / Good / Easy) feeds a confidence metric distinct from raw accuracy. Already encoded in B121's weighted 3/2/1/0 scoring (see `apps/api/src/services/srs.service.ts`, plus the analytics confidence panels). The principle: a kanji you got "right with effort" is not the same as one you got "right easily," and the schedule should reflect that.
+- **Stage-aware prompt selection** — within a single `(user, kanji)` pair, the prompt type advances with mastery: meaning → reading → reading → compound. Encoded in `srs.service.ts` `pickReviewType(readingStage, status)`. Principle: don't drill the same surface forever; once a kanji is recognised, push the learner to produce its readings, then to integrate it with vocab.
+- **Spaced repetition with surprise checks** — the queue is overdue-first by `nextReviewAt`, with a small `~12%` "surprise burned" tier so retention is verified beyond 6-month intervals (rather than treating "burned" as a graveyard). Encoded in `getReviewQueue` (`srs.service.ts`).
+- **Motivation as first-class signal** — streaks, milestones, and the leaderboard exist to convert effort into observable rewards. The Milestones Panel Refactor (ROADMAP Phase 3 #13) is the clearest current articulation of how reward design serves pedagogy: replacement-rule badges focus attention on *progress*, not accumulation.
+- **Pedagogical lookup, not just drilling** — informed by reference works the owner used to learn (e.g. Hadamitzky-Spahn *Kanji & Kana*). The Kanji Browser, JIS / Nelson / Morohashi codes, and stroke-order data are deliberately surfaced so the app supports lookup-driven study, not only flashcard-driven study.
+- **Tutor channel as scaffolded support** — tutor sharing is not analytics-for-parents; it's a designed channel for an instructor to leave notes that the learner sees in their normal flow. The pedagogical bet is that occasional human input per week beats more app-time per day. Today's surface: `tutor-sharing.service.ts` + the report HTML the tutor sees + the notes the learner reads in-app.
+- **Three-Modality Learning Loop** — the open pedagogy proposal: after each daily-goal flashcard batch, gate further flashcard sessions until the same kanji have been practiced in *writing* and *speaking*. This is the single largest pending pedagogical decision; ENHANCEMENTS.md and `project_learning_loop_pedagogy.md` (memory) hold the brainstorm queue. Until that brainstorm happens, do not pre-empt with architectural changes that bake in the current Study-only loop.
+
+### Open questions to resolve in future sessions
+
+- **What confidence threshold means "remembered"?** The current SRS encodes thresholds, but they should be stated here as principles, not just constants.
+- **What is the canonical learning ladder?** N5 → N4 → … is the current proxy; Kyouiku grades 1–9 (ROADMAP Phase 3 #11 + #13's grade-level milestones) imply a second ladder. Are they parallel, sequential, or merged?
+- **How aggressively should we surface a kanji once it's "learning" but not yet "reviewing"?** Today's queue starves new-card variety when due-pile is large. Pedagogically, that's a tension between consolidation and breadth — worth stating a position.
+- **What's the pedagogical role of the leaderboard?** Motivation, comparison, or community? The answer constrains future social features.
+- **Is the Watch a study surface or a glance surface?** Today it serves due-card review on a small screen. Should it ever host writing or speaking? Probably not, but the principle should be stated.
+
+### Planned: Pedagogy MCP server
+
+> **Status:** planned, not started. Recorded here for now; will be promoted to its own top-level section once the design is concrete.
+
+The intent (to be detailed when the design firms up): expose the app's pedagogical state and primitives — learner profile, modality coverage, current queue composition, milestone progress, tutor notes — through an **MCP (Model Context Protocol) server** so AI tools can reason about and interact with a learner's state. Use cases that should drive the design:
+
+- A planning agent can read the learner's current SRS posture (which kanji are stuck in `learning` vs `reviewing`, which modalities are under-exercised) and propose a custom session.
+- The tutor-side AI can summarise a week of learner activity into a coaching note without manual analytics work.
+- The Three-Modality Loop's "what should they do next?" question can be answered by an MCP-powered assistant that integrates daily activity, modality coverage, and the milestone ladder.
+
+Open questions specific to the MCP server (to settle when the section is promoted):
+
+- **Surface boundary** — read-only telemetry, or read+write (e.g. let an agent enqueue cards)?
+- **Auth model** — per-learner JWT (parallel to the mobile/Watch path), or a service token scoped to the tutor share?
+- **Hosting** — co-located with the Fastify API, separate Lambda, or a developer-laptop-only tool initially?
+- **Schema vs prose** — does the MCP server expose typed primitives (kanji IDs, modality counters) or curated narrative descriptions of the learner's state?
+- **Privacy posture** — what learner data is appropriate to expose to a model context, and is this an opt-in tutor feature or always-on?
+
+Until those settle, this subsection is the placeholder. When implementation begins, lift this to a top-level **MCP Server** section and link from here.
+
+### Files of interest (current pedagogy-encoding code)
+
+- `apps/api/src/services/srs.service.ts` — queue construction, `pickReviewType`, stage advancement; the densest pedagogy-bearing file in the codebase.
+- `apps/mobile/src/components/study/KanjiCard.tsx` — prompt-label mapping, cue colours, reveal flow.
+- `apps/mobile/app/(tabs)/voice.tsx` + `apps/mobile/src/components/voice/VoiceEvaluator.tsx` — Speaking modality.
+- `apps/api/src/services/tutor-sharing.service.ts` + `apps/api/src/templates/email-invite.ts` — tutor-channel scaffold.
+- `apps/api/src/services/notification.service.ts` `buildMessage` — streak / due-count copy that frames the daily prompt pedagogically.
+- `apps/api/src/services/tutor-analysis.service.ts` — automated learner summary that feeds the tutor report.
+- `docs/superpowers/specs/`, `docs/superpowers/plans/` — historical brainstorms and decisions; cross-reference here when a principle gets pinned down.
+
+### Related memory entries
+
+- `project_learning_loop_pedagogy.md` — the parked Three-Modality Learning Loop brainstorm.
+- `user_japanese_learning.md` — the owner's own learning history, which informs reference-code surfacing and lookup-driven design.
+- `project_tutor_report_writing_drop.md` — pending follow-up after Writing was removed from Study; couples to the pedagogy brainstorm.
