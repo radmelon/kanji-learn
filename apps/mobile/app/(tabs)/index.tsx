@@ -183,7 +183,6 @@ export default function Dashboard() {
   const { summary, isLoading, isStale, refresh } = useAnalytics()
   const todayKey = new Date().toISOString().slice(0, 10)
   const reviewedToday = summary?.recentStats.find((r) => r.date === todayKey)?.reviewed ?? 0
-  const dailyGoal = profile?.dailyGoal ?? 20
   const { data: quizData, refresh: refreshQuiz } = useQuizAnalytics()
   const { interventions, dismiss, refresh: refreshInterventions } = useInterventions()
   const { friends, leaderboard, loadAll: refreshSocial } = useSocial()
@@ -283,14 +282,11 @@ export default function Dashboard() {
           <Ionicons name="arrow-forward" size={18} color="rgba(255,255,255,0.7)" />
         </TouchableOpacity>
 
-        {/* Daily progress indicator — soft target, no gate */}
+        {/* Today's review count — informational, no goal comparison */}
         <View style={styles.progressRow}>
           <Text style={styles.progressText}>
-            {reviewedToday} / {dailyGoal} today
+            {reviewedToday} reviewed today
           </Text>
-          {reviewedToday >= dailyGoal && (
-            <Ionicons name="checkmark-circle" size={14} color={colors.success} />
-          )}
         </View>
 
         {/* Take a Quiz CTA */}

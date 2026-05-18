@@ -13,6 +13,10 @@ const QUEUE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 const PENDING_MAX_ATTEMPTS = 5
 const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+// A time-boxed session loads a generous fixed queue and stops on the timer,
+// not on a card count. 50 is the API's queue cap (GET /v1/review/queue).
+const SESSION_QUEUE_SIZE = 50
+
 interface CachedQueue {
   userId: string
   savedAt: number
@@ -50,8 +54,10 @@ interface ReviewState {
   hasPendingSessions: boolean
   /** True when the current queue was loaded via loadWeakQueue — study.tsx skips its normal loadQueue() call */
   isWeakDrill: boolean
+  /** Minutes budget for the current session; 0 = count-bounded (weak/missed drills) */
+  goalMinutes: number
 
-  loadQueue: (limit?: number) => Promise<void>
+  loadQueue: (goalMinutes: number) => Promise<void>
   submitResult: (result: ReviewResult) => void
   undoLastResult: () => boolean
   loadWeakQueue: (limit?: number) => Promise<boolean>
@@ -75,16 +81,17 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   isOfflineQueue: false,
   hasPendingSessions: false,
   isWeakDrill: false,
+  goalMinutes: 0,
 
-  loadQueue: async (limit = 20) => {
-    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false })
+  loadQueue: async (goalMinutes) => {
+    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false, goalMinutes })
 
     // Check for pending sessions immediately (fire-and-forget)
     const pending = await storage.getItem<PendingSession[]>(KEY_PENDING)
     if (pending && pending.length > 0) set({ hasPendingSessions: true })
 
     try {
-      const queue = await api.get<ReviewQueueItem[]>(`/v1/review/queue?limit=${limit}`)
+      const queue = await api.get<ReviewQueueItem[]>(`/v1/review/queue?limit=${SESSION_QUEUE_SIZE}`)
       const now = Date.now()
 
       // Cache for offline use
@@ -114,7 +121,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
         set({
           queue: cached.queue,
-          studyStartMs: cached.studyStartMs,
+          studyStartMs: Date.now(),
           currentIndex: resumeIndex,
           results: resumeResults,
           isOfflineQueue: isStale,
@@ -137,7 +144,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         set({ isLoading: false })
         return false
       }
-      set({ queue, studyStartMs: now, currentIndex: 0, results: [], isWeakDrill: true })
+      set({ queue, studyStartMs: now, currentIndex: 0, results: [], isWeakDrill: true, goalMinutes: 0 })
       return true
     } catch (err: any) {
       set({ error: err?.message ?? 'Could not load weak kanji queue.' })
@@ -148,14 +155,20 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   submitResult: (result) => {
-    const { results, currentIndex, queue, studyStartMs } = get()
+    const { results, currentIndex, queue, studyStartMs, goalMinutes } = get()
     const newResults = [...results, result]
     const nextIndex = currentIndex + 1
+
+    // The session ends when the queue is exhausted OR — for a time-boxed
+    // session (goalMinutes > 0) — when the minutes budget has elapsed. The
+    // check runs after the grade, so the current card is always finished.
+    const overBudget =
+      goalMinutes > 0 && Date.now() - studyStartMs >= goalMinutes * 60_000
 
     set({
       results: newResults,
       currentIndex: nextIndex,
-      isComplete: nextIndex >= queue.length,
+      isComplete: nextIndex >= queue.length || overBudget,
     })
 
     // Persist progress so it survives app restarts
@@ -263,12 +276,12 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       .map((card) => ({ ...card, reviewType: 'meaning' as const })) // reset to meaning for the re-drill
     if (missedCards.length === 0) return false
     storage.removeItem(KEY_PROGRESS)
-    set({ queue: missedCards, currentIndex: 0, results: [], isComplete: false, studyStartMs: Date.now(), error: null })
+    set({ queue: missedCards, currentIndex: 0, results: [], isComplete: false, studyStartMs: Date.now(), error: null, goalMinutes: 0 })
     return true
   },
 
   reset: () => {
     storage.removeItem(KEY_PROGRESS)
-    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false })
+    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false, goalMinutes: 0 })
   },
 }))

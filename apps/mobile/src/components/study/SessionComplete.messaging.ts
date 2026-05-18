@@ -22,18 +22,12 @@ export function motivationalMessage(accuracy: number, burned: number): string {
 }
 
 /**
- * True when this session is the one that crossed the daily-goal threshold
- * for the first time today. Used by SessionComplete to decide whether to
- * render the one-time 🎉 celebration banner.
+ * True when this session reached the learner's daily minutes goal. Used by
+ * SessionComplete to decide whether to render the 🎉 celebration banner.
  *
- * @param reviewedBefore  daily_stats.reviewed BEFORE this session's submit
- * @param totalItems      cards reviewed in the session just completed
- * @param dailyGoal       user's configured target from user_profiles.daily_goal
+ * @param studyTimeMs  duration of the session just completed, in milliseconds
+ * @param goalMinutes  the learner's configured target from user_profiles.daily_goal
  */
-export function didCrossGoal(
-  reviewedBefore: number,
-  totalItems: number,
-  dailyGoal: number,
-): boolean {
-  return reviewedBefore < dailyGoal && reviewedBefore + totalItems >= dailyGoal
+export function didMeetTimeGoal(studyTimeMs: number, goalMinutes: number): boolean {
+  return studyTimeMs >= goalMinutes * 60_000
 }
