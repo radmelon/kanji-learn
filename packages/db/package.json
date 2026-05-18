@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
+    "db:fix-jsonb": "tsx src/seeds/fix-jsonb-encoding.ts",
     "seed:kanji": "tsx src/seeds/seed-kanji.ts",
     "seed:kanji:fetch": "tsx src/seeds/seed-kanji-fetch.ts",
     "seed:kanjidic2": "tsx src/seeds/import-kanjidic2.ts",

@@ -337,7 +337,7 @@ async function backfill(radMap: Map<string, string>): Promise<void> {
 
     await db
       .update(kanji)
-      .set({ radicals: JSON.stringify([radChar]) as unknown as string[] })
+      .set({ radicals: [radChar] })
       .where(eq(kanji.id, row.id))
 
     updated++

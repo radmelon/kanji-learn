@@ -24,12 +24,13 @@ export interface ActiveIntervention {
 /**
  * Decode an intervention's stored payload into a plain object.
  *
- * The `payload` jsonb column is double-encoded on write — a Drizzle/postgres-js
- * jsonb interaction stores the object as a JSON *string* scalar, so a row read
- * back gives `payload` as a string, not an object. Left undecoded, buildMessage's
- * `payload.dropPct` / `.hoursAgo` etc. are always `undefined` — which is why the
- * velocity-drop nudge always read "dropped 0%". A plain object passes through
- * unchanged, so a future write-side fix needs no change here.
+ * Defense-in-depth. The write-side double-encoding bug is fixed — the `jsonb`
+ * column type (packages/db/src/jsonb.ts) now stores proper objects, and its
+ * `fromDriver` decodes any legacy double-encoded rows on read, so getActive()
+ * receives a plain object either way. This guard is redundant with that, but is
+ * kept until the production data repair (`pnpm --filter @kanji-learn/db
+ * db:fix-jsonb --apply`) is confirmed run. A plain object passes through
+ * unchanged.
  */
 export function parseInterventionPayload(raw: unknown): Record<string, unknown> {
   if (typeof raw === 'string') {

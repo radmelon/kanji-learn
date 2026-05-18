@@ -65,6 +65,8 @@ async function upsertBatch(
       jlptLevel: level,
       jlptOrder: startOrder + i + idx,
       strokeCount: entry.strokeCount,
+      // JSON-encode once here; the SQL casts the parameter `::text::jsonb`
+      // (see below) so the driver stores it as a single-encoded jsonb value.
       meanings: JSON.stringify(entry.meanings),
       kunReadings: JSON.stringify(entry.kunReadings),
       onReadings: JSON.stringify(entry.onReadings),
@@ -72,7 +74,12 @@ async function upsertBatch(
       radicals: JSON.stringify(entry.radicals),
     }))
 
-    // Drizzle raw upsert — ON CONFLICT DO UPDATE so re-runs are idempotent
+    // Drizzle raw upsert — ON CONFLICT DO UPDATE so re-runs are idempotent.
+    // jsonb params are cast `::text::jsonb`, not `::jsonb`: the inner `::text`
+    // makes Postgres type the bind parameter as text, so postgres-js passes the
+    // JSON string through verbatim. A bare `::jsonb` makes it type the param as
+    // jsonb, and the driver then JSON-encodes the already-encoded string again,
+    // storing a double-encoded string scalar (jsonb_typeof = 'string').
     for (const row of rows) {
       await db.execute(sql`
         INSERT INTO kanji
@@ -83,11 +90,11 @@ async function upsertBatch(
           ${row.jlptLevel}::jlpt_level,
           ${row.jlptOrder},
           ${row.strokeCount},
-          ${row.meanings}::jsonb,
-          ${row.kunReadings}::jsonb,
-          ${row.onReadings}::jsonb,
-          ${row.exampleVocab}::jsonb,
-          ${row.radicals}::jsonb
+          ${row.meanings}::text::jsonb,
+          ${row.kunReadings}::text::jsonb,
+          ${row.onReadings}::text::jsonb,
+          ${row.exampleVocab}::text::jsonb,
+          ${row.radicals}::text::jsonb
         )
         ON CONFLICT (character)
         DO UPDATE SET

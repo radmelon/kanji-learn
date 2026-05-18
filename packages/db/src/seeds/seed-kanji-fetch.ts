@@ -108,6 +108,9 @@ async function upsertKanji(
   jlptLevel: string,
   jlptOrder: number
 ): Promise<void> {
+  // JSON-encode once; the SQL casts each parameter `::text::jsonb` (not a bare
+  // `::jsonb`) so postgres-js passes the JSON string through verbatim instead
+  // of re-encoding it into a double-encoded string scalar.
   const meanings = JSON.stringify(detail.meanings.slice(0, 6))
   const onReadings = JSON.stringify(detail.on_readings.slice(0, 5))
   const kunReadings = JSON.stringify(detail.kun_readings.slice(0, 5))
@@ -123,11 +126,11 @@ async function upsertKanji(
       ${jlptLevel}::jlpt_level,
       ${jlptOrder},
       ${detail.stroke_count},
-      ${meanings}::jsonb,
-      ${kunReadings}::jsonb,
-      ${onReadings}::jsonb,
-      ${exampleVocab}::jsonb,
-      ${radicals}::jsonb
+      ${meanings}::text::jsonb,
+      ${kunReadings}::text::jsonb,
+      ${onReadings}::text::jsonb,
+      ${exampleVocab}::text::jsonb,
+      ${radicals}::text::jsonb
     )
     ON CONFLICT (character) DO UPDATE SET
       jlpt_level   = EXCLUDED.jlpt_level,

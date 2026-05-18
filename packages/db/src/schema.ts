@@ -10,13 +10,15 @@ import {
   boolean,
   timestamp,
   uuid,
-  jsonb,
   numeric,
   index,
   uniqueIndex,
   primaryKey,
 } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
+// Local `jsonb` (see ./jsonb) — drizzle-orm's built-in `jsonb` double-encodes
+// values into a JSON string scalar through the postgres-js driver.
+import { jsonb } from './jsonb'
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
