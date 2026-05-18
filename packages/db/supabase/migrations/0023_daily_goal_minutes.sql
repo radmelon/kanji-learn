@@ -5,8 +5,12 @@
 -- counts (e.g. 20, 50) that would be absurd as minutes, so they are reset
 -- to the new default; testers re-pick in Profile.
 
+BEGIN;
+
 ALTER TABLE user_profiles ALTER COLUMN daily_goal SET DEFAULT 15;
 
 UPDATE user_profiles SET daily_goal = 15;
 
 COMMENT ON COLUMN user_profiles.daily_goal IS 'Daily study goal, in minutes (was a card count before migration 0023).';
+
+COMMIT;
