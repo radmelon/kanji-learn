@@ -121,7 +121,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
         set({
           queue: cached.queue,
-          studyStartMs: cached.studyStartMs,
+          studyStartMs: Date.now(),
           currentIndex: resumeIndex,
           results: resumeResults,
           isOfflineQueue: isStale,
