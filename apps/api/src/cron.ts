@@ -1,33 +1,11 @@
 import cron from 'node-cron'
-import { NotificationService } from './services/notification.service.js'
 import { TutorAnalysisService } from './services/tutor-analysis.service.js'
 import type { Db } from '@kanji-learn/db'
 
-/**
- * Schedules the daily push notification reminder.
- * Runs every hour and sends to users whose reminderHour (in their timezone) matches the current UTC hour.
- * Users who have already studied today are skipped.
- */
-export function scheduleDailyReminders(db: Db): void {
-  const notifications = new NotificationService(db)
-
-  // Run at the top of every hour
-  cron.schedule('0 * * * *', async () => {
-    console.log('[Cron] Running hourly reminder check…')
-    try {
-      await notifications.sendDailyReminders()
-    } catch (err) {
-      console.error('[Cron] Daily reminder failed:', err)
-    }
-    try {
-      await notifications.sendRestDaySummaries()
-    } catch (err) {
-      console.error('[Cron] Rest-day summary failed:', err)
-    }
-  })
-
-  console.log('[Cron] Hourly reminder scheduler started')
-}
+// Daily reminders + rest-day summaries are NOT scheduled here. They run off the
+// external EventBridge Rule `kanji-learn-hourly-reminders` → Lambda →
+// POST /internal/daily-reminders. An in-app node-cron would double-fire once
+// per App Runner instance whenever the service scales past one instance.
 
 export function scheduleTutorAnalysis(db: Db, llm: any): void {
   const analysisService = new TutorAnalysisService(db, llm)

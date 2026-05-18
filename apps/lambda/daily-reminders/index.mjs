@@ -17,8 +17,10 @@
  *     --zip-file fileb://daily-reminders.zip \
  *     --role arn:aws:iam::ACCOUNT_ID:role/lambda-basic-execution
  *
- * EventBridge rule (fires at 20:00 UTC daily):
- *   cron(0 20 * * ? *)
+ * Trigger: EventBridge Rule `kanji-learn-hourly-reminders` — rate(1 hour).
+ * sendDailyReminders() filters internally to each user's reminderHour, so the
+ * Lambda must fire hourly. The legacy daily Scheduler `kanji-learn-daily-reminders`
+ * (cron(0 20 * * ? *)) is disabled — it was a redundant second trigger.
  */
 
 export async function handler(event) {
@@ -56,18 +58,6 @@ export async function handler(event) {
   }
 
   console.log(`[daily-reminders] Success (${res.status}):`, body)
-
-  // Trigger tutor analysis
-  try {
-    const analysisRes = await fetch(`${apiUrl.replace(/\/$/, '')}/internal/tutor-analysis`, {
-      method: 'POST',
-      headers: { 'X-Internal-Secret': secret },
-    })
-    const analysisBody = await analysisRes.json()
-    console.log('Tutor analysis result:', analysisBody)
-  } catch (err) {
-    console.error('Tutor analysis call failed:', err)
-  }
 
   return { statusCode: res.status, body }
 }

@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify'
 import { NotificationService } from '../services/notification.service.js'
-import { TutorAnalysisService } from '../services/tutor-analysis.service.js'
 
 /**
  * Internal routes — only reachable from trusted callers (EventBridge Lambda).
@@ -28,35 +27,19 @@ export async function internalRoutes(fastify: FastifyInstance): Promise<void> {
     try {
       await notifications.sendDailyReminders()
       fastify.log.info('[Internal] Daily reminders sent successfully')
-      return reply.send({ ok: true })
     } catch (err) {
       fastify.log.error({ err }, '[Internal] Daily reminders failed')
       return reply.code(500).send({ error: 'Job failed' })
     }
-  })
 
-  fastify.post('/tutor-analysis', async (request, reply) => {
-    const secret = process.env.INTERNAL_SECRET
-
-    if (!secret) {
-      fastify.log.error('[Internal] INTERNAL_SECRET env var not set')
-      return reply.code(500).send({ error: 'Server misconfiguration' })
-    }
-
-    if (request.headers['x-internal-secret'] !== secret) {
-      return reply.code(401).send({ ok: false, error: 'Unauthorized', code: 'UNAUTHORIZED' })
-    }
-
-    fastify.log.info('[Internal] Tutor analysis job triggered by EventBridge')
-    const analysisService = new TutorAnalysisService(fastify.db, fastify.buddyLLM)
-
+    // Rest-day summaries ride the same hourly trigger. Independent try/catch so
+    // a rest-day failure can't fail the daily-reminder job.
     try {
-      const result = await analysisService.computeAllActive()
-      fastify.log.info({ result }, '[Internal] Tutor analysis completed successfully')
-      return reply.send({ ok: true, data: result })
+      await notifications.sendRestDaySummaries()
     } catch (err) {
-      fastify.log.error({ err }, '[Internal] Tutor analysis failed')
-      return reply.code(500).send({ error: 'Job failed' })
+      fastify.log.error({ err }, '[Internal] Rest-day summaries failed')
     }
+
+    return reply.send({ ok: true })
   })
 }

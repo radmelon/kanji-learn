@@ -9,7 +9,7 @@ loadEnv({ path: join(__dirname, '../.env') })
 
 // These dynamic imports happen after env is loaded, so DATABASE_URL etc. are set.
 const { buildServer } = await import('./server.js')
-const { scheduleDailyReminders, scheduleTutorAnalysis } = await import('./cron.js')
+const { scheduleTutorAnalysis } = await import('./cron.js')
 const { db } = await import('@kanji-learn/db')
 
 const port = Number(process.env.PORT ?? 3000)
@@ -17,8 +17,8 @@ const host = process.env.HOST ?? '0.0.0.0'
 
 const server = await buildServer()
 
-// Start background jobs
-scheduleDailyReminders(db)
+// Start background jobs. Daily reminders run off the external EventBridge
+// Rule (see cron.ts) — only tutor analysis is scheduled in-process.
 scheduleTutorAnalysis(db, server.buddyLLM)
 
 try {
