@@ -37,7 +37,7 @@ interface UserProfile {
 
 // ─── Daily goal options ───────────────────────────────────────────────────────
 
-const GOAL_OPTIONS = [5, 10, 15, 20, 30, 50] as const
+const GOAL_OPTIONS = ONBOARDING_CONTENT.dailyTarget.options
 
 // ─── Profile Screen ───────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ export default function ProfileScreen() {
 
   // Editable fields — local state, saved on blur / toggle
   const [displayName, setDisplayName] = useState('')
-  const [dailyGoal, setDailyGoal] = useState(20)
+  const [dailyGoal, setDailyGoal] = useState(15)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [reminderHour, setReminderHour] = useState(20)
   const [restDay, setRestDay] = useState<number | null>(null)
@@ -397,7 +397,7 @@ export default function ProfileScreen() {
         </Section>
 
         {/* Daily goal */}
-        <Section title="Daily Review Goal" subtitle="Cards per day">
+        <Section title="Daily Review Goal" subtitle="Minutes per day">
           <View style={styles.goalGrid}>
             {GOAL_OPTIONS.map((g) => (
               <TouchableOpacity
