@@ -4,7 +4,7 @@
 
 **(1) Plan A — Minutes-Based Study Goal — was executed and merged to `main`.** All 9 tasks of `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md` were implemented via subagent-driven development (a fresh subagent per task, each passing a spec-compliance review and a code-quality review). The daily goal is now a minutes budget and the study session is time-boxed on a timer instead of a fixed card count. Two review-driven fixes were folded in. Merged to `main` as `def0009`. **(2) Plan B — Loop Legs & Nav — was written.** `docs/superpowers/plans/2026-05-18-practice-loop-legs-and-nav.md` (committed `cb11bd7`), 6 tasks. **Next session: execute Plan B** via `superpowers:subagent-driven-development`.
 
-⚠️ **Action owed before Plan A reaches testers: apply migration `0023` to the live Supabase DB** (see the dedicated section below — it is committed as a file but NOT yet applied).
+✅ **Migration `0023` was applied to the live Supabase DB this session** (2026-05-18) — `daily_goal` is now a minutes value; all 4 tester rows were reset to 15.
 
 ## Current state
 
@@ -17,32 +17,13 @@
 
 ---
 
-## ⚠️ Migration 0023 — committed but NOT applied to the live DB
+## ✅ Migration 0023 — applied to the live DB (2026-05-18)
 
-Plan A Task 1 created `packages/db/supabase/migrations/0023_daily_goal_minutes.sql` and updated the Drizzle schema default — but, by explicit choice during execution, the migration was **not run against the live database**. The file is on `main`; the database still has the old card-count `daily_goal` values and default (20).
+Plan A Task 1 created `packages/db/supabase/migrations/0023_daily_goal_minutes.sql` and updated the Drizzle schema default. The migration was **applied to the live Supabase DB this session** via `scripts/run-migration-0023.mjs` (sourcing `DATABASE_URL` from `apps/api/.env`).
 
-**This must be applied before a build carrying Plan A reaches testers** — otherwise existing testers' `daily_goal` (e.g. 20, 50 — old card counts) is read as a minutes budget, and new rows still default to 20.
+**Verified:** `user_profiles.daily_goal` column default is now `15`; all 4 existing `user_profiles` rows are `daily_goal = 15`; the column comment reads "Daily study goal, in minutes (was a card count before migration 0023)."
 
-The migration is wrapped in `BEGIN/COMMIT`. It sets the `daily_goal` column default to 15 and **resets every existing `user_profiles.daily_goal` row to 15** — pre-launch testers re-pick their goal in Profile.
-
-### How to apply it
-
-A runner script is committed: `scripts/run-migration-0023.mjs` (mirrors the existing `run-migration-0010.mjs` pattern — uses the `postgres` package, no `psql` needed). From the repo root:
-
-```bash
-DATABASE_URL='<your Supabase Postgres connection string>' node scripts/run-migration-0023.mjs
-```
-
-`DATABASE_URL` is the same connection string the API uses. The script prints `Migration 0023 applied ✓` and the new `column_default` (should be `15`) on success; on failure the transaction rolls back and nothing changes.
-
-**Alternative** (if you have `psql`): `psql "$DATABASE_URL" -f packages/db/supabase/migrations/0023_daily_goal_minutes.sql`
-
-**Verify** afterwards:
-```sql
-SELECT column_default FROM information_schema.columns
-WHERE table_name = 'user_profiles' AND column_name = 'daily_goal';   -- expect 15
-SELECT DISTINCT daily_goal FROM user_profiles;                        -- expect only 15
-```
+The runner `scripts/run-migration-0023.mjs` is committed and safe to re-run if ever needed (the SQL is wrapped in `BEGIN/COMMIT` and is idempotent). Nothing further is owed here — the database now matches the Plan A code.
 
 ---
 
@@ -50,7 +31,7 @@ SELECT DISTINCT daily_goal FROM user_profiles;                        -- expect 
 
 All 9 tasks of `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md`, each spec- and code-reviewed:
 
-1. **DB migration `0023`** — `daily_goal` reinterpreted as minutes; Drizzle default 20→15. (File only — see migration section above.)
+1. **DB migration `0023`** — `daily_goal` reinterpreted as minutes; Drizzle default 20→15. (Applied to the live DB 2026-05-18 — see migration section above.)
 2. **Onboarding** — "How many minutes per day?" · options 5/10/15/20/30 · default 15.
 3. **Profile** — daily-goal editor reuses the onboarding options · "Minutes per day" label.
 4. **Review store** — the study session is time-boxed; `submitResult` ends the session when the minutes budget elapses (checked after each grade, never mid-card). Weak/missed drills stay count-bounded.
@@ -141,7 +122,7 @@ Untracked items in the main checkout. Still need eyeball decisions:
 
 | | Item | Status |
 |---|---|---|
-| 🚀 | Apply migration `0023` to the live DB | **owed — see the migration section above** |
+| ✅ | Apply migration `0023` to the live DB | done 2026-05-18 |
 | 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed |
 | 🚀 | Migrate Supabase DB `ap-southeast-2` → `us-east-1` | Cross-region tax; dedicated session |
 | 🚀 | SES out of sandbox | Needed for tutor-share email at scale |
@@ -162,7 +143,7 @@ Untracked items in the main checkout. Still need eyeball decisions:
 ## Working environment notes
 
 - **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`.
-- **Supabase:** still `ap-southeast-2`. Migration files live in `packages/db/supabase/migrations/` (`0001`–`0023`). Apply `0023` with `scripts/run-migration-0023.mjs` (see the migration section).
+- **Supabase:** still `ap-southeast-2`. Migration files live in `packages/db/supabase/migrations/` (`0001`–`0023`). `0023` was applied to the live DB 2026-05-18 via `scripts/run-migration-0023.mjs`.
 - **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. (No API deploy needed for Plan A; Plan B Task 1 *does* change the API and will need one.)
 - **EAS builds:** from `apps/mobile/`, ~$2/build. `eas build --platform ios --profile production`. EAS auto-bumps `ios.buildNumber` — **never hand-edit `app.json`**. Submit with `eas submit`.
 - **Watch builds:** **manual Xcode rebuild only** — EAS does not build the watchOS target.
