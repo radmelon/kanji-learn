@@ -2,13 +2,13 @@
 
 ## TL;DR
 
-Two things happened this session. **(1) B133 — the reliability bug bundle — shipped.** Five fixes (notification-trigger consolidation, Dashboard "0% drop" copy, Study speaker stuck, empty-transcript banner, Speak-vocab eval failures) landed on `main`, the API was deployed and is healthy, the daily-reminders Lambda was redeployed, the redundant AWS scheduler was disabled, and the **B133 EAS build was cut** (not yet submitted to TestFlight). **(2) The Three-Modality Learning Loop was brainstormed into a spec, and the first implementation plan was written.** The spec is `docs/superpowers/specs/2026-05-17-practice-loop-design.md`; Plan A is `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md`. **Next session: execute Plan A** via the `superpowers:subagent-driven-development` skill.
+Two things happened this session. **(1) B133 — the reliability bug bundle — shipped.** Five fixes (notification-trigger consolidation, Dashboard "0% drop" copy, Study speaker stuck, empty-transcript banner, Speak-vocab eval failures) landed on `main`, the API was deployed and is healthy, the daily-reminders Lambda was redeployed, the redundant AWS scheduler was disabled, and the **B133 EAS build was cut and submitted to TestFlight**. **(2) The Three-Modality Learning Loop was brainstormed into a spec, and the first implementation plan was written.** The spec is `docs/superpowers/specs/2026-05-17-practice-loop-design.md`; Plan A is `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md`. **Next session: execute Plan A** via the `superpowers:subagent-driven-development` skill.
 
 ## Current state
 
 - **Branch:** `main` at `e979b7a`. Working tree: untracked items only (housekeeping queue, unchanged) — see that section below.
 - **API:** deployed and healthy at `https://73x3fcaaze.us-east-1.awsapprunner.com`. This session's deploy — App Runner operation `171b38eaf0d3413490081c6ddd286341`, status `SUCCEEDED`, service `RUNNING`, `/health` → 200.
-- **EAS build B133:** queued 2026-05-17 — build `5452aab7-d06e-4ac7-86de-9fe8360ae695` (https://expo.dev/accounts/radmelon/projects/kanji-learn/builds/5452aab7-d06e-4ac7-86de-9fe8360ae695). EAS auto-bumped `ios.buildNumber` 132→133, committed in `e09cde7`. **Not yet submitted** — run `cd apps/mobile && eas submit --platform ios --profile production` once the build finishes.
+- **EAS build B133:** build `5452aab7-d06e-4ac7-86de-9fe8360ae695` — `finished`. EAS auto-bumped `ios.buildNumber` 132→133, committed in `e09cde7`. **Submitted to TestFlight** 2026-05-17 — submission `e857a3ae-2d8f-4fe3-a7f5-e82032560c60`; Apple was processing the binary (~5–10 min) before it reaches testers.
 - **Watch:** unchanged this session (no Swift changes; EAS does not build the watchOS target).
 
 ---
