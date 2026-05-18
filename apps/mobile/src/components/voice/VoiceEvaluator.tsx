@@ -90,6 +90,9 @@ export function VoiceEvaluator({
   const [permissionGranted, setPermissionGranted] = useState(false)
   const [pulseAnim] = useState(new Animated.Value(1))
   const [reduceMotion, setReduceMotion] = useState(false)
+  // True when the recognizer ended without transcribing anything — drives the
+  // inline retry hint. Cleared on the next mic tap.
+  const [noSpeech, setNoSpeech] = useState(false)
 
   // ── Permissions (skipped when module is unavailable) ───────────────────────
 
@@ -190,7 +193,12 @@ export function VoiceEvaluator({
   _useSpeechRecognitionEvent('end', () => {
     const currentTranscript = transcriptRef.current
     if (!currentTranscript) {
+      // Recognizer ended with nothing transcribed — surface an inline retry
+      // hint instead of silently dropping back to idle. Not a wrong attempt:
+      // submitEval is never called, so the hint ladder is untouched.
       setPhase('idle')
+      setNoSpeech(true)
+      AccessibilityInfo.announceForAccessibility("Didn't catch that. Tap the mic to retry.")
       return
     }
     void submitEval(currentTranscript)
@@ -213,6 +221,7 @@ export function VoiceEvaluator({
 
     setTranscript('')
     transcriptRef.current = ''
+    setNoSpeech(false)
     setPhase('listening')
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
 
@@ -325,6 +334,14 @@ export function VoiceEvaluator({
         </View>
       )}
 
+      {/* No-speech retry hint — recognizer ended with an empty transcript */}
+      {noSpeech && phase === 'idle' && (
+        <View style={styles.noSpeechRow} accessibilityLiveRegion="polite">
+          <Ionicons name="mic-off-outline" size={16} color={colors.textSecondary} />
+          <Text style={styles.noSpeechText}>Didn't catch that — tap the mic to retry</Text>
+        </View>
+      )}
+
       {!permissionGranted && phase === 'idle' && (
         <Text style={styles.permissionWarning}>
           Microphone permission required for voice evaluation
@@ -384,6 +401,12 @@ const styles = StyleSheet.create({
   listeningDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.error },
   listeningText: { ...typography.bodySmall, color: colors.textSecondary, maxWidth: 240 },
   permissionWarning: { ...typography.caption, color: colors.warning, textAlign: 'center' },
+  noSpeechRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.bgCard, paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm, borderRadius: radius.full,
+  },
+  noSpeechText: { ...typography.bodySmall, color: colors.textSecondary },
 
   // Dev-only simulator force-button styles
   devRow: {
