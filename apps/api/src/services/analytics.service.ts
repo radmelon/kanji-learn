@@ -420,9 +420,15 @@ export class AnalyticsService {
     return streak
   }
 
-  // ── Check for velocity drop (intervention trigger) ─────────────────────────
-
-  async hasVelocityDrop(userId: string): Promise<boolean> {
+  // ── Velocity drop (intervention trigger) ───────────────────────────────────
+  // Returns the week-over-week drop metrics when this week's review average has
+  // fallen by at least VELOCITY_DROP_THRESHOLD vs the prior week; null when
+  // there's no prior-week baseline or the drop is below threshold. The caller
+  // needs the actual numbers — a bare boolean left the intervention payload's
+  // dropPct hardcoded to 0, so the nudge read "dropped 0% this week".
+  async getVelocityDrop(
+    userId: string,
+  ): Promise<{ weeklyAverage: number; previousAvg: number; dropPct: number } | null> {
     const { weeklyAverage } = await this.getVelocityMetrics(userId)
 
     // Get previous week average for comparison
@@ -442,10 +448,12 @@ export class AnalyticsService {
         )
       )
 
-    const prevAvg = Number(prevRow?.avg ?? 0)
-    if (prevAvg === 0) return false
+    const previousAvg = Number(prevRow?.avg ?? 0)
+    if (previousAvg === 0) return null
+    if (weeklyAverage >= previousAvg * (1 - VELOCITY_DROP_THRESHOLD)) return null
 
-    return weeklyAverage < prevAvg * (1 - VELOCITY_DROP_THRESHOLD)
+    const dropPct = (previousAvg - weeklyAverage) / previousAvg
+    return { weeklyAverage, previousAvg, dropPct }
   }
 
   // ── Check for plateau (no new status advances in N days) ───────────────────

@@ -38,7 +38,7 @@ export class InterventionService {
 
     const [absence, velocityDrop, plateau] = await Promise.all([
       this.checkAbsence(userId),
-      this.analytics.hasVelocityDrop(userId),
+      this.analytics.getVelocityDrop(userId),
       this.analytics.hasPlateaued(userId),
     ])
 
@@ -50,11 +50,10 @@ export class InterventionService {
     if (velocityDrop) {
       const alreadyOpen = await this.hasOpenIntervention(userId, 'velocity_drop')
       if (!alreadyOpen) {
-        const velocity = await this.analytics.getVelocityMetrics(userId)
         const intervention = await this.trigger(userId, 'velocity_drop', {
-          currentAvg: velocity.weeklyAverage,
-          previousAvg: 0, // resolved inside analytics
-          dropPct: 0,
+          currentAvg: velocityDrop.weeklyAverage,
+          previousAvg: velocityDrop.previousAvg,
+          dropPct: velocityDrop.dropPct,
         })
         triggered.push(intervention)
       }
