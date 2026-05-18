@@ -30,10 +30,12 @@ Five items, all on `main`, one commit each. Two more bug reports (A, B) were cap
 
 **Bug A detail.** Speak vocab words (e.g. 貸付) always failed. Root cause confirmed from the prod `voice_attempts` log: the iOS recognizer returns **kanji** transcripts, and the evaluator's kanji-expansion can't rebuild compound readings (rendaku/jukujikun/okurigana). Fix: in vocab mode the client now sends the word's kanji form alongside the kana reading, so an exact transcript-vs-word match resolves it. **A deeper data bug was found and spawned as a separate task:** `kanji.kun_readings`/`on_readings` are truncated to ~5 sorted entries — this degrades Study-card displays and the Speaking evaluator's expansion index. Not in B133.
 
+**Bug B detail (resolved 2026-05-18, post-B133).** B133's code fix (`994974a`) was correct but did not visibly fix the "review pace dropped 0%" nudge: 3 stale `velocity_drop` intervention rows created *before* B133 carried the old hard-coded `dropPct: 0`, and `runChecks`'s `hasOpenIntervention` guard kept the corrected code from ever superseding them. Fix: the 3 stale rows were resolved in the DB (`UPDATE interventions SET resolved_at = now() WHERE type='velocity_drop' AND resolved_at IS NULL`) — `runChecks` now regenerates correct interventions. A mid-debugging code commit (`5c790ec`, `parseInterventionPayload`) was a misdiagnosis and was reverted (`d86d1a0`); the API was redeployed clean. Separately spawned as its own task: `interventions.payload` jsonb is stored double-encoded (a Drizzle/postgres-js quirk) — harmless to the JS round-trip but it breaks SQL-side payload queries.
+
 **B133 verification still owed:**
 - **Item 5** — over the next hours, App Runner logs should show **one** `[Internal] Daily reminder job triggered` per hour and **no** `[Cron] Running hourly reminder check` line; one daily-reminder push on device, no duplicate.
 - **Items 6, 7, Bug A** — on-device once B133 lands on TestFlight: speaker icon un-sticks on Study; empty-transcript hint on Speaking; reported Speak vocab words now pass.
-- **Bug B** — only shows for a user with a real ≥50% week-over-week drop.
+- **Bug B** — ✅ resolved (stale rows cleared 2026-05-18). A regenerated velocity_drop nudge shows the real % — appears only for a user with a current ≥50% week-over-week drop.
 
 **Known pre-existing issue (not B133):** `apps/api/test/integration/social-mute.test.ts:25` has a `FastifyRegisterOptions` typecheck error that exists on `main` independently — untouched here, flagged for a future sweep.
 
