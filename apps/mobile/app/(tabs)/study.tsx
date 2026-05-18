@@ -46,12 +46,12 @@ const HELP_KEY = 'kl_has_seen_study_help'
 
 function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset } =
+  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset, studyStartMs, goalMinutes } =
     useReviewStore()
-  // Respect the user's onboarding choice (5/10/15/20/30/50). Falls back to 20
-  // until the profile finishes loading on first mount.
+  // Respect the user's onboarding choice (5/10/15/20/30 minutes). Falls back
+  // to 15 until the profile finishes loading on first mount.
   const { profile } = useProfile()
-  const dailyGoal = profile?.dailyGoal ?? 20
+  const dailyGoal = profile?.dailyGoal ?? 15
 
   const [isRevealed, setIsRevealed] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -73,6 +73,17 @@ function StudySession() {
   // true (local dev) OR EXPO_PUBLIC_DEV_TOOLS=1 is set (TestFlight builds
   // during the testing phase — remove the env var before public launch).
   const [devForceMode, setDevForceMode] = useState<'meaning' | 'reading' | 'compound' | null>(null)
+  // Live "time left" for the time-boxed session header. A 1s tick re-renders
+  // the countdown; minutesLeft is null for count-bounded weak/missed drills.
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const minutesLeft =
+    goalMinutes > 0 && studyStartMs > 0
+      ? Math.max(0, Math.ceil((goalMinutes * 60_000 - (now - studyStartMs)) / 60_000))
+      : null
   const cardStartMs = useRef(Date.now())
   // Guard: ensure handleFinish is only called once per isComplete=true cycle.
   // Without this, a React-Native batching edge case can cause handleFinish to
@@ -474,6 +485,9 @@ function StudySession() {
         <Text style={styles.counter}>
           {currentIndex + 1}/{queue.length}
         </Text>
+        {minutesLeft !== null && (
+          <Text style={styles.timeLeft}>{minutesLeft}m left</Text>
+        )}
         {currentIndex > 0 && (
           <TouchableOpacity onPress={handleUndo} style={styles.undoBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="arrow-undo" size={20} color={colors.textMuted} />
@@ -662,6 +676,7 @@ const styles = StyleSheet.create({
   progressTrack: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radius.full },
   counter: { ...typography.caption, color: colors.textMuted, minWidth: 36, textAlign: 'right' },
+  timeLeft: { ...typography.caption, color: colors.textMuted, minWidth: 48, textAlign: 'right' },
   devModeRow: {
     flexDirection: 'row',
     alignItems: 'center',
