@@ -13,6 +13,8 @@ interface Props {
   studyTimeMs: number
   onDone: () => void
   onReview: () => void
+  /** Start another time-boxed session segment past the daily goal */
+  onKeepStudying: () => void
   /** user_profiles.daily_goal — the learner's daily minutes target */
   dailyGoal: number
 }
@@ -26,7 +28,7 @@ function formatTime(ms: number): string {
   return `${mins}m ${secs}s`
 }
 
-export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview, dailyGoal }: Props) {
+export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview, onKeepStudying, dailyGoal }: Props) {
   const accuracy = confidencePct
   const wrong = totalItems - correctItems
   const accColor = accuracy >= 60 ? colors.success : accuracy >= 35 ? colors.warning : colors.error
@@ -93,6 +95,11 @@ export function SessionComplete({ totalItems, correctItems, confidencePct, newLe
         <View style={styles.actions}>
           <TouchableOpacity style={styles.doneButton} onPress={onDone} activeOpacity={0.85}>
             <Text style={styles.doneText}>Back to Dashboard</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.reviewButton} onPress={onKeepStudying} activeOpacity={0.85}>
+            <Ionicons name="play-forward" size={16} color={colors.textSecondary} />
+            <Text style={styles.reviewText}>Keep studying</Text>
           </TouchableOpacity>
 
           {wrong > 0 && (

@@ -443,6 +443,13 @@ function StudySession() {
             swipeX.setValue(0)
           }
         }}
+        onKeepStudying={() => {
+          setSessionSummary(null)
+          setIsRevealed(false)
+          isRevealedRef.current = false
+          swipeX.setValue(0)
+          loadQueue(dailyGoal)
+        }}
       />
     )
   }
