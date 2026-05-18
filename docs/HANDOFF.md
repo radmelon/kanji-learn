@@ -1,178 +1,123 @@
-# Session Handoff — 2026-04-26
+# Session Handoff — 2026-05-17 (B133 shipped · Practice Loop spec & Plan A)
 
 ## TL;DR
 
-**B132 shipped, submitted, and on-device verified.** Five client items (#1 invite surfacing, #2 tutor Resend URL, #3 Watch os_log, #4 About dynamic version, #4.1 Progress displayName) plus three follow-ups (shared social cache, Profile pull-to-refresh, Watch `.notice` log level) all landed. API deployed twice during the session — once for the deferred Item 0 fixes from B131, once for the new server-side Items 1 + 2. Tonight's session also added a Phase 3 #13 ROADMAP entry (Milestones panel refactor) and started a new living `docs/tech-arch-overview.md` with Apple Watch and Pedagogy sections. Next session is the **A-B-C plan**: A) B133 reliability bundle (notification dedup + speaker stuck + empty-transcript banner), B) Three-Modality Learning Loop pedagogy brainstorm, then C) the Phase 2 #11/#9/#10 rebrand bundle.
+Two things happened this session. **(1) B133 — the reliability bug bundle — shipped.** Five fixes (notification-trigger consolidation, Dashboard "0% drop" copy, Study speaker stuck, empty-transcript banner, Speak-vocab eval failures) landed on `main`, the API was deployed and is healthy, the daily-reminders Lambda was redeployed, the redundant AWS scheduler was disabled, and the **B133 EAS build was cut** (not yet submitted to TestFlight). **(2) The Three-Modality Learning Loop was brainstormed into a spec, and the first implementation plan was written.** The spec is `docs/superpowers/specs/2026-05-17-practice-loop-design.md`; Plan A is `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md`. **Next session: execute Plan A** via the `superpowers:subagent-driven-development` skill.
 
 ## Current state
 
-- **Branch:** `main` at `12cb2bd`. Working tree has untracked items but no modifications.
-- **API:** deployed and healthy at `https://73x3fcaaze.us-east-1.awsapprunner.com`. Two operations this session:
-  - `2cb9c7fe480f4139b14137a09e3f7fe6` (~01:11 UTC) — Item 0 B131 fixes (push token reclaim, self-friending guard, Speaking scope).
-  - `1fb34c9e4be0469287fe73d907d93c16` (~01:54 UTC) — Items 1 + 2 server side (`notifyIncomingFriendRequest`, `shareUrl` projection).
-- **TestFlight:** B132 submitted 2026-04-26 02:36 UTC. Build `8e1feb3c-4a3b-4f23-b63d-16ca8e58fe36`, submission `4cce97d9-17ae-4886-b8bc-8a5841105ceb`. EAS auto-bumped `ios.buildNumber` 131→132, committed in `09cd725`.
-- **Watch:** os_log migration (`02bda24`) + `.notice` upgrade (`5858282`) on `main`; **EAS does not build the watchOS bundle**, so the Watch on device only gets these via a manual Xcode rebuild (already done this session, verified via Xcode debug console).
+- **Branch:** `main` at `e979b7a`. Working tree: untracked items only (housekeeping queue, unchanged) — see that section below.
+- **API:** deployed and healthy at `https://73x3fcaaze.us-east-1.awsapprunner.com`. This session's deploy — App Runner operation `171b38eaf0d3413490081c6ddd286341`, status `SUCCEEDED`, service `RUNNING`, `/health` → 200.
+- **EAS build B133:** queued 2026-05-17 — build `5452aab7-d06e-4ac7-86de-9fe8360ae695` (https://expo.dev/accounts/radmelon/projects/kanji-learn/builds/5452aab7-d06e-4ac7-86de-9fe8360ae695). EAS auto-bumped `ios.buildNumber` 132→133, committed in `e09cde7`. **Not yet submitted** — run `cd apps/mobile && eas submit --platform ios --profile production` once the build finishes.
+- **Watch:** unchanged this session (no Swift changes; EAS does not build the watchOS target).
 
 ---
 
-## Commits landed this session (ten on `main`)
+## B133 — shipped this session
+
+Five items, all on `main`, one commit each. Two more bug reports (A, B) were captured via Open Brain and folded into the bundle.
 
 | Commit | Item | Side |
 |---|---|---|
-| `b80f8d9` | Progress header `displayName` regression fix (#4.1) | mobile |
-| `87d5cbd` | About page dynamic `1.0.{buildNumber}` (#4) | mobile |
-| `02bda24` | Watch `print()` → `os_log` migration (#3) | watch |
-| `326dd71` | Tutor-share Resend URL button (#2) | API + mobile |
-| `4069035` | Friend-request push + Profile-tab badge (#1) | API + mobile |
-| `86da5a3` | Shared friends/leaderboard cache | mobile |
-| `d7c82f6` | Profile pull-to-refresh wires social state | mobile |
-| `3028b82` | ROADMAP Phase 3 #13 — Milestones panel refactor spec | docs |
-| `09cd725` | EAS-bumped `ios.buildNumber` → 132 | mobile config |
-| `5858282` | Watch `klWatchLog` uses `.notice` | watch |
-| `9a54b32` | New `docs/tech-arch-overview.md` — Apple Watch section | docs |
-| `12cb2bd` | `tech-arch-overview` Pedagogy section + planned MCP server placeholder | docs |
+| `975307f` | **Item 5** — daily-reminder triggers collapsed to one | API + Lambda |
+| `994974a` | **Bug B** — Dashboard "review pace dropped 0%" → real % | API |
+| `bc1cfc8` | **Item 6** — Study speaker icon unstuck (audio reset + TTS watchdog) | mobile |
+| `67c7d10` | **Item 7** — VoiceEvaluator empty-transcript retry hint | mobile |
+| `6655067` | **Bug A** — Speak vocab accepts the kanji-form transcript | mobile |
+| `e09cde7` | EAS-bumped `ios.buildNumber` → 133 | mobile config |
 
-(Twelve total counting the doc work; ten count "shipped product" if you prefer.)
+**Item 5 detail.** `sendDailyReminders()` had **three** live triggers (in-app `node-cron`, an hourly EventBridge Rule, and a redundant daily EventBridge Scheduler) — a 2–3× notification flood. Fix: the in-app cron was deleted; the hourly EventBridge Rule `kanji-learn-hourly-reminders` is now the **single source of truth**; rest-day summaries moved into `POST /internal/daily-reminders`; the Lambda's hourly tutor-analysis chain was removed (tutor analysis stays on its in-app 03:00 UTC cron). **AWS change applied:** the `kanji-learn-daily-reminders` Scheduler is now `DISABLED` (reversible).
 
----
+**Bug A detail.** Speak vocab words (e.g. 貸付) always failed. Root cause confirmed from the prod `voice_attempts` log: the iOS recognizer returns **kanji** transcripts, and the evaluator's kanji-expansion can't rebuild compound readings (rendaku/jukujikun/okurigana). Fix: in vocab mode the client now sends the word's kanji form alongside the kana reading, so an exact transcript-vs-word match resolves it. **A deeper data bug was found and spawned as a separate task:** `kanji.kun_readings`/`on_readings` are truncated to ~5 sorted entries — this degrades Study-card displays and the Speaking evaluator's expansion index. Not in B133.
 
-## On-device B132 verification — 7 of 8 items confirmed
+**B133 verification still owed:**
+- **Item 5** — over the next hours, App Runner logs should show **one** `[Internal] Daily reminder job triggered` per hour and **no** `[Cron] Running hourly reminder check` line; one daily-reminder push on device, no duplicate.
+- **Items 6, 7, Bug A** — on-device once B133 lands on TestFlight: speaker icon un-sticks on Study; empty-transcript hint on Speaking; reported Speak vocab words now pass.
+- **Bug B** — only shows for a user with a real ≥50% week-over-week drop.
 
-| | Item | Status | Notes |
-|---|---|---|---|
-| 4 | About `Version 1.0.132` | ✅ |
-| 4.1 | Progress header displayName | ✅ |
-| 3 | Watch `[KL-Watch]` lines | ✅ | After manual Xcode rebuild + via Xcode debug console; Console.app filter on Watch device works but is fiddly |
-| 2 | Tutor Resend URL button | ✅ |
-| 1a | Friend-request push lands on iPad | ✅ | Server log: `02:20:28 [Push] userId=7c707446-... sent=1 pruned=0` + user confirmed visible push with chime |
-| 1b | Profile-tab badge render | ⏳ | Untested; surfaces naturally next time there's a pending invite |
-| 1c | Cross-screen friends/leaderboard consistency | ✅ |
-| — | Profile pull-to-refresh refreshes social | ✅ |
-
-**Key lessons captured to memory:**
-- *App Runner rolling deploy gap* — `RUNNING` status ≠ all old instances drained. The first user-driven re-invite at 01:57:16 hit the OLD instance; only after ~01:57:29 did traffic flip to the new image.
-- *`useSocial` per-instance state was a class of bug* — generalised the `useProfile`-style shared cache to friends/pending/leaderboard.
-- *`Logger.info()` is memory-only by default* — `.notice` is the right level for testing-phase visibility without "Action → Include Info Messages".
-- *EAS does not build the watchOS bundle* — Watch fixes need Xcode rebuilds, not EAS B-builds. Filed as `feedback_eas_does_not_build_watch.md`.
+**Known pre-existing issue (not B133):** `apps/api/test/integration/social-mute.test.ts:25` has a `FastifyRegisterOptions` typecheck error that exists on `main` independently — untouched here, flagged for a future sweep.
 
 ---
 
-## Working tree — housekeeping queue
+## Practice Loop — brainstormed & planned this session
 
-Untracked items at session end. None modified. **Untouched on purpose** — they need eyeball decisions, not blind action:
+The Three-Modality Learning Loop (old "Plan B") was brainstormed in full and decomposed into a **three-spec arc**:
+
+- **Spec 1 — The Practice Loop** — `docs/superpowers/specs/2026-05-17-practice-loop-design.md` (committed `6b7e43a`). Collapses Study / Speaking / Writing into one time-boxed, per-kanji-routed session with a quiz verification leg. Removes the Write & Speak tabs (absorbed into the loop) and promotes Browse to a tab.
+- **Spec 1.5 — FSRS migration** — replace the SM-2 scheduler with FSRS so per-kanji *retrievability* becomes a real confidence signal. Best done pre-launch while the dataset is tiny. Own brainstorm, not yet written.
+- **Spec 2 — Buddy, the AI tutor** — the monkey mascot becomes an in-app AI coach: cross-modality weakness detection, focus suggestions, AI mnemonic co-building. Repurposes the Journal tab into a "Buddy" tab. Own brainstorm, not yet written. (Buddy is the thing Buddy-the-owner is most excited about — but it depends on the loop's data, so 1 → 1.5 → 2.)
+
+**Spec 1 itself is being implemented as three sequential plans**, each independently shippable:
+
+- **Plan A — Minutes-Based Study Goal** — `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md` (committed `e979b7a`). **Written and ready.** 9 tasks: the `daily_goal`→minutes migration, onboarding/profile copy, the time-boxed review store, `didMeetTimeGoal` (TDD), SessionComplete rewiring, the time-remaining indicator, the dashboard fix, "Keep studying."
+- **Plan B — Loop legs + nav** — per-kanji routing (new kanji → flashcard→writing→speaking; weak review kanji → writing+speaking), reusing `WritingPractice`/`VoiceEvaluator` inside the loop; remove the Write & Speak tabs. **Not yet written** — write it (via `superpowers:writing-plans`) after Plan A ships.
+- **Plan C — Quiz leg + Browse tab + telemetry** — wire the existing quiz engine in for "maybe-slipping" review kanji (Medium feedback: a failed quiz counts as a lapse); promote Browse to a tab. **Not yet written.**
+
+---
+
+## Next session — execute Plan A
+
+Decided this session: execution uses the **Subagent-Driven** approach.
+
+```
+cd /Users/rdennis/Documents/projects/kanji-learn
+git pull origin main
+# Then: invoke the superpowers:subagent-driven-development skill, pointed at
+#   docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md
+# It dispatches a fresh subagent per task with review checkpoints between tasks.
+# (A dedicated git worktree for the execution is recommended.)
+```
+
+Plan A ships independently — when it's done the daily goal is minutes and the study session is time-boxed (still flashcard-only). Then write & execute Plan B, then Plan C. After the Practice Loop: Spec 1.5 (FSRS) and Spec 2 (Buddy) each get their own brainstorm.
+
+---
+
+## Working tree — housekeeping queue (carry-forward, unchanged)
+
+Untracked items in the main checkout. Still need eyeball decisions:
 
 | Item | Recommendation |
 |---|---|
-| `.claude/worktrees/` | gitignore (Claude scratch) |
+| `.claude/worktrees/` | gitignore (Claude scratch). The `loving-greider-2122d0` worktree used this session is fully merged to `main` and can be removed. |
 | `apps/lambda/daily-reminders/daily-reminders.zip` | gitignore (build artifact) |
 | `apps/mobile/credentials.json` | **gitignore IMMEDIATELY if it contains secrets** — verify content first |
 | `apps/watch/KanjiLearnWatch.xcodeproj/xcshareddata/` | gitignore (Xcode personal prefs) |
-| `KanjiBuddyEnamel.jpg`, `KanjiBuddyMonkey.jpeg`, `KanjiBuddyMonkey.html`, `KanjiBuddyMonkey_files/` | Move to `apps/mobile/assets/branding/` (or `docs/branding/`) before the rebrand session — currently messy at repo root |
-| `tooclose.jpg` | If reference screenshot, move to `docs/branding/references/`; if accidental, delete |
-| `app.json` (root, not `apps/mobile/app.json`) | Likely orphaned from earlier prebuild — inspect → delete |
-| `eas.json` (root, not `apps/mobile/eas.json`) | Same |
-| `docs/superpowers/mockups/` | Inspect → likely commit if useful spec assets |
-| `docs/superpowers/plans/2026-04-*.md` (7 files) | **Commit all** — these are session plans we executed against; they belong on `main` as history |
+| `KanjiBuddyEnamel.jpg`, `KanjiBuddyMonkey.jpeg`, `KanjiBuddyMonkey.html`, `KanjiBuddyMonkey_files/` | Move to `apps/mobile/assets/branding/` (or `docs/branding/`) before the rebrand |
+| `tooclose.jpg` | If a reference screenshot, move to `docs/branding/references/`; else delete |
+| `app.json`, `eas.json` (repo root, not `apps/mobile/`) | Likely orphaned from an earlier prebuild — inspect → delete |
+| `docs/superpowers/mockups/` | Inspect → commit if useful |
+| `docs/superpowers/plans/2026-04-*.md` (7 files) | **Commit all** — executed session plans, belong on `main` as history |
+| `docs/openbrain-migration-thoughts.md` | Open Brain migration record — keep (commit to `docs/`) or delete; harmless |
 
-**Safe-to-do-blindly subset:**
-- gitignore: `.claude/worktrees/`, `apps/lambda/daily-reminders/daily-reminders.zip`
-- commit: the seven `docs/superpowers/plans/2026-04-*.md` files
+`.superpowers/` (visual-companion brainstorm scratch) is already gitignored.
 
 ---
 
-## Next-session plan: A → B → C
-
-Decided this session.
-
-### A — B133 reliability bundle (next session)
-
-Three small bug items, all fully scoped during this session's investigations.
-
-1. **Item 5 — Notification flood dedup.** Dual trigger: in-app cron (`apps/api/src/cron.ts:15` `0 * * * *`) AND AWS Lambda (`apps/lambda/daily-reminders/index.mjs` → `apps/api/src/routes/internal.ts:29`) both call `sendDailyReminders()`. **Decision still owed:** delete the in-app cron (cheap, single source of truth) vs add a `lastDailyReminderSentAt` date column for true idempotency. Re-observe behaviour on B132 first — the Item 0 push-token-reclaim fix may have already reduced the visible count by removing the cross-account amplifier.
-2. **Item 6 — Study card speaker icon stuck/no-sound.** Root cause is iOS audio session left in a non-playback category by the Speaking-tab microphone path. Two-part fix: (i) `Audio.setAudioModeAsync({ playsInSilentModeIOS: true, allowsRecordingIOS: false, ... })` reset on Study screen focus, plus (ii) a watchdog timeout in `KanjiCard.tsx` `speakSequence` so the visual "lit" state resets even if `expo-speech` callbacks never fire. See `apps/mobile/src/components/study/KanjiCard.tsx:160-195`.
-3. **Item 7 — VoiceEvaluator empty-transcript banner.** When the `'end'` event fires with `transcript === ''`, `apps/mobile/src/components/voice/VoiceEvaluator.tsx:190-197` returns silently → user sees "Listening..." → idle with no feedback. Add a brief inline "Didn't catch that — tap mic to retry" banner. Surfaced by the BT/HFP investigation but real regardless of cause.
-
-Bundle into B133, deploy API only if Item 5 chooses the column-add path. Cost: ~$2 EAS.
-
-### B — Three-Modality Learning Loop brainstorm (after A)
-
-Pedagogy session, no code. Design discussion captured as a spec in `docs/superpowers/specs/`. Unblocks both Phase 6 #23 (the differentiator feature itself) and the deferred tutor-report writing scope-down. See `project_learning_loop_pedagogy.md` for queued context. The new `docs/tech-arch-overview.md` Pedagogy section already lists the open questions to settle.
-
-### C — Phase 2 #11 + #9 + #10 rebrand bundle (after B)
-
-The "Kanji Buddy 1.0" launch moment. Touches:
-- **#11** rename Kanji Learn → Kanji Buddy across copy, app name, store metadata
-- **#9** splash screen polish — solid bg, longer display, branding imagery
-- **#10** About / Credits page — branding imagery (assets already staged at repo root: `KanjiBuddyMonkey.jpeg`, `KanjiBuddyEnamel.jpg`)
-
-Pre-work for C: settle which mark is canonical, whether dark/light variants exist, brand-voice copy direction. That's a 2–3 hour brand-decision block before code, so probably needs its own dedicated session.
-
----
-
-## Pre-launch infra checklist (carry-forward, unchanged)
+## Pre-launch infra checklist (carry-forward)
 
 | | Item | Status |
 |---|---|---|
-| 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed; full plan in ROADMAP Phase 5 |
-| 🚀 | Migrate Supabase DB to us-east-1 | Cross-region tax; needs dedicated session |
+| 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed |
+| 🚀 | Migrate Supabase DB `ap-southeast-2` → `us-east-1` | Cross-region tax; dedicated session |
 | 🚀 | SES out of sandbox | Needed for tutor-share email at scale |
-| 🚀 | Revert testing-phase flags | `EXPO_PUBLIC_DEV_TOOLS=1` + 2h mate cap |
+| 🚀 | Revert testing-phase flags | `EXPO_PUBLIC_DEV_TOOLS=1` (in `eas.json` production profile) + the 2h study-mate alert cap |
 
 ---
 
-## Other open follow-ups (not in A-B-C)
+## Other open follow-ups
 
-- **Tutor report writing scope-down** — couples to (B) Three-Modality Loop brainstorm; do that first.
-- **iOS recognizer config** — "we heard X — try again?" UX for 円→年-style misrecognitions. Small UX item.
-- **Amber reading-prompt cue** from B121 — investigation only, no spec yet.
-- **Phase 3 #13 — Milestones refactor.** Spec is captured in ROADMAP; planning + implementation comes after the A-B-C bundle.
-- **Friendship `CHECK (requester_id != addressee_id)`** — application-level guard suffices unless another self-loop slips through.
+- **Truncated kanji readings** — `kanji.kun_readings`/`on_readings` capped at ~5 sorted entries; re-import full KanjiDic2 readings. Spawned as a task this session.
+- **The "Kanji Buddy 1.0" rebrand** (old plan "C") — rename Kanji Learn → Kanji Buddy, splash polish, About/Credits branding. Independent of the Practice Loop; can slot in whenever. Needs a brand-decision block first.
+- **Tutor report writing scope-down** — the report still surfaces a Writing modality that Study no longer serves; revisit alongside the loop work.
+- **Phase 3 #13 — Milestones panel refactor** — spec captured earlier; after the Practice Loop.
 
 ---
 
 ## Working environment notes
 
 - **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com` — healthy.
-- **Supabase:** still in `ap-southeast-2`. Pre-launch us-east-1 migration owed.
-- **Docker deploys:** `./scripts/deploy-api.sh` from repo root. App Runner service ARN already wired in. Two deploys ran cleanly tonight.
-- **EAS builds:** from `apps/mobile/`. Pay-as-you-go ~$2/build. EAS auto-bumps `ios.buildNumber`; **never hand-edit `app.json`**.
-- **Watch builds:** **manual Xcode rebuild only** — EAS does not build the watchOS target. Open `apps/watch/KanjiLearnWatch.xcodeproj`, select `KanjiLearnWatch` scheme + Watch destination, ⌘R. Use Xcode's debug console for log capture; Console.app's Watch device pairing is flaky.
-- **Bundle versions:** iPhone B132 = `ios.buildNumber: "132"`. Watch should match (commit `60297c9`); verify when next opening Xcode.
-- **EAS CLI:** `18.7.0` working. `18.8.1` available but not installed — fine.
-
----
-
-## Tomorrow's first command (A: B133 bundle)
-
-```
-cd /Users/rdennis/Documents/projects/kanji-learn
-git pull origin main
-
-# Housekeeping (~5 min)
-# 1. Add to .gitignore: .claude/worktrees/, apps/lambda/daily-reminders/daily-reminders.zip
-# 2. Decide on apps/mobile/credentials.json (gitignore if secrets) and the
-#    other untracked items per the table in HANDOFF.md.
-# 3. Commit the seven docs/superpowers/plans/2026-04-*.md files.
-
-# A — B133 reliability bundle
-# 4. Item 5: re-observe daily-reminder behaviour on B132 (push-token reclaim
-#    is now live — count may have already dropped). Decide: delete in-app cron
-#    OR add lastDailyReminderSentAt column.
-# 5. Item 6: KanjiCard.tsx speakSequence watchdog + Audio.setAudioModeAsync
-#    reset on Study focus.
-# 6. Item 7: VoiceEvaluator.tsx empty-transcript banner.
-# 7. Typecheck both api + mobile, commit each item, deploy API if Item 5
-#    needs it, cut B133 via EAS.
-```
-
----
-
-## Memory entries created/updated this session
-
-- `project_b132_shipped.md` (new) — full session outcome
-- `feedback_eas_does_not_build_watch.md` (new)
-- `feedback_bluetooth_mic_hfp_lag.md` (new — earlier in session, BT/HFP investigation)
-- `project_next_session_b132_plan.md` (updated to mark Items 0–4 + 4.1 done)
-- `MEMORY.md` (index updated with the three new entries)
-
-The two memory entries from earlier sessions still relevant for next session: `project_learning_loop_pedagogy.md` (for plan B) and the standing pre-launch flag list in `project_testing_phase_flags.md`.
+- **Supabase:** still `ap-southeast-2`. Two migration systems live in `packages/db`: `drizzle/` (0000–0011) and `supabase/migrations/` (0001–0022, the live one). Plan A adds `supabase/migrations/0023_daily_goal_minutes.sql`.
+- **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. App Runner ARN wired in.
+- **EAS builds:** from `apps/mobile/`, ~$2/build. `eas build --platform ios --profile production`. EAS auto-bumps `ios.buildNumber` — **never hand-edit `app.json`**. Submit with `eas submit`.
+- **Watch builds:** **manual Xcode rebuild only** — EAS does not build the watchOS target.
+- **Co-author convention:** every kanji-learn commit includes `Co-Authored-By: Robert A. Dennis (Buddy)` alongside the Claude co-author line.
