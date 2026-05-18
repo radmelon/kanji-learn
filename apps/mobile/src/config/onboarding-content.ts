@@ -77,9 +77,9 @@ export const ONBOARDING_CONTENT = {
   },
 
   dailyTarget: {
-    headline: 'How many kanji per day?',
-    options: [5, 10, 15, 20, 30, 50] as number[],
-    defaultOption: 20,
+    headline: 'How many minutes per day?',
+    options: [5, 10, 15, 20, 30] as number[],
+    defaultOption: 15,
     cta: "Let's go",
     saveError: 'Something went wrong. Please try again.',
   },
