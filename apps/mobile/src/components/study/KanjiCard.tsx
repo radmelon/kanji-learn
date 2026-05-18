@@ -72,6 +72,18 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   const [speakingGroup, setSpeakingGroup] = useState<string | null>(null)
   const iconOpacity = useRef(new Animated.Value(0)).current
 
+  // Watchdog for the TTS "lit" state. expo-speech occasionally never fires
+  // onDone/onError (seen when the Speaking tab leaves the iOS audio session in
+  // a record category) — without a timeout, speakingGroup would stay set and
+  // the speaker icon would be stuck "lit" until the app is force-quit.
+  const speakWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearSpeakWatchdog = useCallback(() => {
+    if (speakWatchdogRef.current) {
+      clearTimeout(speakWatchdogRef.current)
+      speakWatchdogRef.current = null
+    }
+  }, [])
+
   // Guard TTS callbacks against post-unmount execution.
   //
   // KanjiCard unmounts whenever the queue advances to a compound card (and vice
@@ -85,8 +97,9 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   // KanjiCard stays mounted across same-type card advances to avoid calling
   // Speech.stop() in the cleanup on every grade press (crashes native speech bridge).
   useEffect(() => {
+    clearSpeakWatchdog()
     setSpeakingGroup(null)
-  }, [item.kanjiId])
+  }, [item.kanjiId, clearSpeakWatchdog])
 
   // Fade the magnifying glass icon in when the card is revealed, out on reset
   useEffect(() => {
@@ -109,6 +122,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       isMountedRef.current = false
       activeFlipRef.current?.stop()   // cancel any in-flight native flip animation
       Speech.stop()
+      if (speakWatchdogRef.current) clearTimeout(speakWatchdogRef.current)
     }
   }, [])
 
@@ -165,6 +179,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   ) => {
     // Toggle off if this group is already active
     if (speakingGroup === groupKey) {
+      clearSpeakWatchdog()
       Speech.stop()
       setSpeakingGroup(null)
       return
@@ -178,21 +193,31 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
     const cleaned = words.map((w) => (stripDot ? w.replace('.', '') : w))
 
     const speakAt = (idx: number) => {
+      clearSpeakWatchdog()
       if (!isMountedRef.current || idx >= cleaned.length) {
         if (isMountedRef.current) setSpeakingGroup(null)
         return
       }
+      // Re-arm the watchdog for this utterance. 8s is far longer than any
+      // single reading at rate 0.85; if onDone/onError never fire, this resets
+      // the "lit" state instead of leaving the icon stuck.
+      speakWatchdogRef.current = setTimeout(() => {
+        speakWatchdogRef.current = null
+        Speech.stop()
+        if (isMountedRef.current) setSpeakingGroup(null)
+      }, 8000)
       Speech.speak(cleaned[idx], {
         ...SPEECH_OPTS,
         onDone: () => speakAt(idx + 1),
         onError: (e) => {
+          clearSpeakWatchdog()
           console.error('[TTS] speakSequence error for', cleaned[idx], e)
           if (isMountedRef.current) setSpeakingGroup(null)
         },
       })
     }
     speakAt(0)
-  }, [speakingGroup])
+  }, [speakingGroup, clearSpeakWatchdog])
 
   // Visual cue distinguishing meaning vs reading prompts. Writing/compound stay neutral.
   const cueColor =

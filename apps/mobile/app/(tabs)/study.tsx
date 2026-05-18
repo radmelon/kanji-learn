@@ -11,11 +11,13 @@
 //   mixes KanjiCard and CompoundCard types — advancing from a KanjiCard to a
 //   CompoundCard unmounts KanjiCard while speech may still be running.
 //
-// Audio session fix (build 76):
-//   Audio session configuration (playsInSilentModeIOS) is managed globally in
-//   _layout.tsx and re-applied on every app foreground. It is NOT called here,
-//   because expo-av v16 crashes if setAudioModeAsync is called from within a
-//   component that mounts/unmounts frequently (as KanjiCard does in weak-spots mode).
+// Audio session (build 133):
+//   The base audio mode is set once in _layout.tsx on app launch. This screen
+//   ALSO re-applies it on tab focus (useFocusEffect below) because the Speaking
+//   tab's speech recognizer leaves the iOS audio session in a record category,
+//   which silences expo-speech TTS on Study cards. The reset is done here, at
+//   the stable screen level — NOT inside KanjiCard, which mounts/unmounts per
+//   card and triggered expo-av v16 instability when it called setAudioModeAsync.
 
 import { useState, useEffect, useRef, useCallback, Component, type FC } from 'react'
 import type { ReviewResult } from '@kanji-learn/shared'
@@ -25,8 +27,9 @@ import {
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
+import { Audio } from 'expo-av'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useRouter } from 'expo-router'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as SecureStore from 'expo-secure-store'
 import { useReviewStore } from '../../src/stores/review.store'
@@ -190,6 +193,22 @@ function StudySession() {
     }
     return () => reset()
   }, [profile])
+
+  // Re-apply the playback audio session whenever the Study tab gains focus.
+  // The Speaking tab's recognizer leaves the iOS session in a record category;
+  // without this, expo-speech TTS on a card plays no sound and its callbacks
+  // may never fire (see file header). Safe from this stable screen.
+  useFocusEffect(
+    useCallback(() => {
+      Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      }).catch((e) => console.error('[Audio] setAudioModeAsync failed:', e))
+    }, [])
+  )
 
   useEffect(() => {
     SecureStore.getItemAsync(HELP_KEY).then((val) => {
