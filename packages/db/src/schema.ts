@@ -143,7 +143,7 @@ export const userProfiles = pgTable('user_profiles', {
   id: uuid('id').primaryKey(), // matches auth.users.id
   displayName: text('display_name'),
   email: text('email'),                                             // from Supabase JWT, used for friend search
-  dailyGoal: smallint('daily_goal').notNull().default(20),
+  dailyGoal: smallint('daily_goal').notNull().default(15),
   notificationsEnabled: boolean('notifications_enabled').notNull().default(true),
   // pushToken removed — see user_push_tokens table below (multi-device support).
   timezone: text('timezone').notNull().default('UTC'),
