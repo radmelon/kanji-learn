@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors, spacing, radius, typography } from '../../theme'
-import { motivationalMessage, didCrossGoal } from './SessionComplete.messaging'
+import { motivationalMessage, didMeetTimeGoal } from './SessionComplete.messaging'
 
 interface Props {
   totalItems: number
@@ -13,9 +13,7 @@ interface Props {
   studyTimeMs: number
   onDone: () => void
   onReview: () => void
-  /** daily_stats.reviewed BEFORE this session — used to detect goal crossing */
-  reviewedBefore: number
-  /** user_profiles.daily_goal — used to detect goal crossing */
+  /** user_profiles.daily_goal — the learner's daily minutes target */
   dailyGoal: number
 }
 
@@ -28,11 +26,11 @@ function formatTime(ms: number): string {
   return `${mins}m ${secs}s`
 }
 
-export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview, reviewedBefore, dailyGoal }: Props) {
+export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview, dailyGoal }: Props) {
   const accuracy = confidencePct
   const wrong = totalItems - correctItems
   const accColor = accuracy >= 60 ? colors.success : accuracy >= 35 ? colors.warning : colors.error
-  const showGoalBanner = burned === 0 && didCrossGoal(reviewedBefore, totalItems, dailyGoal)
+  const showGoalBanner = burned === 0 && didMeetTimeGoal(studyTimeMs, dailyGoal)
 
   return (
     <SafeAreaView style={styles.safe}>
