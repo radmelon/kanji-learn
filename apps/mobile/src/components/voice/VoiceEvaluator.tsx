@@ -79,10 +79,17 @@ export function VoiceEvaluator({
 }: Props) {
   const [showPitchAccent] = useShowPitchAccent()
   const isVocabMode = voicePrompt?.type === 'vocab'
-  // When the API attached a vocab prompt, send only that reading to the
-  // evaluator — the target is a specific vocab word, not "any reading of
-  // this kanji". Keeps feedback aligned with what the user was shown.
-  const effectiveCorrectReadings = isVocabMode ? [voicePrompt.reading] : correctReadings
+  // For a vocab prompt, accept BOTH the kana reading and the word's kanji form.
+  // The iOS ja-JP recognizer routinely returns the kanji compound (e.g. 貸付)
+  // instead of hiragana; the server evaluator then tries to rebuild the reading
+  // by expanding each kanji, which fails for compounds shaped by rendaku,
+  // jukujikun, or okurigana-absorbing nouns — so every attempt was rejected.
+  // Offering the kanji form lets an exact transcript==word match sidestep the
+  // whole expansion problem. The target stays the specific vocab word, not
+  // "any reading of this kanji".
+  const effectiveCorrectReadings = isVocabMode
+    ? [voicePrompt.reading, voicePrompt.word]
+    : correctReadings
 
   const [phase, setPhase] = useState<Phase>('idle')
   const [transcript, setTranscript] = useState('')
