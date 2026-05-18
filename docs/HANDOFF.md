@@ -1,76 +1,118 @@
-# Session Handoff — 2026-05-17 (B133 shipped · Practice Loop spec & Plan A)
+# Session Handoff — 2026-05-18 (Plan A shipped to main · Plan B planned)
 
 ## TL;DR
 
-Two things happened this session. **(1) B133 — the reliability bug bundle — shipped.** Five fixes (notification-trigger consolidation, Dashboard "0% drop" copy, Study speaker stuck, empty-transcript banner, Speak-vocab eval failures) landed on `main`, the API was deployed and is healthy, the daily-reminders Lambda was redeployed, the redundant AWS scheduler was disabled, and the **B133 EAS build was cut and submitted to TestFlight**. **(2) The Three-Modality Learning Loop was brainstormed into a spec, and the first implementation plan was written.** The spec is `docs/superpowers/specs/2026-05-17-practice-loop-design.md`; Plan A is `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md`. **Next session: execute Plan A** via the `superpowers:subagent-driven-development` skill.
+**(1) Plan A — Minutes-Based Study Goal — was executed and merged to `main`.** All 9 tasks of `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md` were implemented via subagent-driven development (a fresh subagent per task, each passing a spec-compliance review and a code-quality review). The daily goal is now a minutes budget and the study session is time-boxed on a timer instead of a fixed card count. Two review-driven fixes were folded in. Merged to `main` as `def0009`. **(2) Plan B — Loop Legs & Nav — was written.** `docs/superpowers/plans/2026-05-18-practice-loop-legs-and-nav.md` (committed `cb11bd7`), 6 tasks. **Next session: execute Plan B** via `superpowers:subagent-driven-development`.
+
+⚠️ **Action owed before Plan A reaches testers: apply migration `0023` to the live Supabase DB** (see the dedicated section below — it is committed as a file but NOT yet applied).
 
 ## Current state
 
-- **Branch:** `main` at `e979b7a`. Working tree: untracked items only (housekeeping queue, unchanged) — see that section below.
-- **API:** deployed and healthy at `https://73x3fcaaze.us-east-1.awsapprunner.com`. This session's deploy — App Runner operation `171b38eaf0d3413490081c6ddd286341`, status `SUCCEEDED`, service `RUNNING`, `/health` → 200.
-- **EAS build B133:** build `5452aab7-d06e-4ac7-86de-9fe8360ae695` — `finished`. EAS auto-bumped `ios.buildNumber` 132→133, committed in `e09cde7`. **Submitted to TestFlight** 2026-05-17 — submission `e857a3ae-2d8f-4fe3-a7f5-e82032560c60`; Apple was processing the binary (~5–10 min) before it reaches testers.
-- **Watch:** unchanged this session (no Swift changes; EAS does not build the watchOS target).
+- **Branch:** `main` at `cb11bd7`. Working tree: untracked items only (housekeeping queue, unchanged — see that section).
+- **`main` history this session:** `def0009` (merge commit — Plan A) → `cb11bd7` (Plan B plan doc). Below `def0009`: `8b0ba20` ("B133 submitted to TestFlight") and the rest of the pre-existing history.
+- **Not pushed.** `origin/main` is far behind (at `b091590`, April). All of this session's work — Plan A and the Plan B doc — is **local only**. Push when ready; no force-push is or will be needed.
+- **API:** unchanged this session — Plan A touched only `packages/db` and `apps/mobile`, no API code. Last known healthy at `https://73x3fcaaze.us-east-1.awsapprunner.com`.
+- **No EAS build cut** this session. Plan A is on `main` but not yet in any TestFlight build.
+- **Watch:** unchanged.
 
 ---
 
-## B133 — shipped this session
+## ⚠️ Migration 0023 — committed but NOT applied to the live DB
 
-Five items, all on `main`, one commit each. Two more bug reports (A, B) were captured via Open Brain and folded into the bundle.
+Plan A Task 1 created `packages/db/supabase/migrations/0023_daily_goal_minutes.sql` and updated the Drizzle schema default — but, by explicit choice during execution, the migration was **not run against the live database**. The file is on `main`; the database still has the old card-count `daily_goal` values and default (20).
 
-| Commit | Item | Side |
-|---|---|---|
-| `975307f` | **Item 5** — daily-reminder triggers collapsed to one | API + Lambda |
-| `994974a` | **Bug B** — Dashboard "review pace dropped 0%" → real % | API |
-| `bc1cfc8` | **Item 6** — Study speaker icon unstuck (audio reset + TTS watchdog) | mobile |
-| `67c7d10` | **Item 7** — VoiceEvaluator empty-transcript retry hint | mobile |
-| `6655067` | **Bug A** — Speak vocab accepts the kanji-form transcript | mobile |
-| `e09cde7` | EAS-bumped `ios.buildNumber` → 133 | mobile config |
+**This must be applied before a build carrying Plan A reaches testers** — otherwise existing testers' `daily_goal` (e.g. 20, 50 — old card counts) is read as a minutes budget, and new rows still default to 20.
 
-**Item 5 detail.** `sendDailyReminders()` had **three** live triggers (in-app `node-cron`, an hourly EventBridge Rule, and a redundant daily EventBridge Scheduler) — a 2–3× notification flood. Fix: the in-app cron was deleted; the hourly EventBridge Rule `kanji-learn-hourly-reminders` is now the **single source of truth**; rest-day summaries moved into `POST /internal/daily-reminders`; the Lambda's hourly tutor-analysis chain was removed (tutor analysis stays on its in-app 03:00 UTC cron). **AWS change applied:** the `kanji-learn-daily-reminders` Scheduler is now `DISABLED` (reversible).
+The migration is wrapped in `BEGIN/COMMIT`. It sets the `daily_goal` column default to 15 and **resets every existing `user_profiles.daily_goal` row to 15** — pre-launch testers re-pick their goal in Profile.
 
-**Bug A detail.** Speak vocab words (e.g. 貸付) always failed. Root cause confirmed from the prod `voice_attempts` log: the iOS recognizer returns **kanji** transcripts, and the evaluator's kanji-expansion can't rebuild compound readings (rendaku/jukujikun/okurigana). Fix: in vocab mode the client now sends the word's kanji form alongside the kana reading, so an exact transcript-vs-word match resolves it. **A deeper data bug was found and spawned as a separate task:** `kanji.kun_readings`/`on_readings` are truncated to ~5 sorted entries — this degrades Study-card displays and the Speaking evaluator's expansion index. Not in B133.
+### How to apply it
 
-**Bug B detail (resolved 2026-05-18, post-B133).** B133's code fix (`994974a`) was correct but did not visibly fix the "review pace dropped 0%" nudge: 3 stale `velocity_drop` intervention rows created *before* B133 carried the old hard-coded `dropPct: 0`, and `runChecks`'s `hasOpenIntervention` guard kept the corrected code from ever superseding them. Fix: the 3 stale rows were resolved in the DB (`UPDATE interventions SET resolved_at = now() WHERE type='velocity_drop' AND resolved_at IS NULL`) — `runChecks` now regenerates correct interventions. A mid-debugging code commit (`5c790ec`, `parseInterventionPayload`) was a misdiagnosis and was reverted (`d86d1a0`); the API was redeployed clean. Separately spawned as its own task: `interventions.payload` jsonb is stored double-encoded (a Drizzle/postgres-js quirk) — harmless to the JS round-trip but it breaks SQL-side payload queries.
+A runner script is committed: `scripts/run-migration-0023.mjs` (mirrors the existing `run-migration-0010.mjs` pattern — uses the `postgres` package, no `psql` needed). From the repo root:
 
-**B133 verification still owed:**
-- **Item 5** — over the next hours, App Runner logs should show **one** `[Internal] Daily reminder job triggered` per hour and **no** `[Cron] Running hourly reminder check` line; one daily-reminder push on device, no duplicate.
-- **Items 6, 7, Bug A** — on-device once B133 lands on TestFlight: speaker icon un-sticks on Study; empty-transcript hint on Speaking; reported Speak vocab words now pass.
-- **Bug B** — ✅ resolved (stale rows cleared 2026-05-18). A regenerated velocity_drop nudge shows the real % — appears only for a user with a current ≥50% week-over-week drop.
-
-**Known pre-existing issue (not B133):** `apps/api/test/integration/social-mute.test.ts:25` has a `FastifyRegisterOptions` typecheck error that exists on `main` independently — untouched here, flagged for a future sweep.
-
----
-
-## Practice Loop — brainstormed & planned this session
-
-The Three-Modality Learning Loop (old "Plan B") was brainstormed in full and decomposed into a **three-spec arc**:
-
-- **Spec 1 — The Practice Loop** — `docs/superpowers/specs/2026-05-17-practice-loop-design.md` (committed `6b7e43a`). Collapses Study / Speaking / Writing into one time-boxed, per-kanji-routed session with a quiz verification leg. Removes the Write & Speak tabs (absorbed into the loop) and promotes Browse to a tab.
-- **Spec 1.5 — FSRS migration** — replace the SM-2 scheduler with FSRS so per-kanji *retrievability* becomes a real confidence signal. Best done pre-launch while the dataset is tiny. Own brainstorm, not yet written.
-- **Spec 2 — Buddy, the AI tutor** — the monkey mascot becomes an in-app AI coach: cross-modality weakness detection, focus suggestions, AI mnemonic co-building. Repurposes the Journal tab into a "Buddy" tab. Own brainstorm, not yet written. (Buddy is the thing Buddy-the-owner is most excited about — but it depends on the loop's data, so 1 → 1.5 → 2.)
-
-**Spec 1 itself is being implemented as three sequential plans**, each independently shippable:
-
-- **Plan A — Minutes-Based Study Goal** — `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md` (committed `e979b7a`). **Written and ready.** 9 tasks: the `daily_goal`→minutes migration, onboarding/profile copy, the time-boxed review store, `didMeetTimeGoal` (TDD), SessionComplete rewiring, the time-remaining indicator, the dashboard fix, "Keep studying."
-- **Plan B — Loop legs + nav** — per-kanji routing (new kanji → flashcard→writing→speaking; weak review kanji → writing+speaking), reusing `WritingPractice`/`VoiceEvaluator` inside the loop; remove the Write & Speak tabs. **Not yet written** — write it (via `superpowers:writing-plans`) after Plan A ships.
-- **Plan C — Quiz leg + Browse tab + telemetry** — wire the existing quiz engine in for "maybe-slipping" review kanji (Medium feedback: a failed quiz counts as a lapse); promote Browse to a tab. **Not yet written.**
-
----
-
-## Next session — execute Plan A
-
-Decided this session: execution uses the **Subagent-Driven** approach.
-
-```
-cd /Users/rdennis/Documents/projects/kanji-learn
-git pull origin main
-# Then: invoke the superpowers:subagent-driven-development skill, pointed at
-#   docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md
-# It dispatches a fresh subagent per task with review checkpoints between tasks.
-# (A dedicated git worktree for the execution is recommended.)
+```bash
+DATABASE_URL='<your Supabase Postgres connection string>' node scripts/run-migration-0023.mjs
 ```
 
-Plan A ships independently — when it's done the daily goal is minutes and the study session is time-boxed (still flashcard-only). Then write & execute Plan B, then Plan C. After the Practice Loop: Spec 1.5 (FSRS) and Spec 2 (Buddy) each get their own brainstorm.
+`DATABASE_URL` is the same connection string the API uses. The script prints `Migration 0023 applied ✓` and the new `column_default` (should be `15`) on success; on failure the transaction rolls back and nothing changes.
+
+**Alternative** (if you have `psql`): `psql "$DATABASE_URL" -f packages/db/supabase/migrations/0023_daily_goal_minutes.sql`
+
+**Verify** afterwards:
+```sql
+SELECT column_default FROM information_schema.columns
+WHERE table_name = 'user_profiles' AND column_name = 'daily_goal';   -- expect 15
+SELECT DISTINCT daily_goal FROM user_profiles;                        -- expect only 15
+```
+
+---
+
+## Plan A — executed & merged this session
+
+All 9 tasks of `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md`, each spec- and code-reviewed:
+
+1. **DB migration `0023`** — `daily_goal` reinterpreted as minutes; Drizzle default 20→15. (File only — see migration section above.)
+2. **Onboarding** — "How many minutes per day?" · options 5/10/15/20/30 · default 15.
+3. **Profile** — daily-goal editor reuses the onboarding options · "Minutes per day" label.
+4. **Review store** — the study session is time-boxed; `submitResult` ends the session when the minutes budget elapses (checked after each grade, never mid-card). Weak/missed drills stay count-bounded.
+5. **`didMeetTimeGoal`** (TDD) — replaces the old card-count `didCrossGoal`.
+6. **SessionComplete** — the 🎉 banner celebrates the minutes goal; the dead `reviewedBefore`/analytics plumbing was removed.
+7. **study.tsx** — `dailyGoal` fallback →15; a live "Nm left" countdown in the session header.
+8. **Dashboard** — shows "N reviewed today" instead of a cards-vs-goal fraction.
+9. **"Keep studying"** — a Session Complete action to continue past the daily goal.
+
+Two **review-driven fixes** were folded in: migration `0023` wrapped in `BEGIN/COMMIT` to match sibling migrations, and the offline-fallback path resets to a fresh `studyStartMs` (a stale cached timestamp would have ended a time-boxed session on the first card).
+
+**Verified:** mobile typecheck clean · mobile jest 37/37 · API typecheck shows only the one pre-existing unrelated `social-mute.test.ts:25` error.
+
+**Plan A verification still owed:** an **on-device walkthrough** — countdown visible, session ends after the in-progress card (not mid-card), 🎉 banner on goal met, "Keep studying" starts a fresh timed segment, Dashboard shows the plain review count. Best done in the next EAS build.
+
+**Minor follow-ups flagged by reviewers (out of Plan A scope):**
+- WCAG: `colors.textMuted` on the dark background is ~3.86:1 — under AA 4.5:1 for 12px caption text. Affects the new `timeLeft` label *and* the pre-existing `counter` / `swipeHint`. Project-wide debt, not a Plan A regression.
+- The `minutesLeft` countdown is `Math.ceil`-rounded (plan-specified) — shows "0m left" briefly at expiry.
+
+### ⚠️ Process note — subagent commits leaked onto `main`
+
+During Plan A's subagent-driven execution, subagent `git commit` calls intermittently landed on the `main` branch instead of the execution worktree's branch — four Plan-A commits ended up on `main` directly, and three task commits were briefly orphaned. This was caught by the final review, recovered cleanly (cherry-pick onto the worktree branch; then `main` was reset to `8b0ba20` and the complete branch merged in as `def0009`), and verified. **For the next subagent-driven run: after each task, confirm the feature branch ref actually advanced and `main` was not touched.**
+
+---
+
+## Plan B — written this session, ready to execute
+
+`docs/superpowers/plans/2026-05-18-practice-loop-legs-and-nav.md` (committed `cb11bd7`). **6 tasks:**
+
+1. **API — guaranteed new-kanji allowance** — `getReviewQueue` reserves a small front-loaded new-kanji batch (`NEW_KANJI_FLOOR = 4`) via a pure, unit-tested `planQueueSlots` helper. (This is the §3 allowance Plan A deferred.)
+2. **`WritingLeg`** component — wraps `WritingPractice` for one kanji.
+3. **`SpeakingLeg`** component — wraps `VoiceEvaluator` for one kanji.
+4. **Review store** — per-kanji `leg` state machine (`flashcard → writing → speaking`); the time-box check moves to the end of a kanji's full path.
+5. **study.tsx** — renders the writing/speaking legs based on `leg`.
+6. **Remove the Write & Speak tabs** — delete `writing.tsx` / `voice.tsx`; tab bar goes 7 → 5.
+
+**The mechanic:** after the flashcard grade, new kanji and weak (Again/Hard) review kanji route through `writing → speaking`; Good/Easy review kanji end immediately.
+
+**Design decisions baked into the plan (review before executing):**
+- Speaking leg uses `VoiceEvaluator`'s legacy kanji-reading layout (no vocab `voicePrompt`) — the vocab-word layout is deferred to Plan C.
+- No changes to `WritingPractice` / `VoiceEvaluator` internals — they already self-record attempts (`/v1/review/writing`, `/v1/review/voice`), so §6 telemetry comes for free.
+- Leg routing gated on `goalMinutes > 0` — weak/missed drills stay flashcard-only.
+- The new-kanji allowance is front-loaded so the time-box reaches it on heavy review days.
+
+**Execute Plan B** via `superpowers:subagent-driven-development`, ideally from a fresh session and a dedicated worktree. Run tasks in order — Tasks 4→5 are a pair (the store change is transiently incomplete until study.tsx renders the legs); Task 6 (tab removal) last so the loop's legs exist before the standalone tabs disappear.
+
+## Plan C — still to be written
+
+**Quiz leg + Browse tab + telemetry.** Wire the existing quiz engine in for "maybe-slipping" review kanji (spec §2/§4 — a failed quiz counts as a lapse and resurfaces the card sooner); promote Browse to a tab (spec §1); add the Session Complete modality breakdown (spec §5). Write it via `superpowers:writing-plans` after Plan B ships.
+
+After the Practice Loop: Spec 1.5 (FSRS migration) and Spec 2 (Buddy, the AI tutor) each get their own brainstorm.
+
+---
+
+## B133 — verification carry-forward
+
+B133 shipped and was submitted to TestFlight last session. Still owed:
+- **Item 5** — App Runner logs should show one `[Internal] Daily reminder job triggered` per hour and no `[Cron] Running hourly reminder check`; one daily-reminder push, no duplicate.
+- **Items 6, 7, Bug A** — on-device on TestFlight: Study speaker icon un-sticks; empty-transcript hint on Speaking; reported Speak vocab words pass.
+- **Bug B** — resolved (stale `velocity_drop` rows cleared 2026-05-18).
+
+**Known pre-existing issue (not Plan A, not B133):** `apps/api/test/integration/social-mute.test.ts:25` has a `FastifyRegisterOptions` typecheck error that exists on `main` independently — flagged for a future sweep.
 
 ---
 
@@ -80,7 +122,7 @@ Untracked items in the main checkout. Still need eyeball decisions:
 
 | Item | Recommendation |
 |---|---|
-| `.claude/worktrees/` | gitignore (Claude scratch). The `loving-greider-2122d0` worktree used this session is fully merged to `main` and can be removed. |
+| `.claude/worktrees/` | gitignore (Claude scratch). |
 | `apps/lambda/daily-reminders/daily-reminders.zip` | gitignore (build artifact) |
 | `apps/mobile/credentials.json` | **gitignore IMMEDIATELY if it contains secrets** — verify content first |
 | `apps/watch/KanjiLearnWatch.xcodeproj/xcshareddata/` | gitignore (Xcode personal prefs) |
@@ -99,6 +141,7 @@ Untracked items in the main checkout. Still need eyeball decisions:
 
 | | Item | Status |
 |---|---|---|
+| 🚀 | Apply migration `0023` to the live DB | **owed — see the migration section above** |
 | 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed |
 | 🚀 | Migrate Supabase DB `ap-southeast-2` → `us-east-1` | Cross-region tax; dedicated session |
 | 🚀 | SES out of sandbox | Needed for tutor-share email at scale |
@@ -108,18 +151,19 @@ Untracked items in the main checkout. Still need eyeball decisions:
 
 ## Other open follow-ups
 
-- **Truncated kanji readings** — `kanji.kun_readings`/`on_readings` capped at ~5 sorted entries; re-import full KanjiDic2 readings. Spawned as a task this session.
-- **The "Kanji Buddy 1.0" rebrand** (old plan "C") — rename Kanji Learn → Kanji Buddy, splash polish, About/Credits branding. Independent of the Practice Loop; can slot in whenever. Needs a brand-decision block first.
+- **Truncated kanji readings** — `kanji.kun_readings`/`on_readings` capped at ~5 sorted entries; re-import full KanjiDic2 readings.
+- **The "Kanji Buddy 1.0" rebrand** — rename Kanji Learn → Kanji Buddy, splash polish, About/Credits branding. Independent of the Practice Loop. Needs a brand-decision block first.
 - **Tutor report writing scope-down** — the report still surfaces a Writing modality that Study no longer serves; revisit alongside the loop work.
 - **Phase 3 #13 — Milestones panel refactor** — spec captured earlier; after the Practice Loop.
+- **`interventions.payload` double-encoded** — stored double-encoded jsonb (a Drizzle/postgres-js quirk); harmless to the JS round-trip but breaks SQL-side payload queries.
 
 ---
 
 ## Working environment notes
 
-- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com` — healthy.
-- **Supabase:** still `ap-southeast-2`. Two migration systems live in `packages/db`: `drizzle/` (0000–0011) and `supabase/migrations/` (0001–0022, the live one). Plan A adds `supabase/migrations/0023_daily_goal_minutes.sql`.
-- **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. App Runner ARN wired in.
+- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`.
+- **Supabase:** still `ap-southeast-2`. Migration files live in `packages/db/supabase/migrations/` (`0001`–`0023`). Apply `0023` with `scripts/run-migration-0023.mjs` (see the migration section).
+- **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. (No API deploy needed for Plan A; Plan B Task 1 *does* change the API and will need one.)
 - **EAS builds:** from `apps/mobile/`, ~$2/build. `eas build --platform ios --profile production`. EAS auto-bumps `ios.buildNumber` — **never hand-edit `app.json`**. Submit with `eas submit`.
 - **Watch builds:** **manual Xcode rebuild only** — EAS does not build the watchOS target.
 - **Co-author convention:** every kanji-learn commit includes `Co-Authored-By: Robert A. Dennis (Buddy)` alongside the Claude co-author line.
