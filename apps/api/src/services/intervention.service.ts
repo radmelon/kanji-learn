@@ -21,6 +21,32 @@ export interface ActiveIntervention {
   payload: Record<string, unknown>
 }
 
+/**
+ * Decode an intervention's stored payload into a plain object.
+ *
+ * The `payload` jsonb column is double-encoded on write — a Drizzle/postgres-js
+ * jsonb interaction stores the object as a JSON *string* scalar, so a row read
+ * back gives `payload` as a string, not an object. Left undecoded, buildMessage's
+ * `payload.dropPct` / `.hoursAgo` etc. are always `undefined` — which is why the
+ * velocity-drop nudge always read "dropped 0%". A plain object passes through
+ * unchanged, so a future write-side fix needs no change here.
+ */
+export function parseInterventionPayload(raw: unknown): Record<string, unknown> {
+  if (typeof raw === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      return parsed !== null && typeof parsed === 'object'
+        ? (parsed as Record<string, unknown>)
+        : {}
+    } catch {
+      return {}
+    }
+  }
+  return raw !== null && typeof raw === 'object'
+    ? (raw as Record<string, unknown>)
+    : {}
+}
+
 // ─── Intervention Engine ──────────────────────────────────────────────────────
 
 export class InterventionService {
@@ -100,7 +126,7 @@ export class InterventionService {
       id: r.id,
       type: r.type as InterventionType,
       triggeredAt: r.triggeredAt,
-      payload: r.payload as Record<string, unknown>,
+      payload: parseInterventionPayload(r.payload),
     }))
   }
 
