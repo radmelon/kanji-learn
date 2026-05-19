@@ -206,6 +206,15 @@ function StudySession() {
     return () => reset()
   }, [profile])
 
+  // A weak/missed drill loads its queue before navigation and sets isWeakDrill.
+  // The Study tab stays mounted across tab switches, so the phase lazy
+  // initializer may have already run (with isWeakDrill false) on an earlier
+  // visit. Flip to 'active' reactively so the drill skips the Ready screen and
+  // its queue is never overwritten by a Begin tap.
+  useEffect(() => {
+    if (isWeakDrill) setPhase('active')
+  }, [isWeakDrill])
+
   // Re-apply the playback audio session whenever the Study tab gains focus.
   // The Speaking tab's recognizer leaves the iOS session in a record category;
   // without this, expo-speech TTS on a card plays no sound and its callbacks
