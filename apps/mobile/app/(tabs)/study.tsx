@@ -44,6 +44,7 @@ import { MnemonicNudgeSheet } from '../../src/components/study/MnemonicNudgeShee
 import { WritingLeg } from '../../src/components/study/WritingLeg'
 import { SpeakingLeg } from '../../src/components/study/SpeakingLeg'
 import { QuizLeg } from '../../src/components/study/QuizLeg'
+import { ReadyScreen } from '../../src/components/study/ReadyScreen'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 const HELP_KEY = 'kl_has_seen_study_help'
@@ -58,6 +59,12 @@ function StudySession() {
   const dailyGoal = profile?.dailyGoal ?? 15
 
   const [isRevealed, setIsRevealed] = useState(false)
+  // The Study tab opens on the Ready screen ('ready'); Begin loads the queue
+  // and switches to 'active'. A weak/missed drill loads its queue before
+  // navigation, so it starts straight in 'active'.
+  const [phase, setPhase] = useState<'ready' | 'active'>(
+    () => (useReviewStore.getState().isWeakDrill ? 'active' : 'ready')
+  )
   const [isSaving, setIsSaving] = useState(false)
   // Romaji toggle persists for the whole session — user sets it once and it sticks across cards
   const [showRomaji, setShowRomaji] = useState(false)
@@ -193,11 +200,9 @@ function StudySession() {
     // whose actual dailyGoal is smaller.
     if (!profile) return
     syncPendingSessions()
-    // Skip loadQueue when arriving from "Drill Weak Spots" — the weak queue
-    // was already loaded by loadWeakQueue() before navigation and must not be overwritten.
-    if (!useReviewStore.getState().isWeakDrill) {
-      loadQueue(dailyGoal)
-    }
+    // The queue is loaded on demand — a normal session loads it from the
+    // Ready screen's Begin action; weak/missed drills load it before
+    // navigation (and start in the 'active' phase).
     return () => reset()
   }, [profile])
 
@@ -313,6 +318,11 @@ function StudySession() {
     }
   }, [undoLastResult])
 
+  const handleBegin = useCallback(() => {
+    setPhase('active')
+    loadQueue(dailyGoal)
+  }, [loadQueue, dailyGoal])
+
   const handleFinish = useCallback(async () => {
     setIsSaving(true)
     const { results } = useReviewStore.getState()
@@ -371,6 +381,12 @@ function StudySession() {
       setIsSaving(false)
     }
   }, [finishSession, queue])
+
+  // ── Ready screen ──────────────────────────────────────────────────────────
+
+  if (phase === 'ready') {
+    return <ReadyScreen goalMinutes={dailyGoal} onBegin={handleBegin} />
+  }
 
   // ── Loading ──────────────────────────────────────────────────────────────
 
@@ -440,6 +456,7 @@ function StudySession() {
           // so without this reset the state survives and the user gets stuck.
           setSessionSummary(null)
           reset()
+          setPhase('ready')
           router.replace('/(tabs)')
         }}
         onReview={() => {
