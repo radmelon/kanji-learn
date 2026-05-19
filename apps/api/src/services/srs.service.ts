@@ -58,6 +58,31 @@ export function selectVoicePrompt(
   return { type: 'vocab', ...valid[idx], targetKanji }
 }
 
+/** Guaranteed minimum new/unseen kanji in a review queue, so a heavy review
+ *  day still introduces some new material (Practice Loop spec §3). */
+export const NEW_KANJI_FLOOR = 4
+
+/**
+ * Pure slot allocation for the review queue. Given how many due and new cards
+ * are available, returns how many of each to use:
+ *   - `guaranteedNew` — new kanji front-loaded so the time-boxed session
+ *     reaches them even on a heavy review day.
+ *   - `dueKeep` — due reviews, filling the bulk of the queue.
+ *   - `fillNew` — extra new cards filling any slots left over.
+ * The three counts never sum to more than `limit`.
+ */
+export function planQueueSlots(
+  dueCount: number,
+  newCount: number,
+  limit: number,
+  newFloor: number,
+): { guaranteedNew: number; dueKeep: number; fillNew: number } {
+  const guaranteedNew = Math.min(newFloor, newCount, limit)
+  const dueKeep = Math.min(dueCount, limit - guaranteedNew)
+  const fillNew = Math.min(newCount - guaranteedNew, limit - guaranteedNew - dueKeep)
+  return { guaranteedNew, dueKeep, fillNew }
+}
+
 // ─── SRS Service ──────────────────────────────────────────────────────────────
 
 export class SrsService {
@@ -108,37 +133,41 @@ export class SrsService {
       .orderBy(asc(userKanjiProgress.nextReviewAt))
       .limit(limit)
 
-    // 2. New unseen cards to fill remaining slots
-    const remaining = limit - dueCards.length
-    const newCards =
-      remaining > 0
-        ? await this.db
-            .select({
-              kanjiId: kanji.id,
-              character: kanji.character,
-              jlptLevel: kanji.jlptLevel,
-              meanings: kanji.meanings,
-              kunReadings: kanji.kunReadings,
-              onReadings: kanji.onReadings,
-              exampleVocab: kanji.exampleVocab,
+    // 2. New unseen cards — fetched up to `limit`; planQueueSlots decides how
+    //    many to actually use (a guaranteed floor is front-loaded — spec §3).
+    const newCardRows = await this.db
+      .select({
+        kanjiId: kanji.id,
+        character: kanji.character,
+        jlptLevel: kanji.jlptLevel,
+        meanings: kanji.meanings,
+        kunReadings: kanji.kunReadings,
+        onReadings: kanji.onReadings,
+        exampleVocab: kanji.exampleVocab,
         exampleSentences: kanji.exampleSentences,
-              strokeCount: kanji.strokeCount,
-              radicals: kanji.radicals,
-              nelsonClassic: kanji.nelsonClassic,
-              nelsonNew: kanji.nelsonNew,
-              morohashiIndex: kanji.morohashiIndex,
-              morohashiVolume: kanji.morohashiVolume,
-              morohashiPage: kanji.morohashiPage,
-            })
-            .from(kanji)
-            .where(
-              sql`${kanji.id} NOT IN (
-                SELECT kanji_id FROM user_kanji_progress WHERE user_id = ${userId}
-              )`
-            )
-            .orderBy(asc(kanji.jlptLevel), asc(kanji.jlptOrder))
-            .limit(remaining)
-        : []
+        strokeCount: kanji.strokeCount,
+        radicals: kanji.radicals,
+        nelsonClassic: kanji.nelsonClassic,
+        nelsonNew: kanji.nelsonNew,
+        morohashiIndex: kanji.morohashiIndex,
+        morohashiVolume: kanji.morohashiVolume,
+        morohashiPage: kanji.morohashiPage,
+      })
+      .from(kanji)
+      .where(
+        sql`${kanji.id} NOT IN (
+          SELECT kanji_id FROM user_kanji_progress WHERE user_id = ${userId}
+        )`
+      )
+      .orderBy(asc(kanji.jlptLevel), asc(kanji.jlptOrder))
+      .limit(limit)
+
+    // Allocate slots: a guaranteed new-kanji batch is front-loaded, then due
+    // reviews, then any leftover slots go to more new cards.
+    const slots = planQueueSlots(dueCards.length, newCardRows.length, limit, NEW_KANJI_FLOOR)
+    const guaranteedNewRows = newCardRows.slice(0, slots.guaranteedNew)
+    const dueRows = dueCards.slice(0, slots.dueKeep)
+    const fillNewRows = newCardRows.slice(slots.guaranteedNew, slots.guaranteedNew + slots.fillNew)
 
     // 3. Surprise burned checks (~12%)
     const surpriseCount = Math.ceil(limit * SURPRISE_BURNED_CHECK_RATE)
@@ -177,43 +206,50 @@ export class SrsService {
     // through, and the client then calls .map()/.join() on a string → RCTFatal.
     const toArr = <T,>(v: unknown): T[] => Array.isArray(v) ? v as T[] : []
 
+    const mapDue = (c: (typeof dueCards)[number]) => ({
+      ...c,
+      status: c.status ?? 'learning',
+      readingStage: c.readingStage ?? 0,
+      reviewType: this.pickReviewType(c.readingStage ?? 0, c.status ?? 'learning'),
+      meanings: toArr<string>(c.meanings),
+      kunReadings: toArr<string>(c.kunReadings),
+      onReadings: toArr<string>(c.onReadings),
+      radicals: toArr<string>(c.radicals),
+      exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(c.exampleVocab),
+      exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(c.exampleSentences),
+    })
+
+    const mapNew = (c: (typeof newCardRows)[number]) => ({
+      ...c,
+      status: 'unseen' as const,
+      readingStage: 0,
+      reviewType: 'meaning' as const,
+      meanings: toArr<string>(c.meanings),
+      kunReadings: toArr<string>(c.kunReadings),
+      onReadings: toArr<string>(c.onReadings),
+      radicals: toArr<string>(c.radicals),
+      exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(c.exampleVocab),
+      exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(c.exampleSentences),
+    })
+
+    const mapBurned = (c: (typeof burnedChecks)[number]) => ({
+      ...c,
+      status: c.status ?? 'burned',
+      readingStage: c.readingStage ?? 4,
+      reviewType: this.pickReviewType(c.readingStage ?? 4, 'burned'),
+      meanings: toArr<string>(c.meanings),
+      kunReadings: toArr<string>(c.kunReadings),
+      onReadings: toArr<string>(c.onReadings),
+      radicals: toArr<string>(c.radicals),
+      exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(c.exampleVocab),
+      exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(c.exampleSentences),
+    })
+
     const queue: ReviewQueueItem[] = [
-      ...dueCards.map((c) => ({
-        ...c,
-        status: c.status ?? 'learning',
-        readingStage: c.readingStage ?? 0,
-        reviewType: this.pickReviewType(c.readingStage ?? 0, c.status ?? 'learning'),
-        meanings: toArr<string>(c.meanings),
-        kunReadings: toArr<string>(c.kunReadings),
-        onReadings: toArr<string>(c.onReadings),
-        radicals: toArr<string>(c.radicals),
-        exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(c.exampleVocab),
-        exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(c.exampleSentences),
-      })),
-      ...newCards.map((c) => ({
-        ...c,
-        status: 'unseen' as const,
-        readingStage: 0,
-        reviewType: 'meaning' as const,
-        meanings: toArr<string>(c.meanings),
-        kunReadings: toArr<string>(c.kunReadings),
-        onReadings: toArr<string>(c.onReadings),
-        radicals: toArr<string>(c.radicals),
-        exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(c.exampleVocab),
-        exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(c.exampleSentences),
-      })),
-      ...burnedChecks.map((c) => ({
-        ...c,
-        status: c.status ?? 'burned',
-        readingStage: c.readingStage ?? 4,
-        reviewType: this.pickReviewType(c.readingStage ?? 4, 'burned'),
-        meanings: toArr<string>(c.meanings),
-        kunReadings: toArr<string>(c.kunReadings),
-        onReadings: toArr<string>(c.onReadings),
-        radicals: toArr<string>(c.radicals),
-        exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(c.exampleVocab),
-        exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(c.exampleSentences),
-      })),
+      ...guaranteedNewRows.map(mapNew),
+      ...dueRows.map(mapDue),
+      ...fillNewRows.map(mapNew),
+      ...burnedChecks.map(mapBurned),
     ]
 
     return queue
