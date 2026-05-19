@@ -5,6 +5,9 @@ node_modules/
 # ── Superpowers brainstorm artifacts ──────────────────────────────────────────
 .superpowers/
 
+# ── Claude Code worktrees (isolated scratch checkouts) ────────────────────────
+.claude/worktrees/
+
 # ── Build outputs ─────────────────────────────────────────────────────────────
 dist/
 build/
