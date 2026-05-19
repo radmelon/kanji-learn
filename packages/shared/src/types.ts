@@ -87,6 +87,10 @@ export interface ReviewQueueItem extends ReviewItem {
   morohashiIndex: number | null
   morohashiVolume: number | null
   morohashiPage: number | null
+  /** True when the loop should route this kanji to a quiz check on a Good/Easy
+   *  grade (Practice Loop spec §2). Optional — set only by getReviewQueue;
+   *  absent (falsy) on every other queue. */
+  maybeSlipping?: boolean
 }
 
 // ─── Voice prompt (reading-queue items) ───────────────────────────────────────

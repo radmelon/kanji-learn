@@ -83,6 +83,21 @@ export function planQueueSlots(
   return { guaranteedNew, dueKeep, fillNew }
 }
 
+/** How many of a kanji's most recent reviews the "recently shaky" check looks at. */
+export const RECENT_REVIEW_WINDOW = 3
+
+/**
+ * True when a kanji is "recently shaky" — it has a Hard (quality 3) or Again
+ * (quality 0–2) grade among its most recent reviews. One of the two "maybe
+ * slipping" triggers (Practice Loop spec §2): despite a Good/Easy self-grade
+ * today, a recently-shaky review kanji is routed to a quiz check.
+ *
+ * @param recentGrades the kanji's review grades, MOST RECENT FIRST.
+ */
+export function isRecentlyShaky(recentGrades: number[]): boolean {
+  return recentGrades.slice(0, RECENT_REVIEW_WINDOW).some((q) => q <= 3)
+}
+
 // ─── SRS Service ──────────────────────────────────────────────────────────────
 
 export class SrsService {
@@ -169,6 +184,28 @@ export class SrsService {
     const dueRows = dueCards.slice(0, slots.dueKeep)
     const fillNewRows = newCardRows.slice(slots.guaranteedNew, slots.guaranteedNew + slots.fillNew)
 
+    // "Maybe slipping" trigger (a): a due review kanji with a Hard/Again grade
+    // in its last few reviews. Burned-check cards are trigger (b) — flagged
+    // unconditionally in mapBurned below. (Practice Loop spec §2.)
+    const dueKanjiIds = dueRows.map((c) => c.kanjiId)
+    const recentLogs = dueKanjiIds.length > 0
+      ? await this.db
+          .select({ kanjiId: reviewLogs.kanjiId, quality: reviewLogs.quality })
+          .from(reviewLogs)
+          .where(and(eq(reviewLogs.userId, userId), inArray(reviewLogs.kanjiId, dueKanjiIds)))
+          .orderBy(desc(reviewLogs.reviewedAt))
+      : []
+    const gradesByKanji = new Map<number, number[]>()
+    for (const log of recentLogs) {
+      const arr = gradesByKanji.get(log.kanjiId) ?? []
+      arr.push(log.quality)
+      gradesByKanji.set(log.kanjiId, arr)
+    }
+    const shakyKanji = new Set<number>()
+    for (const [kid, grades] of gradesByKanji) {
+      if (isRecentlyShaky(grades)) shakyKanji.add(kid)
+    }
+
     // 3. Surprise burned checks (~12%)
     const surpriseCount = Math.ceil(limit * SURPRISE_BURNED_CHECK_RATE)
     const burnedChecks = await this.db
@@ -211,6 +248,7 @@ export class SrsService {
       status: c.status ?? 'learning',
       readingStage: c.readingStage ?? 0,
       reviewType: this.pickReviewType(c.readingStage ?? 0, c.status ?? 'learning'),
+      maybeSlipping: shakyKanji.has(c.kanjiId),
       meanings: toArr<string>(c.meanings),
       kunReadings: toArr<string>(c.kunReadings),
       onReadings: toArr<string>(c.onReadings),
@@ -237,6 +275,7 @@ export class SrsService {
       status: c.status ?? 'burned',
       readingStage: c.readingStage ?? 4,
       reviewType: this.pickReviewType(c.readingStage ?? 4, 'burned'),
+      maybeSlipping: true,
       meanings: toArr<string>(c.meanings),
       kunReadings: toArr<string>(c.kunReadings),
       onReadings: toArr<string>(c.onReadings),
