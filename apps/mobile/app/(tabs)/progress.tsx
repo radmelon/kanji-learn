@@ -5,7 +5,6 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
 import { useAuthStore } from '../../src/stores/auth.store'
 import { useProfile } from '../../src/hooks/useProfile'
 import { useAnalytics } from '../../src/hooks/useAnalytics'
@@ -190,7 +189,6 @@ const INFO_SESSION_HISTORY: InfoSection[] = [
 const INFO_HIT_SLOP = { top: 10, right: 10, bottom: 10, left: 10 }
 
 export default function ProgressScreen() {
-  const router = useRouter()
   const { user } = useAuthStore()
   const { profile } = useProfile()
   const { summary, isLoading, error, refresh } = useAnalytics()
