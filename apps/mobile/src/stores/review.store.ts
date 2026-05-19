@@ -42,6 +42,9 @@ interface PendingSession {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
+/** The current kanji's position within the Practice Loop. */
+export type LegName = 'flashcard' | 'writing' | 'speaking'
+
 interface ReviewState {
   queue: ReviewQueueItem[]
   currentIndex: number
@@ -56,6 +59,9 @@ interface ReviewState {
   isWeakDrill: boolean
   /** Minutes budget for the current session; 0 = count-bounded (weak/missed drills) */
   goalMinutes: number
+  /** The current kanji's leg in the loop. New + Again/Hard kanji run flashcard
+   *  → writing → speaking; Good/Easy review kanji stay on 'flashcard'. */
+  leg: LegName
 
   loadQueue: (goalMinutes: number) => Promise<void>
   submitResult: (result: ReviewResult) => void
@@ -65,6 +71,13 @@ interface ReviewState {
   syncPendingSessions: () => Promise<void>
   loadMissedQueue: () => boolean
   reset: () => void
+  /** Advance past the current kanji: bump the index, run the time-box check,
+   *  reset the leg. Called when a kanji's full path is done. */
+  endKanji: () => void
+  /** Writing leg finished → move to the speaking leg. */
+  completeWritingLeg: () => void
+  /** Speaking leg finished → advance to the next kanji. */
+  completeSpeakingLeg: () => void
 }
 
 export const useReviewStore = create<ReviewState>((set, get) => ({
@@ -82,9 +95,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   hasPendingSessions: false,
   isWeakDrill: false,
   goalMinutes: 0,
+  leg: 'flashcard',
 
   loadQueue: async (goalMinutes) => {
-    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false, goalMinutes })
+    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false, goalMinutes, leg: 'flashcard' })
 
     // Check for pending sessions immediately (fire-and-forget)
     const pending = await storage.getItem<PendingSession[]>(KEY_PENDING)
@@ -144,7 +158,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         set({ isLoading: false })
         return false
       }
-      set({ queue, studyStartMs: now, currentIndex: 0, results: [], isWeakDrill: true, goalMinutes: 0 })
+      set({ queue, studyStartMs: now, currentIndex: 0, results: [], isWeakDrill: true, goalMinutes: 0, leg: 'flashcard' })
       return true
     } catch (err: any) {
       set({ error: err?.message ?? 'Could not load weak kanji queue.' })
@@ -155,25 +169,51 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   submitResult: (result) => {
-    const { results, currentIndex, queue, studyStartMs, goalMinutes } = get()
+    const { results, queue, currentIndex, studyStartMs } = get()
     const newResults = [...results, result]
+    const item = queue[currentIndex]
+
+    // The flashcard grade is final at grade time — record + persist it now.
+    set({ results: newResults })
+    storage.setItem(KEY_PROGRESS, { userId: 'current', results: newResults, studyStartMs })
+
+    // Per-kanji loop routing — main loop only (weak/missed drills have
+    // goalMinutes 0 and stay flashcard-only). A new kanji, or a review kanji
+    // graded Again(1)/Hard(3), runs the writing → speaking legs before the
+    // loop advances. Good/Easy review kanji end immediately.
+    const { goalMinutes } = get()
+    const needsLegs =
+      goalMinutes > 0 &&
+      (item?.status === 'unseen' || result.quality === 1 || result.quality === 3)
+
+    if (needsLegs) {
+      set({ leg: 'writing' })
+    } else {
+      get().endKanji()
+    }
+  },
+
+  endKanji: () => {
+    const { currentIndex, queue, studyStartMs, goalMinutes } = get()
     const nextIndex = currentIndex + 1
 
     // The session ends when the queue is exhausted OR — for a time-boxed
-    // session (goalMinutes > 0) — when the minutes budget has elapsed. The
-    // check runs after the grade, so the current card is always finished.
+    // session (goalMinutes > 0) — when the minutes budget has elapsed. This
+    // check runs only when a kanji's FULL path is done, so a session never
+    // cuts off mid-writing or mid-speaking.
     const overBudget =
       goalMinutes > 0 && Date.now() - studyStartMs >= goalMinutes * 60_000
 
     set({
-      results: newResults,
       currentIndex: nextIndex,
       isComplete: nextIndex >= queue.length || overBudget,
+      leg: 'flashcard',
     })
-
-    // Persist progress so it survives app restarts
-    storage.setItem(KEY_PROGRESS, { userId: 'current', results: newResults, studyStartMs })
   },
+
+  completeWritingLeg: () => set({ leg: 'speaking' }),
+
+  completeSpeakingLeg: () => get().endKanji(),
 
   undoLastResult: () => {
     const { results, currentIndex, studyStartMs } = get()
@@ -181,7 +221,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     if (results.length === 0 || currentIndex === 0) return false
     const newResults = results.slice(0, -1)
     const prevIndex = currentIndex - 1
-    set({ results: newResults, currentIndex: prevIndex, isComplete: false })
+    set({ results: newResults, currentIndex: prevIndex, isComplete: false, leg: 'flashcard' })
     storage.setItem(KEY_PROGRESS, { userId: 'current', results: newResults, studyStartMs })
     return true
   },
@@ -276,12 +316,12 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       .map((card) => ({ ...card, reviewType: 'meaning' as const })) // reset to meaning for the re-drill
     if (missedCards.length === 0) return false
     storage.removeItem(KEY_PROGRESS)
-    set({ queue: missedCards, currentIndex: 0, results: [], isComplete: false, studyStartMs: Date.now(), error: null, goalMinutes: 0 })
+    set({ queue: missedCards, currentIndex: 0, results: [], isComplete: false, studyStartMs: Date.now(), error: null, goalMinutes: 0, leg: 'flashcard' })
     return true
   },
 
   reset: () => {
     storage.removeItem(KEY_PROGRESS)
-    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false, goalMinutes: 0 })
+    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false, goalMinutes: 0, leg: 'flashcard' })
   },
 }))
