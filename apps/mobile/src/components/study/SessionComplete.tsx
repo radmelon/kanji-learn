@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors, spacing, radius, typography } from '../../theme'
 import { motivationalMessage, didMeetTimeGoal } from './SessionComplete.messaging'
+import type { ModalityCounts } from '../../stores/review.store'
 
 interface Props {
   totalItems: number
@@ -17,6 +18,8 @@ interface Props {
   onKeepStudying: () => void
   /** user_profiles.daily_goal — the learner's daily minutes target */
   dailyGoal: number
+  /** Per-modality rep counts for the session — the loop's practice breakdown. */
+  modalityCounts: ModalityCounts
 }
 
 function formatTime(ms: number): string {
@@ -28,7 +31,7 @@ function formatTime(ms: number): string {
   return `${mins}m ${secs}s`
 }
 
-export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview, onKeepStudying, dailyGoal }: Props) {
+export function SessionComplete({ totalItems, correctItems, confidencePct, newLearned, burned, studyTimeMs, onDone, onReview, onKeepStudying, dailyGoal, modalityCounts }: Props) {
   const accuracy = confidencePct
   const wrong = totalItems - correctItems
   const accColor = accuracy >= 60 ? colors.success : accuracy >= 35 ? colors.warning : colors.error
@@ -91,6 +94,17 @@ export function SessionComplete({ totalItems, correctItems, confidencePct, newLe
           <StatChip icon="flame-outline" value={String(burned)} label="Burned" color={burned > 0 ? colors.burned : colors.textMuted} />
         </View>
 
+        {/* Modality breakdown — how the loop spent the session */}
+        <View style={styles.modalityCard}>
+          <Text style={styles.modalityTitle}>Practice breakdown</Text>
+          <View style={styles.modalityRow}>
+            <ModalityChip icon="albums-outline" value={modalityCounts.flashcard} label="Flashcard" />
+            <ModalityChip icon="pencil-outline" value={modalityCounts.writing} label="Writing" />
+            <ModalityChip icon="mic-outline" value={modalityCounts.speaking} label="Speaking" />
+            <ModalityChip icon="help-circle-outline" value={modalityCounts.quiz} label="Quiz" />
+          </View>
+        </View>
+
         {/* Actions */}
         <View style={styles.actions}>
           <TouchableOpacity style={styles.doneButton} onPress={onDone} activeOpacity={0.85}>
@@ -123,6 +137,22 @@ function StatChip({ icon, value, label, color }: { icon: string; value: string; 
     </View>
   )
 }
+
+function ModalityChip({ icon, value, label }: { icon: string; value: number; label: string }) {
+  return (
+    <View style={modalityChipStyles.item}>
+      <Ionicons name={icon as any} size={18} color={colors.textSecondary} />
+      <Text style={modalityChipStyles.value}>{value}</Text>
+      <Text style={modalityChipStyles.label}>{label}</Text>
+    </View>
+  )
+}
+
+const modalityChipStyles = StyleSheet.create({
+  item: { flex: 1, alignItems: 'center', gap: 2 },
+  value: { ...typography.h3, color: colors.textPrimary },
+  label: { ...typography.caption, color: colors.textMuted },
+})
 
 const chipStyles = StyleSheet.create({
   item: {
@@ -185,6 +215,17 @@ const styles = StyleSheet.create({
   accBarFill: { height: '100%', borderRadius: radius.full },
 
   statsRow: { flexDirection: 'row', gap: spacing.sm },
+
+  modalityCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  modalityTitle: { ...typography.bodySmall, color: colors.textMuted, fontWeight: '700' },
+  modalityRow: { flexDirection: 'row', gap: spacing.sm },
 
   actions: { gap: spacing.sm },
   doneButton: {
