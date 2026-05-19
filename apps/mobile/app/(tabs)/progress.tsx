@@ -217,10 +217,6 @@ export default function ProgressScreen() {
             <Text style={styles.title}>Progress</Text>
             <Text style={styles.subtitle}>{displayName}'s journey</Text>
           </View>
-          <TouchableOpacity style={styles.browseBtn} onPress={() => router.push('/browse')}>
-            <Ionicons name="search" size={14} color={colors.primary} />
-            <Text style={styles.browseBtnText}>Browse</Text>
-          </TouchableOpacity>
         </View>
 
         {isLoading && !summary ? (
@@ -801,12 +797,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   title: { ...typography.h1, color: colors.textPrimary },
   subtitle: { ...typography.body, color: colors.textSecondary },
-  browseBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderWidth: 1, borderColor: colors.primary + '66',
-    borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 6,
-  },
-  browseBtnText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
   heroRow: { flexDirection: 'row', gap: spacing.sm },
   accuracyRow: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
   accuracyCircle: {

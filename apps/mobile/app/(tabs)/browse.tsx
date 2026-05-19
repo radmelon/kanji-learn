@@ -1,12 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, ActivityIndicator, SafeAreaView,
+  TextInput, ActivityIndicator,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import { api } from '../src/lib/api'
-import { colors, spacing, radius, typography } from '../src/theme'
+import { api } from '../../src/lib/api'
+import { colors, spacing, radius, typography } from '../../src/theme'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,12 +134,9 @@ export default function BrowseScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Ionicons name="chevron-down" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
         <Text style={styles.title}>Browse Kanji</Text>
         <Text style={styles.count}>{total.toLocaleString()}</Text>
       </View>
@@ -277,7 +275,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-  backBtn: { padding: 4 },
   title: { ...typography.h2, color: colors.textPrimary, flex: 1 },
   count: { ...typography.caption, color: colors.textMuted },
   searchWrap: {
