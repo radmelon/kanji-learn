@@ -40,13 +40,15 @@ import { CompoundCard } from '../../src/components/study/CompoundCard'
 import { GradeButtons } from '../../src/components/study/GradeButtons'
 import { SessionComplete } from '../../src/components/study/SessionComplete'
 import { MnemonicNudgeSheet } from '../../src/components/study/MnemonicNudgeSheet'
+import { WritingLeg } from '../../src/components/study/WritingLeg'
+import { SpeakingLeg } from '../../src/components/study/SpeakingLeg'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 const HELP_KEY = 'kl_has_seen_study_help'
 
 function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset, studyStartMs, goalMinutes } =
+  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset, studyStartMs, goalMinutes, leg, completeWritingLeg, completeSpeakingLeg } =
     useReviewStore()
   // Respect the user's onboarding choice (5/10/15/20/30 minutes). Falls back
   // to 15 until the profile finishes loading on first mount.
@@ -462,6 +464,38 @@ function StudySession() {
         <ActivityIndicator color={colors.primary} size="large" />
         <Text style={styles.loadingText}>Finishing up…</Text>
       </SafeAreaView>
+    )
+  }
+
+  // ── Loop legs — writing / speaking ───────────────────────────────────────
+  // After the flashcard grade, a new or weak kanji is routed through the
+  // writing and speaking legs (review.store: leg state). leg === 'flashcard'
+  // falls through to the flashcard UI below.
+  const legItem = queue[currentIndex]
+  if (legItem && leg === 'writing') {
+    return (
+      <WritingLeg
+        key={`writing-${legItem.kanjiId}`}
+        item={legItem}
+        sessionIndex={currentIndex + 1}
+        sessionTotal={queue.length}
+        minutesLeft={minutesLeft}
+        onClose={() => router.back()}
+        onComplete={completeWritingLeg}
+      />
+    )
+  }
+  if (legItem && leg === 'speaking') {
+    return (
+      <SpeakingLeg
+        key={`speaking-${legItem.kanjiId}`}
+        item={legItem}
+        sessionIndex={currentIndex + 1}
+        sessionTotal={queue.length}
+        minutesLeft={minutesLeft}
+        onClose={() => router.back()}
+        onComplete={completeSpeakingLeg}
+      />
     )
   }
 
