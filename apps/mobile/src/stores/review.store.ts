@@ -150,7 +150,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   loadWeakQueue: async (limit = 20) => {
-    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false })
+    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, leg: 'flashcard' })
     try {
       const queue = await api.get<ReviewQueueItem[]>(`/v1/review/weak-queue?limit=${limit}`)
       const now = Date.now()
