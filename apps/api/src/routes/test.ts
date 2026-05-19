@@ -52,6 +52,21 @@ export async function testRoutes(server: FastifyInstance) {
     }
   )
 
+  // GET /v1/tests/question?kanjiId=123 — a single quiz question for one kanji
+  // (the Practice Loop quiz leg). `data` is null when no question can be built.
+  server.get<{ Querystring: { kanjiId?: string } }>(
+    '/question',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const kanjiId = Number(req.query.kanjiId)
+      if (!Number.isInteger(kanjiId) || kanjiId <= 0) {
+        return reply.code(400).send({ ok: false, error: 'kanjiId required', code: 'VALIDATION_ERROR' })
+      }
+      const question = await testService.generateQuestionForKanji(req.userId!, kanjiId)
+      return reply.send({ ok: true, data: question })
+    }
+  )
+
   // GET /v1/tests/analytics
   server.get(
     '/analytics',

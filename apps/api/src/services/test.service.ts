@@ -90,6 +90,55 @@ export class TestService {
     return questions
   }
 
+  /**
+   * Build a single quiz question for one specific kanji — used by the Practice
+   * Loop's quiz leg. Distractors are drawn from the user's other seen kanji.
+   * Returns null when no question can be built (fewer than 4 seen kanji, so
+   * there aren't enough distractors; or the target kanji is not yet seen).
+   */
+  async generateQuestionForKanji(userId: string, kanjiId: number): Promise<TestQuestion | null> {
+    // The seen pool — the target plus distractor candidates.
+    const seen = await this.db
+      .select({
+        kanjiId: userKanjiProgress.kanjiId,
+        character: kanji.character,
+        jlptLevel: kanji.jlptLevel,
+        meanings: kanji.meanings,
+        kunReadings: kanji.kunReadings,
+        onReadings: kanji.onReadings,
+        exampleVocab: kanji.exampleVocab,
+      })
+      .from(userKanjiProgress)
+      .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
+      .where(
+        and(
+          eq(userKanjiProgress.userId, userId),
+          ne(userKanjiProgress.status, 'unseen')
+        )
+      )
+
+    if (seen.length < 4) return null
+
+    const target = seen.find((k) => k.kanjiId === kanjiId)
+    if (!target) return null
+
+    // Try each question type in random order until one builds — some types
+    // need vocab or readings the kanji may not have.
+    const allTypes: QuestionType[] = [
+      'meaning_recall', 'reading_recall', 'kanji_from_meaning',
+      'vocab_reading', 'vocab_from_definition',
+    ]
+    for (let i = allTypes.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[allTypes[i], allTypes[j]] = [allTypes[j]!, allTypes[i]!]
+    }
+    for (const type of allTypes) {
+      const q = this.buildQuestion(target, seen, type)
+      if (q) return q
+    }
+    return null
+  }
+
   private buildQuestion(
     qk: { kanjiId: number; character: string; jlptLevel: string; meanings: unknown; kunReadings: unknown; onReadings: unknown; exampleVocab: unknown },
     pool: typeof qk[],
