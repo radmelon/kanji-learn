@@ -43,7 +43,15 @@ interface PendingSession {
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 /** The current kanji's position within the Practice Loop. */
-export type LegName = 'flashcard' | 'writing' | 'speaking'
+export type LegName = 'flashcard' | 'writing' | 'speaking' | 'quiz'
+
+/** Per-modality rep counts for the current session — shown on Session Complete. */
+export interface ModalityCounts {
+  flashcard: number
+  writing: number
+  speaking: number
+  quiz: number
+}
 
 interface ReviewState {
   queue: ReviewQueueItem[]
@@ -60,8 +68,11 @@ interface ReviewState {
   /** Minutes budget for the current session; 0 = count-bounded (weak/missed drills) */
   goalMinutes: number
   /** The current kanji's leg in the loop. New + Again/Hard kanji run flashcard
-   *  → writing → speaking; Good/Easy review kanji stay on 'flashcard'. */
+   *  → writing → speaking; Good/Easy review kanji stay on 'flashcard' unless
+   *  flagged 'maybe slipping', which routes them to 'quiz'. */
   leg: LegName
+  /** Per-modality rep counts for the current session (Session Complete §5). */
+  modalityCounts: ModalityCounts
 
   loadQueue: (goalMinutes: number) => Promise<void>
   submitResult: (result: ReviewResult) => void
@@ -78,6 +89,10 @@ interface ReviewState {
   completeWritingLeg: () => void
   /** Speaking leg finished → advance to the next kanji. */
   completeSpeakingLeg: () => void
+  /** Quiz passed → the kanji is confirmed; advance to the next kanji. */
+  passQuizLeg: () => void
+  /** Quiz failed → downgrade the flashcard grade to a lapse and route to writing. */
+  failQuizLeg: () => void
 }
 
 export const useReviewStore = create<ReviewState>((set, get) => ({
@@ -96,9 +111,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   isWeakDrill: false,
   goalMinutes: 0,
   leg: 'flashcard',
+  modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 },
 
   loadQueue: async (goalMinutes) => {
-    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false, goalMinutes, leg: 'flashcard' })
+    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false, goalMinutes, leg: 'flashcard', modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
 
     // Check for pending sessions immediately (fire-and-forget)
     const pending = await storage.getItem<PendingSession[]>(KEY_PENDING)
@@ -158,7 +174,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         set({ isLoading: false })
         return false
       }
-      set({ queue, studyStartMs: now, currentIndex: 0, results: [], isWeakDrill: true, goalMinutes: 0, leg: 'flashcard' })
+      set({ queue, studyStartMs: now, currentIndex: 0, results: [], isWeakDrill: true, goalMinutes: 0, leg: 'flashcard', modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
       return true
     } catch (err: any) {
       set({ error: err?.message ?? 'Could not load weak kanji queue.' })
@@ -169,25 +185,31 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   submitResult: (result) => {
-    const { results, queue, currentIndex, studyStartMs } = get()
+    const { results, queue, currentIndex, studyStartMs, modalityCounts } = get()
     const newResults = [...results, result]
     const item = queue[currentIndex]
 
-    // The flashcard grade is final at grade time — record + persist it now.
-    set({ results: newResults })
+    // The flashcard grade is final at grade time — record + persist it now,
+    // and count the flashcard rep.
+    set({
+      results: newResults,
+      modalityCounts: { ...modalityCounts, flashcard: modalityCounts.flashcard + 1 },
+    })
     storage.setItem(KEY_PROGRESS, { userId: 'current', results: newResults, studyStartMs })
 
     // Per-kanji loop routing — main loop only (weak/missed drills have
-    // goalMinutes 0 and stay flashcard-only). A new kanji, or a review kanji
-    // graded Again(1)/Hard(3), runs the writing → speaking legs before the
-    // loop advances. Good/Easy review kanji end immediately.
+    // goalMinutes 0 and stay flashcard-only).
+    //   • A new kanji, or an Again(1)/Hard(3) review kanji → writing → speaking.
+    //   • A Good/Easy review kanji flagged "maybe slipping" → quiz.
+    //   • A Good/Easy review kanji not flagged → done.
     const { goalMinutes } = get()
-    const needsLegs =
-      goalMinutes > 0 &&
-      (item?.status === 'unseen' || result.quality === 1 || result.quality === 3)
+    const isNew = item?.status === 'unseen'
+    const isWeak = result.quality === 1 || result.quality === 3
 
-    if (needsLegs) {
+    if (goalMinutes > 0 && (isNew || isWeak)) {
       set({ leg: 'writing' })
+    } else if (goalMinutes > 0 && item?.maybeSlipping) {
+      set({ leg: 'quiz' })
     } else {
       get().endKanji()
     }
@@ -211,9 +233,40 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     })
   },
 
-  completeWritingLeg: () => set({ leg: 'speaking' }),
+  completeWritingLeg: () => {
+    const { modalityCounts } = get()
+    set({ leg: 'speaking', modalityCounts: { ...modalityCounts, writing: modalityCounts.writing + 1 } })
+  },
 
-  completeSpeakingLeg: () => get().endKanji(),
+  completeSpeakingLeg: () => {
+    const { modalityCounts } = get()
+    set({ modalityCounts: { ...modalityCounts, speaking: modalityCounts.speaking + 1 } })
+    get().endKanji()
+  },
+
+  passQuizLeg: () => {
+    const { modalityCounts } = get()
+    set({ modalityCounts: { ...modalityCounts, quiz: modalityCounts.quiz + 1 } })
+    get().endKanji()
+  },
+
+  failQuizLeg: () => {
+    const { results, studyStartMs, modalityCounts } = get()
+    // A failed quiz is a genuine lapse (spec §4). The flashcard result for
+    // this kanji is the last one submitResult appended — rewrite its grade to
+    // Again (1) so finishSession → POST /v1/review/submit reschedules the card
+    // sooner. The quiz attempt itself is recorded to testSessions separately
+    // by QuizLeg via POST /v1/tests/submit.
+    const downgraded = results.length > 0
+      ? [...results.slice(0, -1), { ...results[results.length - 1]!, quality: 1 as const }]
+      : results
+    set({
+      results: downgraded,
+      leg: 'writing',
+      modalityCounts: { ...modalityCounts, quiz: modalityCounts.quiz + 1 },
+    })
+    storage.setItem(KEY_PROGRESS, { userId: 'current', results: downgraded, studyStartMs })
+  },
 
   undoLastResult: () => {
     const { results, currentIndex, studyStartMs } = get()
@@ -316,12 +369,12 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       .map((card) => ({ ...card, reviewType: 'meaning' as const })) // reset to meaning for the re-drill
     if (missedCards.length === 0) return false
     storage.removeItem(KEY_PROGRESS)
-    set({ queue: missedCards, currentIndex: 0, results: [], isComplete: false, studyStartMs: Date.now(), error: null, goalMinutes: 0, leg: 'flashcard' })
+    set({ queue: missedCards, currentIndex: 0, results: [], isComplete: false, studyStartMs: Date.now(), error: null, goalMinutes: 0, leg: 'flashcard', modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
     return true
   },
 
   reset: () => {
     storage.removeItem(KEY_PROGRESS)
-    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false, goalMinutes: 0, leg: 'flashcard' })
+    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false, goalMinutes: 0, leg: 'flashcard', modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
   },
 }))
