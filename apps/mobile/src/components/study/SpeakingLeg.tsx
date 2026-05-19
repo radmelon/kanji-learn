@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native'
+import { useState, useEffect, useCallback } from 'react'
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
-import type { ReviewQueueItem } from '@kanji-learn/shared'
+import type { ReviewQueueItem, VoicePrompt } from '@kanji-learn/shared'
+import { api } from '../../lib/api'
 import { VoiceEvaluator } from '../voice/VoiceEvaluator'
 import type { EvalResult } from '../voice/VoiceEvaluator'
 import { computeReveals } from '../voice/voiceReveal.logic'
@@ -29,15 +30,27 @@ const stripOkurigana = (r: string) => r.replace(/\..+$/, '')
  * runs the progressive-hint ladder (attempts → reveal flags) and the success /
  * bail transitions, then calls onComplete to advance the loop.
  *
- * v1 renders VoiceEvaluator's legacy kanji-reading layout (no voicePrompt) —
- * the richer vocab-word layout is deferred to Plan C (see plan §"Design
- * decisions"). The progressive-hint ladder works in either layout.
+ * The voicePrompt is fetched on mount from GET /v1/review/reading-queue: when
+ * the kanji has example vocab, VoiceEvaluator renders its richer vocab-word
+ * layout; otherwise it falls back to the legacy kanji-reading layout.
  */
 export function SpeakingLeg({ item, sessionIndex, sessionTotal, minutesLeft, onClose, onComplete }: Props) {
+  const [voicePrompt, setVoicePrompt] = useState<VoicePrompt | null>(null)
   const [attempts, setAttempts] = useState(0)
   const [evaluated, setEvaluated] = useState(false)
   const [lastResult, setLastResult] = useState<EvalResult | null>(null)
   const [showInterstitial, setShowInterstitial] = useState(false)
+
+  // Fetch the voicePrompt for this kanji on mount. The scoped reading-queue
+  // path returns one row per kanjiId, each with a `voicePrompt`. On any failure
+  // fall back to { type: 'kanji' } — the legacy kanji-reading layout.
+  useEffect(() => {
+    let cancelled = false
+    api.get<{ voicePrompt: VoicePrompt }[]>(`/v1/review/reading-queue?kanjiIds=${item.kanjiId}`)
+      .then((rows) => { if (!cancelled) setVoicePrompt(rows[0]?.voicePrompt ?? { type: 'kanji' }) })
+      .catch(() => { if (!cancelled) setVoicePrompt({ type: 'kanji' }) })
+    return () => { cancelled = true }
+  }, [item.kanjiId])
 
   const reveals = computeReveals(attempts)
 
@@ -57,6 +70,18 @@ export function SpeakingLeg({ item, sessionIndex, sessionTotal, minutesLeft, onC
   }, [])
 
   const isCorrect = evaluated && lastResult?.correct === true
+  const isVocab = voicePrompt?.type === 'vocab'
+
+  // ── Loading the voicePrompt.
+  if (voicePrompt === null) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.loading}>
+          <ActivityIndicator color={colors.primary} size="large" />
+        </View>
+      </SafeAreaView>
+    )
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -84,7 +109,7 @@ export function SpeakingLeg({ item, sessionIndex, sessionTotal, minutesLeft, onC
           <Text style={styles.character}>{item.character}</Text>
         </View>
 
-        {/* Reading chips — revealed from try 2 onward. */}
+        {/* Reading chips — revealed from try 2 onward (kanji-layout hint). */}
         {reveals.showKunOn && (
           <View style={styles.readingChips}>
             {item.kunReadings.length > 0 && (
@@ -117,11 +142,11 @@ export function SpeakingLeg({ item, sessionIndex, sessionTotal, minutesLeft, onC
 
         {isCorrect ? (
           <VoiceSuccessCard
-            word={item.character}
-            reading={item.kunReadings[0] ?? item.onReadings[0] ?? ''}
-            targetKanji={item.character}
+            word={isVocab ? voicePrompt.word : item.character}
+            reading={isVocab ? voicePrompt.reading : (item.kunReadings[0] ?? item.onReadings[0] ?? '')}
+            targetKanji={isVocab ? voicePrompt.targetKanji : item.character}
             kanjiMeaning={item.meanings.slice(0, 3).join(', ')}
-            vocabMeaning=""
+            vocabMeaning={isVocab ? voicePrompt.meaning : ''}
             isLast={false}
             onNext={onComplete}
           />
@@ -133,6 +158,7 @@ export function SpeakingLeg({ item, sessionIndex, sessionTotal, minutesLeft, onC
               character={item.character}
               correctReadings={correctReadings}
               readingLabel={readingLabel}
+              voicePrompt={voicePrompt}
               onResult={handleResult}
               attempts={attempts}
               revealHiragana={reveals.showHiragana}
@@ -159,6 +185,7 @@ export function SpeakingLeg({ item, sessionIndex, sessionTotal, minutesLeft, onC
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm,
