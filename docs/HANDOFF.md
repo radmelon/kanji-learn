@@ -1,86 +1,70 @@
-# Session Handoff — 2026-05-18 (Plan A shipped to main · Plan B planned)
+# Session Handoff — 2026-05-18 (Plan A & Plan B both shipped to main · Plan C to write)
 
 ## TL;DR
 
-**(1) Plan A — Minutes-Based Study Goal — was executed and merged to `main`.** All 9 tasks of `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md` were implemented via subagent-driven development (a fresh subagent per task, each passing a spec-compliance review and a code-quality review). The daily goal is now a minutes budget and the study session is time-boxed on a timer instead of a fixed card count. Two review-driven fixes were folded in. Merged to `main` as `def0009`. **(2) Plan B — Loop Legs & Nav — was written.** `docs/superpowers/plans/2026-05-18-practice-loop-legs-and-nav.md` (committed `cb11bd7`), 6 tasks. **Next session: execute Plan B** via `superpowers:subagent-driven-development`.
+**(1) Plan B — Practice Loop Legs & Nav — was executed and merged to `main` this session.** All 6 tasks of `docs/superpowers/plans/2026-05-18-practice-loop-legs-and-nav.md` were implemented via `superpowers:subagent-driven-development` (a fresh subagent per task, each passing a spec-compliance review and a code-quality review), plus a whole-branch integration review and one review-driven parity fix. After the flashcard grade, new kanji and Again/Hard review kanji now route through writing → speaking legs inside the study session; the standalone Write & Speak tabs were removed (tab bar 7 → 5). Fast-forward merged to `main` — 7 commits, `7244317`…`da1b303`. **(2) Plan A — Minutes-Based Study Goal — shipped earlier this session** (merge `def0009`). **(3) Next session: write Plan C** via `superpowers:writing-plans` (quiz leg + Browse tab + Session Complete modality breakdown).
 
-✅ **Migration `0023` was applied to the live Supabase DB this session** (2026-05-18) — `daily_goal` is now a minutes value; all 4 tester rows were reset to 15.
+⚠️ **API deploy owed.** Plan B Task 1 changed the review-queue API (`getReviewQueue` in `srs.service.ts`). The guaranteed new-kanji allowance will **not** take effect for users until `./scripts/deploy-api.sh` is run. No deploy was done this session.
+
+✅ **Migration `0023` was applied to the live Supabase DB** earlier this session (2026-05-18) — `daily_goal` is now a minutes value; all 4 tester rows reset to 15.
 
 ## Current state
 
-- **Branch:** `main` at `cb11bd7`. Working tree: untracked items only (housekeeping queue, unchanged — see that section).
-- **`main` history this session:** `def0009` (merge commit — Plan A) → `cb11bd7` (Plan B plan doc). Below `def0009`: `8b0ba20` ("B133 submitted to TestFlight") and the rest of the pre-existing history.
-- **Not pushed.** `origin/main` is far behind (at `b091590`, April). All of this session's work — Plan A and the Plan B doc — is **local only**. Push when ready; no force-push is or will be needed.
-- **API:** unchanged this session — Plan A touched only `packages/db` and `apps/mobile`, no API code. Last known healthy at `https://73x3fcaaze.us-east-1.awsapprunner.com`.
-- **No EAS build cut** this session. Plan A is on `main` but not yet in any TestFlight build.
+- **Branch:** `main` at `da1b303`. Working tree: untracked items only (housekeeping queue, unchanged — see that section).
+- **`main` history this session:** `def0009` (Plan A merge) → `cb11bd7` (Plan B plan doc) → `dd24c92`, `813454c` (handoff updates) → `7244317`…`da1b303` (Plan B — 7 commits). Below `def0009`: `8b0ba20` ("B133 submitted to TestFlight") and the rest of the pre-existing history.
+- **Not pushed.** `origin/main` is far behind (at `b091590`, April). All of this session's work — Plan A, the Plan B doc, and Plan B itself — is **local only**. Push when ready; no force-push is or will be needed.
+- **API: CHANGED but not deployed.** Plan B Task 1 modified `apps/api/src/services/srs.service.ts` (`getReviewQueue` + the new `planQueueSlots` helper). The live App Runner service still runs the old code. **Deploy owed** — `./scripts/deploy-api.sh`. Last known healthy at `https://73x3fcaaze.us-east-1.awsapprunner.com`.
+- **No EAS build cut** this session. **Both** Plan A and Plan B are on `main` but **not yet in any TestFlight build** — the next build carries both, and both owe an on-device walkthrough.
 - **Watch:** unchanged.
 
 ---
 
-## ✅ Migration 0023 — applied to the live DB (2026-05-18)
+## Plan B — executed & merged this session
 
-Plan A Task 1 created `packages/db/supabase/migrations/0023_daily_goal_minutes.sql` and updated the Drizzle schema default. The migration was **applied to the live Supabase DB this session** via `scripts/run-migration-0023.mjs` (sourcing `DATABASE_URL` from `apps/api/.env`).
+`docs/superpowers/plans/2026-05-18-practice-loop-legs-and-nav.md`. All 6 tasks, each spec- and code-reviewed; commits `7244317`…`da1b303` on `main`:
 
-**Verified:** `user_profiles.daily_goal` column default is now `15`; all 4 existing `user_profiles` rows are `daily_goal = 15`; the column comment reads "Daily study goal, in minutes (was a card count before migration 0023)."
+1. **`7244317` — API guaranteed new-kanji allowance.** A pure, unit-tested `planQueueSlots` helper (`NEW_KANJI_FLOOR = 4`) front-loads a small new-kanji batch into `getReviewQueue` so a heavy review day still introduces new material. 6 new unit tests.
+2. **`0aaec2e` — `WritingLeg`** — wraps `WritingPractice` for one kanji (`apps/mobile/src/components/study/WritingLeg.tsx`).
+3. **`9c559c6` — `SpeakingLeg`** — wraps `VoiceEvaluator` for one kanji, legacy kanji-reading layout (`SpeakingLeg.tsx`).
+4. **`5da1ddb` — review store leg state machine** — per-kanji `leg` (`flashcard → writing → speaking`); the time-box check moved into a new `endKanji` action so a session never cuts off mid-leg.
+5. **`d82436e` — study.tsx** — renders the writing/speaking legs based on `leg`.
+6. **`fe43411` — removed the Write & Speak tabs** — deleted `writing.tsx` / `voice.tsx`, edited `_layout.tsx`; tab bar 7 → 5 (Dashboard · Study · Journal · Progress · Profile).
 
-The runner `scripts/run-migration-0023.mjs` is committed and safe to re-run if ever needed (the SQL is wrapped in `BEGIN/COMMIT` and is idempotent). Nothing further is owed here — the database now matches the Plan A code.
+**Review-driven fix folded in:** `da1b303` — `leg: 'flashcard'` added to the `loadWeakQueue` loading-state `set` for parity with every other queue-load path (harmless today — weak drills have `goalMinutes 0` so `leg` never advances — but closes a latent stale-state trap).
 
----
+**The mechanic:** after the flashcard grade, new kanji and weak (Again/Hard) review kanji route through `writing → speaking`; Good/Easy review kanji end immediately. Leg routing is gated on `goalMinutes > 0`, so "Drill Weak Spots" / "Drill missed cards" stay flashcard-only.
 
-## Plan A — executed & merged this session
+**Verified:** mobile typecheck clean · mobile jest 37/37 · API typecheck clean (only the one pre-existing unrelated `social-mute.test.ts:25` error) · API tests 230/230. The whole-branch integration review verdict was "Ready to merge".
 
-All 9 tasks of `docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md`, each spec- and code-reviewed:
+**Process note (Plan A's leaked-commit warning heeded):** every Plan B task was confirmed committed to the feature branch — all 7 commits landed on `claude/optimistic-gauss-f7f1e1`, fast-forward merged cleanly to `main`. **No commits leaked onto `main` this time.**
 
-1. **DB migration `0023`** — `daily_goal` reinterpreted as minutes; Drizzle default 20→15. (Applied to the live DB 2026-05-18 — see migration section above.)
-2. **Onboarding** — "How many minutes per day?" · options 5/10/15/20/30 · default 15.
-3. **Profile** — daily-goal editor reuses the onboarding options · "Minutes per day" label.
-4. **Review store** — the study session is time-boxed; `submitResult` ends the session when the minutes budget elapses (checked after each grade, never mid-card). Weak/missed drills stay count-bounded.
-5. **`didMeetTimeGoal`** (TDD) — replaces the old card-count `didCrossGoal`.
-6. **SessionComplete** — the 🎉 banner celebrates the minutes goal; the dead `reviewedBefore`/analytics plumbing was removed.
-7. **study.tsx** — `dailyGoal` fallback →15; a live "Nm left" countdown in the session header.
-8. **Dashboard** — shows "N reviewed today" instead of a cards-vs-goal fraction.
-9. **"Keep studying"** — a Session Complete action to continue past the daily goal.
+### Plan B verification still owed — on-device walkthrough (next EAS build)
+- Tab bar shows **5** tabs, no Write/Speak.
+- Grade a **new** kanji → routes to writing leg → "Continue to speaking" → speaking leg → advances.
+- Grade a review kanji **Again/Hard** → routes through writing → speaking. **Good/Easy** → advances straight to the next kanji.
+- The time-remaining indicator shows on the writing/speaking leg headers; the session ends only after a kanji's *full* path, never mid-leg.
+- "Drill Weak Spots" / "Drill missed cards" remain flashcard-only.
+- On a heavy-review account, a Study session still surfaces some new kanji near the start (the guaranteed allowance) — **only after the API is deployed.**
 
-Two **review-driven fixes** were folded in: migration `0023` wrapped in `BEGIN/COMMIT` to match sibling migrations, and the offline-fallback path resets to a fresh `studyStartMs` (a stale cached timestamp would have ended a time-boxed session on the first card).
-
-**Verified:** mobile typecheck clean · mobile jest 37/37 · API typecheck shows only the one pre-existing unrelated `social-mute.test.ts:25` error.
-
-**Plan A verification still owed:** an **on-device walkthrough** — countdown visible, session ends after the in-progress card (not mid-card), 🎉 banner on goal met, "Keep studying" starts a fresh timed segment, Dashboard shows the plain review count. Best done in the next EAS build.
-
-**Minor follow-ups flagged by reviewers (out of Plan A scope):**
-- WCAG: `colors.textMuted` on the dark background is ~3.86:1 — under AA 4.5:1 for 12px caption text. Affects the new `timeLeft` label *and* the pre-existing `counter` / `swipeHint`. Project-wide debt, not a Plan A regression.
-- The `minutesLeft` countdown is `Math.ceil`-rounded (plan-specified) — shows "0m left" briefly at expiry.
-
-### ⚠️ Process note — subagent commits leaked onto `main`
-
-During Plan A's subagent-driven execution, subagent `git commit` calls intermittently landed on the `main` branch instead of the execution worktree's branch — four Plan-A commits ended up on `main` directly, and three task commits were briefly orphaned. This was caught by the final review, recovered cleanly (cherry-pick onto the worktree branch; then `main` was reset to `8b0ba20` and the complete branch merged in as `def0009`), and verified. **For the next subagent-driven run: after each task, confirm the feature branch ref actually advanced and `main` was not touched.**
+### Plan B follow-ups flagged by reviewers (out of Plan B scope)
+- **Orphaned `writing-queue` API code.** `GET /v1/review/writing-queue` + `getWritingQueue()` in `srs.service.ts` were used *only* by the deleted Write tab — now dead code. A clean removal candidate (the *reading-queue* side is intentionally kept warm for Plan C — do **not** remove that). A background task was spawned for this cleanup.
+- **Stale comments** in `study.tsx` (file header + a `useFocusEffect`) still say "the Speaking tab" — the audio-session reset is still correct, only the wording is stale.
+- **Accessibility:** the writing/speaking leg close buttons have no `accessibilityLabel` (consistent with the pre-existing `study.tsx` pattern — project-wide debt, not a Plan B regression).
+- **Resume edge case (accepted v1 limitation):** `submitResult` persists the flashcard grade at grade time; if the app is killed mid-writing/mid-speaking, resume restores `currentIndex` past that kanji and skips its legs. The SRS grade is preserved.
 
 ---
 
-## Plan B — written this session, ready to execute
+## Plan A — shipped earlier this session (recap)
 
-`docs/superpowers/plans/2026-05-18-practice-loop-legs-and-nav.md` (committed `cb11bd7`). **6 tasks:**
+`docs/superpowers/plans/2026-05-17-minutes-based-study-goal.md`, merged as `def0009`. The daily goal is now a minutes budget; the study session is time-boxed on a timer instead of a fixed card count. Migration `0023` reinterpreted `daily_goal` as minutes and was applied to the live DB. **Plan A verification still owed:** an on-device walkthrough (countdown visible, session ends after the in-progress card, 🎉 banner on goal met, "Keep studying" starts a fresh timed segment, Dashboard shows the plain review count) — fold into the same next-build walkthrough as Plan B.
 
-1. **API — guaranteed new-kanji allowance** — `getReviewQueue` reserves a small front-loaded new-kanji batch (`NEW_KANJI_FLOOR = 4`) via a pure, unit-tested `planQueueSlots` helper. (This is the §3 allowance Plan A deferred.)
-2. **`WritingLeg`** component — wraps `WritingPractice` for one kanji.
-3. **`SpeakingLeg`** component — wraps `VoiceEvaluator` for one kanji.
-4. **Review store** — per-kanji `leg` state machine (`flashcard → writing → speaking`); the time-box check moves to the end of a kanji's full path.
-5. **study.tsx** — renders the writing/speaking legs based on `leg`.
-6. **Remove the Write & Speak tabs** — delete `writing.tsx` / `voice.tsx`; tab bar goes 7 → 5.
+**Minor Plan A follow-up still open:** WCAG — `colors.textMuted` on the dark background is ~3.86:1, under AA 4.5:1 for 12px caption text (affects the `timeLeft` label and the pre-existing `counter`/`swipeHint`). Project-wide debt. The new Plan B leg headers reuse the same `textMuted` caption style, so they inherit it.
 
-**The mechanic:** after the flashcard grade, new kanji and weak (Again/Hard) review kanji route through `writing → speaking`; Good/Easy review kanji end immediately.
-
-**Design decisions baked into the plan (review before executing):**
-- Speaking leg uses `VoiceEvaluator`'s legacy kanji-reading layout (no vocab `voicePrompt`) — the vocab-word layout is deferred to Plan C.
-- No changes to `WritingPractice` / `VoiceEvaluator` internals — they already self-record attempts (`/v1/review/writing`, `/v1/review/voice`), so §6 telemetry comes for free.
-- Leg routing gated on `goalMinutes > 0` — weak/missed drills stay flashcard-only.
-- The new-kanji allowance is front-loaded so the time-box reaches it on heavy review days.
-
-**Execute Plan B** via `superpowers:subagent-driven-development`, ideally from a fresh session and a dedicated worktree. Run tasks in order — Tasks 4→5 are a pair (the store change is transiently incomplete until study.tsx renders the legs); Task 6 (tab removal) last so the loop's legs exist before the standalone tabs disappear.
+---
 
 ## Plan C — still to be written
 
-**Quiz leg + Browse tab + telemetry.** Wire the existing quiz engine in for "maybe-slipping" review kanji (spec §2/§4 — a failed quiz counts as a lapse and resurfaces the card sooner); promote Browse to a tab (spec §1); add the Session Complete modality breakdown (spec §5). Write it via `superpowers:writing-plans` after Plan B ships.
+**Quiz leg + Browse tab + telemetry.** Wire the existing quiz engine in for "maybe-slipping" review kanji (spec §2/§4 — a failed quiz counts as a lapse and resurfaces the card sooner); promote Browse to a tab (spec §1); add the Session Complete modality breakdown (spec §5). Also revives the **richer vocab-word speaking layout** (`VoiceEvaluator` with a `voicePrompt`) that Plan B deferred — Plan C already touches the queue API, so the `reading-queue` endpoint / `selectVoicePrompt` are intentionally kept alive for it. Write it via `superpowers:writing-plans` after the on-device walkthrough.
 
 After the Practice Loop: Spec 1.5 (FSRS migration) and Spec 2 (Buddy, the AI tutor) each get their own brainstorm.
 
@@ -88,12 +72,12 @@ After the Practice Loop: Spec 1.5 (FSRS migration) and Spec 2 (Buddy, the AI tut
 
 ## B133 — verification carry-forward
 
-B133 shipped and was submitted to TestFlight last session. Still owed:
+B133 shipped and was submitted to TestFlight an earlier session. Still owed:
 - **Item 5** — App Runner logs should show one `[Internal] Daily reminder job triggered` per hour and no `[Cron] Running hourly reminder check`; one daily-reminder push, no duplicate.
 - **Items 6, 7, Bug A** — on-device on TestFlight: Study speaker icon un-sticks; empty-transcript hint on Speaking; reported Speak vocab words pass.
 - **Bug B** — resolved (stale `velocity_drop` rows cleared 2026-05-18).
 
-**Known pre-existing issue (not Plan A, not B133):** `apps/api/test/integration/social-mute.test.ts:25` has a `FastifyRegisterOptions` typecheck error that exists on `main` independently — flagged for a future sweep.
+**Known pre-existing issue (not Plan A/B, not B133):** `apps/api/test/integration/social-mute.test.ts:25` has a `FastifyRegisterOptions` typecheck error that exists on `main` independently — flagged for a future sweep.
 
 ---
 
@@ -123,6 +107,7 @@ Untracked items in the main checkout. Still need eyeball decisions:
 | | Item | Status |
 |---|---|---|
 | ✅ | Apply migration `0023` to the live DB | done 2026-05-18 |
+| 🚀 | Deploy the API (Plan B Task 1 changed `getReviewQueue`) | **owed — `./scripts/deploy-api.sh`** |
 | 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed |
 | 🚀 | Migrate Supabase DB `ap-southeast-2` → `us-east-1` | Cross-region tax; dedicated session |
 | 🚀 | SES out of sandbox | Needed for tutor-share email at scale |
@@ -132,9 +117,10 @@ Untracked items in the main checkout. Still need eyeball decisions:
 
 ## Other open follow-ups
 
+- **Orphaned `writing-queue` API code** — see Plan B follow-ups above; a background task was spawned for it.
 - **Truncated kanji readings** — `kanji.kun_readings`/`on_readings` capped at ~5 sorted entries; re-import full KanjiDic2 readings.
 - **The "Kanji Buddy 1.0" rebrand** — rename Kanji Learn → Kanji Buddy, splash polish, About/Credits branding. Independent of the Practice Loop. Needs a brand-decision block first.
-- **Tutor report writing scope-down** — the report still surfaces a Writing modality that Study no longer serves; revisit alongside the loop work.
+- **Tutor report writing scope-down** — the report still surfaces a Writing modality; Study no longer serves standalone writing prompts (and as of Plan B writing is a loop leg). `getWriting` + `weakestModality` in the tutor report need scoping/removal — revisit alongside the loop work.
 - **Phase 3 #13 — Milestones panel refactor** — spec captured earlier; after the Practice Loop.
 - **`interventions.payload` double-encoded** — stored double-encoded jsonb (a Drizzle/postgres-js quirk); harmless to the JS round-trip but breaks SQL-side payload queries.
 
@@ -144,7 +130,7 @@ Untracked items in the main checkout. Still need eyeball decisions:
 
 - **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`.
 - **Supabase:** still `ap-southeast-2`. Migration files live in `packages/db/supabase/migrations/` (`0001`–`0023`). `0023` was applied to the live DB 2026-05-18 via `scripts/run-migration-0023.mjs`.
-- **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. (No API deploy needed for Plan A; Plan B Task 1 *does* change the API and will need one.)
-- **EAS builds:** from `apps/mobile/`, ~$2/build. `eas build --platform ios --profile production`. EAS auto-bumps `ios.buildNumber` — **never hand-edit `app.json`**. Submit with `eas submit`.
+- **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. **Plan B Task 1 changed the API — a deploy is owed before the new-kanji allowance is live.**
+- **EAS builds:** from `apps/mobile/`, ~$2/build. `eas build --platform ios --profile production`. EAS auto-bumps `ios.buildNumber` — **never hand-edit `app.json`**. Submit with `eas submit`. The next build should carry both Plan A and Plan B and cover both owed on-device walkthroughs.
 - **Watch builds:** **manual Xcode rebuild only** — EAS does not build the watchOS target.
 - **Co-author convention:** every kanji-learn commit includes `Co-Authored-By: Robert A. Dennis (Buddy)` alongside the Claude co-author line.
