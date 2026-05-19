@@ -42,13 +42,14 @@ import { SessionComplete } from '../../src/components/study/SessionComplete'
 import { MnemonicNudgeSheet } from '../../src/components/study/MnemonicNudgeSheet'
 import { WritingLeg } from '../../src/components/study/WritingLeg'
 import { SpeakingLeg } from '../../src/components/study/SpeakingLeg'
+import { QuizLeg } from '../../src/components/study/QuizLeg'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 const HELP_KEY = 'kl_has_seen_study_help'
 
 function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset, studyStartMs, goalMinutes, leg, completeWritingLeg, completeSpeakingLeg } =
+  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset, studyStartMs, goalMinutes, leg, completeWritingLeg, completeSpeakingLeg, passQuizLeg, failQuizLeg } =
     useReviewStore()
   // Respect the user's onboarding choice (5/10/15/20/30 minutes). Falls back
   // to 15 until the profile finishes loading on first mount.
@@ -495,6 +496,19 @@ function StudySession() {
         minutesLeft={minutesLeft}
         onClose={() => router.back()}
         onComplete={completeSpeakingLeg}
+      />
+    )
+  }
+  if (legItem && leg === 'quiz') {
+    return (
+      <QuizLeg
+        key={`quiz-${legItem.kanjiId}`}
+        item={legItem}
+        sessionIndex={currentIndex + 1}
+        sessionTotal={queue.length}
+        minutesLeft={minutesLeft}
+        onClose={() => router.back()}
+        onComplete={(passed) => (passed ? passQuizLeg() : failQuizLeg())}
       />
     )
   }
