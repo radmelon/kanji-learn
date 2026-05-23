@@ -53,7 +53,12 @@ const DRY_RUN = args.includes('--dry-run')
 const userIdx = args.indexOf('--user')
 const SINGLE_USER = userIdx >= 0 ? args[userIdx + 1] : null
 
-const sql = postgres(process.env.DATABASE_URL, { ssl: 'require', max: 5 })
+// SSL: required for Supabase (prod), disabled for local rehearsal DBs. Honor
+// sslmode=disable in the URL; default to 'require' for everything else (so the
+// production-rollout invocation continues to work without extra config).
+const dbUrl = process.env.DATABASE_URL
+const sslDisabled = /[?&]sslmode=disable\b/.test(dbUrl)
+const sql = postgres(dbUrl, { ssl: sslDisabled ? false : 'require', max: 5 })
 
 async function main() {
   const users = SINGLE_USER
@@ -145,6 +150,15 @@ async function main() {
       `
     }
     console.log(`User ${user.id}: replayed ${updates.length} card(s)`)
+  }
+
+  // Refresh the materialized view that depends on user_kanji_progress.stability.
+  // Migration 0024 populates the view inside its transaction (before any replay
+  // runs), so without this refresh every row shows interval_days = 0. Skip on
+  // dry-run since no writes happened.
+  if (!DRY_RUN) {
+    await sql`REFRESH MATERIALIZED VIEW kanji_mastery_view`
+    console.log('Refreshed kanji_mastery_view.')
   }
 
   await sql.end()
