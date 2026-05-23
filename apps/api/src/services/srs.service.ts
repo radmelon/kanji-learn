@@ -117,7 +117,7 @@ export class SrsService {
       lastReviewedAt: Date | null
     }): boolean => {
       const card: FsrsCard = {
-        stability: c.stability ?? 1,
+        stability: c.stability ?? 0,
         difficulty: c.difficulty ?? 5,
         lapses: c.lapses ?? 0,
         status: 'reviewing', // unused by retrievability()

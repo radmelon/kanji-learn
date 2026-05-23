@@ -132,7 +132,7 @@ async function main() {
           (${u.userId}, ${u.kanjiId}, ${u.stability}, ${u.difficulty},
            ${u.lapses}, ${u.totalReviews}, ${u.status},
            ${u.nextReviewAt}, ${u.lastReviewedAt}, NOW())
-        ON CONFLICT ON CONSTRAINT user_kanji_unique_idx
+        ON CONFLICT (user_id, kanji_id)
         DO UPDATE SET
           stability        = EXCLUDED.stability,
           difficulty       = EXCLUDED.difficulty,

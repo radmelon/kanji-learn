@@ -224,6 +224,7 @@ export async function applyPlacementResults(
         difficulty: 5,      // FSRS default difficulty
         totalReviews: 1,
         nextReviewAt,
+        lastReviewedAt: new Date(),
         readingStage: 0,
         updatedAt: new Date(),
       })
@@ -241,7 +242,7 @@ export async function applyPlacementResults(
   for (const id of toUpdate) {
     await db
       .update(userKanjiProgress)
-      .set({ status: 'remembered', stability: 21, difficulty: 5, totalReviews: 1, nextReviewAt, updatedAt: new Date() })
+      .set({ status: 'remembered', stability: 21, difficulty: 5, totalReviews: 1, nextReviewAt, lastReviewedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(userKanjiProgress.userId, userId), eq(userKanjiProgress.kanjiId, id)))
   }
 
