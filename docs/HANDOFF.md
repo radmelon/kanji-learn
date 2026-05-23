@@ -1,98 +1,147 @@
-# Session Handoff — 2026-05-21 (Spec 1 in TestFlight — B134 submitted, API deployed, origin pushed)
+# Session Handoff — 2026-05-23 (Spec 1.5 FSRS migration shipped — B135 in TestFlight)
 
 ## TL;DR
 
-**Plans A, B, and C are all on `main`, pushed to `origin`, in the deployed API, and in TestFlight as B134.** Plan C (the Practice Loop quiz & close-out) was executed and merged earlier (`bcc0133`…`1120dab`), completing Spec 1 — the Three-Modality Practice Loop. Today's ship operations: 51 commits pushed to `origin/main` (now at `c482f35`); the API was deployed (App Runner op `8fcf22cf275d4d9f871951be3d2a2d8f`, rolling out the new image); EAS build **B134** was cut and submitted to TestFlight (`fdb4b033-adcf-4a5b-8f1e-bc197f9e818d`, submission `9260ec3e-7073-48d8-a3ee-baba36255fd1`). Apple is processing the binary.
+**Spec 1.5 (FSRS migration) is fully landed — on `main`, on the live DB, in the deployed API, and in TestFlight as B135.** 15 commits from `1561714`…`9f5357d` replaced the SM-2 scheduler with hand-rolled FSRS-5, swapped the schema (migration 0024), and seeded existing card state via a one-time replay. Live rollout sequence today: safety dump → migration 0024 applied → replay walked 4 users / 742 progress rows / 2857 review_logs in ~2 min → App Runner op `3f6c157cd008489e8ac85778cf893eda` SUCCEEDED → B135 submitted to TestFlight (`6f063489-76ce-43c8-ba41-3f764d9322bb`). B135 is in TestFlight and verified working on-device.
 
-**Next: the combined on-device walkthrough of Plans A/B/C on B134.** Once Apple finishes processing (the email arrives, the build appears in TestFlight) and the App Runner rollout is live, walk through the verification checklist below.
+**Side-benefit confirmed on-device:** under SM-2, the "burned" status was effectively unreachable (interval reset to 1 day on every Hard/Again). After replay, **174/742 cards (23%) correctly sit in burned**, matching the user's subjective experience of months of daily use without ever burning a kanji. The "real long-term memory tracking" property the spec deck promised is now real.
 
-**Next creative work:** Spec 1.5 (FSRS migration) and Spec 2 (Buddy, the AI tutor) — each needs its own brainstorm. Plan C scope decisions left these explicitly out; the spec deck calls FSRS "best done pre-launch while the dataset is tiny."
+**Next creative work:** Spec 2 (Buddy, the AI tutor). The data layer Spec 1.5 exposes (`retrievability(card, atTime)` + per-card `stability`/`difficulty`/`lapses`) is the bridge Spec 2 reads.
+
+**Carry-forward verification owed on B135:** the combined Plans A/B/C walkthrough was originally owed on B134; B135 absorbs it (and adds FSRS-specific items). See the walkthrough section below.
 
 ## Current state
 
-- **Branch:** `main` at `c482f35` (the handoff refresh after Plan C). Working tree: untracked items only (housekeeping queue — see that section; one item resolved this session).
-- **`main` history (recent):** Plan B merge (`def0009`-era through `da1b303`) → `c8e2639` (post-Plan-B handoff) → `5f2d6c1` (Plan C plan doc) → `7a7cb31` (`.claude/worktrees/` gitignore) → `bcc0133`…`1120dab` (Plan C, 12 commits) → `c482f35` (post-Plan-C handoff).
-- **Pushed to `origin/main`** ✅ — `origin/main` is now at `c482f35` (was at `b091590` since April; 51 commits fast-forwarded).
-- **API: deployed** ✅ — `./scripts/deploy-api.sh` ran cleanly: Docker image pushed to ECR (digest `sha256:d4d9f76a22f5...`); App Runner deployment triggered (operation `8fcf22cf275d4d9f871951be3d2a2d8f`). The new code (`planQueueSlots`, `isRecentlyShaky` + `maybeSlipping` in `getReviewQueue`, `generateQuestionForKanji` + `GET /v1/tests/question`) is rolling out. Confirm via the App Runner console (https://us-east-1.console.aws.amazon.com/apprunner/home?region=us-east-1) or by hitting the prod API once the rollout completes (typically ~5–10 min from trigger). Prod API: `https://73x3fcaaze.us-east-1.awsapprunner.com`.
-- **TestFlight: B134 submitted** ✅ — EAS build `fdb4b033-adcf-4a5b-8f1e-bc197f9e818d` (`buildNumber: 134`, version `1.0.0`); IPA at https://expo.dev/artifacts/eas/xk4EwEWbauZBstXNjnDLV4.ipa. Submission `9260ec3e-7073-48d8-a3ee-baba36255fd1`. **Apple is processing** — you'll get an email when it's testable; TestFlight URL: https://appstoreconnect.apple.com/apps/6761603490/testflight/ios. Note: `app.json` ios.buildNumber is still `133` (the LAST shipped before today); the bump to 134 happened EAS-side per project convention — do not hand-edit.
+- **Branch:** `main` at `9f5357d`. Working tree: untracked items only (housekeeping queue — unchanged from prior session, plus `docs/HANDOFF.md` modified by this refresh).
+- **`main` history (recent):** `c1fb60f` (FSRS plan doc) → `1561714`…`9f5357d` (Spec 1.5, 15 commits including 3 fix passes from final review + clone-rehearsal).
+- **Pushed to `origin/main`** ✅ — `origin/main` = `9f5357d`.
+- **Live DB (Supabase ap-southeast-2):** migration `0024` applied 2026-05-23; replay run successfully; `user_kanji_progress` now FSRS-shaped (stability/difficulty/lapses/total_reviews); `kanji_mastery_view` materialized view recreated against the new schema and refreshed.
+- **API:** deployed via `./scripts/deploy-api.sh` 2026-05-23. ECR image `sha256:f733903cb4e9df3c7bf66c8d8e9ffb8ba125264592021da7c2301cad2d685559`. App Runner op `3f6c157cd008489e8ac85778cf893eda` reported `SUCCEEDED`. Smoke test: `GET /v1/review/status` → 401 (route exists, just needs auth); `GET /` → 404 (Fastify default). API alive.
+- **TestFlight: B135 in TestFlight** ✅ — EAS build `07099956-83f1-4284-aad1-79e7f2454eda` (`buildNumber: 135`, version `1.0.0`); IPA at https://expo.dev/artifacts/eas/SpoesfkyKquX9EHY5tUnh.ipa. Submission `6f063489-76ce-43c8-ba41-3f764d9322bb`. **Verified on-device.** Note: `app.json` ios.buildNumber tracks the LAST shipped build per project convention; EAS auto-bumped 134 → 135 server-side — do not hand-edit.
 - **Watch:** unchanged.
 
 ---
 
-## On-device walkthrough — owed on B134 (Plans A + B + C combined)
+## On-device walkthrough — owed on B135 (FSRS items + B134 carry-forward)
 
-When B134 lands in TestFlight and the API rollout is live:
+User has verified B135 boots and the burned-count visibly changed (positive signal). The full systematic walkthrough is still owed:
+
+### FSRS-specific (NEW in Spec 1.5)
+
+- [ ] **Burned count** — verified ✓ (user confirmed previously-zero burned tier now reflects months of practice)
+- [ ] An **overdue** Good/Easy review (R(now) decayed past ~0.85) triggers the **quiz leg**
+- [ ] A **same-day** Easy review (R(now) = 1.0) does **NOT** trigger the quiz
+- [ ] **Burned-sample surprise check** still triggers a quiz (orthogonal to R signal)
+- [ ] **Session Complete** "Practice breakdown" row (flashcard / writing / speaking / quiz) renders correctly
+- [ ] **Kanji-detail page** shows integer day counts in the "Interval" stat (no "3.175... days" floating-point leaks)
+- [ ] After a loop quiz: a `testSessions` row exists with `test_type = 'loop_check'` and matching `testResults` (Supabase SQL spot-check)
+- [ ] No FSRS-related errors in App Runner logs
+
+### B134 carry-forward — Plans A/B/C combined (originally owed on B134, now on B135)
 
 **Plan A (minutes-budget time-box):**
-- Onboarding asks "How many minutes per day?" (options 5/10/15/20/30, default 15).
-- Profile shows "Minutes per day".
-- The Study session shows a live "Nm left" countdown.
-- The session ends after the in-progress card (never mid-card), 🎉 banner on goal met.
-- "Keep studying" starts a fresh timed segment.
-- Dashboard shows "N reviewed today" (plain count, not cards-vs-goal fraction).
+- [ ] Onboarding asks "How many minutes per day?" (5/10/15/20/30, default 15)
+- [ ] Profile shows "Minutes per day"
+- [ ] Study session shows a live "Nm left" countdown
+- [ ] Session ends after the in-progress card (never mid-card), 🎉 banner on goal met
+- [ ] "Keep studying" starts a fresh timed segment
+- [ ] Dashboard shows "N reviewed today" (plain count)
 
 **Plan B (writing/speaking legs + nav):**
-- Tab bar shows **6** tabs: Dashboard · Study · **Browse** · Journal · Progress · Profile. No Write/Speak tabs.
-- Grade a **new** kanji → writing leg → "Continue to speaking" → speaking leg → advances.
-- Grade a review kanji **Again/Hard** → routes through writing → speaking.
-- The time-remaining indicator shows on leg headers; the session ends only after a kanji's *full* path, never mid-leg.
-- "Drill Weak Spots" / "Drill missed cards" remain flashcard-only.
-- On a heavy-review account, a Study session surfaces some new kanji near the start (the guaranteed allowance).
+- [ ] Tab bar: 6 tabs (Dashboard · Study · Browse · Journal · Progress · Profile). No Write/Speak tabs
+- [ ] Grade a new kanji → writing leg → "Continue to speaking" → speaking leg → advances
+- [ ] Grade a review kanji Again/Hard → routes through writing → speaking
+- [ ] Time-remaining indicator shows on leg headers; session ends only after a kanji's full path
+- [ ] "Drill Weak Spots" / "Drill missed cards" stay flashcard-only
+- [ ] Heavy-review account: session surfaces some new kanji near the start (guaranteed allowance)
 
-**Plan C (quiz leg + Ready screen + vocab speaking + Session Complete breakdown):**
-- Opening the Study tab shows the **Ready screen** (today's minutes + due count + Begin).
-- Grade a Good/Easy review kanji that's "maybe slipping" (has a recent Hard/Again, or is a burned-sample card) → a **quiz** question. **Pass** → advances. **Fail** → routes to writing → speaking AND the card resurfaces sooner (confirm on a later session).
-- Unflagged Good/Easy → advances straight on (no quiz).
-- **Speaking leg** shows the vocab-word layout (vocab + pitch reading) for kanji with example vocab; legacy kanji-reading layout otherwise.
-- **Session Complete** shows the "Practice breakdown" row (flashcard / writing / speaking / quiz rep counts).
-- After a loop quiz: a `testSessions` row exists with `test_type = 'loop_check'` and matching `testResults`.
+**Plan C (Ready screen, quiz/vocab/breakdown):**
+- [ ] Study tab opens to the Ready screen (today's minutes + due count + Begin)
+- [ ] Unflagged Good/Easy → advances (no quiz)
+- [ ] Speaking leg shows vocab-word layout (vocab + pitch reading) for kanji with example vocab; legacy kanji-reading layout otherwise
 
-**Other:** check the App Runner logs for one `[Internal] Daily reminder job triggered` per hour and no `[Cron] Running hourly reminder check`; one daily-reminder push, no duplicate (B133 carry-over). Confirm Study speaker icon un-sticks; empty-transcript hint on Speaking; reported Speak vocab words pass (B133 carry-over Items 6/7/Bug A).
+### B133 carry-forward (still relevant)
 
----
-
-## Plan C — executed & merged this session (recap)
-
-`docs/superpowers/plans/2026-05-18-practice-loop-quiz-and-close-out.md`. All 10 tasks, each spec- and code-reviewed; commits `bcc0133`…`1120dab` on `main`:
-
-1. **`bcc0133`** — API `maybeSlipping` flag (`isRecentlyShaky` + 6 unit tests; burned-sample tier always-flagged).
-2. **`611fad9`** — API single-kanji quiz question (`generateQuestionForKanji` + `GET /v1/tests/question`).
-3. **`ecd8d0f`** — `QuizQuestion` component.
-4. **`3cf6456`** — `QuizLeg` component (telemetry via `POST /v1/tests/submit` with `testType: 'loop_check'`).
-5. **`e18db8a`** — review store: `'quiz'` leg + routing + `passQuizLeg`/`failQuizLeg` + `modalityCounts`.
-6. **`2757f65`** — study.tsx renders the quiz leg.
-7. **`b90abea`** — SpeakingLeg fetches `voicePrompt` and renders the vocab-word layout.
-8. **`9924bdd`** — SessionComplete modality breakdown row.
-9. **`0c51cf9` + `d3ce7f6`** — Ready screen (`d3ce7f6` = review-caught Critical fix: reactive `isWeakDrill` effect for remounted-tab weak-drill case).
-10. **`9728e40` + `1120dab`** — Browse promoted to a tab (`1120dab` cleans up dead `useRouter`/`router` in `progress.tsx`).
-
-**Verified at merge time:** mobile typecheck clean · API typecheck clean (only the known pre-existing `social-mute.test.ts:25` error) · mobile jest 37/37 · API tests 236/236.
-
-### Plan C follow-ups flagged by reviewers (out of Plan C scope)
-- **Unbounded `reviewLogs` fetch** — `getReviewQueue`'s `maybeSlipping` query fetches every review-log row for the due kanji, then keeps only the last 3 per kanji in JS. A windowed `ROW_NUMBER()` query would bound it. Perf follow-up. **A background task was spawned.**
-- **Stale `study.tsx` file-header comment** — cosmetic doc drift; the header state-machine comment predates Plans B/C.
-- **Accessibility** — leg close buttons / new loading spinners have no `accessibilityLabel`; `Ionicons name={icon as any}` is repeated. Consistent with pre-existing project patterns; an app-wide a11y pass is overdue.
-- **Resume edge case (accepted v1 limitation)** — an app kill mid-quiz/writing/speaking resumes past that kanji and skips its remaining legs. A quiz-fail downgrade only persists if `failQuizLeg` ran before the kill.
+- [ ] App Runner logs: one `[Internal] Daily reminder job triggered` per hour, no `[Cron] Running hourly reminder check`; one daily-reminder push, no duplicate
+- [ ] Study speaker icon un-sticks (Item 6)
+- [ ] Empty-transcript hint on Speaking (Item 7)
+- [ ] Reported Speak vocab words pass (Bug A)
 
 ---
 
-## Plan A & Plan B — shipped earlier (recap)
+## Spec 1.5 — executed this session (recap)
+
+Spec: [`docs/superpowers/specs/2026-05-22-fsrs-migration-design.md`](superpowers/specs/2026-05-22-fsrs-migration-design.md)
+Plan: [`docs/superpowers/plans/2026-05-22-fsrs-migration.md`](superpowers/plans/2026-05-22-fsrs-migration.md)
+Runbook: [`docs/superpowers/runbooks/2026-05-22-fsrs-rollout.md`](superpowers/runbooks/2026-05-22-fsrs-rollout.md)
+
+Branch `spec-1.5-fsrs-migration` (deleted post-merge), worktree removed. 15 commits on `main`:
+
+1. **`1561714`** — Task 1: FSRS-5 types + pure helpers (`FsrsCard`, `ratingFromQuality`, `statusFromStability`, `retrievability`). Adds vitest to `packages/shared` for the first time.
+2. **`6b98af7`** — Task 2: `calculateNextReview` + `createNewCard` (hand-rolled FSRS-5 math, 28/28 unit tests pass).
+3. **`cb662e9`** — Task 2 review fixes (corrected misleading `FACTOR` comment; added inline "DELIBERATE DIVERGENCES FROM CANONICAL FSRS-5" doc-block).
+4. **`75644b1`** — Task 3: schema migration `0024` (drop `ease_factor`/`interval`/`repetitions`; add `stability`/`difficulty`/`lapses`/`total_reviews`).
+5. **`3b9d423`** — Task 4: replay script (`scripts/replay-srs-fsrs.mjs`).
+6. **`02e3535`** — Task 5: `submitReview` rewire.
+7. **`ee8381e`** — Task 6: `getReviewQueue` + `getReadingQueue` rewire. **Eliminates the unbounded `reviewLogs` fetch** that was on the housekeeping queue as a perf follow-up (R-based predicate, no per-card log fetch).
+8. **`037e99f`** — Task 7: `dual-write.service.ts` rewire (typecheck-restoring commit).
+9. **`3112ba2`** — Task 8: touch-point sweep (`cron.ts`, `placement.service.ts`, `kanji.ts` route) + **amended migration `0024`** to drop+recreate `kanji_mastery_view` (it referenced the dropped `interval` column).
+10. **`65e6278`** — Task 8 polish: round `srsInterval` for kanji-detail display (no floating-point days).
+11. **`e3573cd`** — Task 9: 5 integration tests pinning the R-based `maybeSlipping` predicate.
+12. **`77921c7`** — Task 10: rollout runbook.
+13. **`9af2b83`** — final-review fixes: (a) replay `ON CONFLICT ON CONSTRAINT` → `ON CONFLICT (user_id, kanji_id)` (the named ref was a unique INDEX, not a constraint — would have crashed the live UPSERT), (b) `placement.service.ts` writes `lastReviewedAt` so the next review doesn't take the first-review branch and reset stability, (c) `isSlipping` fallback `?? 1` → `?? 0`.
+14. **`08a85bf`** — clone-rehearsal-found fixes: (a) replay honors `sslmode=disable` for local DBs; (b) replay auto-refreshes `kanji_mastery_view` at end (the migration populates the view inside its transaction when stability is still default 0 — without the refresh `interval_days` is 0 everywhere).
+15. **`9f5357d`** — runbook: explicit merge-after-rehearsal step + "Rehearsal findings" section.
+
+**Verified at merge time:** workspace typecheck clean modulo known pre-existing `social-mute.test.ts:25` · API 235/235 · shared 28/28.
+
+### Clone-rehearsal results (pre-merge)
+
+Run against a fresh `pg_dump` of live DB restored into a local Postgres clone:
+- 4 users / 742 progress rows / 2857 review_logs / 2294 kanji
+- Replay finished in ~1 second
+- Spot-check (5 kanji from user `6d6c500a`): all match dry-run output to 2 decimal places
+- Idempotency: second replay produces identical state
+- Status distribution after replay: learning=78, reviewing=107, remembered=383, burned=174 (matches live post-rollout exactly)
+
+### Live rollout sequence (today, 2026-05-23)
+
+| Step | Result |
+|---|---|
+| Safety dump (5.5MB pg_dump from live) | ✅ (removed post-verification) |
+| Migration 0024 → live DB | ✅ committed cleanly |
+| Replay against live DB | ✅ 742 cards in ~2 min cross-region |
+| Spot-check vs rehearsal | ✅ 5/5 match exactly |
+| `./scripts/deploy-api.sh` | ✅ image pushed, App Runner SUCCEEDED |
+| API smoke | ✅ |
+| `eas build --platform ios --profile production` | ✅ B135 |
+| `eas submit --platform ios --latest` | ✅ submission `6f063489-76ce-43c8-ba41-3f764d9322bb` |
+
+### Spec 1.5 follow-ups (Spec 2 territory)
+
+Captured in the runbook for future cleanup:
+
+1. **Orphan `UserKanjiProgress` interface** at `packages/shared/src/types.ts:36-48` still carries SM-2 fields. Zero consumers. Delete in cleanup.
+2. **`srsEaseFactor` field-name footgun.** `apps/api/src/routes/kanji.ts` and mobile both type a field called `srsEaseFactor` but the value is now FSRS `difficulty` (1–10 absolute, not 1.3–2.5 multiplier). Field is typed but never rendered. Either rename to `srsDifficulty` (coordinated mobile + API change) or drop entirely.
+3. **FSRS-5 fidelity sweep.** `packages/shared/src/srs.ts` has four documented deliberate divergences from canonical FSRS-5 (exponential R, no linear damping, mean-reversion-toward-Good, post-update D in `(11-D)`). First-review matches ts-fsrs to 8 decimals; subsequent reviews diverge ~20–28%. Revisit if community benchmarks or per-user parameter fitting ever matter.
+4. **Pre-existing `social-mute.test.ts:25` typecheck error** — unrelated to migration, only remaining `pnpm typecheck` failure on `main`. Roll into a housekeeping pass.
+
+---
+
+## Spec 1 (Plans A/B/C) — shipped earlier (recap)
 
 - **Plan A** (`def0009`) — daily goal became a minutes budget; the study session is time-boxed. Migration `0023` reinterpreted `daily_goal` as minutes (applied to the live DB 2026-05-18).
 - **Plan B** (`7244317`…`da1b303`) — the writing/speaking loop legs; the Write & Speak tabs removed; the guaranteed new-kanji allowance (`planQueueSlots`).
+- **Plan C** (`bcc0133`…`1120dab`) — Practice Loop quiz & close-out: maybeSlipping flag, quiz leg, Ready screen, vocab-word speaking layout, Session Complete modality breakdown, Browse promoted to a tab.
 
-**Minor carry-over:** WCAG — `colors.textMuted` on the dark background is ~3.86:1, under AA 4.5:1 for 12px caption text (the leg headers, `counter`, `swipeHint`). Project-wide debt; rolls into the app-wide a11y pass follow-up.
+**Carry-forward Plan C follow-ups still relevant:**
+- **Stale `study.tsx` file-header comment** — cosmetic doc drift; still not addressed.
+- **Accessibility a11y debt** — leg close buttons / loading spinners need `accessibilityLabel`; `Ionicons name={icon as any}` is repeated. Still pending app-wide a11y pass.
+- **Resume edge case (accepted v1 limitation)** — app kill mid-quiz/writing/speaking resumes past that kanji and skips its remaining legs.
 
----
+**Plan A/B WCAG carry-forward:** `colors.textMuted` on the dark background is ~3.86:1 vs AA 4.5:1 for 12px caption text. Rolls into the app-wide a11y pass.
 
-## B133 — verification carry-forward
-
-B133 shipped and was submitted to TestFlight an earlier session. The B134 walkthrough above absorbs the remaining items:
-- **Item 5** — App Runner logs: one `[Internal] Daily reminder job triggered` per hour, no `[Cron] Running hourly reminder check`; one daily-reminder push, no duplicate.
-- **Items 6, 7, Bug A** — Study speaker icon un-sticks; empty-transcript hint on Speaking; reported Speak vocab words pass.
-- **Bug B** — resolved (stale `velocity_drop` rows cleared 2026-05-18).
-
-**Known pre-existing issue (not Plan A/B/C, not B133):** `apps/api/test/integration/social-mute.test.ts:25` has a `FastifyRegisterOptions` typecheck error that exists on `main` independently — flagged for a future sweep.
+**Plan C follow-up now MOOT:** ~~Unbounded `reviewLogs` fetch in `maybeSlipping`~~ — eliminated by Spec 1.5 Task 6 (R-based predicate operates on already-loaded card state; no per-card log fetch).
 
 ---
 
@@ -102,7 +151,7 @@ Untracked items in the main checkout. Still need eyeball decisions:
 
 | Item | Recommendation |
 |---|---|
-| ~~`.claude/worktrees/`~~ | ✅ gitignored (commit `7a7cb31`). |
+| ~~`.claude/worktrees/`~~ | ✅ gitignored. |
 | `apps/lambda/daily-reminders/daily-reminders.zip` | gitignore (build artifact) |
 | `apps/mobile/credentials.json` | **gitignore IMMEDIATELY if it contains secrets** — verify content first |
 | `apps/watch/KanjiLearnWatch.xcodeproj/xcshareddata/` | gitignore (Xcode personal prefs) |
@@ -112,6 +161,7 @@ Untracked items in the main checkout. Still need eyeball decisions:
 | `docs/superpowers/mockups/` | Inspect → commit if useful |
 | `docs/superpowers/plans/2026-04-*.md` (7 files) | **Commit all** — executed session plans, belong on `main` as history |
 | `docs/openbrain-migration-thoughts.md` | Open Brain migration record — keep (commit to `docs/`) or delete; harmless |
+| `docs/b134-verification-checklist.md` | Generated this session; was used for B134 walkthrough; can commit or delete |
 
 `.superpowers/` (visual-companion brainstorm scratch) is already gitignored.
 
@@ -121,11 +171,15 @@ Untracked items in the main checkout. Still need eyeball decisions:
 
 | | Item | Status |
 |---|---|---|
-| ✅ | Apply migration `0023` to the live DB | done 2026-05-18 |
-| ✅ | Push `main` to `origin` | done 2026-05-21 — `origin/main` = `c482f35` |
-| ✅ | Deploy the API (Plan B + Plan C) | triggered 2026-05-21, op `8fcf22cf275d4d9f871951be3d2a2d8f` — confirm rollout completed in the App Runner console |
-| ✅ | Cut + submit B134 to TestFlight (Plans A/B/C) | done 2026-05-21 — Apple processing |
-| 🚀 | On-device walkthrough on B134 | owed once Apple processing completes — checklist above |
+| ✅ | Apply migration `0023` (Plan A) to the live DB | done 2026-05-18 |
+| ✅ | Push `main` to `origin` (Spec 1) | done 2026-05-21 |
+| ✅ | Deploy API for Spec 1 (Plans A/B/C) | done 2026-05-21 |
+| ✅ | Cut + submit B134 to TestFlight (Spec 1) | done 2026-05-21 |
+| ✅ | **Apply migration `0024` (Spec 1.5) to the live DB** | done 2026-05-23 |
+| ✅ | **Run FSRS replay against live DB** | done 2026-05-23 |
+| ✅ | **Deploy API for Spec 1.5** | done 2026-05-23, op `3f6c157cd008489e8ac85778cf893eda` SUCCEEDED |
+| ✅ | **Cut + submit B135 to TestFlight (Spec 1.5)** | done 2026-05-23 — verified on-device |
+| 🚀 | On-device walkthrough on B135 (Spec 1 + Spec 1.5 combined) | partial — burned count verified; full systematic checklist still owed |
 | 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed |
 | 🚀 | Migrate Supabase DB `ap-southeast-2` → `us-east-1` | Cross-region tax; dedicated session |
 | 🚀 | SES out of sandbox | Needed for tutor-share email at scale |
@@ -135,23 +189,29 @@ Untracked items in the main checkout. Still need eyeball decisions:
 
 ## Other open follow-ups
 
-- **Bound the `maybeSlipping` `reviewLogs` query** — see Plan C follow-ups above; a background task was spawned.
-- **Orphaned `writing-queue` API code** — `GET /v1/review/writing-queue` + `getWritingQueue()` were used only by the deleted Write tab — now dead code (the *reading-queue* side is in use by Plan C's SpeakingLeg — keep it). A background task was spawned for the cleanup.
+- ~~**Bound the `maybeSlipping` `reviewLogs` query**~~ — MOOT (eliminated by Spec 1.5 Task 6).
+- **Orphan `UserKanjiProgress` interface in `packages/shared/src/types.ts`** — Spec 1.5 follow-up #1.
+- **`srsEaseFactor` field-name footgun** — Spec 1.5 follow-up #2.
+- **FSRS-5 fidelity sweep** — Spec 1.5 follow-up #3.
+- **Orphaned `writing-queue` API code** — `GET /v1/review/writing-queue` + `getWritingQueue()` were used only by the deleted Write tab. Dead code (the *reading-queue* side is in use by Plan C's SpeakingLeg — keep it). A background task was spawned.
 - **Truncated kanji readings** — `kanji.kun_readings`/`on_readings` capped at ~5 sorted entries; re-import full KanjiDic2 readings.
 - **The "Kanji Buddy 1.0" rebrand** — rename Kanji Learn → Kanji Buddy, splash polish, About/Credits branding. Needs a brand-decision block first.
-- **Tutor report writing scope-down** — the report still surfaces a Writing modality; Study no longer serves standalone writing prompts (writing is a loop leg). `getWriting` + `weakestModality` in the tutor report need scoping/removal.
+- **Tutor report writing scope-down** — the report still surfaces a Writing modality; Study no longer serves standalone writing prompts (writing is a loop leg). `getWriting` + `weakestModality` in the tutor report need scoping/removal. (Spec 2 territory.)
 - **Phase 3 #13 — Milestones panel refactor** — spec captured earlier.
 - **`interventions.payload` double-encoded** — stored double-encoded jsonb (a Drizzle/postgres-js quirk); harmless to the JS round-trip but breaks SQL-side payload queries.
-- **App-wide accessibility pass** — touch targets / `accessibilityLabel`s on interactive elements, plus the `textMuted` contrast debt. Repeated across study/quiz components; warrants its own task given the WCAG 2.1 AA standard.
+- **App-wide accessibility pass** — touch targets / `accessibilityLabel`s, plus the `textMuted` contrast debt. Warrants its own task given WCAG 2.1 AA standard.
+- **Pre-existing `social-mute.test.ts:25` typecheck error** — Spec 1.5 follow-up #4.
 
 ---
 
 ## Working environment notes
 
-- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`. Plan B + Plan C deployment is in flight as of 2026-05-21.
-- **Supabase:** still `ap-southeast-2`. Migration files live in `packages/db/supabase/migrations/` (`0001`–`0023`). `0023` was applied to the live DB 2026-05-18 via `scripts/run-migration-0023.mjs`.
-- **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. Builds + pushes the image to ECR and triggers an App Runner deployment. The script returns immediately after triggering; monitor rollout in the App Runner console.
+- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`. Spec 1.5 FSRS code is live as of 2026-05-23.
+- **Supabase:** still `ap-southeast-2`. Migration files in `packages/db/supabase/migrations/` (`0001`–`0024`). `0024` (FSRS) applied to live DB 2026-05-23 via `psql -f`.
+- **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. Builds + pushes the image to ECR and triggers an App Runner deployment. Returns immediately; monitor rollout via the App Runner console or `aws apprunner list-operations`.
 - **EAS builds:** from `apps/mobile/`, ~$2/build. `eas build --platform ios --profile production --non-interactive`. EAS auto-bumps `ios.buildNumber` — **never hand-edit `app.json`** (it tracks the LAST shipped build; EAS bumps to +1 server-side). Submit with `eas submit --platform ios --latest --non-interactive`. Apple processing follows (~5–10 min from submit).
-- **Watch builds:** **manual Xcode rebuild only** — EAS does not build the watchOS target.
-- **Worktrees:** `.claude/worktrees/` is the Claude Code scratch-worktree location (now gitignored). Plan B and Plan C were each executed in a dedicated worktree there, then fast-forward merged and the worktree removed.
+- **Watch builds:** **manual Xcode rebuild only** — EAS does not build the watchOS target. Spec 1.5 was API-only; no Watch rebuild required.
+- **FSRS replay script:** `scripts/replay-srs-fsrs.mjs`. Run via `./packages/db/node_modules/.bin/tsx scripts/replay-srs-fsrs.mjs` (or `node --import tsx/esm ...`). Honors `sslmode=disable` for local rehearsal DBs; defaults to `ssl: 'require'` for Supabase. Idempotent. Auto-refreshes `kanji_mastery_view` at end. `--dry-run` and `--user <uuid>` flags supported.
+- **Clone-rehearsal pattern:** for any future destructive migration, the FSRS rollout established the pattern — fresh `pg_dump` of live → restore to local Docker Postgres → apply migration → run replay/backfill → spot-check → merge to main → live rollout. The runbook at `docs/superpowers/runbooks/2026-05-22-fsrs-rollout.md` documents it explicitly.
+- **Worktrees:** `.claude/worktrees/` is the Claude Code scratch-worktree location (gitignored). Spec 1.5 was executed in `.claude/worktrees/spec-1.5-fsrs-migration` (now removed, fast-forward-merged to main).
 - **Co-author convention:** every kanji-learn commit includes `Co-Authored-By: Robert A. Dennis (Buddy)` alongside the Claude co-author line.
