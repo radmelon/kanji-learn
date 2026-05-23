@@ -95,7 +95,7 @@ describe('SrsService.submitReview routes through DualWriteService', () => {
     // Compute the expected mastery from the SRS algorithm rather than
     // hardcoding — quality 4 on a fresh card produces interval=1 which
     // deriveStatus maps to 'learning' (mastery = 0.25).
-    const expected = calculateNextReview(createNewCard(), 4)
+    const expected = calculateNextReview(createNewCard(), 4, new Date())
     const expectedMastery = MASTERY_BY_STATUS[expected.status]
     expect((ukgRows[0] as { mastery: number }).mastery).toBeCloseTo(expectedMastery, 3)
     expect((ukgRows[0] as { rc: number }).rc).toBe(1)

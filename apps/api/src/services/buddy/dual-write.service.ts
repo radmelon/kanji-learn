@@ -24,14 +24,18 @@ export interface ReviewSubmissionInput {
   quality: number // SM-2 0-5; quality >= 3 is "correct"
   responseTimeMs: number
   prevStatus: SrsStatus
-  prevInterval: number
+  prevInterval: number // back-compat — derived from prevStability
+  prevStability: number // FSRS state at time of submission
+  prevDifficulty: number // FSRS state at time of submission
   /** Post-SRS-update progress, written to user_kanji_progress and mirrored to UKG. */
   progressAfter: {
     status: SrsStatus
-    interval: number
-    easeFactor: number
-    repetitions: number
+    stability: number
+    difficulty: number
+    lapses: number
+    totalReviews: number
     nextReviewAt: Date | null
+    nextInterval: number // back-compat — derived from progressAfter.stability
     readingStage: number
   }
 }
@@ -53,15 +57,20 @@ export interface BatchedRowSets {
     nextStatus: SrsStatus
     prevInterval: number
     nextInterval: number
+    prevStability: number
+    nextStability: number
+    prevDifficulty: number
+    nextDifficulty: number
   }>
   userKanjiProgress: Array<{
     userId: string
     kanjiId: number
     status: SrsStatus
     readingStage: number
-    easeFactor: number
-    interval: number
-    repetitions: number
+    stability: number
+    difficulty: number
+    lapses: number
+    totalReviews: number
     nextReviewAt: Date | null
     lastReviewedAt: Date
     updatedAt: Date
@@ -120,7 +129,11 @@ export function buildBatchedRowSets(
       prevStatus: input.prevStatus,
       nextStatus: input.progressAfter.status,
       prevInterval: input.prevInterval,
-      nextInterval: input.progressAfter.interval,
+      nextInterval: input.progressAfter.nextInterval,
+      prevStability: input.prevStability,
+      nextStability: input.progressAfter.stability,
+      prevDifficulty: input.prevDifficulty,
+      nextDifficulty: input.progressAfter.difficulty,
     })
 
     rows.userKanjiProgress.push({
@@ -128,9 +141,10 @@ export function buildBatchedRowSets(
       kanjiId: input.kanjiId,
       status: input.progressAfter.status,
       readingStage: input.progressAfter.readingStage,
-      easeFactor: input.progressAfter.easeFactor,
-      interval: input.progressAfter.interval,
-      repetitions: input.progressAfter.repetitions,
+      stability: input.progressAfter.stability,
+      difficulty: input.progressAfter.difficulty,
+      lapses: input.progressAfter.lapses,
+      totalReviews: input.progressAfter.totalReviews,
       nextReviewAt: input.progressAfter.nextReviewAt,
       lastReviewedAt: now,
       updatedAt: now,
@@ -209,7 +223,11 @@ export class DualWriteService {
         prevStatus: input.prevStatus,
         nextStatus: input.progressAfter.status,
         prevInterval: input.prevInterval,
-        nextInterval: input.progressAfter.interval,
+        nextInterval: input.progressAfter.nextInterval,
+        prevStability: input.prevStability,
+        nextStability: input.progressAfter.stability,
+        prevDifficulty: input.prevDifficulty,
+        nextDifficulty: input.progressAfter.difficulty,
       })
 
       // 2. App write — user_kanji_progress upsert. Conflict target is the
@@ -221,9 +239,10 @@ export class DualWriteService {
           kanjiId: input.kanjiId,
           status: input.progressAfter.status,
           readingStage: input.progressAfter.readingStage,
-          easeFactor: input.progressAfter.easeFactor,
-          interval: input.progressAfter.interval,
-          repetitions: input.progressAfter.repetitions,
+          stability: input.progressAfter.stability,
+          difficulty: input.progressAfter.difficulty,
+          lapses: input.progressAfter.lapses,
+          totalReviews: input.progressAfter.totalReviews,
           nextReviewAt: input.progressAfter.nextReviewAt,
           lastReviewedAt: now,
           updatedAt: now,
@@ -233,9 +252,10 @@ export class DualWriteService {
           set: {
             status: input.progressAfter.status,
             readingStage: input.progressAfter.readingStage,
-            easeFactor: input.progressAfter.easeFactor,
-            interval: input.progressAfter.interval,
-            repetitions: input.progressAfter.repetitions,
+            stability: input.progressAfter.stability,
+            difficulty: input.progressAfter.difficulty,
+            lapses: input.progressAfter.lapses,
+            totalReviews: input.progressAfter.totalReviews,
             nextReviewAt: input.progressAfter.nextReviewAt,
             lastReviewedAt: now,
             updatedAt: now,
@@ -321,9 +341,10 @@ export class DualWriteService {
           set: {
             status: sql`excluded.status`,
             readingStage: sql`excluded.reading_stage`,
-            easeFactor: sql`excluded.ease_factor`,
-            interval: sql`excluded.interval`,
-            repetitions: sql`excluded.repetitions`,
+            stability: sql`excluded.stability`,
+            difficulty: sql`excluded.difficulty`,
+            lapses: sql`excluded.lapses`,
+            totalReviews: sql`excluded.total_reviews`,
             nextReviewAt: sql`excluded.next_review_at`,
             lastReviewedAt: sql`excluded.last_reviewed_at`,
             updatedAt: sql`excluded.updated_at`,
