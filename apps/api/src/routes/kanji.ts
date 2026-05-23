@@ -229,7 +229,8 @@ export async function kanjiRoutes(server: FastifyInstance) {
           // FSRS equivalents: stability ≈ SM-2 interval (days until 90% retention),
           // totalReviews replaces repetitions, difficulty replaces easeFactor.
           // Field names are kept for mobile API contract compatibility.
-          srsInterval: userKanjiProgress.stability,
+          // stability is selected as-is; srsInterval is rounded in the response below.
+          stability: userKanjiProgress.stability,
           srsRepetitions: userKanjiProgress.totalReviews,
           srsNextReviewAt: userKanjiProgress.nextReviewAt,
           srsLastReviewedAt: userKanjiProgress.lastReviewedAt,
@@ -263,6 +264,10 @@ export async function kanjiRoutes(server: FastifyInstance) {
           exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(row.exampleVocab),
           exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(row.exampleSentences),
           srsStatus: row.srsStatus ?? 'unseen',
+          // Round stability (a real/float FSRS field) to an integer day count so
+          // the mobile detail page shows "3 days" rather than "3.1750000953674316 days".
+          // Mirrors the Math.max(1, Math.round(stability)) rounding used in review_logs.
+          srsInterval: row.stability != null ? Math.max(1, Math.round(row.stability)) : null,
         },
       })
     }
