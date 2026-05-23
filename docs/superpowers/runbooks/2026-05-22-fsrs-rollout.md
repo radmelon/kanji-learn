@@ -25,8 +25,17 @@ Branch: spec-1.5-fsrs-migration
       `DATABASE_URL=<clone-conn-string> ./packages/db/node_modules/.bin/tsx scripts/replay-srs-fsrs.mjs`
 - [ ] Spot-check 5 kanji per user: query `review_logs` for that user/kanji, hand-replay in a Node REPL using `calculateNextReview` from `packages/shared/src/srs.ts`, confirm S/D/lapses match the row in `user_kanji_progress`
 - [ ] Spin up the API locally against the clone DB; hit `GET /v1/review/queue` for a known user; confirm the response shape includes `maybeSlipping`, no errors
-- [ ] Verify the recreated materialized view `kanji_mastery_view` exists and returns rows:
-      `psql -d kanji_learn_clone -c "SELECT COUNT(*) FROM kanji_mastery_view"`
+- [ ] Verify the recreated materialized view `kanji_mastery_view` exists, returns rows, AND has non-zero `interval_days` values (the replay script auto-refreshes the view at the end; if `interval_days` is all 0 the refresh didn't run):
+      `psql -d kanji_learn_clone -c "SELECT MIN(interval_days), AVG(interval_days), MAX(interval_days) FROM kanji_mastery_view"`
+- [ ] Optional: idempotency check — re-run the replay against the same clone, verify state doesn't change (`SELECT MD5(string_agg(stability::text || difficulty::text, '|' ORDER BY user_id, kanji_id)) FROM user_kanji_progress` should match before and after the second run)
+
+## Merge to `main`
+
+Only after rehearsal passes — keeping the branch isolated until rehearsal validates the migration + replay protects against fix-forward on `main` if anything explodes.
+
+- [ ] Open PR from `spec-1.5-fsrs-migration` → `main`
+- [ ] Squash or fast-forward merge per project convention
+- [ ] Confirm `main` is at the post-merge SHA before proceeding to live rollout (`./scripts/deploy-api.sh` deploys from current `main`)
 
 ## Production rollout — MAINTENANCE WINDOW OPENS
 
@@ -135,3 +144,32 @@ Discovered during the migration, deliberately deferred:
 - The replay is idempotent — safe to re-run if needed.
 - `--dry-run` prints the first 10 users' computed state without writing.
 - `--user <uuid>` scopes to a single user for spot-checks.
+- The replay auto-refreshes `kanji_mastery_view` at the end (the migration
+  populates the view inside its transaction before any replay runs, so without
+  the refresh the view's `interval_days` would be 0 for every row).
+- SSL: the script defaults to `ssl: 'require'` (matching prod Supabase) but
+  honors `?sslmode=disable` in the URL for local rehearsal DBs without TLS.
+
+## Rehearsal findings (already addressed)
+
+Clone-rehearsal against a fresh `pg_dump` of the live DB (4 users, 742 progress
+rows, 2857 review_logs) caught three correctness bugs that the unit/integration
+tests didn't:
+
+- **`ON CONFLICT ON CONSTRAINT user_kanji_unique_idx`** — fails because that's
+  a unique INDEX, not a constraint. Fixed in commit `9af2b83` (replay script
+  now uses `ON CONFLICT (user_id, kanji_id)`).
+- **`ssl: 'require'` hardcoded** — broke local DB rehearsal. Fixed in commit
+  `08a85bf` (now honors `sslmode=disable` in the URL).
+- **`kanji_mastery_view` stale after migration** — populated during the
+  migration transaction when stability is still 0; needs a post-replay
+  REFRESH. Fixed in commit `08a85bf`.
+
+Rehearsal re-run end-to-end after fixes: replay completes in ~1s, spot-check
+matches dry-run exactly, idempotency confirmed (second replay produces
+identical state). Status distribution after replay:
+learning=78, reviewing=107, remembered=383, burned=174 (total 742).
+
+The rehearsal is the contract: do not skip it for the live rollout. Each of
+the three bugs above would have shown up in the live maintenance window
+otherwise.
