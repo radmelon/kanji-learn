@@ -55,14 +55,17 @@ async function resetFixtures() {
   kanjiIdNi = (k2[0] as { id: number }).id
 
   // Seed pre-UKG progress rows. User 0 has two (reviewing + burned); user 1
-  // has one (learning).
+  // has one (learning). SM-2 columns (interval, ease_factor, repetitions) were
+  // removed in migration 0024; FSRS columns (stability, difficulty, lapses,
+  // total_reviews) are used instead. backfillUniversalKg only reads status /
+  // updated_at / kanji.character, so exact FSRS values don't affect the tests.
   await db.execute(sql`
     INSERT INTO user_kanji_progress
-      (user_id, kanji_id, status, interval, ease_factor, repetitions, next_review_at, updated_at)
+      (user_id, kanji_id, status, stability, difficulty, lapses, total_reviews, next_review_at, updated_at)
     VALUES
-      (${TEST_USERS[0]}, ${kanjiIdIchi}, 'reviewing', 3, 2.5, 1, now() + interval '3 days', now()),
-      (${TEST_USERS[0]}, ${kanjiIdNi}, 'burned', 365, 2.6, 10, now() + interval '365 days', now()),
-      (${TEST_USERS[1]}, ${kanjiIdIchi}, 'learning', 1, 2.5, 0, now() + interval '1 day', now())
+      (${TEST_USERS[0]}, ${kanjiIdIchi}, 'reviewing', 3.0, 5.0, 0, 1, now() + interval '3 days', now()),
+      (${TEST_USERS[0]}, ${kanjiIdNi}, 'burned', 365.0, 4.5, 0, 10, now() + interval '365 days', now()),
+      (${TEST_USERS[1]}, ${kanjiIdIchi}, 'learning', 1.0, 5.0, 0, 0, now() + interval '1 day', now())
   `)
 }
 

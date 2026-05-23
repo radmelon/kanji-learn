@@ -226,11 +226,14 @@ export async function kanjiRoutes(server: FastifyInstance) {
           hadamitzkySpahn: kanji.hadamitzkySpahn,
           // SRS progress
           srsStatus: userKanjiProgress.status,
-          srsInterval: userKanjiProgress.interval,
-          srsRepetitions: userKanjiProgress.repetitions,
+          // FSRS equivalents: stability ≈ SM-2 interval (days until 90% retention),
+          // totalReviews replaces repetitions, difficulty replaces easeFactor.
+          // Field names are kept for mobile API contract compatibility.
+          srsInterval: userKanjiProgress.stability,
+          srsRepetitions: userKanjiProgress.totalReviews,
           srsNextReviewAt: userKanjiProgress.nextReviewAt,
           srsLastReviewedAt: userKanjiProgress.lastReviewedAt,
-          srsEaseFactor: userKanjiProgress.easeFactor,
+          srsEaseFactor: userKanjiProgress.difficulty,
           srsReadingStage: userKanjiProgress.readingStage,
         })
         .from(kanji)

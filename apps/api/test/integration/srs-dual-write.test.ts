@@ -6,7 +6,7 @@ import * as schema from '@kanji-learn/db'
 import { SrsService } from '../../src/services/srs.service'
 import { DualWriteService } from '../../src/services/buddy/dual-write.service'
 import { MASTERY_BY_STATUS } from '../../src/services/buddy/constants'
-import { calculateNextReview, createNewCard } from '@kanji-learn/shared'
+import { calculateNextReview, createNewCard, ratingFromQuality } from '@kanji-learn/shared'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
@@ -93,9 +93,9 @@ describe('SrsService.submitReview routes through DualWriteService', () => {
     expect(ukgRows.length).toBe(1)
 
     // Compute the expected mastery from the SRS algorithm rather than
-    // hardcoding — quality 4 on a fresh card produces interval=1 which
-    // deriveStatus maps to 'learning' (mastery = 0.25).
-    const expected = calculateNextReview(createNewCard(), 4, new Date())
+    // hardcoding — quality 4 maps to FSRS rating 3 ("Good") via ratingFromQuality;
+    // on a fresh card that produces stability ≈ 3.17 days → status 'learning' (mastery 0.25).
+    const expected = calculateNextReview(createNewCard(), ratingFromQuality(4), new Date())
     const expectedMastery = MASTERY_BY_STATUS[expected.status]
     expect((ukgRows[0] as { mastery: number }).mastery).toBeCloseTo(expectedMastery, 3)
     expect((ukgRows[0] as { rc: number }).rc).toBe(1)

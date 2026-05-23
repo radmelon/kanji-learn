@@ -220,10 +220,10 @@ export async function applyPlacementResults(
         userId,
         kanjiId: id,
         status: 'remembered' as const,
-        interval: 21,
+        stability: 21,      // ≈ 21-day retention window (FSRS analog of SM-2 interval)
+        difficulty: 5,      // FSRS default difficulty
+        totalReviews: 1,
         nextReviewAt,
-        easeFactor: 2.5,
-        repetitions: 2,
         readingStage: 0,
         updatedAt: new Date(),
       })
@@ -241,7 +241,7 @@ export async function applyPlacementResults(
   for (const id of toUpdate) {
     await db
       .update(userKanjiProgress)
-      .set({ status: 'remembered', interval: 21, nextReviewAt, easeFactor: 2.5, repetitions: 2, updatedAt: new Date() })
+      .set({ status: 'remembered', stability: 21, difficulty: 5, totalReviews: 1, nextReviewAt, updatedAt: new Date() })
       .where(and(eq(userKanjiProgress.userId, userId), eq(userKanjiProgress.kanjiId, id)))
   }
 
