@@ -16,10 +16,6 @@ export const TOTAL_JOUYOU_KANJI = 2136 // 2010 Jōyō list — does not include 
 
 export const SRS_STATUS_ORDER = ['unseen', 'learning', 'reviewing', 'remembered', 'burned'] as const
 
-export const SRS_INITIAL_EASE_FACTOR = 2.5
-export const SRS_MIN_EASE_FACTOR = 1.3
-export const SRS_MAX_EASE_FACTOR = 3.5
-
 // ─── Intervention Thresholds ──────────────────────────────────────────────────
 
 export const ABSENCE_THRESHOLD_HOURS = 48
