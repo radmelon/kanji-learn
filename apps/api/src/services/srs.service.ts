@@ -91,21 +91,6 @@ export function planQueueSlots(
   return { guaranteedNew, dueKeep, fillNew }
 }
 
-/** How many of a kanji's most recent reviews the "recently shaky" check looks at. */
-export const RECENT_REVIEW_WINDOW = 3
-
-/**
- * True when a kanji is "recently shaky" — it has a Hard (quality 3) or Again
- * (quality 0–2) grade among its most recent reviews. One of the two "maybe
- * slipping" triggers (Practice Loop spec §2): despite a Good/Easy self-grade
- * today, a recently-shaky review kanji is routed to a quiz check.
- *
- * @param recentGrades the kanji's review grades, MOST RECENT FIRST.
- */
-export function isRecentlyShaky(recentGrades: number[]): boolean {
-  return recentGrades.slice(0, RECENT_REVIEW_WINDOW).some((q) => q <= 3)
-}
-
 // ─── SRS Service ──────────────────────────────────────────────────────────────
 
 export class SrsService {
@@ -119,12 +104,39 @@ export class SrsService {
   async getReviewQueue(userId: string, limit = 20): Promise<ReviewQueueItem[]> {
     const now = new Date()
 
+    // FSRS-based "maybe slipping" helpers (Practice Loop spec §2).
+    // Replaces the old isRecentlyShaky heuristic — uses retrievability R(t)
+    // computed from the card's stability/difficulty/lastReviewedAt directly.
+    const slippingThreshold = (difficulty: number) =>
+      MAYBE_SLIPPING_BASE + MAYBE_SLIPPING_D_COEFFICIENT * (difficulty - 5)
+
+    const isSlipping = (c: {
+      stability: number | null
+      difficulty: number | null
+      lapses: number | null
+      lastReviewedAt: Date | null
+    }): boolean => {
+      const card: FsrsCard = {
+        stability: c.stability ?? 1,
+        difficulty: c.difficulty ?? 5,
+        lapses: c.lapses ?? 0,
+        status: 'reviewing', // unused by retrievability()
+        lastReviewedAt: c.lastReviewedAt,
+      }
+      return retrievability(card, now) < slippingThreshold(card.difficulty)
+    }
+
     // 1. Due reviews: next_review_at <= now
     const dueCards = await this.db
       .select({
         kanjiId: userKanjiProgress.kanjiId,
         status: userKanjiProgress.status,
         readingStage: userKanjiProgress.readingStage,
+        stability: userKanjiProgress.stability,
+        difficulty: userKanjiProgress.difficulty,
+        lapses: userKanjiProgress.lapses,
+        totalReviews: userKanjiProgress.totalReviews,
+        lastReviewedAt: userKanjiProgress.lastReviewedAt,
         character: kanji.character,
         jlptLevel: kanji.jlptLevel,
         meanings: kanji.meanings,
@@ -192,28 +204,6 @@ export class SrsService {
     const dueRows = dueCards.slice(0, slots.dueKeep)
     const fillNewRows = newCardRows.slice(slots.guaranteedNew, slots.guaranteedNew + slots.fillNew)
 
-    // "Maybe slipping" trigger (a): a due review kanji with a Hard/Again grade
-    // in its last few reviews. Burned-check cards are trigger (b) — flagged
-    // unconditionally in mapBurned below. (Practice Loop spec §2.)
-    const dueKanjiIds = dueRows.map((c) => c.kanjiId)
-    const recentLogs = dueKanjiIds.length > 0
-      ? await this.db
-          .select({ kanjiId: reviewLogs.kanjiId, quality: reviewLogs.quality })
-          .from(reviewLogs)
-          .where(and(eq(reviewLogs.userId, userId), inArray(reviewLogs.kanjiId, dueKanjiIds)))
-          .orderBy(desc(reviewLogs.reviewedAt))
-      : []
-    const gradesByKanji = new Map<number, number[]>()
-    for (const log of recentLogs) {
-      const arr = gradesByKanji.get(log.kanjiId) ?? []
-      arr.push(log.quality)
-      gradesByKanji.set(log.kanjiId, arr)
-    }
-    const shakyKanji = new Set<number>()
-    for (const [kid, grades] of gradesByKanji) {
-      if (isRecentlyShaky(grades)) shakyKanji.add(kid)
-    }
-
     // 3. Surprise burned checks (~12%)
     const surpriseCount = Math.ceil(limit * SURPRISE_BURNED_CHECK_RATE)
     const burnedChecks = await this.db
@@ -221,6 +211,11 @@ export class SrsService {
         kanjiId: userKanjiProgress.kanjiId,
         status: userKanjiProgress.status,
         readingStage: userKanjiProgress.readingStage,
+        stability: userKanjiProgress.stability,
+        difficulty: userKanjiProgress.difficulty,
+        lapses: userKanjiProgress.lapses,
+        totalReviews: userKanjiProgress.totalReviews,
+        lastReviewedAt: userKanjiProgress.lastReviewedAt,
         character: kanji.character,
         jlptLevel: kanji.jlptLevel,
         meanings: kanji.meanings,
@@ -256,7 +251,7 @@ export class SrsService {
       status: c.status ?? 'learning',
       readingStage: c.readingStage ?? 0,
       reviewType: this.pickReviewType(c.readingStage ?? 0, c.status ?? 'learning'),
-      maybeSlipping: shakyKanji.has(c.kanjiId),
+      maybeSlipping: isSlipping(c),
       meanings: toArr<string>(c.meanings),
       kunReadings: toArr<string>(c.kunReadings),
       onReadings: toArr<string>(c.onReadings),
@@ -270,6 +265,7 @@ export class SrsService {
       status: 'unseen' as const,
       readingStage: 0,
       reviewType: 'meaning' as const,
+      maybeSlipping: false, // new cards have no FSRS state yet
       meanings: toArr<string>(c.meanings),
       kunReadings: toArr<string>(c.kunReadings),
       onReadings: toArr<string>(c.onReadings),
@@ -510,7 +506,7 @@ export class SrsService {
   }
 
   // ── Get writing practice queue ─────────────────────────────────────────────
-  // Returns kanji the user has already studied (repetitions > 0), most recent first.
+  // Returns kanji the user has already studied (total_reviews > 0), most recent first.
 
   async getWritingQueue(userId: string, limit: number) {
     const rows = await this.db
@@ -530,7 +526,7 @@ export class SrsService {
       .where(
         and(
           eq(userKanjiProgress.userId, userId),
-          gt(userKanjiProgress.repetitions, 0)
+          gt(userKanjiProgress.totalReviews, 0)
         )
       )
       .orderBy(desc(userKanjiProgress.lastReviewedAt))
@@ -542,7 +538,7 @@ export class SrsService {
   // ── Get reading practice queue ──────────────────────────────────────────────
   // Default: kanji with at least one reading, most recently reviewed first.
   // When kanjiIds is provided, return speaking data for exactly those kanji
-  // (skipping the SRS selection and repetitions>0 filter) so the Speaking tab
+  // (skipping the SRS selection and total_reviews>0 filter) so the Speaking tab
   // can mirror today's Study-tab deck. The scoped path drives off `kanji` and
   // LEFT JOINs progress so new unseen kanji in today's Study deck still appear
   // — without this, a fresh account whose Study deck is all-new sees an empty
@@ -564,7 +560,7 @@ export class SrsService {
           exampleVocab: kanji.exampleVocab,
           status: userKanjiProgress.status,
           lastReviewedAt: userKanjiProgress.lastReviewedAt,
-          repetitions: userKanjiProgress.repetitions,
+          totalReviews: userKanjiProgress.totalReviews,
         })
         .from(kanji)
         .leftJoin(
@@ -584,9 +580,9 @@ export class SrsService {
           return {
             ...r,
             status: r.status ?? 'unseen',
-            repetitions: r.repetitions ?? 0,
+            totalReviews: r.totalReviews ?? 0,
             exampleVocab,
-            voicePrompt: selectVoicePrompt(exampleVocab, r.repetitions ?? 0, r.character),
+            voicePrompt: selectVoicePrompt(exampleVocab, r.totalReviews ?? 0, r.character),
           }
         })
     }
@@ -602,14 +598,14 @@ export class SrsService {
         exampleVocab: kanji.exampleVocab,
         status: userKanjiProgress.status,
         lastReviewedAt: userKanjiProgress.lastReviewedAt,
-        repetitions: userKanjiProgress.repetitions,
+        totalReviews: userKanjiProgress.totalReviews,
       })
       .from(userKanjiProgress)
       .innerJoin(kanji, eq(userKanjiProgress.kanjiId, kanji.id))
       .where(
         and(
           eq(userKanjiProgress.userId, userId),
-          gt(userKanjiProgress.repetitions, 0),
+          gt(userKanjiProgress.totalReviews, 0),
         )
       )
       .orderBy(desc(userKanjiProgress.lastReviewedAt))
@@ -619,13 +615,10 @@ export class SrsService {
       .filter((r) => r.kunReadings.length > 0 || r.onReadings.length > 0)
       .map((r) => {
         const exampleVocab = toArr<ExampleVocabEntry>(r.exampleVocab)
-        // `repetitions` is SM-2's consecutive-success counter (resets on failure).
-        // Used here as the rotation index — a true total-review counter would require
-        // a new column or correlated reviewLogs subquery. Good-enough variety for now.
         return {
           ...r,
           exampleVocab,
-          voicePrompt: selectVoicePrompt(exampleVocab, r.repetitions, r.character),
+          voicePrompt: selectVoicePrompt(exampleVocab, r.totalReviews ?? 0, r.character),
         }
       })
   }
