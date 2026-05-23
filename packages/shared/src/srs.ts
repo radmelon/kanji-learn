@@ -79,10 +79,42 @@ export function retrievability(card: FsrsCard, atTime: Date): number {
 // difficulty, w[6..7] = difficulty update, w[8..10] = success stability,
 // w[11..14] = lapse stability, w[15..16] = hard/easy modifiers,
 // w[17..18] = same-day short-term scheduler — unused here, see note below).
+//
+// DELIBERATE DIVERGENCES FROM CANONICAL FSRS-5
+// --------------------------------------------
+// The implementation below intentionally simplifies four points of canonical
+// FSRS-5. All four were locked at spec/plan time and are pre-launch tunable.
+// Cross-validation against ts-fsrs 4.7.1 matches first-review S/D to 8
+// decimal places; subsequent reviews diverge by up to ~28% in S and ~20%
+// in D compared with strict FSRS-5. See:
+//   - docs/superpowers/specs/2026-05-22-fsrs-migration-design.md §3.2
+//   - docs/superpowers/plans/2026-05-22-fsrs-migration.md "Task 2"
+//
+// 1. retrievability() uses the FSRS-4 exponential form R = exp(ln(0.9)·t/S)
+//    instead of FSRS-5's power-law (1 + FACTOR·t/(9·S))^DECAY. Both equal 0.9
+//    at t=S; they diverge elsewhere. Spec §3.2 explicitly defines the
+//    exponential form.
+//
+// 2. No linear_damping factor (10 - oldD)/9 on dDelta. Canonical FSRS-5
+//    softens difficulty updates on already-hard cards; we apply dDelta
+//    uniformly. Practical effect: D saturates at the clamp boundaries
+//    sooner under streaks.
+//
+// 3. Mean reversion targets initDifficulty(Good) ≈ 5.28, not
+//    initDifficulty(Easy) ≈ 3.22 as canonical FSRS-5 does. Practical
+//    effect: long-run D sits ~2 points higher.
+//
+// 4. The (11 - difficulty) term in sGrowth uses the POST-update difficulty,
+//    not the PRE-update one as canonical FSRS-5 does. Small effect since
+//    dDelta ≈ W[6] · (rating - 3) is bounded, but real.
+//
+// If a future fidelity sweep against canonical FSRS-5 becomes necessary
+// (e.g. to compare against published community benchmarks), revisit these
+// four points together — they're an internally consistent simplification.
 
 const W = DEFAULT_FSRS_WEIGHTS
 const DECAY = -0.5
-const FACTOR = Math.pow(0.9, 1 / DECAY) - 1   // ≈ -0.9... used in interval calc
+const FACTOR = Math.pow(0.9, 1 / DECAY) - 1   // ≈ 0.2346 — for target=0.9, the interval formula cancels to intervalDays = stability exactly
 
 export function createNewCard(): FsrsCard {
   return {
