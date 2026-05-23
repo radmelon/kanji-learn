@@ -1,68 +1,67 @@
-import { SRS_INITIAL_EASE_FACTOR, SRS_MIN_EASE_FACTOR, SRS_MAX_EASE_FACTOR } from './constants'
+import {
+  STATUS_LEARNING_MAX_DAYS,
+  STATUS_REVIEWING_MAX_DAYS,
+  STATUS_REMEMBERED_MAX_DAYS,
+} from './constants'
 import type { SrsStatus } from './types'
 
-export interface SrsCard {
-  easeFactor: number
-  interval: number
-  repetitions: number
+// ─── Types ─────────────────────────────────────────────────────────────────
+
+export type FsrsRating = 1 | 2 | 3 | 4  // Again | Hard | Good | Easy
+
+export interface FsrsCard {
+  /** Days. 0 = unseen sentinel. */
+  stability: number
+  /** 1..10. FSRS-5 midpoint is 5. */
+  difficulty: number
+  /** Number of `Again` events the card has received. */
+  lapses: number
   status: SrsStatus
+  lastReviewedAt: Date | null
 }
 
-export interface SrsResult {
-  easeFactor: number
-  interval: number
-  repetitions: number
-  status: SrsStatus
+export interface FsrsResult extends FsrsCard {
   nextReviewAt: Date
 }
 
+// ─── Boundary helpers ─────────────────────────────────────────────────────
+
 /**
- * SM-2 algorithm implementation.
- * quality: 0–5 (0–2 = fail, 3–5 = pass)
+ * Map the app's 0–5 SM-2 quality scale to FSRS's 4-bucket rating.
+ *   0,1,2 → 1 (Again)
+ *   3     → 2 (Hard)
+ *   4     → 3 (Good)
+ *   5     → 4 (Easy)
  */
-export function calculateNextReview(card: SrsCard, quality: 0 | 1 | 2 | 3 | 4 | 5): SrsResult {
-  const now = new Date()
-  let { easeFactor, interval, repetitions } = card
-
-  if (quality < 3) {
-    // Failed — reset to start of learning phase
-    repetitions = 0
-    interval = 1
-  } else {
-    // Passed
-    if (repetitions === 0) {
-      interval = 1
-    } else if (repetitions === 1) {
-      interval = 6
-    } else {
-      interval = Math.round(interval * easeFactor)
-    }
-    repetitions += 1
-
-    // Update ease factor
-    const delta = 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)
-    easeFactor = Math.max(SRS_MIN_EASE_FACTOR, Math.min(SRS_MAX_EASE_FACTOR, easeFactor + delta))
-  }
-
-  const nextReviewAt = new Date(now.getTime() + interval * 24 * 60 * 60 * 1000)
-  const status = deriveStatus(repetitions, interval)
-
-  return { easeFactor, interval, repetitions, status, nextReviewAt }
+export function ratingFromQuality(quality: 0 | 1 | 2 | 3 | 4 | 5): FsrsRating {
+  if (quality <= 2) return 1
+  if (quality === 3) return 2
+  if (quality === 4) return 3
+  return 4
 }
 
-export function createNewCard(): SrsCard {
-  return {
-    easeFactor: SRS_INITIAL_EASE_FACTOR,
-    interval: 0,
-    repetitions: 0,
-    status: 'unseen',
-  }
-}
-
-function deriveStatus(repetitions: number, interval: number): SrsStatus {
-  if (repetitions === 0) return 'learning'
-  if (interval < 7) return 'learning'
-  if (interval < 21) return 'reviewing'
-  if (interval < 180) return 'remembered'
+/**
+ * Derive the user-visible `status` label from stability (in days).
+ * Thresholds ported from the prior SM-2 interval cuts.
+ */
+export function statusFromStability(stability: number): SrsStatus {
+  if (stability < STATUS_LEARNING_MAX_DAYS) return 'learning'
+  if (stability < STATUS_REVIEWING_MAX_DAYS) return 'reviewing'
+  if (stability < STATUS_REMEMBERED_MAX_DAYS) return 'remembered'
   return 'burned'
+}
+
+/**
+ * Predicted recall probability at `atTime` for a card last reviewed at
+ * `card.lastReviewedAt` with stability `card.stability`.
+ *
+ * Returns 0 for unseen cards (no stability or no last-review timestamp).
+ * The Spec 2 bridge — pure function, no DB, no service.
+ */
+export function retrievability(card: FsrsCard, atTime: Date): number {
+  if (card.stability <= 0 || card.lastReviewedAt == null) return 0
+  const elapsedDays =
+    (atTime.getTime() - card.lastReviewedAt.getTime()) / 86_400_000
+  if (elapsedDays <= 0) return 1
+  return Math.exp(Math.log(0.9) * elapsedDays / card.stability)
 }

@@ -43,3 +43,32 @@ export const READING_STAGE_LABELS = [
   'All readings',
   'Compound tests',
 ] as const
+
+// ─── FSRS-5 ─────────────────────────────────────────────────────────────────
+
+/** Published FSRS-5 default weights (19 elements). Sourced from the FSRS-5
+ *  reference implementation at open-spaced-repetition/ts-fsrs; verify the
+ *  vector matches that repo's `default_w` at implementation time. */
+export const DEFAULT_FSRS_WEIGHTS: readonly number[] = [
+  0.40255, 1.18385, 3.173, 15.69105,
+  7.1949, 0.5345,
+  1.4604,
+  0.0046,
+  1.54575, 0.1192, 1.01925,
+  1.9395, 0.11, 0.29605, 2.2698,
+  0.2315, 2.9898,
+  0.51655, 0.6621,
+]
+
+/** FSRS scheduling target — R at planned nextReviewAt. */
+export const TARGET_RETENTION = 0.9
+
+/** Threshold below which a Good/Easy self-grade is suspect and the quiz fires.
+ *  Modulated by difficulty in srs.service.ts: threshold = base + coef·(D − 5). */
+export const MAYBE_SLIPPING_BASE = 0.85
+export const MAYBE_SLIPPING_D_COEFFICIENT = 0.01
+
+/** Status thresholds in days of stability (ported from the SM-2 interval cuts). */
+export const STATUS_LEARNING_MAX_DAYS = 7
+export const STATUS_REVIEWING_MAX_DAYS = 21
+export const STATUS_REMEMBERED_MAX_DAYS = 180
