@@ -7,7 +7,15 @@ import {
   userProfiles,
   learnerIdentity,
 } from '@kanji-learn/db'
-import { calculateNextReview, createNewCard } from '@kanji-learn/shared'
+import {
+  calculateNextReview,
+  createNewCard,
+  ratingFromQuality,
+  retrievability,
+  MAYBE_SLIPPING_BASE,
+  MAYBE_SLIPPING_D_COEFFICIENT,
+  type FsrsCard,
+} from '@kanji-learn/shared'
 import type { Db } from '@kanji-learn/db'
 import type { ReviewResult } from '@kanji-learn/shared'
 import { SURPRISE_BURNED_CHECK_RATE } from '@kanji-learn/shared'
@@ -401,30 +409,39 @@ export class SrsService {
     const submissionInputs: ReviewSubmissionInput[] = []
     for (const result of results) {
       const existing = existingByKanjiId.get(result.kanjiId)
-      const prevCard = existing ?? createNewCard()
+      const prevCard: FsrsCard = existing
+        ? {
+            stability: existing.stability,
+            difficulty: existing.difficulty,
+            lapses: existing.lapses,
+            status: existing.status ?? 'learning',
+            lastReviewedAt: existing.lastReviewedAt,
+          }
+        : createNewCard()
       const prevStatus = prevCard.status
-      const srsResult = calculateNextReview(prevCard, result.quality)
+      const rating = ratingFromQuality(result.quality)
+      const fsrsResult = calculateNextReview(prevCard, rating, now)
 
-      // quality 4 (Good) and 5 (Easy) = confident recall; quality 3 (Hard) = remembered but with difficulty (not counted as "correct" for accuracy display)
       if (result.quality >= 4) correctItems++
-      if (prevStatus === 'unseen' || prevStatus === undefined) newLearned++
-      if (srsResult.status === 'burned' && prevStatus !== 'burned') burned++
+      if (prevStatus === 'unseen' || existing === undefined) newLearned++
+      if (fsrsResult.status === 'burned' && prevStatus !== 'burned') burned++
 
       const prevReadingStage = existing?.readingStage ?? 0
       const nextReadingStage = this.advanceReadingStage(
         prevReadingStage,
-        srsResult.status,
-        result.quality
+        fsrsResult.status,
+        result.quality,
       )
 
       const character = charById.get(result.kanjiId)
       if (!character) {
-        // Defensive — would indicate the client sent a kanjiId that doesn't
-        // exist in the kanji table. Fail loud BEFORE opening the transaction
-        // so the whole-session rollback is never triggered by a validation
-        // miss (it's triggered only by real DB failures).
         throw new Error(`SrsService.submitReview: unknown kanjiId ${result.kanjiId}`)
       }
+
+      // Derived interval for back-compat with review_logs.prev_interval /
+      // next_interval (so anything still reading "interval" keeps working).
+      const prevIntervalDays = Math.max(1, Math.round(prevCard.stability))
+      const nextIntervalDays = Math.max(1, Math.round(fsrsResult.stability))
 
       submissionInputs.push({
         userId,
@@ -434,14 +451,18 @@ export class SrsService {
         reviewType: result.reviewType,
         quality: result.quality,
         responseTimeMs: result.responseTimeMs,
-        prevStatus: (prevStatus ?? 'unseen') as SrsStatus,
-        prevInterval: prevCard.interval,
+        prevStatus: prevStatus,
+        prevInterval: prevIntervalDays,
+        prevStability: prevCard.stability,
+        prevDifficulty: prevCard.difficulty,
         progressAfter: {
-          status: srsResult.status,
-          interval: srsResult.interval,
-          easeFactor: srsResult.easeFactor,
-          repetitions: srsResult.repetitions,
-          nextReviewAt: srsResult.nextReviewAt,
+          status: fsrsResult.status,
+          stability: fsrsResult.stability,
+          difficulty: fsrsResult.difficulty,
+          lapses: fsrsResult.lapses,
+          totalReviews: (existing?.totalReviews ?? 0) + 1,
+          nextReviewAt: fsrsResult.nextReviewAt,
+          nextInterval: nextIntervalDays,
           readingStage: nextReadingStage,
         },
       })
