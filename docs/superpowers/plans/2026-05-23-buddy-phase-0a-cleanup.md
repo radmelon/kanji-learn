@@ -250,10 +250,14 @@ COMMIT;
 
 - [ ] **Step 3: For each of the 17 new tables, append `ENABLE ROW LEVEL SECURITY` + `FORCE` + policies**
 
-The existing RLS pattern is in `packages/db/supabase/migrations/0009_rls_service_role_policies.sql` and `0018_rls_placement_tutor_tables.sql`. The canonical pattern for a learner-owned table is:
+Tables fall into three RLS classes. The existing patterns are in `packages/db/supabase/migrations/0009_rls_service_role_policies.sql` and `0018_rls_placement_tutor_tables.sql`.
 
+**Class A — user-owned, direct `user_id` foreign key.** User reads own row; service role full access.
+
+Tables: `learner_state_cache`, `buddy_conversations`, `buddy_nudges`, `study_plans`, `study_plan_events`, `study_log_entries`, `shared_goals`.
+
+Pattern:
 ```sql
--- learner_state_cache: user can read/write their own row only.
 ALTER TABLE learner_state_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learner_state_cache FORCE ROW LEVEL SECURITY;
 
@@ -266,10 +270,25 @@ CREATE POLICY "Service role full access learner_state_cache"
   USING (auth.jwt()->>'role' = 'service_role');
 ```
 
-Apply this pattern to all 17 tables. For UKG tables (`learner_identity`, `learner_profile_universal`, `learner_connections`, `learner_memory_artifacts`, `learner_knowledge_state`, `learner_app_grants`, `learner_timeline_events`), the user-facing key is `learner_id` (not `user_id`); join through `learner_identity` if needed.
+**Class B — UKG tables, service-role-only.** The April design §12 frames UKG as an internal *projection* of app-specific tables. All user reads happen through API endpoints that the service mediates, not direct table access. `DualWriteService` writes via service role. Per-user RLS on UKG tables would require sub-selects via `learner_identity` — costly and brittle. Service-role-only is the right posture for Phase 0a; later phases can add per-user policies if/when user-facing direct access becomes a real requirement.
 
-For telemetry tables (`buddy_llm_telemetry`, `buddy_llm_usage`): **service role only** (no user read access — they're internal). Pattern:
+Tables: `learner_identity`, `learner_profile_universal`, `learner_connections`, `learner_memory_artifacts`, `learner_knowledge_state`, `learner_app_grants`, `learner_timeline_events`.
 
+Pattern:
+```sql
+ALTER TABLE learner_identity ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learner_identity FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role only learner_identity"
+  ON learner_identity FOR ALL
+  USING (auth.jwt()->>'role' = 'service_role');
+```
+
+**Class C — telemetry, service-role-only.** Internal; no user read access.
+
+Tables: `buddy_llm_telemetry`, `buddy_llm_usage`.
+
+Pattern:
 ```sql
 ALTER TABLE buddy_llm_telemetry ENABLE ROW LEVEL SECURITY;
 ALTER TABLE buddy_llm_telemetry FORCE ROW LEVEL SECURITY;
