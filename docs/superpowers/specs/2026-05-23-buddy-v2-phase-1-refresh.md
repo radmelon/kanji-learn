@@ -181,6 +181,22 @@ This is an implicit assumption in the April spec; the refresh makes it explicit:
 - Explanations (Phase 5 + ambient Phase 1' nudges) don't assume hanzi familiarity.
 - Onboarding (Phase 7a) doesn't try to be useful to a native-CJK learner who already has the character set.
 
+### 6.3 — Apple Watch — role refactor (deferred to its own brainstorm)
+
+The April design §9 ("The Watch as a Learning Partner") frames the Watch as both a *study surface* (micro-sessions, card review on the wrist) and a *companion surface* (glanceable progress, selective nudges). In practice, the study-surface half hasn't worked out:
+
+- **Mechanics of studying cards on the Watch are awkward** in real use.
+- **Phone↔Watch connection reliability is poor** — the sync flake rate makes the Watch study surface near-useless as a primary study channel.
+
+The proposed recast: **the Watch becomes the *reminder + reinforcer + affect-focused* aspect of Buddy, not a study surface.** Glanceable complication (progress, streak), selective nudges (streak risk, friend active, milestones, gentle rescue calls) — yes. Studying cards on the wrist — no. Buddy on the Watch is Buddy *being present*, not Buddy *delivering practice*.
+
+This is **deferred to its own brainstorm**, probably interleaved between Phase 4 and Phase 2 (i.e. post-MVP but before the Apple Foundation Models work, since Phase 2's on-device LLM bridge is most valuable if there's a clear Watch role to ship it onto). The brainstorm settles:
+- Which April §9 elements survive (complication, nudge selection rules, frequency cap) and which are retired (Watch-as-study-surface, card review on wrist).
+- Whether the sync-reliability problem is *fixable* in the existing architecture or whether it requires a different sync model (e.g. Buddy nudges fanned out from the API directly to APNs without phone relay).
+- Whether Phase 1' should ship Watch-nudge delivery at all given the reliability concern, or defer it to this refactor.
+
+**Implication for Phase 1':** the Phase 1' brainstorm needs to decide whether to ship Watch nudges using the existing pipeline (and inherit the reliability problem), strip Watch nudges from Phase 1' until the refactor lands, or ship a phone-only Phase 1'. Recommended position pending the Phase 1' brainstorm: **phone-only Phase 1'** — don't make a broken pipeline more visible than it already is; revisit Watch in its own session.
+
 ---
 
 ## §7 — Open sub-decisions deferred to phase-level brainstorms
@@ -206,7 +222,7 @@ The refresh deliberately leaves these for the phase-level specs to settle. Liste
 
 For unambiguity:
 
-- **The April design (§1–17) stands.** Vision, theoretical foundation, character, learning loop concept, scaffolding levels, signature feature definition, Study Log concept, Watch as learning partner, social learning principles, three-tier LLM architecture, UKG/MCP portability, privacy posture, success metrics — all unchanged.
+- **The April design (§1–17) stands**, with one partial exception: §9 ("The Watch as a Learning Partner") is partially superseded by §6.3 of this refresh — the *study-surface* half of the Watch role is being retired, the *companion-surface* half survives pending the deferred Watch-refactor brainstorm. Vision, theoretical foundation, character, learning loop concept, scaffolding levels, signature feature definition, Study Log concept, social learning principles, three-tier LLM architecture, UKG/MCP portability, privacy posture, success metrics — all unchanged.
 - **The April technical spec stands** modulo the leech-detection re-anchor (§5) and the Phase 0a clarifications (§3). All other technical detail (DB schema, API endpoints, mobile integration patterns) is current.
 - **The Phase 0 plan stays as the historical record** of what Phase 0 was meant to land. Phase 0a (§3) completes what was started; the original plan doc is not rewritten.
 
