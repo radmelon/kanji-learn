@@ -1,5 +1,6 @@
 import cron from 'node-cron'
 import { TutorAnalysisService } from './services/tutor-analysis.service.js'
+import { emitDailyBuddyMetrics } from './services/buddy/metrics.service.js'
 import type { Db } from '@kanji-learn/db'
 
 // Daily reminders + rest-day summaries are NOT scheduled here. They run off the
@@ -22,4 +23,16 @@ export function scheduleTutorAnalysis(db: Db, llm: any): void {
   })
 
   console.log('[Cron] Daily tutor analysis scheduler started')
+}
+
+export function scheduleBuddyMetrics(db: Db): void {
+  // Run daily at 03:05 UTC — staggered 5 min after tutor analysis to avoid
+  // any DB-contention spike at the same minute. The metric job is read-only,
+  // small (3 COUNT queries), and idempotent — exact timing doesn't matter.
+  cron.schedule('5 3 * * *', async () => {
+    console.log('[Cron] Emitting daily Buddy metrics…')
+    await emitDailyBuddyMetrics(db)
+  })
+
+  console.log('[Cron] Daily Buddy metrics scheduler started')
 }
