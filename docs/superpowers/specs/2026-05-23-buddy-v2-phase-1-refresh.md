@@ -53,49 +53,55 @@ The April plan's LLM router is **live in production** — [`TutorAnalysisService
 
 **Implication for §11 (cost architecture) of the April design:** the architectural choice is validated by an in-production workload. No reason to revisit the tiered model. A practical follow-on is that the Phase 1 "no LLM calls" risk-reduction posture from the April plan can relax (see §4.2 Phase 1').
 
-### 2.4 — Phase 0 partial-ship
+### 2.4 — Phase 0 ship status (corrected 2026-05-23)
 
-Phase 0 was meant to land the architectural skeleton with no user-visible changes. The plan landed unevenly:
+Phase 0 was meant to land the architectural skeleton with no user-visible changes. **It shipped further than first reported here.** An initial inventory pass mistakenly checked only `packages/db/supabase/migrations/` and concluded the schema was unmigrated. In fact the repo has **two parallel migration tracks** with independent numbering:
+
+- **`packages/db/drizzle/`** — Drizzle-generated, applied via `drizzle-kit migrate` against `DATABASE_URL`. **Phase 0 schema is here:** [`0008_phase0_foundation.sql`](../../../packages/db/drizzle/0008_phase0_foundation.sql), [`0009_kanji_buddy_phase0_custom.sql`](../../../packages/db/drizzle/0009_kanji_buddy_phase0_custom.sql), [`0010_rls_phase0_tables.sql`](../../../packages/db/drizzle/0010_rls_phase0_tables.sql), [`0011_schema_drift_fix.sql`](../../../packages/db/drizzle/0011_schema_drift_fix.sql) — all from April 12.
+- **`packages/db/supabase/migrations/`** — Hand-written migrations for things drizzle can't express well, applied via direct `psql`. Counter is independent; FSRS landed as supabase-track `0024`.
+
+Hard evidence the Phase 0 tables are in production: [`supabase/migrations/0016_add_learner_identity_user_profiles_fk.sql`](../../../packages/db/supabase/migrations/0016_add_learner_identity_user_profiles_fk.sql) adds a FK constraint to `learner_identity` and notes *"Applied manually in prod on 2026-04-17."* FK constraints require the target table to exist. Confirmed by direct production SQL: all 16 Phase 0 tables present in the live `public` schema.
+
+Corrected status table:
 
 | Component | Status |
 |---|---|
 | LLM router (Groq / Gemini / Claude / Apple-stub) | ✅ Shipped, live |
 | [`buddy-types.ts`](../../../packages/shared/src/buddy-types.ts), [`llm-types.ts`](../../../packages/shared/src/llm-types.ts) | ✅ Shipped, re-exported; no non-LLM consumers yet |
 | [`services/buddy/learner-state.service.ts`](../../../apps/api/src/services/buddy/learner-state.service.ts) | ⚠️ Implemented, **orphaned** (never invoked) |
-| [`services/buddy/dual-write.service.ts`](../../../apps/api/src/services/buddy/dual-write.service.ts) | ⚠️ Implemented + wired into `SrsService.submitReview()` |
+| [`services/buddy/dual-write.service.ts`](../../../apps/api/src/services/buddy/dual-write.service.ts) | ✅ Implemented + wired into `SrsService.submitReview()` + writing to real tables |
 | [`services/buddy/constants.ts`](../../../apps/api/src/services/buddy/constants.ts) | ✅ Shipped |
-| 17 Buddy / UKG tables defined in [`schema.ts`](../../../packages/db/src/schema.ts) | ❌ **Defined in source; never migrated to any database.** No `0008_buddy_phase0.sql`. Most recent migration is `0024_fsrs_migration.sql`. |
+| 16 Buddy / UKG tables in [`schema.ts`](../../../packages/db/src/schema.ts) | ✅ **Live since April 12 via drizzle 0008/0009.** RLS enabled + FORCE with deny-all policies (drizzle 0010); API bypasses RLS as the `postgres` superuser. |
 | Mobile UI (BuddyCard, nudge surfaces) | ❌ Not started |
 | `/v1/buddy/*` routes | ❌ None |
 
-The unmigrated schema is the most consequential gap. `DualWriteService.recordReviewSubmissions()` runs on every review submission and calls `db.insert()` against tables that don't exist in the live database. Either it's silently no-op'd (try/catch around the dual-write) or it's been failing for six weeks in a way that hasn't surfaced. **Phase 0a (§3) repairs this before any further Buddy work touches the DB.**
+**The remaining gap is much smaller than first reported:** the `LearnerStateService` is wired into nothing, and there's no observability on Buddy-related writes. Phase 0a (§3) closes those two gaps — *not* a migration job.
 
 ---
 
 ## §3 — Phase 0a: Cleanup (the unavoidable first slice)
 
-Phase 0a is not a new phase from the April roadmap — it is the **completion of Phase 0**. Its scope is bounded by what's missing, not by new capability.
+Phase 0a closes two specific gaps left in Phase 0: the `LearnerStateService` is implemented but invoked nowhere, and there's no observability on Buddy-related writes. With §2.4's correction, **no DB migration is needed** — the Phase 0 schema is live in production since April 12 via the drizzle pipeline.
 
 ### 3.1 — In scope
 
-1. **Generate a Drizzle migration for the 17 Buddy/UKG tables** defined in `schema.ts`. Filename follows the established numbering: `0025_buddy_phase0.sql` (FSRS was `0024`). Apply to the live DB following the clone-rehearsal pattern established by the FSRS rollout ([`../runbooks/2026-05-22-fsrs-rollout.md`](../runbooks/2026-05-22-fsrs-rollout.md)).
-2. **Verify what `DualWriteService.recordReviewSubmissions()` is actually doing in production today.** Confirm whether dual-write calls have been failing silently for six weeks, succeeding, or no-op'd by try/catch. The result determines whether backfill is needed (see 3.2).
-3. **Wire `LearnerStateService` into a refresh hook.** Recommended seam: refresh on every successful review submission, *after* the dual-write commits, in a `setImmediate`/non-blocking call. Frequency cap (e.g. no more than once every N seconds per user) to avoid thrash on heavy sessions. Persist to `learner_state_cache`.
-4. **Add basic observability.** A daily count of `learner_state_cache` rows refreshed, a count of `buddy_llm_telemetry` rows written, a count of dual-write commits. Surface these as an internal-dashboard or logged metric — not user-facing.
+1. **Wire `LearnerStateService` into a refresh hook.** Recommended seam: refresh on every successful review submission, *after* the dual-write commits, in a `setImmediate`/non-blocking call. Per-user frequency cap (e.g. no more than once every 30s per user) to avoid thrash on heavy sessions. Persist to `learner_state_cache`.
+2. **Add basic observability.** A daily count of `learner_state_cache` rows refreshed, a count of `buddy_llm_telemetry` rows written, a count of `learner_timeline_events` rows (a proxy for dual-write commits). Emit as a single structured-JSON log line on stdout; consumed by App Runner's CloudWatch pipeline.
+3. **Confirm dual-write is healthy.** Now that we know the tables exist, sanity-check via a Supabase SQL query that the Buddy tables are growing as expected (non-zero row counts in `learner_knowledge_state`, `learner_timeline_events`, `buddy_llm_telemetry`). One-shot verification, not a feature.
 
 ### 3.2 — Out of scope
 
-- Any user-visible change. Phase 0's original "no user-visible changes" constraint stands.
+- Any DB migration. The Phase 0 schema is already live.
+- Any user-visible change. Phase 0's "no user-visible changes" constraint stands.
 - Any Buddy *behavior* — no nudges, no plans, no routing changes. Phase 0a is plumbing-only.
-- Backfilling six weeks of missing dual-write data — *unless* the verification in (3.1.2) shows the dual-write has been actively failing AND a downstream Phase 1+ consumer is blocked without that data. Default position: accept that Buddy-era data starts at Phase 0a's deploy date. Phase 0 had no live consumer; missing data has no current cost.
+- Backfilling pre-Phase-0a data. There's no consumer of historical learner-state snapshots; cache starts populating from the wiring's deploy date forward.
 
 ### 3.3 — Acceptance criteria
 
-- Migration `0025_buddy_phase0.sql` applied to the live DB; 17 tables exist in production.
-- Live `learner_state_cache` populated for at least one active user, observed in Supabase.
-- Dual-write status confirmed and documented: succeeding silently, failing silently, or no-op'd.
+- Live `learner_state_cache` populated for at least one active user, observed in Supabase, within minutes of a real review submission.
+- Dual-write health confirmed: Buddy tables show non-zero, growing row counts; no `[LearnerState] refresh failed` warnings in App Runner logs.
 - No regression in existing review-submit latency (verified against a baseline percentile).
-- Internal observability counters visible (logged or dashboard); no alarms required for Phase 0a.
+- Daily metric log line observed in CloudWatch within 24h of deploy.
 
 ---
 
@@ -121,7 +127,7 @@ Reasons for the re-order:
 
 | # | Phase | Status / Revision |
 |---|---|---|
-| 0 | Foundation | Partly shipped (see §2.4). Completed by Phase 0a (§3). |
+| 0 | Foundation | Substantially shipped (see §2.4 — schema live, dual-write wired). Phase 0a (§3) closes the two remaining gaps: `LearnerStateService` wiring and observability. |
 | **1'** | **Template + light-LLM Buddy delivery** | Scope evolved from April Phase 1: the "no LLM calls" constraint relaxes — LLM router is live and validated. What ships: BuddyCard component, three placements (Dashboard, Study, Progress), Watch nudge delivery (re-using existing push pipeline), frequency caps (3/day Watch, 1/day social per April §10), template-driven *delivery* (cadence, schedule, dedup), with optional Tier-1/2 LLM enrichment of nudge body text. Tier-3 (Claude) for user-initiated calls remains gated on the business-model decision (see Phase 9). Brainstorm: separate spec. |
 | **5** | **Contextual Mnemonic Co-Creation** | **Supersedes** the existing pre-Buddy mnemonic system. Existing pre-Buddy mnemonic data: **discarded** (operator decision — does not resonate as memory hooks). Schema: extend `mnemonics` table with `cocreation_context jsonb` (the `CoCreationSession` shape already defined in [`buddy-types.ts`](../../../packages/shared/src/buddy-types.ts)). 5-stage flow (consent → location inference → detail elicitation → assembly → commitment) per §7 of April design. Brainstorm: separate spec. |
 | **6** | **Study Log (enhanced Journal)** | Journal tab repurposed as the Study Log per §8 of April design. Phase 5's co-creation artifacts surface here as the primary content. Existing journal/mnemonic UI is replaced. Brainstorm: separate spec. |
