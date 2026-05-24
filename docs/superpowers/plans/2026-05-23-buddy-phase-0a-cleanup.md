@@ -1,12 +1,14 @@
 # Kanji Buddy — Phase 0a (Cleanup) Implementation Plan
 
+> **Plan revised 2026-05-23 after discovering the Phase 0 schema was actually shipped in April via the drizzle track.** Earlier draft (commits `5aaaaa1` and `571d439`) assumed a missing migration that doesn't exist. See the refresh doc §2.4 (commit `c577306`) for the corrected status. This plan is the slimmed version that reflects what's actually left to do.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Complete Phase 0 of the Kanji Buddy v2 work — apply the 17 Buddy/UKG tables defined in `schema.ts` but never migrated, verify what `DualWriteService` is doing in production today, wire `LearnerStateService` into a non-blocking post-review refresh hook, and add basic observability. Plumbing-only, no user-visible changes.
+**Goal:** Close the two real gaps in Phase 0: the `LearnerStateService` is implemented but invoked nowhere, and there's no observability on Buddy-related writes. Wire `LearnerStateService.refreshState(userId)` into a non-blocking post-commit hook in `SrsService.submitReview()`, add a daily Buddy metrics log line, deploy, verify.
 
-**Architecture:** A single Drizzle migration creates the 17 missing tables + 8 enums with full RLS coverage. `LearnerStateService.refreshState()` is invoked from `SrsService.submitReview()` after the dual-write commits, via a fire-and-forget `setImmediate` with a per-user frequency cap. Observability surfaces three daily counters as structured JSON in App Runner logs.
+**Architecture:** `LearnerStateService.refreshState()` invoked from `SrsService.submitReview()` after the dual-write commits, via fire-and-forget `setImmediate` with a per-user frequency cap (30s). One new service `metrics.service.ts` emits a single structured-JSON log line per day with three counters (cache refreshes, LLM telemetry rows, dual-write events). No DB migration, no schema changes, no RLS work.
 
-**Tech Stack:** Drizzle ORM + drizzle-kit, PostgreSQL (Supabase ap-southeast-2), Fastify, Vitest, TypeScript. Existing services: `LearnerStateService` (orphaned), `DualWriteService` (wired into `submitReview`), `TutorAnalysisService` (live consumer of the LLM router).
+**Tech Stack:** Drizzle ORM, PostgreSQL (Supabase ap-southeast-2), Fastify, Vitest, TypeScript. Existing services: `LearnerStateService` (orphaned), `DualWriteService` (live, writing to `learner_knowledge_state` + `learner_timeline_events` since April 17 deploy).
 
 **Spec reference:** §3 of [`../specs/2026-05-23-buddy-v2-phase-1-refresh.md`](../specs/2026-05-23-buddy-v2-phase-1-refresh.md).
 
@@ -16,123 +18,97 @@
 
 ## File Structure
 
-**Files this plan touches:**
-
 | Path | Action | Purpose |
 |---|---|---|
-| `packages/db/drizzle/0025_buddy_phase0.sql` | Create (via `pnpm db:generate`) | Drizzle-generated migration for 17 tables + 8 enums |
-| `packages/db/supabase/migrations/0025_buddy_phase0.sql` | Create (hand-copy + RLS augmentation) | Supabase-applied migration with hand-added RLS policies |
-| `apps/api/src/services/srs.service.ts` | Modify around line 469 | Hook `LearnerStateService.refreshState()` post-commit |
-| `apps/api/src/services/buddy/learner-state.service.ts` | Modify | Add per-user frequency cap to `refreshState()` |
-| `apps/api/src/services/buddy/metrics.service.ts` | Create | Daily counter emission (structured JSON) |
-| `apps/api/src/cron.ts` | Modify | Schedule daily metric job |
-| `apps/api/src/server.ts` | Modify (~line 138) | Pass `learnerState` into `srsService` constructor |
-| `apps/api/test/integration/learner-state-refresh.test.ts` | Create | Integration test for the refresh hook |
-| `apps/api/test/integration/learner-state-cap.test.ts` | Create | Integration test for frequency cap |
-| `apps/api/test/integration/metrics.test.ts` | Create | Test daily-counter emission shape |
-| `docs/superpowers/findings/2026-05-23-dual-write-prod-status.md` | Create | Findings document from Task 1 |
+| `apps/api/src/services/buddy/learner-state.service.ts` | Modify | Add per-user 30s frequency cap to `refreshState` |
+| `apps/api/src/services/srs.service.ts` | Modify (~line 469-478) | Inject `LearnerStateService`; fire-and-forget refresh after dual-write |
+| `apps/api/src/server.ts` | Modify (~line 138) | Pass `learnerState` to `SrsService` constructor |
+| `apps/api/src/services/buddy/metrics.service.ts` | Create | `emitDailyBuddyMetrics(db)` — structured-JSON log line |
+| `apps/api/src/cron.ts` | Modify | Schedule daily metric job at 03:00 UTC |
+| `apps/api/test/integration/learner-state-refresh.test.ts` | Create | Integration test: refresh fires after `submitReview` |
+| `apps/api/test/integration/learner-state-cap.test.ts` | Create | Integration test: two rapid submits → one refresh |
+| `apps/api/test/integration/buddy-metrics.test.ts` | Create | Test: log line has three counters, valid JSON |
+| `docs/superpowers/findings/2026-05-23-phase-0a-dual-write-health.md` | Create | One-page verification of dual-write health in prod |
+| `docs/HANDOFF.md` | Modify | Add "Phase 0a shipped" entry on closeout |
 
-**Rollout artifacts (operator-applied, documented inline in tasks):**
-- Apply `0025_buddy_phase0.sql` to live DB via `psql`
+**Operator steps (no file changes):**
 - Deploy API via `./scripts/deploy-api.sh`
+- One Supabase SQL query (Task 1) — operator runs in the Supabase SQL editor
+- Post-deploy smoke (Task 5) — operator triggers one review through the live app
 
 ---
 
-## Task 1: Verify what `DualWriteService` is doing in production today
+## Task 1: Confirm dual-write is healthy in production
 
-**Why first:** Per the Phase 0a spec, we must determine empirically whether the dual-write call has been (a) silently succeeding via some path we missed, (b) failing silently via try/catch we missed, (c) failing in a way that 5xx's `submitReview` but hasn't surfaced, or (d) no-op'd by some kill-switch. The answer determines whether we need backfill.
+**Why first:** Before adding observability, verify Buddy tables are growing as expected. If they're empty, dual-write may be silently failing (try/catch we missed, or service-role permissions issue) and the LearnerState wiring would inherit the same failure. One Supabase SQL query settles it.
 
-**Files:**
-- Inspect (read-only): `apps/api/src/services/buddy/dual-write.service.ts`, `apps/api/src/services/srs.service.ts:460-478`, `packages/db/supabase/migrations/`
-- Create: `docs/superpowers/findings/2026-05-23-dual-write-prod-status.md`
+**Files:** Create `docs/superpowers/findings/2026-05-23-phase-0a-dual-write-health.md`.
 
-- [ ] **Step 1: Confirm no `learner_state_cache` / `learner_knowledge_state` / `learner_timeline_events` tables exist in any migration file**
+- [ ] **Step 1: Run health-check query in Supabase SQL editor**
 
-Run:
+Operator runs:
 
-```bash
-grep -l "learner_state_cache\|learner_knowledge_state\|learner_timeline_events" packages/db/supabase/migrations/
+```sql
+SELECT
+  (SELECT COUNT(*) FROM learner_knowledge_state) AS knowledge_state_rows,
+  (SELECT COUNT(*) FROM learner_timeline_events) AS timeline_events_rows,
+  (SELECT COUNT(*) FROM learner_identity)        AS identity_rows,
+  (SELECT COUNT(*) FROM buddy_llm_telemetry)     AS llm_telemetry_rows,
+  (SELECT COUNT(*) FROM learner_state_cache)     AS state_cache_rows,
+  (SELECT MAX(created_at) FROM learner_timeline_events) AS last_timeline_event,
+  (SELECT MAX(updated_at) FROM learner_knowledge_state) AS last_knowledge_update;
 ```
 
-Expected: no output (no migration creates these tables). If output appears, halt the plan and re-evaluate Phase 0a's premise.
+**Expected:**
+- `knowledge_state_rows` > 0 (dual-write writes here on every review)
+- `timeline_events_rows` > 0 (same)
+- `identity_rows` > 0 (one per active user; dual-write creates on first review)
+- `llm_telemetry_rows` > 0 (tutor-analysis calls this since April)
+- `state_cache_rows` = 0 (LearnerStateService is orphaned — this is the gap Phase 0a fixes)
+- `last_timeline_event` recent (within hours, given any active user)
+- `last_knowledge_update` recent (same)
 
-- [ ] **Step 2: Read App Runner logs for the last 7 days, search for "relation does not exist" or `learner_` errors**
+**If `knowledge_state_rows` or `timeline_events_rows` is 0**: dual-write is not actually writing. **STOP** the plan and investigate before wiring LearnerStateService (which would inherit the same failure). Likely causes: missing service-role permission, drizzle silently swallowing errors, or `learner_identity` not bootstrapping. Add a debug task to the plan.
 
-Run (with AWS credentials configured):
+**If `state_cache_rows` > 0**: LearnerStateService is not actually orphaned — something is calling it. **STOP** and grep for callers before wiring more.
 
-```bash
-aws logs filter-log-events \
-  --log-group-name /aws/apprunner/kanji-learn-api \
-  --start-time $(date -v-7d +%s)000 \
-  --filter-pattern 'relation' \
-  --max-items 50
+- [ ] **Step 2: Write findings doc**
+
+Create `docs/superpowers/findings/2026-05-23-phase-0a-dual-write-health.md`:
+
+```markdown
+# Phase 0a — Dual-write health verification
+
+**Date:** 2026-05-23
+**Method:** Single Supabase SQL query against the live `public` schema.
+
+## Query results
+
+| Counter | Value | Verdict |
+|---|---|---|
+| `learner_knowledge_state` rows | <n> | <healthy / empty / etc> |
+| `learner_timeline_events` rows | <n> | <healthy / empty / etc> |
+| `learner_identity` rows | <n> | <healthy / empty / etc> |
+| `buddy_llm_telemetry` rows | <n> | <healthy / empty / etc> |
+| `learner_state_cache` rows | <n> | <expected 0 — Phase 0a fixes> |
+| `learner_timeline_events.MAX(created_at)` | <ts> | <recent / stale> |
+| `learner_knowledge_state.MAX(updated_at)` | <ts> | <recent / stale> |
+
+## Conclusion
+
+<one paragraph: dual-write is/isn't healthy; LearnerState gap confirmed; ready
+to proceed with wiring + observability>
 ```
 
-Document: number of matches, sample error text, frequency. If matches exist, the dual-write has been failing in prod for six weeks — likely raising 5xx on every review submit (which contradicts the "B135 verified working on-device" handoff note). Resolve the contradiction in the findings doc.
-
-- [ ] **Step 3: Reproduce locally to nail down the exact behavior**
-
-Spin up a local clone of the live DB *without* applying migration 0025 (follow the FSRS rehearsal pattern from `docs/superpowers/runbooks/2026-05-22-fsrs-rollout.md`):
+- [ ] **Step 3: Commit findings**
 
 ```bash
-# Generate fresh dump of live DB (do not commit the dump)
-pg_dump "$LIVE_DATABASE_URL" --no-owner --no-acl --clean --if-exists > /tmp/live-clone.sql
-
-# Start local Postgres if not running, then restore
-psql "$LOCAL_DATABASE_URL" < /tmp/live-clone.sql
-
-# Run the API against the clone
-DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api dev
-```
-
-In a second terminal, send a single `POST /v1/review/submit` for one card (any valid user token) and observe the response + API stdout:
-
-```bash
-curl -X POST http://localhost:3000/v1/review/submit \
-  -H "Authorization: Bearer $TEST_USER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"sessionId":"<id>","results":[{"kanjiId":1,"quality":3,"responseTimeMs":1500,"reviewType":"meaning"}]}'
-```
-
-Expected outcomes (record which one matches):
-- **5xx response + "relation does not exist" in stdout** → dual-write throws today, but somehow prod isn't surfacing this. Investigate (Step 4).
-- **2xx response + no error in stdout** → dual-write is silently no-op'd or the inserts succeed against tables we missed. Investigate (Step 4).
-- **2xx response + warning in stdout** → caught and logged elsewhere. Identify the catch site.
-
-- [ ] **Step 4: Locate the catch site (if any) or the kill switch (if any)**
-
-If Step 3 returned 2xx without errors, grep for try/catch around the dual-write callsite and any feature-flag-style guards:
-
-```bash
-grep -rn "dualWrite\|dual_write\|DualWrite" apps/api/src/ | grep -v test
-```
-
-Inspect `apps/api/src/services/srs.service.ts:460-478`. If no try/catch wraps the call but it still didn't throw, the most likely explanation is that the inserts succeeded against tables-that-do-exist (i.e. our inventory of "missing tables" is wrong). Re-verify the table existence in the clone:
-
-```bash
-psql "$LOCAL_DATABASE_URL" -c "\dt learner_*"
-psql "$LOCAL_DATABASE_URL" -c "\dt buddy_*"
-```
-
-If those tables DO exist in the clone, there's a migration we missed or a different migration system. Read every file in `packages/db/supabase/migrations/` and `packages/db/drizzle/` to find it.
-
-- [ ] **Step 5: Write the findings document**
-
-Create `docs/superpowers/findings/2026-05-23-dual-write-prod-status.md` documenting:
-- The empirical answer (which of a/b/c/d from the "Why first" rationale).
-- The evidence (log excerpts, repro steps, file references).
-- Whether backfill is needed (default: no — there's no consumer; if writes have been succeeding the data is already there).
-- Whether the current dual-write code needs any modification before the migration applies (e.g. should we *expect* it to start working after migration, or are there bugs that need fixing first?).
-
-- [ ] **Step 6: Commit findings**
-
-```bash
-git add docs/superpowers/findings/2026-05-23-dual-write-prod-status.md
+git add docs/superpowers/findings/2026-05-23-phase-0a-dual-write-health.md
 git commit -m "$(cat <<'EOF'
-docs(findings): Phase 0a Task 1 — dual-write production status
+docs(findings): Phase 0a — dual-write production health check
 
-Documents empirical investigation of what DualWriteService is doing in
-production today. <one-line verdict based on findings>.
+One-shot SQL verification that DualWriteService is writing to the live
+Buddy/UKG tables. <one-line verdict from results>.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 Co-Authored-By: Robert A. Dennis (Buddy) <buddydennis@gmail.com>
@@ -142,317 +118,28 @@ EOF
 
 ---
 
-## Task 2: Generate the Drizzle migration
+## Task 2: Write failing tests for `LearnerStateService` wiring
 
-**Goal:** Use `drizzle-kit generate` to produce a SQL file capturing the diff between `schema.ts` and the live DB (post-FSRS). Validate the generated SQL covers all 17 tables + 8 enums.
-
-**Files:**
-- Create: `packages/db/drizzle/0025_<auto-named>.sql` (generated)
-
-- [ ] **Step 1: Set `DATABASE_URL` to point at the live DB (read-only verification)**
-
-The generation command compares schema.ts against the URL in `DATABASE_URL`. Use the *live* URL so the diff is real:
-
-```bash
-export DATABASE_URL="<live Supabase URL>"
-```
-
-- [ ] **Step 2: Run generation**
-
-```bash
-cd packages/db && pnpm db:generate
-```
-
-Expected: a new file appears in `packages/db/drizzle/` named `0025_<adjective>_<noun>.sql` (drizzle-kit auto-names).
-
-- [ ] **Step 3: Inspect the generated SQL**
-
-```bash
-ls -la packages/db/drizzle/ | tail -5
-cat packages/db/drizzle/0025_*.sql
-```
-
-Verify the file contains:
-- `CREATE TYPE` for 8 enums: `buddy_mood`, `velocity_trend`, `weakest_modality`, `buddy_personality`, `mnemonic_generation_method`, `llm_tier`, `study_log_mood`, plus any new enums for `deviceType` if not yet created.
-- `CREATE TABLE` for 17 tables: `learner_state_cache`, `buddy_conversations`, `buddy_nudges`, `study_plans`, `study_plan_events`, `study_log_entries`, `shared_goals`, `learner_identity`, `learner_profile_universal`, `learner_connections`, `learner_memory_artifacts`, `learner_knowledge_state`, `learner_app_grants`, `learner_timeline_events`, `buddy_llm_telemetry`, `buddy_llm_usage`, and any of the above I'm missing per `schema.ts` lines 501–908.
-- Indexes and foreign keys per the schema.
-
-If any table is missing or any column type looks wrong, halt and reconcile by fixing `schema.ts`, then regenerate.
-
-- [ ] **Step 4: Rename generated file to canonical name**
-
-```bash
-mv packages/db/drizzle/0025_*.sql packages/db/drizzle/0025_buddy_phase0.sql
-```
-
-If the auto-name was already `0025_buddy_phase0.sql`, skip.
-
-- [ ] **Step 5: Commit the generated migration**
-
-```bash
-git add packages/db/drizzle/0025_buddy_phase0.sql packages/db/drizzle/meta/
-git commit -m "$(cat <<'EOF'
-feat(db): generate migration 0025 — Buddy Phase 0 tables
-
-Drizzle-generated migration covering the 17 buddy/UKG tables and 8 enums
-that have been in packages/db/src/schema.ts since April Phase 0 but were
-never migrated. Includes: learner_state_cache, buddy_conversations,
-buddy_nudges, study_plans, study_plan_events, study_log_entries,
-shared_goals, learner_identity, learner_profile_universal,
-learner_connections, learner_memory_artifacts, learner_knowledge_state,
-learner_app_grants, learner_timeline_events, buddy_llm_telemetry,
-buddy_llm_usage, plus enums.
-
-RLS policies and Supabase-side copy follow in Task 3.
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-Co-Authored-By: Robert A. Dennis (Buddy) <buddydennis@gmail.com>
-EOF
-)"
-```
-
----
-
-## Task 3: Augment migration with RLS policies and copy to Supabase
-
-**Goal:** drizzle-kit doesn't generate RLS policies. Per the existing test `apps/api/test/integration/rls-coverage.test.ts`, every public table must have `relrowsecurity = true` and `relforcerowsecurity = true`. We add `ENABLE ROW LEVEL SECURITY` + `FORCE` + policies for all 17 new tables, then copy the augmented migration to `packages/db/supabase/migrations/` (Supabase's canonical location).
-
-**Files:**
-- Create: `packages/db/supabase/migrations/0025_buddy_phase0.sql` (copy + augment)
-
-- [ ] **Step 1: Copy the Drizzle migration to Supabase migrations directory**
-
-```bash
-cp packages/db/drizzle/0025_buddy_phase0.sql packages/db/supabase/migrations/0025_buddy_phase0.sql
-```
-
-- [ ] **Step 2: Wrap migration in BEGIN/COMMIT, add header comment**
-
-Edit `packages/db/supabase/migrations/0025_buddy_phase0.sql` — prepend at the top:
-
-```sql
--- Migration 0025: Kanji Buddy Phase 0 tables (17 tables + 8 enums)
--- Completes the Phase 0 schema that was defined in packages/db/src/schema.ts
--- in April but never migrated. Plumbing-only: no user-visible changes.
---
--- See docs/superpowers/specs/2026-05-23-buddy-v2-phase-1-refresh.md §3 for
--- the rationale and acceptance criteria.
-
-BEGIN;
-```
-
-And append at the bottom (after the last statement, before EOF):
-
-```sql
-
-COMMIT;
-```
-
-- [ ] **Step 3: For each of the 17 new tables, append `ENABLE ROW LEVEL SECURITY` + `FORCE` + policies**
-
-Tables fall into three RLS classes. The existing patterns are in `packages/db/supabase/migrations/0009_rls_service_role_policies.sql` and `0018_rls_placement_tutor_tables.sql`.
-
-**Class A — user-owned, direct `user_id` foreign key.** User reads own row; service role full access.
-
-Tables: `learner_state_cache`, `buddy_conversations`, `buddy_nudges`, `study_plans`, `study_plan_events`, `study_log_entries`, `shared_goals`.
-
-Pattern:
-```sql
-ALTER TABLE learner_state_cache ENABLE ROW LEVEL SECURITY;
-ALTER TABLE learner_state_cache FORCE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users read own learner_state_cache"
-  ON learner_state_cache FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Service role full access learner_state_cache"
-  ON learner_state_cache FOR ALL
-  USING (auth.jwt()->>'role' = 'service_role');
-```
-
-**Class B — UKG tables, service-role-only.** The April design §12 frames UKG as an internal *projection* of app-specific tables. All user reads happen through API endpoints that the service mediates, not direct table access. `DualWriteService` writes via service role. Per-user RLS on UKG tables would require sub-selects via `learner_identity` — costly and brittle. Service-role-only is the right posture for Phase 0a; later phases can add per-user policies if/when user-facing direct access becomes a real requirement.
-
-Tables: `learner_identity`, `learner_profile_universal`, `learner_connections`, `learner_memory_artifacts`, `learner_knowledge_state`, `learner_app_grants`, `learner_timeline_events`.
-
-Pattern:
-```sql
-ALTER TABLE learner_identity ENABLE ROW LEVEL SECURITY;
-ALTER TABLE learner_identity FORCE ROW LEVEL SECURITY;
-
-CREATE POLICY "Service role only learner_identity"
-  ON learner_identity FOR ALL
-  USING (auth.jwt()->>'role' = 'service_role');
-```
-
-**Class C — telemetry, service-role-only.** Internal; no user read access.
-
-Tables: `buddy_llm_telemetry`, `buddy_llm_usage`.
-
-Pattern:
-```sql
-ALTER TABLE buddy_llm_telemetry ENABLE ROW LEVEL SECURITY;
-ALTER TABLE buddy_llm_telemetry FORCE ROW LEVEL SECURITY;
-
-CREATE POLICY "Service role only buddy_llm_telemetry"
-  ON buddy_llm_telemetry FOR ALL
-  USING (auth.jwt()->>'role' = 'service_role');
-```
-
-- [ ] **Step 4: Run RLS coverage test against a local clone with the migration applied**
-
-```bash
-# Restore live clone (or use the one from Task 1 Step 3, post-migration)
-psql "$LOCAL_DATABASE_URL" -f packages/db/supabase/migrations/0025_buddy_phase0.sql
-
-# Run the RLS coverage test
-TEST_DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api test:integration -- rls-coverage
-```
-
-Expected: PASS. Every public table reports `relrowsecurity=true AND relforcerowsecurity=true`.
-
-If FAIL: the test output lists the offending tables. Add ENABLE + FORCE to the migration for those tables and re-run.
-
-- [ ] **Step 5: Commit the Supabase-side migration with RLS**
-
-```bash
-git add packages/db/supabase/migrations/0025_buddy_phase0.sql
-git commit -m "$(cat <<'EOF'
-feat(db): supabase-side migration 0025 with RLS coverage
-
-Hand-augmented copy of the Drizzle-generated 0025 migration with full RLS
-coverage for all 17 new tables. User-owned tables: user can read own row,
-service role full access. Telemetry tables: service role only.
-
-RLS coverage test (apps/api/test/integration/rls-coverage.test.ts) passes
-against a local clone with this migration applied.
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-Co-Authored-By: Robert A. Dennis (Buddy) <buddydennis@gmail.com>
-EOF
-)"
-```
-
----
-
-## Task 4: Clone-rehearsal — verify migration applies cleanly + smoke-test submitReview
-
-**Goal:** Per the FSRS rollout pattern (`docs/superpowers/runbooks/2026-05-22-fsrs-rollout.md`), rehearse the migration on a fresh dump of the live DB before applying it to production. Smoke-test that `submitReview` succeeds end-to-end against the migrated clone (the dual-write inserts must now land in the new tables).
-
-**Files:** No file changes — operator + verification only.
-
-- [ ] **Step 1: Fresh pg_dump of live DB**
-
-```bash
-pg_dump "$LIVE_DATABASE_URL" --no-owner --no-acl --clean --if-exists > /tmp/live-clone-$(date +%Y%m%d).sql
-```
-
-Verify size matches the expected order of magnitude (FSRS rehearsal used a 5.5MB dump; current should be similar).
-
-- [ ] **Step 2: Restore to local Postgres**
-
-```bash
-# Drop and recreate local target
-psql "$LOCAL_DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-psql "$LOCAL_DATABASE_URL" < /tmp/live-clone-$(date +%Y%m%d).sql
-```
-
-- [ ] **Step 3: Apply migration 0025**
-
-```bash
-psql "$LOCAL_DATABASE_URL" -f packages/db/supabase/migrations/0025_buddy_phase0.sql
-```
-
-Expected: no errors. Migration commits cleanly inside its BEGIN/COMMIT.
-
-- [ ] **Step 4: Verify the 17 tables exist**
-
-```bash
-psql "$LOCAL_DATABASE_URL" -c "\dt learner_*"
-psql "$LOCAL_DATABASE_URL" -c "\dt buddy_*"
-psql "$LOCAL_DATABASE_URL" -c "\dt study_*"
-psql "$LOCAL_DATABASE_URL" -c "\dt shared_goals"
-```
-
-Expected: 17 rows total across these queries (15 from prefix matches, plus `shared_goals`, plus any I'm miscounting — confirm against the §2.4 inventory in the refresh doc).
-
-- [ ] **Step 5: Run the full integration test suite against the clone**
-
-```bash
-TEST_DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api test:integration
-```
-
-Expected: all green. Particularly: `rls-coverage` passes, and no existing test regresses.
-
-- [ ] **Step 6: Smoke-test `submitReview` end-to-end against the clone**
-
-Start the API pointed at the clone:
-
-```bash
-DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api dev
-```
-
-Submit a single review (use a known user from the clone):
-
-```bash
-curl -X POST http://localhost:3000/v1/review/submit \
-  -H "Authorization: Bearer $TEST_USER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"sessionId":"<id-from-clone>","results":[{"kanjiId":1,"quality":3,"responseTimeMs":1500,"reviewType":"meaning"}]}'
-```
-
-Then verify the dual-write landed in the new tables:
-
-```bash
-psql "$LOCAL_DATABASE_URL" -c "SELECT COUNT(*) FROM learner_knowledge_state WHERE user_id = '<test-user-id>';"
-psql "$LOCAL_DATABASE_URL" -c "SELECT COUNT(*) FROM learner_timeline_events WHERE learner_id IN (SELECT id FROM learner_identity WHERE user_id = '<test-user-id>');"
-```
-
-Expected: both non-zero. Resolves Task 1's open question about dual-write behavior post-migration.
-
-- [ ] **Step 7: Tear down**
-
-```bash
-# Stop the API
-# Delete the dump (security hygiene — contains user data)
-rm /tmp/live-clone-$(date +%Y%m%d).sql
-```
-
-- [ ] **Step 8: Commit a brief rehearsal-findings note**
-
-Append to `docs/superpowers/findings/2026-05-23-dual-write-prod-status.md` a "Post-migration smoke" section noting: rehearsal results, dual-write behavior verified, ready for live rollout. Commit:
-
-```bash
-git add docs/superpowers/findings/2026-05-23-dual-write-prod-status.md
-git commit -m "$(cat <<'EOF'
-docs(findings): record Phase 0a clone-rehearsal results
-
-Migration 0025 applies cleanly to a fresh clone of the live DB.
-Integration tests pass. submitReview end-to-end smoke confirms dual-write
-inserts land in learner_knowledge_state + learner_timeline_events as
-designed.
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-Co-Authored-By: Robert A. Dennis (Buddy) <buddydennis@gmail.com>
-EOF
-)"
-```
-
----
-
-## Task 5: Write failing integration tests for the LearnerStateService refresh hook
-
-**Goal:** Test-drive the wiring. Three behaviors to lock down: (a) `learner_state_cache` is populated after a successful `submitReview`; (b) two rapid `submitReview` calls within the frequency cap window result in *one* refresh; (c) `submitReview` returns before the refresh completes (non-blocking).
+**Goal:** Lock down three behaviors via tests: (a) `learner_state_cache` populates after a successful `submitReview`; (b) two rapid submits inside the cap window produce one refresh; (c) the refresh is non-blocking from `submitReview`'s perspective. Tests live as integration tests against a real local Postgres (mirror the pattern in [`apps/api/test/integration/llm-telemetry.test.ts`](../../../apps/api/test/integration/llm-telemetry.test.ts)).
 
 **Files:**
 - Create: `apps/api/test/integration/learner-state-refresh.test.ts`
 - Create: `apps/api/test/integration/learner-state-cap.test.ts`
 
-- [ ] **Step 1: Create `learner-state-refresh.test.ts` — refresh happens after submitReview**
+- [ ] **Step 1: Inspect the existing integration test fixture pattern**
 
-Mirror the pattern in `apps/api/test/integration/llm-telemetry.test.ts` (per Explore agent). Create `apps/api/test/integration/learner-state-refresh.test.ts`:
+Read [`apps/api/test/integration/llm-telemetry.test.ts`](../../../apps/api/test/integration/llm-telemetry.test.ts) and [`apps/api/test/integration/rls-coverage.test.ts`](../../../apps/api/test/integration/rls-coverage.test.ts) to confirm:
+- Test-DB connection pattern (`TEST_DATABASE_URL` + `postgres()` + `drizzle()`)
+- `beforeEach` seed/cleanup conventions
+- Whether tests share a single test user UUID or each creates its own
+
+Capture the test user UUID convention (likely `'00000000-0000-0000-0000-0000000000aa'` based on what we've seen, but verify against the file).
+
+- [ ] **Step 2: Create `learner-state-refresh.test.ts`**
 
 ```typescript
-import { describe, it, expect, beforeEach } from 'vitest'
+// apps/api/test/integration/learner-state-refresh.test.ts
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { eq, sql } from 'drizzle-orm'
@@ -467,10 +154,19 @@ const db = drizzle(client, { schema })
 
 const TEST_USER_ID = '00000000-0000-0000-0000-0000000000aa'
 
+beforeAll(async () => {
+  // Seed: ensure the test user has a user_profiles row + at least one
+  // user_kanji_progress row + an open review_sessions row. Reuse helpers
+  // from llm-telemetry.test.ts if present; otherwise inline minimal seeds.
+  // <copy exact seed pattern from llm-telemetry.test.ts after reading it>
+})
+
 beforeEach(async () => {
-  // Seed a test user + a known kanji + an open review session.
-  // (Mirror llm-telemetry.test.ts upsert pattern; exact rows depend on fixture.)
   await db.execute(sql`DELETE FROM learner_state_cache WHERE user_id = ${TEST_USER_ID}`)
+})
+
+afterAll(async () => {
+  await client.end()
 })
 
 describe('LearnerStateService refresh hook', () => {
@@ -479,13 +175,10 @@ describe('LearnerStateService refresh hook', () => {
     const learnerState = new LearnerStateService(db)
     const srs = new SrsService(db, dualWrite, learnerState)
 
-    await srs.submitReview({
-      userId: TEST_USER_ID,
-      sessionId: '<seeded-session-id>',
-      results: [{ kanjiId: 1, quality: 3, responseTimeMs: 1500, reviewType: 'meaning' }],
-    })
+    // <minimal submitReview call — adapt arg shape from existing tests>
+    await srs.submitReview(/* ... */)
 
-    // The refresh is non-blocking via setImmediate; give it a tick.
+    // Refresh is non-blocking via setImmediate; flush the microtask queue.
     await new Promise((resolve) => setImmediate(resolve))
 
     const cached = await db.query.learnerStateCache.findFirst({
@@ -497,23 +190,28 @@ describe('LearnerStateService refresh hook', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test — expect FAIL**
+The `<copy exact seed pattern from llm-telemetry.test.ts>` placeholder is intentional and must be filled by reading that file in Step 1. Do not invent the seed; mirror what's already proven to work in the test suite.
+
+- [ ] **Step 3: Run the refresh test — expect FAIL**
 
 ```bash
 TEST_DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api test:integration -- learner-state-refresh
 ```
 
-Expected: FAIL — `SrsService` currently does not invoke `LearnerStateService`. The test should fail with either "no row found in learner_state_cache" or a constructor mismatch ("SrsService expects 2 args, got 3").
+Expected: FAIL with either:
+- "SrsService expects 2 arguments, got 3" (constructor mismatch — confirms wiring doesn't exist yet), or
+- The cache row is null after `submitReview` (no hook firing).
 
-- [ ] **Step 3: Create `learner-state-cap.test.ts` — two rapid submits = one refresh**
+Either failure mode is the correct red state for TDD.
 
-Create `apps/api/test/integration/learner-state-cap.test.ts`:
+- [ ] **Step 4: Create `learner-state-cap.test.ts`**
 
 ```typescript
-import { describe, it, expect, beforeEach } from 'vitest'
+// apps/api/test/integration/learner-state-cap.test.ts
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
 import { SrsService } from '../../src/services/srs.service.js'
 import { DualWriteService } from '../../src/services/buddy/dual-write.service.js'
@@ -529,51 +227,52 @@ beforeEach(async () => {
   await db.execute(sql`DELETE FROM learner_state_cache WHERE user_id = ${TEST_USER_ID}`)
 })
 
+afterAll(async () => {
+  await client.end()
+})
+
 describe('LearnerStateService frequency cap', () => {
   it('two submitReviews within the cap window result in exactly one refresh', async () => {
     const dualWrite = new DualWriteService(db)
     const learnerState = new LearnerStateService(db)
+    // Spy on the persist seam so we count actual cache writes (not just
+    // refreshState calls — the cap allows refreshState to return early).
+    const persistSpy = vi.spyOn(learnerState as any, 'persist')
+
     const srs = new SrsService(db, dualWrite, learnerState)
 
-    let refreshCount = 0
-    const originalRefresh = learnerState.refreshState.bind(learnerState)
-    learnerState.refreshState = async (userId: string) => {
-      refreshCount++
-      return originalRefresh(userId)
-    }
-
-    await srs.submitReview({ userId: TEST_USER_ID, sessionId: '<id-1>', results: [/* ... */] })
-    await srs.submitReview({ userId: TEST_USER_ID, sessionId: '<id-2>', results: [/* ... */] })
+    await srs.submitReview(/* ... first call ... */)
+    await srs.submitReview(/* ... second call within 30s ... */)
     await new Promise((resolve) => setImmediate(resolve))
 
-    expect(refreshCount).toBe(1)
+    expect(persistSpy).toHaveBeenCalledTimes(1)
   })
 })
 ```
 
-- [ ] **Step 4: Run the cap test — expect FAIL**
+- [ ] **Step 5: Run the cap test — expect FAIL**
 
 ```bash
 TEST_DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api test:integration -- learner-state-cap
 ```
 
-Expected: FAIL — either constructor mismatch or `refreshCount` is 0 (not invoked) or 2 (no cap).
+Expected: FAIL with constructor mismatch (same as Step 3) or `persistSpy` call count != 1.
 
-- [ ] **Step 5: Commit the failing tests**
+- [ ] **Step 6: Commit the failing tests**
 
 ```bash
 git add apps/api/test/integration/learner-state-refresh.test.ts apps/api/test/integration/learner-state-cap.test.ts
 git commit -m "$(cat <<'EOF'
 test(api): failing tests for LearnerStateService refresh hook + frequency cap
 
-TDD red-step for Phase 0a Task 6. Two integration tests:
+TDD red-step for Phase 0a Task 3. Two integration tests:
 
 1. After submitReview, learner_state_cache has a row for the user.
-2. Two submitReviews in rapid succession trigger exactly one refresh
-   (per-user frequency cap).
+2. Two submitReviews in rapid succession trigger exactly one persist call
+   (per-user 30s frequency cap).
 
-Both currently fail because SrsService doesn't invoke LearnerStateService.
-Task 6 implements the wiring.
+Both currently fail — SrsService doesn't invoke LearnerStateService yet.
+Task 3 implements the wiring.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 Co-Authored-By: Robert A. Dennis (Buddy) <buddydennis@gmail.com>
@@ -583,9 +282,9 @@ EOF
 
 ---
 
-## Task 6: Implement the LearnerStateService refresh hook in SrsService
+## Task 3: Implement the `LearnerStateService` wiring
 
-**Goal:** Make the Task 5 tests pass. Wire `LearnerStateService.refreshState(userId)` into `SrsService.submitReview()` *after* the dual-write commits, via a non-blocking `setImmediate`. Add a per-user frequency cap on `LearnerStateService` itself (so any future invocation seam — not just submitReview — gets the same protection).
+**Goal:** Make Task 2's tests pass. Add a per-user 30s frequency cap to `LearnerStateService.refreshState()`. Inject `LearnerStateService` into `SrsService`. Invoke `refreshState(userId)` from `submitReview` after the dual-write commits, via fire-and-forget `setImmediate`.
 
 **Files:**
 - Modify: `apps/api/src/services/buddy/learner-state.service.ts`
@@ -594,25 +293,26 @@ EOF
 
 - [ ] **Step 1: Add per-user frequency cap to `LearnerStateService.refreshState`**
 
-Edit `apps/api/src/services/buddy/learner-state.service.ts`. Add at the top of the class (after `constructor`):
+Edit `apps/api/src/services/buddy/learner-state.service.ts`. Add at the top of the class (right after `constructor`):
 
 ```typescript
-  // Per-user frequency cap: at most one refresh per user per CAP_WINDOW_MS.
-  // Prevents thrash on heavy sessions where submitReview fires every few seconds.
+  // Per-user frequency cap. Heavy sessions can fire submitReview every few
+  // seconds; without this cap the cache would be rewritten on every one of
+  // them, even though the state values barely change between rapid submits.
+  // 30s matches the cadence of a "reasonable user" doing back-to-back cards.
   private static readonly CAP_WINDOW_MS = 30_000
   private lastRefreshAt = new Map<string, number>()
 ```
 
-Then modify `refreshState`:
+Then modify `refreshState` to consult the cap:
 
 ```typescript
   async refreshState(userId: string): Promise<ComputedLearnerState | null> {
     const now = Date.now()
     const last = this.lastRefreshAt.get(userId) ?? 0
     if (now - last < LearnerStateService.CAP_WINDOW_MS) {
-      // Within the cap window — skip. The next call after the window passes
-      // will refresh normally. Return null to signal "skipped" to any caller
-      // that cares; callers in fire-and-forget mode ignore the return value.
+      // Within the cap window — skip. Return null to signal "skipped".
+      // Fire-and-forget callers (the only kind in Phase 0a) ignore the return.
       return null
     }
     this.lastRefreshAt.set(userId, now)
@@ -624,11 +324,17 @@ Then modify `refreshState`:
   }
 ```
 
-Note the return type changed from `Promise<ComputedLearnerState>` to `Promise<ComputedLearnerState | null>`. If existing callers depend on the non-null return, update them. (Per Explore agent: `learnerState` is currently orphaned; no callers exist.)
+The return type changes from `Promise<ComputedLearnerState>` to `Promise<ComputedLearnerState | null>`. Since `LearnerStateService` has no current callers (confirmed by Explore agent's grep + the Phase 0a premise itself), no downstream typecheck breaks.
 
 - [ ] **Step 2: Inject `LearnerStateService` into `SrsService`**
 
-Edit `apps/api/src/services/srs.service.ts`. Modify the constructor:
+Edit `apps/api/src/services/srs.service.ts`. Add the import at the top:
+
+```typescript
+import { LearnerStateService } from './buddy/learner-state.service.js'
+```
+
+Modify the constructor:
 
 ```typescript
 export class SrsService {
@@ -639,19 +345,13 @@ export class SrsService {
   ) {}
 ```
 
-Add the import at the top of the file:
-
-```typescript
-import { LearnerStateService } from './buddy/learner-state.service.js'
-```
-
 - [ ] **Step 3: Invoke `refreshState` after the dual-write commits**
 
-Still in `srs.service.ts`, edit `submitReview` around line 469. After the `await this.dualWrite.recordReviewSubmissions(submissionInputs)` line and after the session is marked complete (line 472-475), add:
+Still in `srs.service.ts`, in the `submitReview` method around line 469-478: after the `await this.dualWrite.recordReviewSubmissions(submissionInputs)` line and after the session is marked complete (the existing `await this.db.update(reviewSessions)...`), add before the method's return:
 
 ```typescript
     // Phase 0a wiring: refresh the learner-state cache for this user.
-    // Fire-and-forget: errors are logged but never propagate, since this
+    // Fire-and-forget — errors are logged but never propagate, since this
     // path is observability, not correctness. setImmediate ensures the HTTP
     // response is sent before the refresh starts.
     setImmediate(() => {
@@ -661,17 +361,17 @@ Still in `srs.service.ts`, edit `submitReview` around line 469. After the `await
     })
 ```
 
-Place it after the session-completion update, before the function's return.
+The exact `input.userId` reference assumes `submitReview` takes an object with a `userId` field — verify against the actual signature when editing. If the userId variable is named differently in scope, use that.
 
 - [ ] **Step 4: Update `SrsService` instantiation in `server.ts`**
 
-Edit `apps/api/src/server.ts`. Find the `srsService` instantiation (likely near where `dualWrite` is decorated, line ~125-138) and pass `learnerState` as the third arg:
+Edit `apps/api/src/server.ts`. Around line 138 (where `srsService` is instantiated, per the Explore agent's report), pass `learnerState` as the third constructor arg:
 
 ```typescript
 const srsService = new SrsService(db, dualWrite, learnerState)
 ```
 
-Confirm `learnerState` is in scope at that line. Per Explore agent (line 112-137), it's instantiated immediately above; the change is one positional argument.
+Confirm `learnerState` is in scope at that line. The Explore agent confirmed it's instantiated and decorated immediately above (line 112–137).
 
 - [ ] **Step 5: Run both tests — expect PASS**
 
@@ -681,10 +381,10 @@ TEST_DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api test:inte
 
 Expected: both `learner-state-refresh` and `learner-state-cap` pass.
 
-If either fails:
-- `learner-state-refresh` failing → check that `setImmediate(...)` is reached, that `refreshState` doesn't throw on the test fixture, and that the `beforeEach` cleared the cache row.
-- `learner-state-cap` failing with `refreshCount === 2` → the cap isn't catching; verify `CAP_WINDOW_MS` is 30s and the test doesn't wait that long between submits.
-- `learner-state-cap` failing with `refreshCount === 0` → the wrapping mutation of `learnerState.refreshState` happened before `srsService` captured the reference; either move the wrap before `new SrsService(...)`, or use a spy.
+Common failure modes and fixes:
+- `learner-state-refresh` fails because the cache row is null → check that `setImmediate(...)` is actually reached (e.g., put a `console.log` before it temporarily); confirm `refreshState` doesn't throw on the test fixture.
+- `learner-state-cap` fails with `persistSpy.toHaveBeenCalledTimes(2)` → cap isn't catching; verify `CAP_WINDOW_MS = 30_000` and that the test's two submits actually happen inside 30s wall-clock.
+- `learner-state-cap` fails with `persistSpy.toHaveBeenCalledTimes(0)` → `vi.spyOn` was wired before `new SrsService(...)`, or spy targets the wrong instance. Re-order or use a different observation strategy.
 
 - [ ] **Step 6: Run the full integration test suite — verify no regression**
 
@@ -700,7 +400,7 @@ Expected: all green.
 pnpm typecheck
 ```
 
-Expected: clean modulo the pre-existing `social-mute.test.ts:25` error documented in the prior handoff.
+Expected: clean modulo the pre-existing `social-mute.test.ts:25` error noted in the prior handoff.
 
 - [ ] **Step 8: Commit**
 
@@ -715,10 +415,9 @@ propagate (fire-and-forget — observability, not correctness).
 
 LearnerStateService now enforces a 30s per-user frequency cap so heavy
 sessions don't thrash the cache. The cap lives on the service so any
-future invocation seam inherits it.
+future invocation seam inherits it automatically.
 
-Resolves Phase 0a Task 6. Tests in learner-state-refresh.test.ts +
-learner-state-cap.test.ts now pass.
+Closes Phase 0a Task 3. The refresh + cap integration tests now pass.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 Co-Authored-By: Robert A. Dennis (Buddy) <buddydennis@gmail.com>
@@ -728,21 +427,22 @@ EOF
 
 ---
 
-## Task 7: Add daily metric emission
+## Task 4: Daily Buddy metrics
 
-**Goal:** Three counters surfaced once per day as structured JSON in App Runner logs: rows inserted into `learner_state_cache` (cache refreshes), rows inserted into `buddy_llm_telemetry`, dual-write commits (proxied by `learner_timeline_events` row count, since every dual-write inserts a timeline event).
+**Goal:** Three counters emitted once per day as a single structured-JSON log line on stdout: `learner_state_cache` refreshes (last 24h), `buddy_llm_telemetry` rows (last 24h), `learner_timeline_events` rows (last 24h — proxy for dual-write commits). App Runner pipes stdout to CloudWatch; the log line is queryable via CloudWatch Logs Insights.
 
 **Files:**
 - Create: `apps/api/src/services/buddy/metrics.service.ts`
+- Create: `apps/api/test/integration/buddy-metrics.test.ts`
 - Modify: `apps/api/src/cron.ts`
-- Create: `apps/api/test/integration/metrics.test.ts`
 
-- [ ] **Step 1: Write the failing test for metric emission shape**
+- [ ] **Step 1: Write the failing test for log-line shape**
 
-Create `apps/api/test/integration/metrics.test.ts`:
+Create `apps/api/test/integration/buddy-metrics.test.ts`:
 
 ```typescript
-import { describe, it, expect, vi } from 'vitest'
+// apps/api/test/integration/buddy-metrics.test.ts
+import { describe, it, expect, vi, afterAll } from 'vitest'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import * as schema from '@kanji-learn/db'
@@ -752,14 +452,20 @@ const TEST_DB_URL = process.env.TEST_DATABASE_URL!
 const client = postgres(TEST_DB_URL)
 const db = drizzle(client, { schema })
 
+afterAll(async () => {
+  await client.end()
+})
+
 describe('emitDailyBuddyMetrics', () => {
-  it('logs structured JSON with three counters', async () => {
+  it('logs structured JSON with three counters and a window', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
     await emitDailyBuddyMetrics(db)
 
-    const calls = logSpy.mock.calls.map((c) => c[0] as string)
-    const metricLine = calls.find((line) => line.includes('"metric":"buddy_daily_counts"'))
+    const calls = logSpy.mock.calls.map((c) => String(c[0]))
+    const metricLine = calls.find((line) =>
+      line.includes('"metric":"buddy_daily_counts"')
+    )
     expect(metricLine).toBeDefined()
 
     const parsed = JSON.parse(metricLine!)
@@ -778,7 +484,7 @@ describe('emitDailyBuddyMetrics', () => {
 - [ ] **Step 2: Run the test — expect FAIL**
 
 ```bash
-TEST_DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api test:integration -- metrics
+TEST_DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api test:integration -- buddy-metrics
 ```
 
 Expected: FAIL — `metrics.service.ts` does not exist.
@@ -788,72 +494,88 @@ Expected: FAIL — `metrics.service.ts` does not exist.
 Create `apps/api/src/services/buddy/metrics.service.ts`:
 
 ```typescript
+// apps/api/src/services/buddy/metrics.service.ts
 import { sql } from 'drizzle-orm'
 import type { Db } from '@kanji-learn/db'
 
 /**
  * Emit a single structured-JSON log line summarising Buddy-related write
- * counts over the past 24h. Consumed by App Runner's stdout pipeline.
+ * counts over the past 24h. Consumed by App Runner's stdout → CloudWatch
+ * pipeline; query via CloudWatch Logs Insights.
  *
- * One-line ops contract: `{"metric":"buddy_daily_counts", ...}` on stdout.
+ * Format: {"metric":"buddy_daily_counts","window_start":...,"window_end":...,
+ *          "learner_state_refreshes":N,"llm_telemetry_rows":N,
+ *          "dual_write_events":N}
+ *
+ * Errors are caught and logged as a warning — a metric-emission failure
+ * must never take down the API.
  */
 export async function emitDailyBuddyMetrics(db: Db): Promise<void> {
   const windowEnd = new Date()
   const windowStart = new Date(windowEnd.getTime() - 24 * 60 * 60 * 1000)
 
-  const result = await db.execute(sql`
-    SELECT
-      (SELECT COUNT(*) FROM learner_state_cache
-        WHERE updated_at >= ${windowStart} AND updated_at < ${windowEnd})::int AS learner_state_refreshes,
-      (SELECT COUNT(*) FROM buddy_llm_telemetry
-        WHERE created_at >= ${windowStart} AND created_at < ${windowEnd})::int AS llm_telemetry_rows,
-      (SELECT COUNT(*) FROM learner_timeline_events
-        WHERE created_at >= ${windowStart} AND created_at < ${windowEnd})::int AS dual_write_events
-  `)
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        (SELECT COUNT(*) FROM learner_state_cache
+          WHERE updated_at >= ${windowStart} AND updated_at < ${windowEnd})::int
+          AS learner_state_refreshes,
+        (SELECT COUNT(*) FROM buddy_llm_telemetry
+          WHERE created_at >= ${windowStart} AND created_at < ${windowEnd})::int
+          AS llm_telemetry_rows,
+        (SELECT COUNT(*) FROM learner_timeline_events
+          WHERE created_at >= ${windowStart} AND created_at < ${windowEnd})::int
+          AS dual_write_events
+    `)
 
-  const row = (result as unknown as Array<Record<string, number>>)[0] ?? {}
+    // postgres-js + drizzle .execute() returns rows in result; shape varies
+    // by driver version. Coerce defensively.
+    const rows = result as unknown as Array<Record<string, number>>
+    const row = rows[0] ?? {}
 
-  console.log(
-    JSON.stringify({
-      metric: 'buddy_daily_counts',
-      window_start: windowStart.toISOString(),
-      window_end: windowEnd.toISOString(),
-      learner_state_refreshes: row.learner_state_refreshes ?? 0,
-      llm_telemetry_rows: row.llm_telemetry_rows ?? 0,
-      dual_write_events: row.dual_write_events ?? 0,
-    }),
-  )
+    console.log(
+      JSON.stringify({
+        metric: 'buddy_daily_counts',
+        window_start: windowStart.toISOString(),
+        window_end: windowEnd.toISOString(),
+        learner_state_refreshes: row.learner_state_refreshes ?? 0,
+        llm_telemetry_rows: row.llm_telemetry_rows ?? 0,
+        dual_write_events: row.dual_write_events ?? 0,
+      })
+    )
+  } catch (err) {
+    console.warn('[BuddyMetrics] daily emission failed:', err)
+  }
 }
 ```
 
 - [ ] **Step 4: Run the test — expect PASS**
 
 ```bash
-TEST_DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api test:integration -- metrics
+TEST_DATABASE_URL="$LOCAL_DATABASE_URL" pnpm --filter=@kanji-learn/api test:integration -- buddy-metrics
 ```
 
 Expected: PASS.
 
-- [ ] **Step 5: Schedule the daily metric job**
+- [ ] **Step 5: Schedule the daily metric job in `cron.ts`**
 
-Edit `apps/api/src/cron.ts`. Find the existing daily-reminder job (added in prior work) and add a sibling daily job that runs once per day, e.g. at 03:00 UTC. Pattern:
+Read `apps/api/src/cron.ts` to identify the cron library in use (likely `node-cron` based on prior reading). Add a sibling daily job that runs once per day at 03:00 UTC.
+
+If the file uses `node-cron`:
 
 ```typescript
+import cron from 'node-cron'
 import { emitDailyBuddyMetrics } from './services/buddy/metrics.service.js'
 
-// ... within the cron schedule wiring ...
+// ... within wherever the cron jobs are registered ...
 
 // Daily Buddy metrics — one structured-JSON log line per day.
-schedule.scheduleJob({ hour: 3, minute: 0, tz: 'Etc/UTC' }, async () => {
-  try {
-    await emitDailyBuddyMetrics(db)
-  } catch (err) {
-    console.warn('[BuddyMetrics] daily emission failed:', err)
-  }
-})
+cron.schedule('0 3 * * *', () => {
+  void emitDailyBuddyMetrics(db)
+}, { timezone: 'UTC' })
 ```
 
-(Exact API depends on the cron library in use — match the existing pattern in `cron.ts`. If the file uses `node-cron`, use `cron.schedule('0 3 * * *', ...)`. If it uses raw `setInterval`, fall through.)
+If the file uses a different scheduler API, match the existing pattern in the file rather than introducing a new cron library.
 
 - [ ] **Step 6: Run the full integration test suite + workspace typecheck**
 
@@ -867,7 +589,7 @@ Both expected: green modulo the pre-existing `social-mute.test.ts:25` error.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/api/src/services/buddy/metrics.service.ts apps/api/src/cron.ts apps/api/test/integration/metrics.test.ts
+git add apps/api/src/services/buddy/metrics.service.ts apps/api/src/cron.ts apps/api/test/integration/buddy-metrics.test.ts
 git commit -m "$(cat <<'EOF'
 feat(buddy): daily Buddy metrics — three counters via structured JSON
 
@@ -876,8 +598,10 @@ covering learner_state_cache refreshes, buddy_llm_telemetry rows, and
 dual-write events (proxied by learner_timeline_events). Scheduled at
 03:00 UTC.
 
-Consumed by App Runner's stdout → CloudWatch pipeline. No new table; the
-log line itself is the metric, queryable via CloudWatch Logs Insights.
+Consumed by App Runner's stdout → CloudWatch pipeline. No new table;
+the log line itself is the metric, queryable via CloudWatch Logs Insights.
+
+Errors caught — a metric-emission failure must never take down the API.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 Co-Authored-By: Robert A. Dennis (Buddy) <buddydennis@gmail.com>
@@ -887,129 +611,107 @@ EOF
 
 ---
 
-## Task 8: Operator step — apply migration to live DB
+## Task 5: Deploy API + post-deploy smoke
 
-**Goal:** Migration applied, dual-write writes start landing in real tables. Follows the FSRS rollout pattern exactly.
+**Goal:** Push the wiring + metrics to production via the established deploy script. Confirm via a real review submission that `learner_state_cache` now populates.
 
-**Files:** No file changes. Operator runbook.
+**Files:** No file changes — operator + verification.
 
-- [ ] **Step 1: Safety dump of live DB**
+- [ ] **Step 1: Pre-deploy sanity**
 
-```bash
-mkdir -p /tmp/buddy-phase0a-safety
-pg_dump "$LIVE_DATABASE_URL" --no-owner --no-acl > /tmp/buddy-phase0a-safety/live-$(date +%Y%m%d-%H%M).sql
-ls -lh /tmp/buddy-phase0a-safety/
-```
-
-Verify size is non-trivial (single-digit MB at minimum).
-
-- [ ] **Step 2: Confirm rehearsal results are still valid**
-
-If more than a day has passed since Task 4's rehearsal, re-run Task 4 against a fresh dump. Otherwise proceed.
-
-- [ ] **Step 3: Apply migration to live DB**
+Verify `main` is clean and all Phase 0a commits are on it:
 
 ```bash
-psql "$LIVE_DATABASE_URL" -f packages/db/supabase/migrations/0025_buddy_phase0.sql
+git status
+git log --oneline -10
 ```
 
-Expected: no errors, single `COMMIT` confirmation.
+Expected: clean working tree (modulo the untracked items from the housekeeping queue); last few commits include the Phase 0a refresh + plan amendments + Tasks 1–4 code commits.
 
-- [ ] **Step 4: Verify the 17 tables exist live**
-
-```bash
-psql "$LIVE_DATABASE_URL" -c "\dt learner_*"
-psql "$LIVE_DATABASE_URL" -c "\dt buddy_*"
-psql "$LIVE_DATABASE_URL" -c "\dt study_*"
-psql "$LIVE_DATABASE_URL" -c "\dt shared_goals"
-```
-
-Expected: 17 rows total.
-
-- [ ] **Step 5: Deploy the API with the LearnerState + metrics wiring**
+- [ ] **Step 2: Run the deploy script**
 
 ```bash
 ./scripts/deploy-api.sh
 ```
 
-Wait for the App Runner operation to reach `SUCCEEDED` (poll with `aws apprunner list-operations --service-arn <arn>`).
+This builds and pushes the ECR image and triggers an App Runner deployment. The script returns immediately; the deployment runs async.
 
-- [ ] **Step 6: Smoke-test live**
-
-A short health check:
+- [ ] **Step 3: Wait for App Runner deployment to reach SUCCEEDED**
 
 ```bash
-curl -s https://73x3fcaaze.us-east-1.awsapprunner.com/v1/review/status -o /dev/null -w "%{http_code}\n"
+aws apprunner list-operations \
+  --service-arn "$APP_RUNNER_SERVICE_ARN" \
+  --max-results 5 \
+  --query 'OperationSummaryList[0]'
 ```
 
-Expected: `401` (route exists, needs auth). If 5xx, halt and investigate App Runner logs.
+Re-run until `Status` shows `SUCCEEDED`. Typical latency: 3–5 minutes.
 
-- [ ] **Step 7: Trigger one real review via the live mobile app + verify dual-write landed**
+- [ ] **Step 4: API smoke**
 
-Use the operator's own TestFlight account: do one card. Then in Supabase SQL editor:
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://73x3fcaaze.us-east-1.awsapprunner.com/v1/review/status
+```
+
+Expected: `401` (route exists, needs auth). If 5xx, halt and check App Runner logs:
+
+```bash
+aws logs tail /aws/apprunner/kanji-learn-api --since 5m
+```
+
+- [ ] **Step 5: Trigger a real review via the live mobile app**
+
+Open the operator's TestFlight build. Complete one card (any review type, any grade). Wait ~5 seconds.
+
+- [ ] **Step 6: Confirm `learner_state_cache` populated**
+
+Operator runs in Supabase SQL editor:
 
 ```sql
-SELECT user_id, updated_at, total_kanji_seen
+SELECT user_id, updated_at, current_streak_days, total_kanji_seen,
+       scaffold_level, buddy_mood
 FROM learner_state_cache
 WHERE user_id = '<operator-user-id>'
 ORDER BY updated_at DESC LIMIT 1;
+```
 
-SELECT COUNT(*) AS rows_last_5_min
-FROM learner_knowledge_state
-WHERE updated_at > NOW() - INTERVAL '5 minutes';
+Expected: one row with `updated_at` within the last few minutes; `total_kanji_seen` > 0; values consistent with the operator's actual progress.
 
-SELECT COUNT(*) AS rows_last_5_min
+If no row: check App Runner logs for `[LearnerState] refresh failed` warnings. Most likely cause: `loadRawInputs` query has a bug against real production data shape. Fix forward.
+
+- [ ] **Step 7: Confirm `learner_timeline_events` still growing**
+
+```sql
+SELECT COUNT(*) AS events_last_10_min
 FROM learner_timeline_events
-WHERE created_at > NOW() - INTERVAL '5 minutes';
+WHERE created_at > NOW() - INTERVAL '10 minutes';
 ```
 
-Expected: `learner_state_cache` has a row updated in the last few minutes for the operator's user; `learner_knowledge_state` and `learner_timeline_events` have rows from the dual-write.
-
-If `learner_state_cache` is empty: the refresh hook isn't firing. Check App Runner logs for `[LearnerState] refresh failed` warnings.
-
-- [ ] **Step 8: Clean up safety dump after 24h of stability**
-
-(Not automated — calendar reminder.)
-
-```bash
-# After 24h of stability:
-rm -rf /tmp/buddy-phase0a-safety
-```
+Expected: ≥ the number of card reviews the operator just did (one event per review at minimum).
 
 ---
 
-## Task 9: Post-deploy acceptance verification
+## Task 6: Verify acceptance criteria + closeout
 
-**Goal:** Tick off the acceptance criteria from §3.3 of the Phase 0a spec, document results, close the phase.
+**Goal:** Tick the §3.3 acceptance criteria from the refresh spec, finalize the findings doc, update HANDOFF.md, commit the closeout.
 
-**Files:** Modify `docs/superpowers/findings/2026-05-23-dual-write-prod-status.md` (append "Post-deploy verification" section) + refresh HANDOFF.md.
+**Files:** Modify `docs/superpowers/findings/2026-05-23-phase-0a-dual-write-health.md`, modify `docs/HANDOFF.md`.
 
-- [ ] **Step 1: Verify acceptance — migration applied**
+- [ ] **Step 1: Tick acceptance criterion — `learner_state_cache` populated**
 
-Tick: ✅ Migration `0025_buddy_phase0.sql` applied to the live DB; 17 tables exist.
+Task 5 Step 6 confirms. Mark off.
 
-- [ ] **Step 2: Verify acceptance — `learner_state_cache` populated**
+- [ ] **Step 2: Tick acceptance criterion — dual-write health**
 
-Tick once Task 8 Step 7 confirms a row for an active user.
+Task 1 Step 1 confirms Buddy tables non-zero. Task 5 Step 7 confirms growth post-deploy. Mark off.
 
-- [ ] **Step 3: Verify acceptance — dual-write status confirmed and documented**
+- [ ] **Step 3: Tick acceptance criterion — no submitReview latency regression**
 
-The findings doc from Task 1 + Task 4 + Task 8 covers this. Append a final verdict line.
+Pull App Runner request-latency metrics for `POST /v1/review/submit` from the 24h before deploy vs the 24h after. If CloudWatch metrics aren't readily available, do an operator-eyeball check (the `setImmediate` wiring should keep the synchronous path identical to pre-deploy, so any regression would indicate a bug, not a design issue).
 
-- [ ] **Step 4: Verify acceptance — no submitReview latency regression**
+- [ ] **Step 4: Tick acceptance criterion — daily metric log line emitting**
 
-Pull App Runner request-latency metrics for `POST /v1/review/submit` from the 24h before deploy vs the 24h after:
-
-```bash
-# Use CloudWatch metrics; concrete command depends on monitoring setup.
-# Compare p50/p95/p99 — flag any >20% increase.
-```
-
-If unable to pull metrics (no Datadog / CloudWatch Insights configured), note it in the findings doc as an operator-eyeball check (i.e. confirm by using the app that things feel responsive). The `setImmediate` wiring should keep this clean.
-
-- [ ] **Step 5: Verify acceptance — observability emitting**
-
-Wait until 03:00 UTC the next day. Then search CloudWatch logs:
+Wait until 03:00 UTC the day after deploy, then query CloudWatch:
 
 ```bash
 aws logs filter-log-events \
@@ -1019,40 +721,40 @@ aws logs filter-log-events \
   --max-items 5
 ```
 
-Expected: at least one matching line with non-zero counters.
+Expected: at least one matching line with non-zero counters. If empty, check the cron schedule landed in production and `cron.ts` is actually being imported on startup.
 
-- [ ] **Step 6: Update findings doc with the verdict**
+- [ ] **Step 5: Append final verdict to findings doc**
 
-Append to `docs/superpowers/findings/2026-05-23-dual-write-prod-status.md`:
+Edit `docs/superpowers/findings/2026-05-23-phase-0a-dual-write-health.md` and append:
 
 ```markdown
-## Post-deploy verification (Task 9)
+## Post-deploy verification (Task 6)
 
-| Criterion | Status |
-|---|---|
-| Migration 0025 applied to live DB; 17 tables exist | ✅ <date> |
-| learner_state_cache populated for at least one active user | ✅ <date> |
-| Dual-write status confirmed | ✅ See §<verdict> above |
-| No submitReview latency regression | ✅ <date> (p95 <before>→<after>) |
-| Daily Buddy metrics emitting | ✅ <date> |
+| Criterion | Status | Notes |
+|---|---|---|
+| `learner_state_cache` populates for at least one active user | ✅ <date> | <observed values> |
+| Dual-write health confirmed; tables growing | ✅ <date> | <pre/post row counts> |
+| No `submitReview` latency regression | ✅ <date> | p95 <before> → <after> |
+| Daily Buddy metrics log line observed in CloudWatch | ✅ <date> | First emission <ts> |
 
-Phase 0a complete.
+Phase 0a complete. Next slice per the refresh doc §9: Phase 1' brainstorm
+(BuddyCard delivery skeleton).
 ```
 
-- [ ] **Step 7: Update HANDOFF.md**
+- [ ] **Step 6: Update HANDOFF.md**
 
-Edit `docs/HANDOFF.md` — add a "Phase 0a shipped" entry to the current-state section. Note that Buddy Phase 0 is now fully complete; next slice is Phase 1' (BuddyCard delivery skeleton).
+Edit `docs/HANDOFF.md` and add a "Phase 0a shipped" entry to the current-state section. Note that Buddy Phase 0 is now fully complete (the orphan + observability gaps are closed); next slice is Phase 1' (BuddyCard delivery skeleton).
 
-- [ ] **Step 8: Commit closure**
+- [ ] **Step 7: Commit closeout**
 
 ```bash
-git add docs/superpowers/findings/2026-05-23-dual-write-prod-status.md docs/HANDOFF.md
+git add docs/superpowers/findings/2026-05-23-phase-0a-dual-write-health.md docs/HANDOFF.md
 git commit -m "$(cat <<'EOF'
-docs(phase0a): close out Phase 0a — all acceptance criteria met
+docs(phase0a): close out Phase 0a — acceptance criteria met
 
-Migration 0025 applied to live; 17 Buddy/UKG tables exist in production.
-LearnerStateService wiring confirmed via operator review; daily metrics
-emitting. No regression in submitReview latency.
+LearnerStateService is now wired into post-review refresh; daily Buddy
+metrics emitting. Dual-write health confirmed in production. No regression
+in submitReview latency.
 
 Buddy Phase 0 is now fully complete. Next slice per the refresh doc §9:
 Phase 1' brainstorm (BuddyCard delivery skeleton).
@@ -1067,10 +769,10 @@ EOF
 
 ## Plan self-review
 
-- **Spec coverage:** §3.1 in scope items 1–4 each have explicit tasks (Task 2/3/4 → migration; Task 1 → dual-write verification; Task 5/6 → LearnerState wiring; Task 7 → observability). §3.2 out-of-scope items (no user-visible change, no Buddy behavior, no backfill) are respected — no UI touchpoints, no new Buddy logic, backfill conditional on Task 1 verdict and explicitly out by default. §3.3 acceptance criteria all covered by Task 9.
-- **Placeholder scan:** No "TBD" or "TODO" sentinels. Each step has concrete commands and code. Task 1 Step 4 has a conditional branch ("if Step 3 returned 2xx without errors…") but the branch is concrete on both sides.
-- **Type consistency:** `LearnerStateService.refreshState` returns `Promise<ComputedLearnerState | null>` (was non-null per Explore agent's read). Task 6 Step 1 documents the change; no caller exists today to break. `SrsService` constructor gains a third arg consistently across Tasks 5/6.
-- **Files-list reconciliation:** Every "Files: Create / Modify" header at task start matches the actual edits inside the steps. No stale "create" header that never produces a file.
+- **Spec coverage:** §3.1 of the refresh spec has three in-scope items; this plan has tasks for each (Task 3 → wiring, Task 4 → observability, Task 1 → dual-write health). §3.2 out-of-scope items respected — no migration work, no behavior changes, no backfill. §3.3 acceptance criteria all covered by Task 6.
+- **Placeholder scan:** Two intentional placeholders in Task 2 Step 2 and Step 4 — `<copy exact seed pattern from llm-telemetry.test.ts>` and `<minimal submitReview call>`. Both must be resolved at execution time by reading the existing test patterns. Not "TBD" sentinels; concrete fill-in instructions with a named reference. Findings doc placeholders (Task 1 Step 2, Task 6 Step 5) are explicitly meant to be filled when results come in.
+- **Type consistency:** `LearnerStateService.refreshState` returns `Promise<ComputedLearnerState | null>` after Task 3 Step 1; no callers exist today so no downstream breakage. `SrsService` constructor gains a third arg consistently across Tasks 2/3.
+- **File-list reconciliation:** Every `Files:` header at task start matches the actual edits inside the steps.
 
 ---
 
