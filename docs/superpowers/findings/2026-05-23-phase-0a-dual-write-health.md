@@ -44,4 +44,30 @@ The zero in `learner_state_cache` is the entire scope of Phase 0a's first code c
 
 ## Post-deploy verification
 
-(To be filled in at Task 6 closeout — confirming `learner_state_cache` populates post-deploy.)
+API deployed 2026-05-24 — ECR digest `77b757b48424...`, App Runner op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED in 3:35. Smoke `/v1/review/status` → 401 (expected).
+
+Operator did a real review session on B135 TestFlight at ~21:56 UTC. Confirmed in Supabase SQL editor:
+
+| Field | Value |
+|---|---|
+| `user_id` | `b8503589-1695-4659-b69d-b9e77d1cf655` |
+| `updated_at` | `2026-05-24 21:56:58.941+00` (seconds after the session ended) |
+| `current_streak_days` | 3 |
+| `total_kanji_seen` | 471 |
+| `scaffold_level` | medium |
+| `buddy_mood` | supportive |
+| `active_leech_count` | 0 |
+
+End-to-end behavior validated: `submitReview` → `dualWrite.recordReviewSubmissions` → `setImmediate(refreshState)` → `loadRawInputs` (real production queries) → `computeLearnerState` → `persist` (upsert to `learner_state_cache`). Values pass the sniff test for an active intermediate learner.
+
+### Acceptance criteria (refresh doc §3.3)
+
+| Criterion | Status | Notes |
+|---|---|---|
+| `learner_state_cache` populates for at least one active user within minutes of a real review submission | ✅ 2026-05-24 21:56 UTC | Operator's user, populated ~5s after session end |
+| Dual-write health confirmed; Buddy tables non-zero and growing | ✅ 2026-05-23 (Task 1) | 726 / 2062 / 3 / 80 / 0 row counts |
+| No `[LearnerState] refresh failed` warnings in App Runner logs | ✅ 2026-05-24 | Recent application log clean of warnings |
+| No regression in `submitReview` latency | ✅ 2026-05-24 | `setImmediate` keeps the synchronous path unchanged; HTTP response ships before refresh starts |
+| Daily Buddy metrics log line emitting | ⏳ pending | First emission scheduled for 2026-05-25 03:05 UTC; checked at Task 6 closeout follow-up |
+
+**Phase 0a complete.** Next slice per the refresh doc §9: Phase 1' brainstorm (BuddyCard delivery skeleton).

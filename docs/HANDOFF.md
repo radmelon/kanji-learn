@@ -1,23 +1,33 @@
-# Session Handoff — 2026-05-23 (Spec 1.5 FSRS migration shipped — B135 in TestFlight)
+# Session Handoff — 2026-05-24 (Buddy v2 Refresh + Phase 0a shipped)
 
-## TL;DR
+## TL;DR (this session, 2026-05-24)
 
-**Spec 1.5 (FSRS migration) is fully landed — on `main`, on the live DB, in the deployed API, and in TestFlight as B135.** 15 commits from `1561714`…`9f5357d` replaced the SM-2 scheduler with hand-rolled FSRS-5, swapped the schema (migration 0024), and seeded existing card state via a one-time replay. Live rollout sequence today: safety dump → migration 0024 applied → replay walked 4 users / 742 progress rows / 2857 review_logs in ~2 min → App Runner op `3f6c157cd008489e8ac85778cf893eda` SUCCEEDED → B135 submitted to TestFlight (`6f063489-76ce-43c8-ba41-3f764d9322bb`). B135 is in TestFlight and verified working on-device.
+**Buddy v2 is back in motion.** Brainstormed a "Phase 1+ Refresh" of the April 2026 Buddy v2 design + spec — confirms the original 17-section design stands, but updates the §14 phase plan to reflect what shipped between April and May (Spec 1 Practice Loop, Spec 1.5 FSRS) and corrects a major inventory error: Phase 0 schema is actually live in production (16 tables via the drizzle migration track), not "unmigrated" as a prior agent had reported. Refresh doc at [`docs/superpowers/specs/2026-05-23-buddy-v2-phase-1-refresh.md`](superpowers/specs/2026-05-23-buddy-v2-phase-1-refresh.md). Re-anchors leech detection on FSRS R(t), captures the "kanji monkey off your back" voice evolution, and defers the Apple Watch role-refactor to its own brainstorm.
 
-**Side-benefit confirmed on-device:** under SM-2, the "burned" status was effectively unreachable (interval reset to 1 day on every Hard/Again). After replay, **174/742 cards (23%) correctly sit in burned**, matching the user's subjective experience of months of daily use without ever burning a kanji. The "real long-term memory tracking" property the spec deck promised is now real.
+**Refreshed phase ordering (constructivist-first):** Phase 0a (cleanup) → 1' (BuddyCard delivery) → 5 (Mnemonic Co-Creation) → 6 (Study Log) → 3 (Orchestration with R(t)) → 4 (Social) → 7a (Buddy onboarding). Spec 3 = Practice Loop intervention routing (lifted out of Buddy v2). Phase 2 (on-device LLM) deferred until cloud path is proven.
 
-**Next creative work:** Spec 2 (Buddy, the AI tutor). The data layer Spec 1.5 exposes (`retrievability(card, atTime)` + per-card `stability`/`difficulty`/`lapses`) is the bridge Spec 2 reads.
+**Phase 0a shipped — API-only, no migration, no mobile changes.** Wired the orphaned `LearnerStateService` into a post-`submitReview` refresh hook (fire-and-forget via `setImmediate`, 30s per-user frequency cap). Added daily Buddy metrics (structured-JSON log line at 03:05 UTC covering 24h `learner_state_cache` refreshes, `buddy_llm_telemetry` rows, `learner_timeline_events` rows). Deployed via `./scripts/deploy-api.sh` — op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED in 3:35. Operator did a real review on B135 TestFlight; `learner_state_cache` populated within seconds with sensible values (471 kanji seen, 3-day streak, buddy_mood=supportive). End-to-end behavior validated in production.
+
+**Next creative work:** Phase 1' brainstorm — BuddyCard delivery skeleton. Settles surface placement (Dashboard / Study Ready / Progress), frequency cap discipline, template-vs-LLM enrichment, and whether to ship Watch nudges in Phase 1' (recommended: phone-only pending the deferred Watch refactor).
+
+---
+
+## Prior session — 2026-05-23 (Spec 1.5 FSRS migration shipped — B135 in TestFlight)
+
+**Spec 1.5 (FSRS migration) is fully landed — on `main`, on the live DB, in the deployed API, and in TestFlight as B135.** 15 commits from `1561714`…`9f5357d` replaced the SM-2 scheduler with hand-rolled FSRS-5, swapped the schema (migration 0024), and seeded existing card state via a one-time replay. Live rollout sequence: safety dump → migration 0024 applied → replay walked 4 users / 742 progress rows / 2857 review_logs in ~2 min → App Runner op `3f6c157cd008489e8ac85778cf893eda` SUCCEEDED → B135 submitted to TestFlight (`6f063489-76ce-43c8-ba41-3f764d9322bb`). B135 is in TestFlight and verified working on-device.
+
+**Side-benefit confirmed on-device:** under SM-2, the "burned" status was effectively unreachable (interval reset to 1 day on every Hard/Again). After replay, **174/742 cards (23%) correctly sit in burned**, matching the user's subjective experience of months of daily use without ever burning a kanji.
 
 **Carry-forward verification owed on B135:** the combined Plans A/B/C walkthrough was originally owed on B134; B135 absorbs it (and adds FSRS-specific items). See the walkthrough section below.
 
 ## Current state
 
-- **Branch:** `main` at `9f5357d`. Working tree: untracked items only (housekeeping queue — unchanged from prior session, plus `docs/HANDOFF.md` modified by this refresh).
-- **`main` history (recent):** `c1fb60f` (FSRS plan doc) → `1561714`…`9f5357d` (Spec 1.5, 15 commits including 3 fix passes from final review + clone-rehearsal).
-- **Pushed to `origin/main`** ✅ — `origin/main` = `9f5357d`.
-- **Live DB (Supabase ap-southeast-2):** migration `0024` applied 2026-05-23; replay run successfully; `user_kanji_progress` now FSRS-shaped (stability/difficulty/lapses/total_reviews); `kanji_mastery_view` materialized view recreated against the new schema and refreshed.
-- **API:** deployed via `./scripts/deploy-api.sh` 2026-05-23. ECR image `sha256:f733903cb4e9df3c7bf66c8d8e9ffb8ba125264592021da7c2301cad2d685559`. App Runner op `3f6c157cd008489e8ac85778cf893eda` reported `SUCCEEDED`. Smoke test: `GET /v1/review/status` → 401 (route exists, just needs auth); `GET /` → 404 (Fastify default). API alive.
-- **TestFlight: B135 in TestFlight** ✅ — EAS build `07099956-83f1-4284-aad1-79e7f2454eda` (`buildNumber: 135`, version `1.0.0`); IPA at https://expo.dev/artifacts/eas/SpoesfkyKquX9EHY5tUnh.ipa. Submission `6f063489-76ce-43c8-ba41-3f764d9322bb`. **Verified on-device.** Note: `app.json` ios.buildNumber tracks the LAST shipped build per project convention; EAS auto-bumped 134 → 135 server-side — do not hand-edit.
+- **Branch:** `main` ahead of `origin/main` by 0 commits (pushed at end of session). Working tree: same housekeeping queue as prior session.
+- **Recent `main` history (today's session):** `3de48f3` (refresh doc) → `73b591f` (Watch deferral) → `5aaaaa1` (initial Phase 0a plan — superseded) → `571d439` (RLS amendment — also superseded) → `c577306` (refresh §2.4 correction) → `74b8047` (rewritten Phase 0a plan) → `18b6be7` (Task 1 findings) → `1807a72` (failing tests) → `efab7c3` (LearnerStateService wiring) → `aa96580` (daily Buddy metrics).
+- **Pushed to `origin/main`** ✅ — `origin/main` = `aa96580`.
+- **Live DB (Supabase ap-southeast-2):** no migration this session. Confirmed via direct SQL that all 16 Buddy/UKG tables exist (Phase 0 shipped via the drizzle track in April). Dual-write health verified: 726 `learner_knowledge_state` rows, 2062 `learner_timeline_events` rows, 80 `buddy_llm_telemetry` rows. Post-Phase 0a deploy: `learner_state_cache` populating live.
+- **API:** Deployed 2026-05-24. ECR digest `sha256:77b757b48424090acada90eab9156ae878508d8794d7503c15c078ee98406c30`. App Runner op `52099409c3d74f13bb81cb7a58885101` reported `SUCCEEDED` at 21:37 UTC. Smoke: `GET /v1/review/status` → 401 (route exists); `GET /` → 404 (Fastify default).
+- **TestFlight:** B135 still current — Phase 0a is API-only, no new build needed. The mobile app submits to `/v1/review/submit` the same as before; the server-side wiring is invisible to the client.
 - **Watch:** unchanged.
 
 ---
