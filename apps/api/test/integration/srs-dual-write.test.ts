@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
 import { SrsService } from '../../src/services/srs.service'
 import { DualWriteService } from '../../src/services/buddy/dual-write.service'
+import { LearnerStateService } from '../../src/services/buddy/learner-state.service'
 import { MASTERY_BY_STATUS } from '../../src/services/buddy/constants'
 import { calculateNextReview, createNewCard, ratingFromQuality } from '@kanji-learn/shared'
 
@@ -50,7 +51,8 @@ async function resetFixtures() {
 
 describe('SrsService.submitReview routes through DualWriteService', () => {
   const dualWrite = new DualWriteService(db)
-  const srs = new SrsService(db, dualWrite)
+  const learnerState = new LearnerStateService(db)
+  const srs = new SrsService(db, dualWrite, learnerState)
 
   beforeAll(async () => {
     await ensureFixtures()

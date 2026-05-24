@@ -20,6 +20,7 @@ import { sql } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
 import { SrsService } from '../../src/services/srs.service'
 import { DualWriteService } from '../../src/services/buddy/dual-write.service'
+import { LearnerStateService } from '../../src/services/buddy/learner-state.service'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
@@ -100,7 +101,8 @@ async function seedFsrsCard(
 
 describe('getReviewQueue — FSRS maybe-slipping', () => {
   const dualWrite = new DualWriteService(db)
-  const srs = new SrsService(db, dualWrite)
+  const learnerState = new LearnerStateService(db)
+  const srs = new SrsService(db, dualWrite, learnerState)
 
   beforeAll(async () => {
     await ensureFixtures()

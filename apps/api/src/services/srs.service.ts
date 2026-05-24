@@ -20,6 +20,7 @@ import type { Db } from '@kanji-learn/db'
 import type { ReviewResult } from '@kanji-learn/shared'
 import { SURPRISE_BURNED_CHECK_RATE } from '@kanji-learn/shared'
 import { DualWriteService, type ReviewSubmissionInput } from './buddy/dual-write.service'
+import { LearnerStateService } from './buddy/learner-state.service'
 import type { SrsStatus } from './buddy/constants'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -96,7 +97,8 @@ export function planQueueSlots(
 export class SrsService {
   constructor(
     private db: Db,
-    private readonly dualWrite: DualWriteService
+    private readonly dualWrite: DualWriteService,
+    private readonly learnerState: LearnerStateService
   ) {}
 
   // ── Build daily review queue ────────────────────────────────────────────────
@@ -473,6 +475,17 @@ export class SrsService {
       .update(reviewSessions)
       .set({ completedAt: now, correctItems, totalItems: results.length })
       .where(eq(reviewSessions.id, sessionId))
+
+    // Phase 0a wiring: refresh the learner-state cache for this user.
+    // Fire-and-forget — errors are logged but never propagate, since this
+    // path is observability, not correctness. setImmediate ensures the HTTP
+    // response is sent before the refresh starts. The service enforces a
+    // per-user frequency cap internally so heavy sessions don't thrash.
+    setImmediate(() => {
+      this.learnerState.refreshState(userId).catch((err) => {
+        console.warn(`[LearnerState] refresh failed for user ${userId}:`, err)
+      })
+    })
 
     return { sessionId, totalItems: results.length, correctItems, studyTimeMs, newLearned, burned }
   }

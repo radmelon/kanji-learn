@@ -36,8 +36,8 @@ const TEST_USER = '00000000-0000-0000-0000-000000000999'
 const TEST_CHAR = '新'
 
 const dualWrite = new DualWriteService(db)
-const srs = new SrsService(db, dualWrite)
 const learnerState = new LearnerStateService(db)
+const srs = new SrsService(db, dualWrite, learnerState)
 
 let testKanjiId: number
 

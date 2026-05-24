@@ -100,9 +100,32 @@ function sum(xs: number[]): number {
 // ─── Service class ───────────────────────────────────────────────────────────
 
 export class LearnerStateService {
+  // Per-user frequency cap. Heavy review sessions fire submitReview every
+  // few seconds; without this cap the cache would be rewritten on every
+  // one of them, even though the state values barely change between rapid
+  // submits. 30s matches the cadence of a "reasonable user" doing
+  // back-to-back cards. The cap lives on the service so any invocation
+  // seam (current: post-submitReview hook; future: post-quiz, post-burn,
+  // etc.) inherits it automatically.
+  private static readonly CAP_WINDOW_MS = 30_000
+  private lastRefreshAt = new Map<string, number>()
+
   constructor(private readonly db: Db) {}
 
-  async refreshState(userId: string): Promise<ComputedLearnerState> {
+  /**
+   * Refresh the learner-state cache for a user. Returns null when the call
+   * is within the cap window and was skipped — fire-and-forget callers
+   * ignore the return value; callers that want the value should call
+   * `getState()` instead.
+   */
+  async refreshState(userId: string): Promise<ComputedLearnerState | null> {
+    const now = Date.now()
+    const last = this.lastRefreshAt.get(userId) ?? 0
+    if (now - last < LearnerStateService.CAP_WINDOW_MS) {
+      return null
+    }
+    this.lastRefreshAt.set(userId, now)
+
     const raw = await this.loadRawInputs(userId)
     const computed = computeLearnerState(raw)
     await this.persist(computed)

@@ -36,7 +36,7 @@ export async function reviewRoutes(server: FastifyInstance) {
   // there's a single source of truth for the buddy layer. Previously this
   // route built its own copy — stateless and functionally equivalent, but
   // two instances at the composition root invite drift.
-  const srs = new SrsService(server.db, server.dualWrite)
+  const srs = new SrsService(server.db, server.dualWrite, server.learnerState)
   const interventions = new InterventionService(server.db)
   const analytics = new AnalyticsService(server.db)
   const notifications = new NotificationService(server.db)
