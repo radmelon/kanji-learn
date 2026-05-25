@@ -67,3 +67,4 @@ apps/watch/**/DerivedData/
 apps/watch/**/*.xccheckout
 apps/watch/**/*.moved-aside
 apps/watch/**/build/
+.worktrees/
