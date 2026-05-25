@@ -19,6 +19,7 @@ import { useLearnerProfile } from '../../src/hooks/useLearnerProfile'
 import { COUNTRIES, ONBOARDING_CONTENT } from '../../src/config/onboarding-content'
 import { DeleteAccountModal } from '../../src/components/profile/DeleteAccountModal'
 import { useShowPitchAccent } from '../../src/hooks/useShowPitchAccent'
+import * as Location from 'expo-location'
 
 const PROFILE_CACHE_KEY = 'kl:profile_cache'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -30,6 +31,7 @@ interface UserProfile {
   displayName: string | null
   dailyGoal: number
   notificationsEnabled: boolean
+  attachLocationToMilestones: boolean
   timezone: string
   reminderHour: number
   restDay: number | null  // 0=Sun … 6=Sat, null=no rest day
@@ -55,6 +57,7 @@ export default function ProfileScreen() {
   const [displayName, setDisplayName] = useState('')
   const [dailyGoal, setDailyGoal] = useState(15)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
+  const [attachLocationToMilestones, setAttachLocationToMilestones] = useState(false)
   const [reminderHour, setReminderHour] = useState(20)
   const [restDay, setRestDay] = useState<number | null>(null)
 
@@ -138,6 +141,7 @@ export default function ProfileScreen() {
     setDisplayName(data.displayName ?? '')
     setDailyGoal(data.dailyGoal)
     setNotificationsEnabled(data.notificationsEnabled)
+    setAttachLocationToMilestones(data.attachLocationToMilestones ?? false)
     setReminderHour(data.reminderHour ?? 20)
     setRestDay(data.restDay ?? null)
   }, [])
@@ -191,6 +195,7 @@ export default function ProfileScreen() {
     displayName: string
     dailyGoal: number
     notificationsEnabled: boolean
+    attachLocationToMilestones: boolean
     reminderHour: number
     restDay: number | null
   }>) => {
@@ -226,6 +231,21 @@ export default function ProfileScreen() {
   const handleNotificationsToggle = useCallback((value: boolean) => {
     setNotificationsEnabled(value)
     save({ notificationsEnabled: value })
+  }, [save])
+
+  const handleAttachLocationToggle = useCallback(async (value: boolean) => {
+    if (value) {
+      const perm = await Location.requestForegroundPermissionsAsync()
+      if (!perm.granted) {
+        Alert.alert(
+          'Location permission required',
+          'Enable location access in Settings to attach your location to milestones.'
+        )
+        return
+      }
+    }
+    setAttachLocationToMilestones(value)
+    save({ attachLocationToMilestones: value })
   }, [save])
 
   const handleReminderHour = useCallback((hour: number) => {
@@ -474,6 +494,25 @@ export default function ProfileScreen() {
               </View>
             </>
           )}
+        </Section>
+
+        {/* Privacy */}
+        <Section title="Privacy">
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Ionicons name="location-outline" size={20} color={colors.textSecondary} />
+              <View>
+                <Text style={styles.rowLabel}>Attach location to milestones</Text>
+                <Text style={styles.rowSub}>When on, your approximate location is saved with each milestone you earn — for future personalisation.</Text>
+              </View>
+            </View>
+            <Switch
+              value={attachLocationToMilestones}
+              onValueChange={handleAttachLocationToggle}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </View>
         </Section>
 
         {/* Study Preferences */}
