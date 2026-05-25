@@ -67,4 +67,92 @@ describe('NudgeService — streak rule', () => {
     expect((streak?.actionPayload as any)?.milestone).toBe(7)
     expect(streak?.content).toBe('A full week. Buddy noticed.')
   })
+
+  it('does not insert a streak row on a non-milestone day', async () => {
+    await seedCacheState(5)
+    const service = new NudgeService(db, stubNotifier)
+    const nudges = await service.evaluateNudgesForScreen(USER_A, 'dashboard')
+    // Dashboard still returns the Meet Buddy nudge; just no streak row.
+    expect(nudges.filter((n) => n.nudgeType === 'streak')).toHaveLength(0)
+  })
+
+  it('dedupes: a second evaluate on the same milestone returns the same streak row', async () => {
+    await seedCacheState(7)
+    const service = new NudgeService(db, stubNotifier)
+    const first = await service.evaluateNudgesForScreen(USER_A, 'dashboard')
+    const second = await service.evaluateNudgesForScreen(USER_A, 'dashboard')
+    const firstStreak = first.filter((n) => n.nudgeType === 'streak')
+    const secondStreak = second.filter((n) => n.nudgeType === 'streak')
+    expect(firstStreak).toHaveLength(1)
+    expect(secondStreak).toHaveLength(1)
+    expect(firstStreak[0]?.id).toBe(secondStreak[0]?.id)
+  })
+
+  it('inserts mirror streak row on Study Ready independently', async () => {
+    await seedCacheState(7)
+    const service = new NudgeService(db, stubNotifier)
+    const dashRows = await service.evaluateNudgesForScreen(USER_A, 'dashboard')
+    const studyRows = await service.evaluateNudgesForScreen(USER_A, 'study')
+    const dashStreak = dashRows.filter((n) => n.nudgeType === 'streak')
+    const studyStreak = studyRows.filter((n) => n.nudgeType === 'streak')
+    expect(dashStreak).toHaveLength(1)
+    expect(studyStreak).toHaveLength(1)
+    expect(dashStreak[0]?.id).not.toBe(studyStreak[0]?.id)
+  })
+
+  it('does NOT fire on the Progress screen', async () => {
+    await seedCacheState(7)
+    const service = new NudgeService(db, stubNotifier)
+    const rows = await service.evaluateNudgesForScreen(USER_A, 'progress')
+    expect(rows).toHaveLength(0)
+  })
+
+  it('handles concurrent inserts cleanly (partial unique index enforces dedupe)', async () => {
+    await seedCacheState(7)
+    const service = new NudgeService(db, stubNotifier)
+    const [a, b] = await Promise.all([
+      service.evaluateNudgesForScreen(USER_A, 'dashboard'),
+      service.evaluateNudgesForScreen(USER_A, 'dashboard'),
+    ])
+    const aStreak = a.filter((n) => n.nudgeType === 'streak')
+    const bStreak = b.filter((n) => n.nudgeType === 'streak')
+    expect(aStreak).toHaveLength(1)
+    expect(bStreak).toHaveLength(1)
+    expect(aStreak[0]?.id).toBe(bStreak[0]?.id)
+  })
+})
+
+describe('NudgeService — Meet Buddy rule', () => {
+  it('inserts a meet-buddy row on first dashboard request', async () => {
+    await seedCacheState(0)
+    const service = new NudgeService(db, stubNotifier)
+    const rows = await service.evaluateNudgesForScreen(USER_A, 'dashboard')
+    expect(rows.some((r) => r.nudgeType === 'encouragement')).toBe(true)
+  })
+
+  it('dedupes meet-buddy across requests', async () => {
+    await seedCacheState(0)
+    const service = new NudgeService(db, stubNotifier)
+    await service.evaluateNudgesForScreen(USER_A, 'dashboard')
+    const second = await service.evaluateNudgesForScreen(USER_A, 'dashboard')
+    const mb = second.filter((r) => r.nudgeType === 'encouragement')
+    expect(mb).toHaveLength(1)
+  })
+
+  it('does NOT fire on Study Ready or Progress', async () => {
+    await seedCacheState(0)
+    const service = new NudgeService(db, stubNotifier)
+    const study = await service.evaluateNudgesForScreen(USER_A, 'study')
+    const progress = await service.evaluateNudgesForScreen(USER_A, 'progress')
+    expect(study.some((r) => r.nudgeType === 'encouragement')).toBe(false)
+    expect(progress.some((r) => r.nudgeType === 'encouragement')).toBe(false)
+  })
+
+  it('stack priority: Meet Buddy comes before streak on Dashboard', async () => {
+    await seedCacheState(7)
+    const service = new NudgeService(db, stubNotifier)
+    const rows = await service.evaluateNudgesForScreen(USER_A, 'dashboard')
+    expect(rows[0]?.nudgeType).toBe('encouragement')
+    expect(rows[1]?.nudgeType).toBe('streak')
+  })
 })
