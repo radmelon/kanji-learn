@@ -16,7 +16,7 @@ import { buddyNudges, learnerStateCache } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import type { BuddyNudge, BuddyScreen } from '@kanji-learn/shared'
 import type { NotificationService } from '../notification.service'
-import { isStreakMilestone, streakContent, STREAK_MILESTONES } from './templates/streak'
+import { isStreakMilestone, streakContent } from './templates/streak'
 import { MEET_BUDDY_CONTENT } from './templates/meet-buddy'
 
 const STREAK_PRIORITY = 5
@@ -142,6 +142,8 @@ export class NudgeService {
       .returning()
 
     if (inserted.length > 0) {
+      // @ts-expect-error - sendBuddyNudgePush is added in Phase 1' Task 6.
+      // Remove this directive when notification.service.ts gains the method.
       await this.notifier.sendBuddyNudgePush(userId, inserted[0] as unknown as BuddyNudge)
     }
   }
