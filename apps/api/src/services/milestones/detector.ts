@@ -14,6 +14,9 @@ import {
   type JlptLevel,
   type Grade,
 } from '@kanji-learn/shared';
+import { userKanjiProgress } from '@kanji-learn/db';
+import type { Db } from '@kanji-learn/db';
+import { eq, and, lt, sql } from 'drizzle-orm';
 
 export type DetectorInput = {
   counts: CurrentCounts;
@@ -90,4 +93,24 @@ export function detectCrossings(input: DetectorInput): ProposedMilestone[] {
   }
 
   return proposed;
+}
+
+/**
+ * "Pre-deploy history" cutoff. Set to the deploy timestamp of the rework so
+ * users with SRS activity before that moment receive the lazy grandfather pass.
+ * The value is environment-driven so it can be set per-environment at boot.
+ */
+const PRE_DEPLOY_CUTOFF_ISO = process.env.MILESTONES_DEPLOY_CUTOFF_ISO
+  ?? '2026-05-25T00:00:00Z';   // safe default — adjust at deploy time
+
+export async function hasPreDeployHistory(db: Db, userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ exists: sql<number>`1` })
+    .from(userKanjiProgress)
+    .where(and(
+      eq(userKanjiProgress.userId, userId),
+      lt(userKanjiProgress.createdAt, new Date(PRE_DEPLOY_CUTOFF_ISO)),
+    ))
+    .limit(1);
+  return rows.length > 0;
 }
