@@ -82,4 +82,13 @@ export const typography = {
   reading: { fontSize: 16, fontWeight: '400' as const, letterSpacing: 1 },
 } as const
 
+// Milestone tier palettes. Each label colour is ≥ 4.5:1 against its bg on the
+// dark Progress panel (verified WCAG AA). Bronze/silver/gold reflect grade-level
+// achievement tiers.
+export const milestoneTier = {
+  bronze: { bg: '#3a1f0a', border: '#e89a5c', label: '#f5b07a' },
+  silver: { bg: '#3a3a3a', border: '#e0e0e0', label: '#f0f0f0' },
+  gold:   { bg: '#3a2c00', border: '#ffd24a', label: '#ffe066' },
+} as const
+
 export type ColorKey = keyof typeof colors
