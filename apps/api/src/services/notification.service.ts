@@ -429,16 +429,30 @@ export class NotificationService {
   /**
    * Fire an Expo push for a Buddy nudge. Phase 1' Task 6.
    *
-   * Reuses sendToUserTokens for the Expo client + dead-token pruning.
-   * Sets buddy_nudges.push_delivered_at after Expo resolves (success or
-   * logged failure — "we tried"). Errors never propagate; this is
+   * Honors userProfiles.notificationsEnabled — if the user has push off,
+   * skip both the Expo call and the push_delivered_at stamp (no attempt
+   * happened, so the daily-metrics column should not record one).
+   *
+   * Otherwise: reuses sendToUserTokens for the Expo client + dead-token
+   * pruning, then sets buddy_nudges.push_delivered_at after Expo resolves
+   * (success or logged failure — "we tried"). Errors never propagate;
    * called fire-and-forget from the setImmediate chain in submitReview.
    */
   async sendBuddyNudgePush(userId: string, nudge: BuddyNudge): Promise<void> {
+    // Respect the user's master push switch — matches the gate used by
+    // sendDailyReminders, notifyStudyMates, notifyIncomingFriendRequest,
+    // and sendRestDaySummaries.
+    const profile = await this.db.query.userProfiles.findFirst({
+      where: eq(userProfiles.id, userId),
+      columns: { notificationsEnabled: true },
+    })
+    if (!profile?.notificationsEnabled) return
+
     try {
       await this.sendToUserTokens(userId, {
         title: 'Kanji Buddy',
         body: nudge.content,
+        sound: 'default',
         data: {
           nudgeId: nudge.id,
           kind: 'buddy_nudge',
