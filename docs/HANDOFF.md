@@ -1,6 +1,22 @@
-# Session Handoff — 2026-05-25 (Phase 1' shipped — B136 in TestFlight; T15 on-device walkthrough pending)
+# Session Handoff — 2026-05-25 (Milestones panel rework shipped end-to-end; B137 mobile cut owed; Phase 1' T15 still pending)
 
-## TL;DR (this session, 2026-05-25)
+## TL;DR (this session, 2026-05-25 — second session of the day)
+
+**Milestones panel rework is fully landed on `main`, on the live DB, and in the deployed API.** The 24-task `milestones-rework` branch (28 commits, +1807/-139 across 40 files) merged into `main` via `--no-ff` merge commit `52ff639`, drizzle migrations `0012_kanji_grade_idx.sql` and `0013_user_profile_attach_location.sql` applied via `psql -f` against live Supabase, API redeployed twice (op `4f7b21c40b1541898d9960ffb434b755` SUCCEEDED with the new image; op `2f536eedd4ce4f459e7fc8eb77236dd0` SUCCEEDED with `MILESTONES_DEPLOY_CUTOFF_ISO=2026-05-25T23:50:00Z` added to the runtime env vars). Smoke: `/health` 200, `/v1/buddy/nudges` 401. Pre-migration safety dump at `/tmp/buddy-milestones-safety/live-20260525-2329.sql` (5.8M; delete after 24h stability).
+
+**Mobile changes are NOT yet in TestFlight — owed as B137.** Suggested bundle: (a) MilestonesSection UI (badges + UpNext + date sheet, wired into Progress tab), (b) Profile "Attach location to milestones" toggle (opt-in, default OFF), (c) the queued B137 placement refinement from [`docs/superpowers/findings/2026-05-25-b137-refinements.md`](superpowers/findings/2026-05-25-b137-refinements.md) (BuddyCard up under Drill Weak Spots), (d) the Velocity-card "Start burning kanji to see a projection" copy fix tracked in the milestones-rework plan. Single EAS cut covers all four.
+
+**Two-deploy rollout footgun, document for next time:** [`scripts/deploy-api.sh:24`](../scripts/deploy-api.sh:24) uses `APPRUNNER_SERVICE_ARN="${APPRUNNER_SERVICE_ARN:-…}"` (colon-dash). An empty-string override does NOT skip `start-deployment` — bash treats empty as "use the default". Result this session: the build/push step also triggered a deploy of the new image with OLD env vars (no `MILESTONES_DEPLOY_CUTOFF_ISO`), requiring a corrective second deploy via `update-service`. Future fix options: (i) edit the script to `${VAR-…}` (no colon), OR (ii) when bundling env-var changes with a deploy, run `aws apprunner update-service` BEFORE `deploy-api.sh` so the old image accepts the new env var first.
+
+**Practical impact of the gap:** effectively zero. The default `MILESTONES_DEPLOY_CUTOFF_ISO` fallback (`2026-05-25T00:00:00Z`, hardcoded in [`apps/api/src/services/milestones/detector.ts:103-104`](../apps/api/src/services/milestones/detector.ts:103)) still grandfathers all 4 existing users because their `user_kanji_progress.createdAt` rows predate today. Only a user whose first-ever SRS activity landed strictly after UTC midnight today would have been mis-grandfathered, and the corrected cutoff (`23:50:00Z`) was set ~9 min after the second deploy completed (`23:40:59Z`), so any real activity is covered.
+
+**Side observation — Supabase PG log noise:** a `relation "supabase_migrations.schema_migrations" does not exist` notice fired at ~23:31 UTC. Confirmed harmless. That schema isn't created in this project — you apply migrations via raw `psql -f`, not via Supabase CLI — so any client that queries it (pg_dump introspection, Supabase Studio Migrations panel) logs this. No action taken; leaving as log noise. To silence: `CREATE SCHEMA IF NOT EXISTS supabase_migrations; CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY, statements text[], name text);` — but creating an empty table risks confusing the Supabase CLI if you ever adopt it later.
+
+**Closeout doc for milestones still owed.** No `docs/superpowers/findings/2026-05-25-milestones-panel-rework.md` was written; the 24-task plan's checkboxes were also never ticked. Worth backfilling for HANDOFF continuity (one short findings doc summarizing what shipped + the deploy footgun above).
+
+---
+
+## Earlier session — 2026-05-25 (Phase 1' shipped — B136 in TestFlight; T15 on-device walkthrough still pending)
 
 **Phase 1' is shipped, end-to-end.** Migration 0025 applied to live; API deployed twice (first rollback on a runtime import bug, second SUCCEEDED at op `c955bd8cb5f64cbab032e24df83c4c00`); B136 EAS build cut and submitted to TestFlight (build `f5b04f00-1799-41f7-aafe-6b99f39bf104`; submission `f58e6982-156d-4635-9d04-52679a6b1114`). What's left is T15 — the on-device walkthrough on B136 and the closeout findings doc. Once that's done the next slice per the refresh doc §9 ordering is Phase 5 (Contextual Mnemonic Co-Creation — the signature feature).
 
@@ -31,8 +47,10 @@
 
 ## Current state
 
-- **Branch:** `main`, fully pushed to `origin`. Working tree: same housekeeping queue as prior session (no new untracked items resolved this session).
-- **Recent `main` history (today's session, 22 commits in order):**
+- **Branch:** `main` at `52ff639` (the milestones-rework merge commit), fully pushed to `origin`. Working tree: same housekeeping queue as prior sessions (no new untracked items resolved).
+- **Latest on `main` (this session, 2026-05-25 — second session):**
+  - `52ff639` — `Merge branch 'milestones-rework'` (28 commits + merge; shared milestones types/ladders/tier rules + selection helpers, drizzle migrations 0012/0013, MilestoneDetector with numeric/JLPT/Grade tiers and gating, per-grade & per-JLPT bucket queries, hasPreDeployHistory grandfather pass, LearnerStateService refresh integration, recentMilestones+perGradeBuckets in analytics summary, mobile Milestone/Grade badge components, CoreBadgesRow/GradeBadgesRow, UpNextList, MilestoneDateSheet, MilestonesSection orchestrator wired into Progress tab, bronze/silver/gold theme tokens, Profile "Attach location to milestones" opt-in, tryGetCoordsForCapture helper, mobile→server wiring for optional coords). Merged cleanly on top of Phase 1' fixes; the merged tree also clears the long-standing `social-mute.test.ts:25` typecheck error (the fix was on `main` via `7ccfe32`, not on the branch).
+- **Recent `main` history (earlier today's session — Phase 1', 22 commits in order):**
   - **Phase 1' T4** (test coverage + bug fixes caught by tests): `f1d111b` (jsonb storage-layer fix) → `8db3854` (23505 try/catch in NudgeService) → `1946de4` (T4 tests) → `ee2911e` (typed PostgresError + isUniqueViolation helper, T4 review-fix)
   - **Phase 1' T5** (API routes): `60cc638` (routes + wiring) → `cf51a0a` (envelope + preHandler array, T5 review-fix)
   - **Phase 1' T6** (push method): `f016dcc` (sendBuddyNudgePush) → `ae29d5b` (notificationsEnabled + sound, T6 review-fix)
@@ -44,18 +62,22 @@
   - **Operator T13 + T14:** (no new commits for T13; database-only) → `6846822` (PostgresError import fix, deploy-rollback recovery) → `1d793f3` (record EAS-bumped buildNumber 136)
   - **Post-ship docs:** `4820559` (file B137 refinement + Velocity-projection bug)
   - (Two parallel docs commits from the operator's separate Milestones-rework work landed mid-session: `12f1a50` and `5684527` — unrelated to Phase 1')
-- **Live DB (Supabase ap-southeast-2):** migration `0025_buddy_nudges_dedupe_indexes.sql` applied 2026-05-25 via `psql -f`. Both partial unique indexes verified present on the live `buddy_nudges` table. Pre-migration safety dump at `/tmp/buddy-phase1-safety/live-20260525-1138.sql` (5.7M; delete after 24h stability). Pre-T13 dup-row check returned 0 rows in both buckets (table was empty at apply time despite the prior HANDOFF's "16 rows" claim).
-- **API:** Currently running op `c955bd8cb5f64cbab032e24df83c4c00` SUCCEEDED at ~2026-05-25 12:00 PT. **Heads up: first deploy of the session (`5515dd9608de4e979086f8e3b863279b`) ROLLED BACK** — `apps/api/src/services/buddy/nudge.service.ts` had `import postgres from 'postgres'` which resolved fine in vitest but couldn't resolve at runtime (apps/api/node_modules in the production image doesn't include postgres; only packages/db/node_modules does). Service auto-restored to the prior good version; second deploy after the fix succeeded clean. Smoke: `/v1/review/status` 401, `/v1/buddy/nudges?screen=dashboard` 401, `/health` 200.
-- **TestFlight:** B136 submitted today (build `f5b04f00-1799-41f7-aafe-6b99f39bf104`; submission `f58e6982-156d-4635-9d04-52679a6b1114`). Apple processing 5–10 min from submit. EAS auto-bumped `app.json ios.buildNumber` 135 → 136; recorded in commit `1d793f3`.
+- **Live DB (Supabase ap-southeast-2):** drizzle migrations `0012_kanji_grade_idx.sql` and `0013_user_profile_attach_location.sql` applied 2026-05-25 via `psql -f` (later session). Pre-migration safety dump at `/tmp/buddy-milestones-safety/live-20260525-2329.sql` (5.8M; delete after 24h stability). Verified: `kanji_grade_idx` present on `kanji`; `user_profiles.attach_location_to_milestones boolean DEFAULT false NOT NULL` column present. Earlier today: migration `0025_buddy_nudges_dedupe_indexes.sql` applied (Phase 1') — pre-migration safety dump at `/tmp/buddy-phase1-safety/live-20260525-1138.sql` (5.7M).
+- **API:** Currently running op `2f536eedd4ce4f459e7fc8eb77236dd0` SUCCEEDED at ~2026-05-25 16:40 PT (23:40 UTC) — image `sha256:266a01a254cae1004754a9f92cde19d30523c355a9c87a3bc32a80a7e9d5bc06` with 17 env vars including `MILESTONES_DEPLOY_CUTOFF_ISO=2026-05-25T23:50:00Z`. Smoke: `/health` 200, `/v1/buddy/nudges?screen=dashboard` 401. Today's deploy sequence was: (Phase 1' session) `5515dd96…` ROLLED BACK on missing-postgres-import → `c955bd8c…` SUCCEEDED clean → (Milestones session) `4f7b21c4…` SUCCEEDED (new image, OLD env vars — deploy-api.sh footgun, see TL;DR) → `2f536ee…` SUCCEEDED (env var corrected via `update-service`).
+- **TestFlight:** B136 still current (Phase 1'); B137 NOT yet cut. B137 will bundle Phase 1' BuddyCard placement refinement + Velocity-card copy fix + Milestones mobile UI + Profile location-opt-in toggle. EAS will auto-bump `app.json ios.buildNumber` 136 → 137.
 - **Watch:** unchanged. Per refresh §6.3, deferred for complete reconceptualization in its own brainstorm.
 
 ## How to resume next session
 
-The next session's job is **T15 — on-device walkthrough + closeout findings doc + HANDOFF refresh**, plus picking up the B137 refinement and the Velocity-projection bug.
+Two parallel tracks are owed before Phase 5 kicks off:
 
-When starting the next session, give the new agent this orientation:
+**Track A — T15 on-device walkthrough on B136** (still pending from Phase 1'). Operator drives the device, agent guides. Write the findings doc at `docs/superpowers/findings/2026-05-25-phase-1-prime-verification.md` and update HANDOFF.md.
 
-> "Phase 1' is fully shipped through B136 in TestFlight (HANDOFF.md has the full state). Your job is T15 from `docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`: walk the on-device checklist on B136 (operator drives the device; you guide), then write the findings doc at `docs/superpowers/findings/2026-05-25-phase-1-prime-verification.md` and update HANDOFF.md. After T15, the next slice per the refresh doc §9 ordering is the Phase 5 brainstorm (Contextual Mnemonic Co-Creation)."
+**Track B — cut B137 and verify the milestones rework on-device.** Server + DB are live; mobile is not. Bundle the four items listed in the TL;DR (Milestones UI, location-opt-in toggle, BuddyCard placement refinement, Velocity-card copy fix). Then walk a milestones-specific checklist on B137. Findings doc at `docs/superpowers/findings/2026-05-25-milestones-panel-rework.md`.
+
+Suggested orientation for the next agent:
+
+> "Phase 1' API+DB shipped to B136 (T15 walkthrough still owed). Milestones panel rework API+DB also shipped to live today — see HANDOFF.md TL;DR for full state including the `MILESTONES_DEPLOY_CUTOFF_ISO` env var. Mobile changes for milestones are NOT in TestFlight yet. Two jobs: (Track A) walk T15 on B136 per `docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`; (Track B) cut B137 bundling Milestones UI + Profile location-opt-in toggle + B137 placement refinement + Velocity-card copy fix, then walk a milestones checklist (Progress tab badges + UpNext + date sheet, Profile toggle, optional location attached to a newly-earned milestone). Pick whichever the operator prefers to verify first; B137 cut takes ~30min EAS time so it can run in the background while T15 walkthrough proceeds. After both verifications, the next slice per the refresh doc §9 ordering is the Phase 5 brainstorm (Contextual Mnemonic Co-Creation)."
 
 Operator user_id (for the Supabase verification query): `b8503589-1695-4659-b69d-b9e77d1cf655` (display_name 'Buddy', email buddydennis@gmail.com).
 
@@ -254,7 +276,12 @@ Untracked items in the main checkout. Still need eyeball decisions:
 | ✅ | **Apply migration `0025` (Phase 1') to the live DB** | done 2026-05-25; pre-check passed, table was empty |
 | ✅ | **Deploy API for Phase 1'** | done 2026-05-25, op `c955bd8cb5f64cbab032e24df83c4c00` SUCCEEDED (first deploy `5515dd9608...` rolled back on missing-postgres-import; fixed in `6846822` and redeployed) |
 | ✅ | **Cut + submit B136 to TestFlight (Phase 1')** | done 2026-05-25 — Apple processing |
+| ✅ | **Merge `milestones-rework` to `main`** | done 2026-05-25; merge commit `52ff639`, pushed to `origin` |
+| ✅ | **Apply drizzle migrations `0012` + `0013` (Milestones) to live DB** | done 2026-05-25; both verified present |
+| ✅ | **Deploy API for Milestones rework + set `MILESTONES_DEPLOY_CUTOFF_ISO`** | done 2026-05-25, ops `4f7b21c4…` then `2f536ee…` both SUCCEEDED; env var set to `2026-05-25T23:50:00Z` |
+| 🚀 | **Cut + submit B137 to TestFlight (Milestones mobile + Phase 1' refinement + Velocity copy)** | bundle owed — see TL;DR for the 4 items |
 | 🚀 | On-device walkthrough on B136 (Phase 1' + Spec 1 + Spec 1.5 combined) | T15 owed — see "On-device walkthrough" section above |
+| 🚀 | On-device walkthrough on B137 (Milestones rework) | owed once B137 lands; findings doc at `docs/superpowers/findings/2026-05-25-milestones-panel-rework.md` |
 | 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed |
 | 🚀 | Migrate Supabase DB `ap-southeast-2` → `us-east-1` | Cross-region tax; dedicated session |
 | 🚀 | SES out of sandbox | Needed for tutor-share email at scale |
@@ -272,19 +299,21 @@ Untracked items in the main checkout. Still need eyeball decisions:
 - **Truncated kanji readings** — `kanji.kun_readings`/`on_readings` capped at ~5 sorted entries; re-import full KanjiDic2 readings.
 - **The "Kanji Buddy 1.0" rebrand** — rename Kanji Learn → Kanji Buddy, splash polish, About/Credits branding. Needs a brand-decision block first.
 - **Tutor report writing scope-down** — the report still surfaces a Writing modality; Study no longer serves standalone writing prompts (writing is a loop leg). `getWriting` + `weakestModality` in the tutor report need scoping/removal. (Spec 2 territory.)
-- **Milestones panel rework** — design spec [`docs/superpowers/specs/2026-05-25-milestones-panel-rework.md`](superpowers/specs/2026-05-25-milestones-panel-rework.md) (commit `12f1a50`), implementation plan [`docs/superpowers/plans/2026-05-25-milestones-panel-rework.md`](superpowers/plans/2026-05-25-milestones-panel-rework.md) (commit `5684527`, 24 tasks). NEW: plan now also tracks the Velocity-card "Start burning kanji to see a projection" bug as a Related Dashboard fix (filed 2026-05-25 from B136 walkthrough — copy is stale post-FSRS).
+- ~~**Milestones panel rework**~~ — SHIPPED (API + DB) 2026-05-25, merge commit `52ff639`. Mobile UI + Velocity-card copy fix bundled into the owed B137 cut. Plan checkboxes were never ticked during execution; closeout findings doc at `docs/superpowers/findings/2026-05-25-milestones-panel-rework.md` still owed.
+- **`scripts/deploy-api.sh` footgun** — line 24 `${APPRUNNER_SERVICE_ARN:-…}` doesn't accept empty-string override to skip `start-deployment`. Fix: change to `${VAR-…}` (no colon). Low-priority since the workaround (run `update-service` before `deploy-api.sh` when bundling env-var changes) works.
 - ~~**`interventions.payload` double-encoded**~~ — FIXED for new writes by Phase 1' T4's storage-layer jsonb fix (commit `f1d111b`, `packages/db/src/client.ts`). Existing legacy rows remain double-encoded; only SQL-side `->>` queries against historical interventions are affected (none in current code paths).
-- **B137 refinements queue** — [`docs/superpowers/findings/2026-05-25-b137-refinements.md`](superpowers/findings/2026-05-25-b137-refinements.md). Currently one item: move BuddyCardStack on Dashboard up under the Drill Weak Spots button (operator feedback from B136 walkthrough).
+- **B137 refinements queue** — [`docs/superpowers/findings/2026-05-25-b137-refinements.md`](superpowers/findings/2026-05-25-b137-refinements.md). Currently one item: move BuddyCardStack on Dashboard up under the Drill Weak Spots button (operator feedback from B136 walkthrough). To be bundled into the same B137 cut as the Milestones mobile UI + Velocity-card copy fix.
 - **App-wide accessibility pass** — touch targets / `accessibilityLabel`s, plus the `textMuted` contrast debt. Warrants its own task given WCAG 2.1 AA standard.
-- **Pre-existing `social-mute.test.ts:25` typecheck error** — Spec 1.5 follow-up #4. Still present; expected to keep showing in typecheck output until a separate housekeeping pass.
+- ~~**Pre-existing `social-mute.test.ts:25` typecheck error**~~ — FIXED on `main` via `7ccfe32` (Phase 1' session, "allow standard register options in buildTestApp RouteSpec"); the milestones merge confirmed `pnpm typecheck` is now clean across all 4 packages.
 - **`useBuddyNudges` hook tests** — design spec §6.4 called for them; Phase 1' shipped without (per the project convention of not unit-testing mobile hooks). Worth adding if any complex behavior accrues.
 
 ---
 
 ## Working environment notes
 
-- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`. Phase 1' (Buddy NudgeService + routes + push) code is live as of 2026-05-25; Spec 1.5 FSRS still in there from 2026-05-23.
-- **Supabase:** still `ap-southeast-2`. Migration files in `packages/db/supabase/migrations/` (`0001`–`0025`). `0024` (FSRS) applied 2026-05-23, `0025` (buddy_nudges dedupe partial indexes) applied 2026-05-25 — both via `psql -f`.
+- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`. Milestones rework (MilestoneDetector + LearnerStateService refresh integration + analytics summary additions) live as of 2026-05-25 23:40 UTC; Phase 1' (Buddy NudgeService + routes + push) live since 2026-05-25 ~12:00 PT; Spec 1.5 FSRS live since 2026-05-23. App Runner service ARN: `arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654`. AutoDeploymentsEnabled=False — deploys only via explicit `start-deployment` or `update-service` (the latter triggers redeploy on config change).
+- **Supabase:** still `ap-southeast-2`. Two migration tracks coexist: (a) supabase-format files in `packages/db/supabase/migrations/` (`0001`–`0025`; `0024` FSRS applied 2026-05-23, `0025` buddy_nudges dedupe applied 2026-05-25); (b) drizzle-format files in `packages/db/drizzle/` (`0012` kanji_grade_idx applied 2026-05-25, `0013` user_profile_attach_location applied 2026-05-25). Both tracks applied via raw `psql -f` — Supabase CLI is NOT used in this project, which is why `supabase_migrations.schema_migrations` doesn't exist (harmless log notice if anything queries it).
+- **App Runner env vars:** managed via `aws apprunner update-service` against the service's `SourceConfiguration.ImageRepository.ImageConfiguration.RuntimeEnvironmentVariables`. Current keys (17): `ANTHROPIC_API_KEY`, `API_BASE_URL`, `AWS_REGION`, `CORS_ORIGIN`, `DATABASE_URL`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `HOST`, `INTERNAL_SECRET`, `LOG_LEVEL`, `MILESTONES_DEPLOY_CUTOFF_ISO`, `NODE_ENV`, `PORT`, `SES_SENDER_EMAIL`, `SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`. To add/change without leaking secrets to the transcript: `describe-service --query 'Service.SourceConfiguration' --output json` → modify via `jq` → `update-service --source-configuration file://...`.
 - **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. Builds + pushes the image to ECR and triggers an App Runner deployment. Returns immediately; monitor rollout via the App Runner console or `aws apprunner list-operations`.
 - **EAS builds:** from `apps/mobile/`, ~$2/build. `eas build --platform ios --profile production --non-interactive`. EAS auto-bumps `ios.buildNumber` — **never hand-edit `app.json`** (it tracks the LAST shipped build; EAS bumps to +1 server-side). Submit with `eas submit --platform ios --latest --non-interactive`. Apple processing follows (~5–10 min from submit).
 - **Watch builds:** **manual Xcode rebuild only** — EAS does not build the watchOS target. Spec 1.5 was API-only; no Watch rebuild required.
