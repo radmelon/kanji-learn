@@ -1,4 +1,4 @@
-# Session Handoff — 2026-05-24 (Buddy v2 Refresh + Phase 0a shipped + Phase 1' in progress)
+# Session Handoff — 2026-05-24 (Phase 1' execution paused at Task 3 of 12; resume Task 4 next session)
 
 ## TL;DR (this session, 2026-05-24)
 
@@ -8,13 +8,24 @@
 
 **Phase 0a shipped — API-only, no migration, no mobile changes.** Wired the orphaned `LearnerStateService` into a post-`submitReview` refresh hook (fire-and-forget via `setImmediate`, 30s per-user frequency cap). Added daily Buddy metrics (structured-JSON log line at 03:05 UTC). Deployed; op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED in 3:35. Operator did a real review on B135 TestFlight; `learner_state_cache` populated within seconds with sensible values (471 kanji seen, 3-day streak, buddy_mood=supportive). End-to-end behavior validated in production.
 
-**Phase 1' brainstormed + designed + planned — execution in progress.** Design at [`docs/superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md`](superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md) (commit `26f9f4c`). Plan at [`docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`](superpowers/plans/2026-05-24-buddy-phase-1-prime.md) (commit `ead9164`). 15 tasks: 12 implementation (server + mobile) + 3 operator. Executing via `superpowers:subagent-driven-development` (fresh subagent per task, two-stage review). **2 of 15 done so far:**
-- Task 1 ✅ Migration 0025 — `buddy_nudges_streak_dedupe` + `buddy_nudges_meet_buddy_dedupe` partial unique indexes (commits `886e779`, `e5cc53b`)
-- Task 2 ✅ Content templates — `streak.ts` (9 milestone strings) + `meet-buddy.ts` (commits `2d46177`, `7ca6ebb`)
+**Phase 1' brainstormed + designed + planned + 3 of 12 tasks executed — paused.** Design at [`docs/superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md`](superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md) (commit `26f9f4c`). Plan at [`docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`](superpowers/plans/2026-05-24-buddy-phase-1-prime.md) (commit `ead9164`). 15 tasks total: 12 implementation (server + mobile) + 3 operator. Executing via `superpowers:subagent-driven-development` (fresh subagent per task, two-stage spec + quality review).
 
-Quality: code-review caught two real Minor findings — NULL-uniqueness footgun in the streak partial index (documented inline) and a stray curly apostrophe in Day 60 template (normalized).
+**Tasks 1-3 of 12 complete:**
+- ✅ T1 Migration 0025 — `buddy_nudges_streak_dedupe` + `buddy_nudges_meet_buddy_dedupe` partial unique indexes (`886e779` + `e5cc53b` NULL-semantics doc note)
+- ✅ T2 Content templates — `streak.ts` (9 milestone strings) + `meet-buddy.ts` intro (`2d46177` + `7ca6ebb` apostrophe normalize)
+- ✅ T3 NudgeService + streak rule (TDD) — `nudge.service.ts` with `evaluateNudgesForScreen` (pull) + `maybeFireMilestoneNudges` (push); first integration test green (`c6fc070` initial + `c6cdf6a` spec §4.2 alignment fix + `25fed6a` typecheck cleanup with `@ts-expect-error` pointing at T6)
 
-**Next creative work:** complete Phase 1' execution (Tasks 3-12 implementation + Tasks 13-15 operator). Then Phase 5 brainstorm — Contextual Mnemonic Co-Creation (the signature feature).
+Test status: 239 passing (1 new from T3). Typecheck: clean modulo the documented pre-existing `social-mute.test.ts:25` error.
+
+**Quality findings caught by review pattern (Tasks 1-3):**
+- T1: NULL-uniqueness footgun in partial index — documented inline in the migration file.
+- T2: Curly U+2019 apostrophe in Day 60 template — normalized to straight quote.
+- T3: Implementer deviated from spec §4.2 stacking rule (short-circuited Meet Buddy when streak fired) — reverted and the dictated test reshaped to use `.find()`.
+- T3: Forward-reference typecheck error from calling `notifier.sendBuddyNudgePush` (Task 6 adds it) — suppressed with `@ts-expect-error` so typecheck stays a clean signal.
+
+**Next session — resume Phase 1' at Task 4.** Tasks 4-12 are 9 implementation tasks: full nudge-rule-engine test coverage (T4) → API routes (T5) → push integration on NotificationService (T6) → wire `maybeFireMilestoneNudges` into `submitReview`'s `setImmediate` chain (T7) → useBuddyNudges hook (T8) → BuddyCard component + Stack wrapper (T9) → Dashboard / Study Ready / Progress surface mounts (T10-12). Then operator tasks 13-15: apply migration to live, deploy + cut B136, verify + closeout. The `@ts-expect-error` in `nudge.service.ts:146` should fail-loud once T6 lands the method — that's the cue to remove the directive.
+
+**Then:** Phase 5 brainstorm — Contextual Mnemonic Co-Creation (the signature feature).
 
 ---
 
@@ -28,16 +39,25 @@ Quality: code-review caught two real Minor findings — NULL-uniqueness footgun 
 
 ## Current state
 
-- **Branch:** `main` ahead of `origin/main` by **the Phase 1' execution commits** (`886e779`, `e5cc53b`, `2d46177`, `7ca6ebb`, plus this HANDOFF update). Phase 1' execution-in-progress commits are local-only; will push at end of execution batch. Working tree: same housekeeping queue as prior session.
+- **Branch:** `main`. All Phase 1' work to date will be pushed to `origin/main` at session end. Working tree: same housekeeping queue as prior session.
 - **Recent `main` history (today's session, in order):**
   - **Phase 0a brainstorm + plan + execution:** `3de48f3` → `73b591f` → `5aaaaa1` → `571d439` → `c577306` → `74b8047` → `18b6be7` → `1807a72` → `efab7c3` → `aa96580` → `0bc519b`.
   - **Phase 1' brainstorm + design + plan:** `26f9f4c` (design spec) → `ead9164` (implementation plan).
-  - **Phase 1' execution (local, not yet pushed):** `886e779` (T1 migration) → `e5cc53b` (T1 doc note) → `2d46177` (T2 templates) → `7ca6ebb` (T2 apostrophe fix).
-- **Pushed to `origin/main`** = `0bc519b` (end of Phase 0a closeout). Local-ahead by 4 Phase 1' commits + this HANDOFF.
-- **Live DB (Supabase ap-southeast-2):** no migration applied to live yet. **Phase 1' migration `0025_buddy_nudges_dedupe_indexes.sql` is committed locally (`886e779` + `e5cc53b`) and applied to the local test DB.** Will go to live as Task 13 of the plan (operator step). Phase 0a dual-write health unchanged: 726 / 2062 / 3 / 80 / 0 row counts at last verification.
-- **API:** Last deployed 2026-05-24 with Phase 0a content (ECR digest `77b757b...`, op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED). Phase 1' API changes (NudgeService, routes, push integration) are local-only until Task 14 deploy.
-- **TestFlight:** B135 still current. Phase 1' will cut B136 as Task 14 of the plan once all server + mobile commits are in.
+  - **Phase 1' execution (Tasks 1-3):** `886e779` (T1 migration) → `e5cc53b` (T1 doc note) → `2d46177` (T2 templates) → `7ca6ebb` (T2 apostrophe fix) → `21c3a50` (mid-session HANDOFF update) → `c6fc070` (T3 initial) → `c6cdf6a` (T3 spec §4.2 alignment fix) → `25fed6a` (T3 typecheck cleanup).
+- **Live DB (Supabase ap-southeast-2):** no migration applied this session. Phase 1' migration `0025_buddy_nudges_dedupe_indexes.sql` is committed locally and applied to the LOCAL test DB only — will go to live as Plan Task 13 (operator step) once Tasks 4-12 land.
+- **API:** Last deployed 2026-05-24 with Phase 0a content (ECR digest `77b757b...`, op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED). Phase 1' API changes (`NudgeService`) are committed locally; not yet deployed.
+- **TestFlight:** B135 still current. Phase 1' will cut B136 as Plan Task 14 once all server + mobile commits are in.
 - **Watch:** unchanged. Per refresh §6.3, deferred for complete reconceptualization in its own brainstorm.
+
+## How to resume next session
+
+When starting the next session, give the new agent this orientation:
+
+> "Resume Phase 1' implementation at Task 4. Plan is at `docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`. Design spec is at `docs/superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md`. Tasks 1-3 are complete on `main` (see HANDOFF.md for commit log). Use `superpowers:subagent-driven-development` to continue with Task 4 — Streak + Meet Buddy rule full coverage. Heads-up: there's a `@ts-expect-error` on `apps/api/src/services/buddy/nudge.service.ts:146` that becomes obsolete once Task 6 lands `notification.service.ts`'s `sendBuddyNudgePush` method — remove it then."
+
+The new agent reads only the plan + spec + this HANDOFF and continues. No need to re-load this conversation's context.
+
+**Phase 1' work session 2 will run:** T4 (test coverage) → T5 (routes) → T6 (push method, removes the `@ts-expect-error`) → T7 (`setImmediate` wiring) → T8 (mobile hook) → T9 (BuddyCard + Stack) → T10-12 (surface mounts) → T13 (operator: migration to live) → T14 (operator: deploy + B136) → T15 (operator: verify + closeout).
 
 ---
 
