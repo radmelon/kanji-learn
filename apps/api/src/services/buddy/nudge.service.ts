@@ -12,8 +12,7 @@
 //     Expo push exactly once per milestone.
 
 import { and, eq, gt, isNull, sql, desc } from 'drizzle-orm'
-import postgres from 'postgres'
-import { buddyNudges, learnerStateCache } from '@kanji-learn/db'
+import { buddyNudges, learnerStateCache, PostgresError } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import type { BuddyNudge, BuddyScreen } from '@kanji-learn/shared'
 import { isStreakMilestone, streakContent } from './templates/streak'
@@ -35,8 +34,11 @@ const MEET_BUDDY_EXPIRY_YEARS = 10
 // unique indexes (target requires PgColumn refs, but our index targets are
 // SQL expressions). Swallow the resulting unique_violation; rethrow anything
 // else. Single helper so future rules don't drift in error-shape handling.
+// PostgresError re-exported from @kanji-learn/db so apps/api doesn't need
+// a direct postgres dep at runtime — the production image only links
+// postgres under packages/db/node_modules.
 function isUniqueViolation(err: unknown): boolean {
-  return err instanceof postgres.PostgresError && err.code === '23505'
+  return err instanceof PostgresError && err.code === '23505'
 }
 
 export class NudgeService {
