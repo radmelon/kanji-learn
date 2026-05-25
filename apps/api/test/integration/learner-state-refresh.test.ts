@@ -17,6 +17,7 @@ import * as schema from '@kanji-learn/db'
 import { SrsService } from '../../src/services/srs.service'
 import { DualWriteService } from '../../src/services/buddy/dual-write.service'
 import { LearnerStateService } from '../../src/services/buddy/learner-state.service'
+import { NudgeService } from '../../src/services/buddy/nudge.service'
 import type { ReviewResult } from '@kanji-learn/shared'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
@@ -63,7 +64,8 @@ describe('LearnerStateService refresh hook', () => {
     // Task 3 will change SrsService's constructor to accept LearnerStateService
     // as the third arg. This call currently fails (constructor mismatch) —
     // that's the TDD red state.
-    const srs = new SrsService(db, dualWrite, learnerState)
+    const nudgeService = new NudgeService(db, { sendBuddyNudgePush: async () => {} } as any)
+    const srs = new SrsService(db, dualWrite, learnerState, nudgeService)
 
     const results: ReviewResult[] = [
       { kanjiId: testKanjiId, quality: 3, responseTimeMs: 1500, reviewType: 'meaning' },

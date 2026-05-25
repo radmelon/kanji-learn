@@ -21,6 +21,7 @@ import type { ReviewResult } from '@kanji-learn/shared'
 import { SURPRISE_BURNED_CHECK_RATE } from '@kanji-learn/shared'
 import { DualWriteService, type ReviewSubmissionInput } from './buddy/dual-write.service'
 import { LearnerStateService } from './buddy/learner-state.service'
+import { NudgeService } from './buddy/nudge.service'
 import type { SrsStatus } from './buddy/constants'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -98,7 +99,8 @@ export class SrsService {
   constructor(
     private db: Db,
     private readonly dualWrite: DualWriteService,
-    private readonly learnerState: LearnerStateService
+    private readonly learnerState: LearnerStateService,
+    private readonly nudgeService: NudgeService,
   ) {}
 
   // ── Build daily review queue ────────────────────────────────────────────────
@@ -481,10 +483,17 @@ export class SrsService {
     // path is observability, not correctness. setImmediate ensures the HTTP
     // response is sent before the refresh starts. The service enforces a
     // per-user frequency cap internally so heavy sessions don't thrash.
-    setImmediate(() => {
-      this.learnerState.refreshState(userId).catch((err) => {
-        console.warn(`[LearnerState] refresh failed for user ${userId}:`, err)
-      })
+    setImmediate(async () => {
+      try {
+        const newState = await this.learnerState.refreshState(userId)
+        if (newState) {
+          await this.nudgeService.maybeFireMilestoneNudges(userId, {
+            currentStreakDays: newState.currentStreakDays,
+          })
+        }
+      } catch (err) {
+        console.warn(`[Buddy post-submit] failed for user ${userId}:`, err)
+      }
     })
 
     return { sessionId, totalItems: results.length, correctItems, studyTimeMs, newLearned, burned }
