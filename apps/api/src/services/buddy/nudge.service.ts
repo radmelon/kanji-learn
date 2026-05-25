@@ -161,8 +161,6 @@ export class NudgeService {
     }
 
     if (inserted.length > 0) {
-      // @ts-expect-error - sendBuddyNudgePush is added in Phase 1' Task 6.
-      // Remove this directive when notification.service.ts gains the method.
       await this.notifier.sendBuddyNudgePush(userId, inserted[0] as unknown as BuddyNudge)
     }
   }

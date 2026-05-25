@@ -1,7 +1,8 @@
 import { Expo, type ExpoPushMessage } from 'expo-server-sdk'
 import { and, eq, gte, inArray, or, sql } from 'drizzle-orm'
-import { userProfiles, dailyStats, friendships, userPushTokens } from '@kanji-learn/db'
+import { userProfiles, dailyStats, friendships, userPushTokens, buddyNudges } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
+import type { BuddyNudge } from '@kanji-learn/shared'
 
 // Expo ticket error strings that mean "this token will never work again."
 // Anything else (e.g. MessageRateExceeded) is transient — leave the row alone.
@@ -423,5 +424,39 @@ export class NotificationService {
       console.log(`[Push] userId=${userId} sent=${tickets.length} pruned=${dead.length}`)
     }
     return { sent: tickets.length, pruned: dead.length }
+  }
+
+  /**
+   * Fire an Expo push for a Buddy nudge. Phase 1' Task 6.
+   *
+   * Reuses sendToUserTokens for the Expo client + dead-token pruning.
+   * Sets buddy_nudges.push_delivered_at after Expo resolves (success or
+   * logged failure — "we tried"). Errors never propagate; this is
+   * called fire-and-forget from the setImmediate chain in submitReview.
+   */
+  async sendBuddyNudgePush(userId: string, nudge: BuddyNudge): Promise<void> {
+    try {
+      await this.sendToUserTokens(userId, {
+        title: 'Kanji Buddy',
+        body: nudge.content,
+        data: {
+          nudgeId: nudge.id,
+          kind: 'buddy_nudge',
+          screen: nudge.screen,
+        },
+      })
+    } catch (err) {
+      console.warn(`[BuddyPush] send failed for user ${userId} nudge ${nudge.id}:`, err)
+    }
+
+    // Mark "we tried" — success or failure — so daily metrics count it.
+    try {
+      await this.db
+        .update(buddyNudges)
+        .set({ pushDeliveredAt: new Date() })
+        .where(eq(buddyNudges.id, nudge.id))
+    } catch (err) {
+      console.warn(`[BuddyPush] failed to set pushDeliveredAt for ${nudge.id}:`, err)
+    }
   }
 }
