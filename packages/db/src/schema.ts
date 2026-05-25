@@ -133,6 +133,7 @@ export const kanji = pgTable(
   },
   (t) => ({
     jlptLevelOrderIdx: index('kanji_jlpt_level_order_idx').on(t.jlptLevel, t.jlptOrder),
+    gradeIdx: index('kanji_grade_idx').on(t.grade),
   })
 )
 
