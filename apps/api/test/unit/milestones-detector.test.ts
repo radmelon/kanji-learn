@@ -67,3 +67,44 @@ describe('detectCrossings — numeric ladders', () => {
     expect(result.find(r => r.type === 'streak_days' && r.threshold === 63)).toBeUndefined();
   });
 });
+
+describe('detectCrossings — JLPT tiers with gating', () => {
+  it('emits Silver and Gold independently when both met', () => {
+    const result = detectCrossings({
+      counts: { seen: 0, remembered: 0, burned: 0, streak: 0 },
+      perGrade: emptyGrades,
+      perJlpt: { ...emptyJlpt, N5: { learning: 0, reviewing: 0, remembered: 0, burned: 5 } },
+      existing: [],
+    });
+    const n5 = result.filter(r => r.type === 'jlpt_level' && r.payload?.level === 'N5');
+    expect(n5.map(r => r.payload?.tier).sort()).toEqual(['gold', 'silver']);
+  });
+
+  it('gates N4 until N5 reaches Silver+', () => {
+    // N5 not Silver-eligible (still has reviewing); N4 raw-Silver-eligible
+    const result = detectCrossings({
+      counts: { seen: 0, remembered: 0, burned: 0, streak: 0 },
+      perGrade: emptyGrades,
+      perJlpt: {
+        ...emptyJlpt,
+        N5: { learning: 0, reviewing: 2, remembered: 5, burned: 0 },
+        N4: { learning: 0, reviewing: 0, remembered: 3, burned: 0 },
+      },
+      existing: [],
+    });
+    expect(result.find(r => r.type === 'jlpt_level' && r.payload?.level === 'N4')).toBeUndefined();
+  });
+
+  it('JLPT has no Bronze (even if state would qualify)', () => {
+    const result = detectCrossings({
+      counts: { seen: 0, remembered: 0, burned: 0, streak: 0 },
+      perGrade: emptyGrades,
+      perJlpt: {
+        ...emptyJlpt,
+        N5: { learning: 0, reviewing: 2, remembered: 5, burned: 10 }, // Bronze-eligible if it existed
+      },
+      existing: [],
+    });
+    expect(result.find(r => r.type === 'jlpt_level' && r.payload?.tier === 'bronze')).toBeUndefined();
+  });
+});

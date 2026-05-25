@@ -2,6 +2,9 @@ import {
   LADDERS,
   STREAK_LADDER_FINITE,
   streakThresholdsUpTo,
+  JLPT_LEVELS,
+  JLPT_TIERS_ORDER,
+  jlptTierRule,
   type MilestoneEntry,
   type CurrentCounts,
   type SrsBucketCounts,
@@ -47,7 +50,25 @@ export function detectCrossings(input: DetectorInput): ProposedMilestone[] {
     }
   }
 
-  // JLPT + Grade-level are added in Tasks 6 and 7.
+  // 3. JLPT — independent per-tier evaluation, gated N5 → N1
+  let jlptUnlocked = true;
+  for (const level of JLPT_LEVELS) {
+    if (!jlptUnlocked) break;
+    const state = input.perJlpt[level];
+    for (const tier of JLPT_TIERS_ORDER) {
+      if (jlptTierRule(state, tier)) {
+        const already = existing.some(e =>
+          e.type === 'jlpt_level' && e.payload?.level === level && e.payload?.tier === tier
+        );
+        if (!already) {
+          proposed.push({ type: 'jlpt_level', threshold: tier, payload: { level, tier } });
+        }
+      }
+    }
+    jlptUnlocked = jlptTierRule(state, 'silver') || jlptTierRule(state, 'gold');
+  }
+
+  // Grade-level is added in Task 7.
 
   return proposed;
 }
