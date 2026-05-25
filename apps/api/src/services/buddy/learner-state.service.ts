@@ -45,7 +45,6 @@ export interface ComputedLearnerState {
   longestStreakDays: number
   totalKanjiSeen: number
   totalKanjiBurned: number
-  totalKanjiRemembered: number
   velocityTrend: 'accelerating' | 'steady' | 'decelerating' | 'inactive'
   weakestModality: 'meaning' | 'reading' | 'writing' | 'voice' | 'compound'
   scaffoldLevel: ScaffoldLevel
@@ -92,7 +91,6 @@ export function computeLearnerState(input: RawLearnerInputs): ComputedLearnerSta
     longestStreakDays: input.longestStreakDays,
     totalKanjiSeen: input.totalKanjiSeen,
     totalKanjiBurned: input.totalKanjiBurned,
-    totalKanjiRemembered: input.totalKanjiRemembered,
     velocityTrend,
     weakestModality,
     scaffoldLevel,
@@ -159,7 +157,7 @@ export class LearnerStateService {
     const proposed = detectCrossings({
       counts: {
         seen: computed.totalKanjiSeen,
-        remembered: computed.totalKanjiRemembered,
+        remembered: raw.totalKanjiRemembered,
         burned: computed.totalKanjiBurned,
         streak: computed.currentStreakDays,
       },
@@ -198,10 +196,6 @@ export class LearnerStateService {
       longestStreakDays: row.longestStreakDays,
       totalKanjiSeen: row.totalKanjiSeen,
       totalKanjiBurned: row.totalKanjiBurned,
-      // totalKanjiRemembered is not persisted as its own cache column;
-      // getState() callers should prefer refreshState() when they need the
-      // live value. Returning 0 here avoids a TS error without adding a column.
-      totalKanjiRemembered: 0,
       velocityTrend: row.velocityTrend,
       weakestModality: row.weakestModality,
       // learner_state_cache.scaffold_level is a notNull text column with a
