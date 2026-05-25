@@ -23,8 +23,10 @@ export function nextStreakThreshold(currentDays: number): number {
   for (const t of STREAK_LADDER_FINITE) {
     if (t > currentDays) return t;
   }
-  // Open-ended past 49: next multiple-of-7 strictly greater than currentDays
-  return currentDays - ((currentDays - 49) % 7) + 7;
+  // Open-ended past 49: next multiple-of-7 strictly greater than currentDays.
+  // floor(offset/7)+1 gives the next whole-week count above currentDays.
+  const offset = currentDays - 49;
+  return 49 + (Math.floor(offset / 7) + 1) * 7;
 }
 
 export const LADDERS = {
