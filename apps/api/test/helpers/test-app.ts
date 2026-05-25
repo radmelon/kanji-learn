@@ -40,6 +40,7 @@
 import Fastify, {
   type FastifyInstance,
   type FastifyPluginAsync,
+  type FastifyPluginOptions,
   type FastifyRegisterOptions,
   type FastifyRequest,
   type FastifyReply,
@@ -58,7 +59,7 @@ type RouteSpec =
   | FastifyPluginAsync
   | {
       plugin: FastifyPluginAsync
-      opts: FastifyRegisterOptions<Record<string, never>>
+      opts: FastifyRegisterOptions<FastifyPluginOptions>
     }
 
 export async function buildTestApp(
