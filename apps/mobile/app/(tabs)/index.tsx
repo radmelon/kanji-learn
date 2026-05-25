@@ -19,6 +19,7 @@ import { InterventionBanner } from '../../src/components/ui/InterventionBanner'
 import { InviteMateBanner } from '../../src/components/ui/InviteMateBanner'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { JlptProgressGrid } from '../../src/components/ui/JlptProgressGrid'
+import { BuddyCardStack } from '../../src/components/buddy/BuddyCardStack'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 // ─── Info panel content ───────────────────────────────────────────────────────
@@ -338,6 +339,9 @@ export default function Dashboard() {
               <Text style={styles.cardTitle}>Kanji Status</Text>
               <SrsStatusBar counts={summary.statusCounts} />
             </View>
+
+            {/* ── Buddy nudges ── */}
+            <BuddyCardStack screen="dashboard" />
 
             {/* ── Velocity ── */}
             <View style={styles.card}>

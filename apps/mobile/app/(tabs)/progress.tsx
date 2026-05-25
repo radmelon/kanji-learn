@@ -12,6 +12,7 @@ import { useQuizAnalytics } from '../../src/hooks/useQuizAnalytics'
 import { useSessionHistory } from '../../src/hooks/useSessionHistory'
 import { SrsStatusBar } from '../../src/components/ui/SrsStatusBar'
 import { JlptProgressGrid } from '../../src/components/ui/JlptProgressGrid'
+import { BuddyCardStack } from '../../src/components/buddy/BuddyCardStack'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { DailyStats } from '@kanji-learn/shared'
 import { TOTAL_JOUYOU_KANJI } from '@kanji-learn/shared'
@@ -275,6 +276,9 @@ export default function ProgressScreen() {
               totalSeen={summary.totalSeen}
               jlptProgress={summary.jlptProgress}
             />
+
+            {/* ── Buddy nudges (placement-only in v1; rules don't fire here yet) ── */}
+            <BuddyCardStack screen="progress" />
 
             {/* Period selector + activity chart */}
             <Section

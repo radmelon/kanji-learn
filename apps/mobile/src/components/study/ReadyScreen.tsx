@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { api } from '../../lib/api'
 import { colors, spacing, radius, typography } from '../../theme'
+import { BuddyCardStack } from '../buddy/BuddyCardStack'
 
 interface Props {
   /** The learner's daily minutes budget. */
@@ -47,6 +48,8 @@ export function ReadyScreen({ goalMinutes, onBegin }: Props) {
             <Text style={styles.statLabel}>reviews due</Text>
           </View>
         </View>
+
+        <BuddyCardStack screen="study" />
 
         <TouchableOpacity style={styles.beginBtn} onPress={onBegin} activeOpacity={0.85}>
           <Text style={styles.beginText}>Begin</Text>
