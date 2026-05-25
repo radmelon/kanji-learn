@@ -108,3 +108,53 @@ describe('detectCrossings — JLPT tiers with gating', () => {
     expect(result.find(r => r.type === 'jlpt_level' && r.payload?.tier === 'bronze')).toBeUndefined();
   });
 });
+
+describe('detectCrossings — Grade-level tiers with gating', () => {
+  it('emits Bronze when burned > remembered > reviewing and learning == 0', () => {
+    const result = detectCrossings({
+      counts: { seen: 0, remembered: 0, burned: 0, streak: 0 },
+      perGrade: { ...emptyGrades, 1: { learning: 0, reviewing: 2, remembered: 5, burned: 10 } },
+      perJlpt: emptyJlpt,
+      existing: [],
+    });
+    const g1 = result.filter(r => r.type === 'grade_level' && r.payload?.grade === 1);
+    expect(g1.map(r => r.payload?.tier).sort()).toEqual(['bronze']);
+  });
+
+  it('emits Silver only (not Bronze) when state fails the tightened Bronze rule', () => {
+    // Silver-eligible (learning + reviewing == 0), but burned (2) NOT > remembered (8)
+    const result = detectCrossings({
+      counts: { seen: 0, remembered: 0, burned: 0, streak: 0 },
+      perGrade: { ...emptyGrades, 1: { learning: 0, reviewing: 0, remembered: 8, burned: 2 } },
+      perJlpt: emptyJlpt,
+      existing: [],
+    });
+    const g1 = result.filter(r => r.type === 'grade_level' && r.payload?.grade === 1);
+    expect(g1.map(r => r.payload?.tier).sort()).toEqual(['silver']);
+  });
+
+  it('gates Grade 2 until Grade 1 reaches Silver+', () => {
+    const result = detectCrossings({
+      counts: { seen: 0, remembered: 0, burned: 0, streak: 0 },
+      perGrade: {
+        ...emptyGrades,
+        1: { learning: 0, reviewing: 2, remembered: 5, burned: 0 },  // not Silver-eligible
+        2: { learning: 0, reviewing: 0, remembered: 3, burned: 0 },  // Silver-eligible on its own
+      },
+      perJlpt: emptyJlpt,
+      existing: [],
+    });
+    expect(result.find(r => r.type === 'grade_level' && r.payload?.grade === 2)).toBeUndefined();
+  });
+
+  it('emits Gold + Silver when all burned at Grade 1', () => {
+    const result = detectCrossings({
+      counts: { seen: 0, remembered: 0, burned: 0, streak: 0 },
+      perGrade: { ...emptyGrades, 1: { learning: 0, reviewing: 0, remembered: 0, burned: 7 } },
+      perJlpt: emptyJlpt,
+      existing: [],
+    });
+    const tiers = result.filter(r => r.type === 'grade_level' && r.payload?.grade === 1).map(r => r.payload?.tier).sort();
+    expect(tiers).toEqual(['gold', 'silver']);  // Bronze fails (remembered (0) NOT > reviewing (0))
+  });
+});
