@@ -53,15 +53,18 @@ async function seedCacheState(streakDays: number) {
 }
 
 describe('NudgeService — streak rule', () => {
-  it('inserts a streak row and returns it on milestone day (pull path)', async () => {
+  it('inserts a streak row on milestone day (pull path)', async () => {
     await seedCacheState(7)
     const service = new NudgeService(db, stubNotifier)
 
     const nudges = await service.evaluateNudgesForScreen(USER_A, 'dashboard')
 
-    expect(nudges).toHaveLength(1)
-    expect(nudges[0]?.nudgeType).toBe('streak')
-    expect((nudges[0]?.actionPayload as any)?.milestone).toBe(7)
-    expect(nudges[0]?.content).toBe('A full week. Buddy noticed.')
+    // Both streak and Meet Buddy fire on Dashboard for a brand-new user on
+    // a milestone day. The Task 4 "stack priority" test pins the ordering;
+    // here we focus on the streak row's contents using find().
+    const streak = nudges.find((n) => n.nudgeType === 'streak')
+    expect(streak).toBeDefined()
+    expect((streak?.actionPayload as any)?.milestone).toBe(7)
+    expect(streak?.content).toBe('A full week. Buddy noticed.')
   })
 })

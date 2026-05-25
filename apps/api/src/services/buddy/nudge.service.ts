@@ -37,9 +37,10 @@ export class NudgeService {
    */
   async evaluateNudgesForScreen(userId: string, screen: BuddyScreen): Promise<BuddyNudge[]> {
     // Run the rules; ignore returned rows (we re-SELECT below to include
-    // any pre-existing rows the rule didn't touch).
-    const streakFired = await this.maybeInsertStreak(userId, screen)
-    if (screen === 'dashboard' && !streakFired) await this.maybeInsertMeetBuddy(userId)
+    // any pre-existing rows the rule didn't touch). Per spec §4.2, both
+    // can fire on Dashboard — Meet Buddy stacks above streak by priority.
+    await this.maybeInsertStreak(userId, screen)
+    if (screen === 'dashboard') await this.maybeInsertMeetBuddy(userId)
 
     const rows = await this.db
       .select()
@@ -58,16 +59,16 @@ export class NudgeService {
     return rows as unknown as BuddyNudge[]
   }
 
-  private async maybeInsertStreak(userId: string, screen: BuddyScreen): Promise<boolean> {
-    if (screen !== 'dashboard' && screen !== 'study') return false
+  private async maybeInsertStreak(userId: string, screen: BuddyScreen): Promise<void> {
+    if (screen !== 'dashboard' && screen !== 'study') return
 
     const cache = await this.db.query.learnerStateCache.findFirst({
       where: eq(learnerStateCache.userId, userId),
     })
-    if (!cache) return false
+    if (!cache) return
 
     const days = cache.currentStreakDays
-    if (!isStreakMilestone(days)) return false
+    if (!isStreakMilestone(days)) return
 
     const expiresAt = new Date(Date.now() + STREAK_EXPIRY_DAYS * 86_400_000)
     await this.db
@@ -86,8 +87,6 @@ export class NudgeService {
         socialFraming: false,
       })
       .onConflictDoNothing()
-
-    return true
   }
 
   private async maybeInsertMeetBuddy(userId: string): Promise<void> {
