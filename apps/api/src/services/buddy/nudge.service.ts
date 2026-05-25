@@ -12,6 +12,7 @@
 //     Expo push exactly once per milestone.
 
 import { and, eq, gt, isNull, sql, desc } from 'drizzle-orm'
+import postgres from 'postgres'
 import { buddyNudges, learnerStateCache } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import type { BuddyNudge, BuddyScreen } from '@kanji-learn/shared'
@@ -23,6 +24,14 @@ const STREAK_PRIORITY = 5
 const MEET_BUDDY_PRIORITY = 10
 const STREAK_EXPIRY_DAYS = 30
 const MEET_BUDDY_EXPIRY_YEARS = 10
+
+// Drizzle's onConflictDoNothing() can't target migration 0025's partial
+// unique indexes (target requires PgColumn refs, but our index targets are
+// SQL expressions). Swallow the resulting unique_violation; rethrow anything
+// else. Single helper so future rules don't drift in error-shape handling.
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof postgres.PostgresError && err.code === '23505'
+}
 
 export class NudgeService {
   constructor(
@@ -86,12 +95,7 @@ export class NudgeService {
         socialFraming: false,
       })
     } catch (err) {
-      // Migration 0025's partial unique index raises 23505 on duplicate.
-      // Drizzle's bare onConflictDoNothing() can't be used here: target
-      // requires a PgColumn ref, but our index target is an SQL expression
-      // (action_payload->>'milestone'). Swallow the unique violation; any
-      // other error propagates.
-      if ((err as { code?: string })?.code !== '23505') throw err
+      if (!isUniqueViolation(err)) throw err
     }
   }
 
@@ -112,9 +116,9 @@ export class NudgeService {
         socialFraming: false,
       })
     } catch (err) {
-      // Same partial-index pattern as maybeInsertStreak. One MB row per user
-      // forever — the second attempt is the normal case after first launch.
-      if ((err as { code?: string })?.code !== '23505') throw err
+      // One MB row per user forever — the second attempt is the normal case
+      // after first launch.
+      if (!isUniqueViolation(err)) throw err
     }
   }
 
@@ -151,9 +155,8 @@ export class NudgeService {
         })
         .returning()
     } catch (err) {
-      // Same 23505 swallow as maybeInsertStreak — duplicate means the
-      // milestone already fired (push too), so no-op.
-      if ((err as { code?: string })?.code !== '23505') throw err
+      // Duplicate means the milestone already fired (push too), so no-op.
+      if (!isUniqueViolation(err)) throw err
       return
     }
 
