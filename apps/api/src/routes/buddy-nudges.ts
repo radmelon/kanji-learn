@@ -9,9 +9,11 @@ const ID_PARAM = z.object({ id: z.string().uuid() })
 
 export async function buddyNudgesRoutes(server: FastifyInstance) {
   // GET /v1/buddy/nudges?screen=...
-  server.get('/', { preHandler: server.authenticate }, async (request, reply) => {
+  server.get('/', { preHandler: [server.authenticate] }, async (request, reply) => {
     const parsed = z.object({ screen: SCREEN_ENUM }).safeParse(request.query)
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid screen' })
+    if (!parsed.success) {
+      return reply.code(400).send({ ok: false, error: 'invalid screen', code: 'VALIDATION_ERROR' })
+    }
 
     const userId = request.userId!
     const nudges = await server.nudgeService.evaluateNudgesForScreen(userId, parsed.data.screen)
@@ -19,9 +21,11 @@ export async function buddyNudgesRoutes(server: FastifyInstance) {
   })
 
   // POST /v1/buddy/nudges/:id/dismiss
-  server.post('/:id/dismiss', { preHandler: server.authenticate }, async (request, reply) => {
+  server.post('/:id/dismiss', { preHandler: [server.authenticate] }, async (request, reply) => {
     const parsed = ID_PARAM.safeParse(request.params)
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid id' })
+    if (!parsed.success) {
+      return reply.code(400).send({ ok: false, error: 'invalid id', code: 'VALIDATION_ERROR' })
+    }
 
     const userId = request.userId!
 
@@ -33,7 +37,9 @@ export async function buddyNudgesRoutes(server: FastifyInstance) {
       .where(and(eq(buddyNudges.id, parsed.data.id), eq(buddyNudges.userId, userId)))
       .returning({ id: buddyNudges.id })
 
-    if (updated.length === 0) return reply.code(404).send({ error: 'not found' })
+    if (updated.length === 0) {
+      return reply.code(404).send({ ok: false, error: 'not found', code: 'NOT_FOUND' })
+    }
     return reply.send({ ok: true })
   })
 }
