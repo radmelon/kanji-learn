@@ -1,6 +1,28 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
+import { PgJsonb } from 'drizzle-orm/pg-core'
 import postgres from 'postgres'
 import * as schema from './schema'
+
+// Storage-layer fix for jsonb double-encoding.
+//
+// Drizzle's PgJsonb.mapToDriverValue calls JSON.stringify(value), then
+// postgres-js's jsonb serializer ALSO calls JSON.stringify on what it
+// received — producing a JSON-encoded string like "{\"k\":\"v\"}" instead
+// of the object {"k":"v"}. The round-trip via JS still worked (drizzle's
+// mapFromDriverValue JSON.parses), but SQL-side queries like
+// payload->>'kind' returned NULL because the stored value was a jsonb
+// string, not an object. This broke partial unique indexes that index on
+// (action_payload->>'kind') and (action_payload->>'milestone').
+//
+// Override mapToDriverValue to pass values through. postgres-js then
+// receives JS objects and JSON-encodes once. Reads still work because
+// mapFromDriverValue returns objects as-is (postgres-js parses jsonb to
+// JS values automatically).
+//
+// NOTE: existing rows written before this fix remain double-encoded in
+// the DB. New writes are correctly encoded. Affects all jsonb columns.
+;(PgJsonb.prototype as unknown as { mapToDriverValue: (v: unknown) => unknown }).mapToDriverValue =
+  (value: unknown) => value
 
 const connectionString = process.env.DATABASE_URL
 if (!connectionString) {
