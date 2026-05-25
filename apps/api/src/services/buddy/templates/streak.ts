@@ -15,7 +15,7 @@ const CONTENT: Record<StreakMilestone, string> = {
   7: 'A full week. Buddy noticed.',
   14: 'Two weeks. The hardest part of habit-building is behind you.',
   30: '30-day streak. This is what consistency looks like.',
-  60: '60 days. Whatever you’re doing, keep doing it.',
+  60: "60 days. Whatever you're doing, keep doing it.",
   90: "90 days. That's a season.",
   100: '100 days. Quietly remarkable.',
   180: 'Half a year. Most people quit before now.',
