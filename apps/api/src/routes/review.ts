@@ -17,9 +17,18 @@ const reviewResultSchema = z.object({
   reviewType: z.enum(['meaning', 'reading', 'writing', 'compound']),
 })
 
+const clientContextSchema = z.object({
+  location: z.object({
+    lat: z.number(),
+    lon: z.number(),
+    accuracy: z.number().optional(),
+  }).optional(),
+}).optional()
+
 const submitReviewSchema = z.object({
   results: z.array(reviewResultSchema).min(1).max(200),
   studyTimeMs: z.number().int().nonnegative(),
+  clientContext: clientContextSchema,
 })
 
 // Exported so unit tests can import it directly and stay in sync automatically.
@@ -80,7 +89,8 @@ export async function reviewRoutes(server: FastifyInstance) {
       const summary = await srs.submitReview(
         req.userId!,
         body.data.results,
-        body.data.studyTimeMs
+        body.data.studyTimeMs,
+        body.data.clientContext?.location
       )
 
       // Upsert daily stats + run intervention checks async (don't block response)

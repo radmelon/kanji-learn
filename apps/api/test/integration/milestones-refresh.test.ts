@@ -26,8 +26,10 @@ const db = drizzle(client, { schema })
 const USER_GRANDFATHER = '00000000-0000-0000-0000-0000000000aa'
 const USER_NEW         = '00000000-0000-0000-0000-0000000000ab'
 const USER_IDEMPOTENT  = '00000000-0000-0000-0000-0000000000ac'
+const USER_LOC_PRESENT = '00000000-0000-0000-0000-0000000000ad'
+const USER_LOC_ABSENT  = '00000000-0000-0000-0000-0000000000ae'
 
-const ALL_USER_IDS = [USER_GRANDFATHER, USER_NEW, USER_IDEMPOTENT]
+const ALL_USER_IDS = [USER_GRANDFATHER, USER_NEW, USER_IDEMPOTENT, USER_LOC_PRESENT, USER_LOC_ABSENT]
 
 // High numeric IDs to avoid FK conflicts with any existing kanji rows.
 // Characters use a 'MR' prefix (milestones-refresh) that is unlikely to
@@ -173,5 +175,61 @@ describe('milestones persistence on refresh', () => {
     // The milestone list must not grow — already-recorded milestones are deduped
     // because detectCrossings skips entries already present in `existing`.
     expect(count2).toBe(count1)
+  })
+
+  it('persists location on newly created milestone entries when provided', async () => {
+    // Seed burned N5/grade-1 kanji (post-cutoff — real timestamps) so that
+    // detectCrossings produces at least one new entry.
+    for (let i = 0; i < 50; i++) {
+      await db.execute(sql`
+        INSERT INTO user_kanji_progress
+          (user_id, kanji_id, status, reading_stage, stability, difficulty, lapses, total_reviews)
+        VALUES
+          (${USER_LOC_PRESENT}, ${KANJI_BASE_ID + i}, 'burned', 0, 0, 5, 0, 0)
+        ON CONFLICT (user_id, kanji_id) DO NOTHING
+      `)
+    }
+
+    const svc = new LearnerStateService(db)
+    await svc.refreshState(USER_LOC_PRESENT, { location: { lat: 35.6895, lon: 139.6917, accuracy: 12 } })
+
+    const cached = await db.query.learnerStateCache.findFirst({
+      where: eq(schema.learnerStateCache.userId, USER_LOC_PRESENT),
+    })
+
+    expect(cached).toBeTruthy()
+    const milestones = (cached!.recentMilestones ?? []) as unknown as MilestoneEntry[]
+    expect(milestones.length).toBeGreaterThan(0)
+    // Every newly created milestone should carry the location.
+    for (const m of milestones) {
+      expect(m.location).toEqual({ lat: 35.6895, lon: 139.6917, accuracy: 12 })
+    }
+  })
+
+  it('omits location when not provided', async () => {
+    // Same seed — post-cutoff so real timestamps fire.
+    for (let i = 0; i < 50; i++) {
+      await db.execute(sql`
+        INSERT INTO user_kanji_progress
+          (user_id, kanji_id, status, reading_stage, stability, difficulty, lapses, total_reviews)
+        VALUES
+          (${USER_LOC_ABSENT}, ${KANJI_BASE_ID + i}, 'burned', 0, 0, 5, 0, 0)
+        ON CONFLICT (user_id, kanji_id) DO NOTHING
+      `)
+    }
+
+    const svc = new LearnerStateService(db)
+    await svc.refreshState(USER_LOC_ABSENT)
+
+    const cached = await db.query.learnerStateCache.findFirst({
+      where: eq(schema.learnerStateCache.userId, USER_LOC_ABSENT),
+    })
+
+    expect(cached).toBeTruthy()
+    const milestones = (cached!.recentMilestones ?? []) as unknown as MilestoneEntry[]
+    expect(milestones.length).toBeGreaterThan(0)
+    for (const m of milestones) {
+      expect(m.location).toBeUndefined()
+    }
   })
 })

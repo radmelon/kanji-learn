@@ -299,9 +299,25 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         )
       : 0
 
+    // Fetch the profile setting to decide whether to capture location.
+    // Inline import to avoid pulling expo-location into the bundle when the
+    // flag is off (tree-shaken on first read).
+    let clientContext: { location?: { lat: number; lon: number; accuracy?: number } } | undefined
+    try {
+      const profile = await api.get<{ attachLocationToMilestones?: boolean }>('/v1/user/profile')
+      if (profile.attachLocationToMilestones) {
+        const { tryGetCoordsForCapture } = await import('../utils/location')
+        const coords = await tryGetCoordsForCapture()
+        if (coords) clientContext = { location: coords }
+      }
+    } catch {
+      // Profile fetch failure should never block a review submit — silently skip
+      // location stamping rather than dropping the review.
+    }
+
     try {
       const res = await api.post<{ sessionId: string; totalItems: number; correctItems: number; studyTimeMs: number; newLearned: number; burned: number }>(
-        '/v1/review/submit', { results, studyTimeMs }
+        '/v1/review/submit', { results, studyTimeMs, ...(clientContext ? { clientContext } : {}) }
       )
       await storage.removeItem(KEY_PROGRESS)
       return { burned: res.burned, studyTimeMs: res.studyTimeMs, confidencePct }
