@@ -3,6 +3,7 @@ import type { BuddyLLMRouter } from '../services/llm/router.js'
 import type { DualWriteService } from '../services/buddy/dual-write.service.js'
 import type { LearnerStateService } from '../services/buddy/learner-state.service.js'
 import type { KanjiReadingsIndex } from '../services/kanji-readings-index.js'
+import type { NudgeService } from '../services/buddy/nudge.service.js'
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -11,5 +12,6 @@ declare module 'fastify' {
     dualWrite: DualWriteService
     learnerState: LearnerStateService
     kanjiReadingsIndex: KanjiReadingsIndex
+    nudgeService: NudgeService
   }
 }

@@ -34,7 +34,10 @@ import { RateLimiter } from './services/llm/rate-limit.js'
 import { createTelemetryWriter } from './services/llm/telemetry.js'
 import { DualWriteService } from './services/buddy/dual-write.service.js'
 import { LearnerStateService } from './services/buddy/learner-state.service.js'
+import { NudgeService } from './services/buddy/nudge.service.js'
+import { NotificationService } from './services/notification.service.js'
 import { loadKanjiReadingsIndex } from './services/kanji-readings-index.js'
+import { buddyNudgesRoutes } from './routes/buddy-nudges.js'
 
 export async function buildServer() {
   const server = Fastify({
@@ -111,6 +114,8 @@ export async function buildServer() {
 
   const dualWrite = new DualWriteService(db)
   const learnerState = new LearnerStateService(db)
+  const notificationService = new NotificationService(db)
+  const nudgeService = new NudgeService(db, notificationService)
 
   // ── Kanji readings index for homophone workaround ─────────────────────────
   const kanjiReadingsIndex = await loadKanjiReadingsIndex(db)
@@ -135,6 +140,7 @@ export async function buildServer() {
   server.decorate('dualWrite', dualWrite)
   server.decorate('learnerState', learnerState)
   server.decorate('kanjiReadingsIndex', kanjiReadingsIndex)
+  server.decorate('nudgeService', nudgeService)
 
   // ── Routes ────────────────────────────────────────────────────────────────
 
@@ -146,6 +152,7 @@ export async function buildServer() {
   await server.register(mnemonicRoutes, { prefix: '/v1/mnemonics' })
   await server.register(analyticsRoutes, { prefix: '/v1/analytics' })
   await server.register(interventionRoutes, { prefix: '/v1' })
+  await server.register(buddyNudgesRoutes, { prefix: '/v1/buddy/nudges' })
   await server.register(kanjiRoutes, { prefix: '/v1/kanji' })
   await server.register(placementRoutes, { prefix: '/v1/placement' })
   await server.register(testRoutes, { prefix: '/v1/tests' })

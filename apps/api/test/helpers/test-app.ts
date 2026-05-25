@@ -47,6 +47,8 @@ import Fastify, {
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import * as schema from '@kanji-learn/db'
+import { NudgeService } from '../../src/services/buddy/nudge.service'
+import { NotificationService } from '../../src/services/notification.service'
 
 const TEST_USER_HEADER = 'x-test-user-id'
 
@@ -67,6 +69,9 @@ export async function buildTestApp(
   const client = postgres(process.env.TEST_DATABASE_URL!)
   const db = drizzle(client, { schema })
   app.decorate('db', db)
+  const notificationService = new NotificationService(db)
+  const nudgeService = new NudgeService(db, notificationService)
+  app.decorate('nudgeService', nudgeService)
 
   // Match production: `req.userId` / `req.userEmail` are decorated so TS and
   // Fastify know the shape before the prehandler runs.
