@@ -2515,6 +2515,31 @@ If anything in the walkthrough fails, file a follow-up bug (do not patch silentl
 
 ---
 
+## Related Dashboard fixes (file while in the area)
+
+While the Milestones-rework UI work is in flight on the Dashboard, address the adjacent issues that surface alongside this panel:
+
+### Velocity card — broken/incomplete "projection" copy
+
+**Reported:** 2026-05-25 on B135 by the operator.
+
+**What the user sees:** the Velocity card on Dashboard shows
+> "N5 72/79 kanji mastered. Start burning kanji to see a projection."
+
+**Why it's wrong:** post-FSRS migration (Spec 1.5, shipped B135 on 2026-05-23), 174/742 of the operator's cards correctly sit in `burned` status — they HAVE been burning kanji for months. The "start burning kanji to see a projection" call-to-action is stale: it was probably written when the (broken) SM-2 `burned` tier was effectively unreachable, so the projection feature never had real data to render and the copy assumed an unstarted state.
+
+**What needs to happen:** review and revisit the projection functionality and reporting on the Velocity card.
+- Audit what "projection" was supposed to compute and whether the calculation still makes sense under FSRS.
+- Confirm the threshold for switching from the call-to-action to the real projection. Is it `burned > 0`? Is it `burned > N`? Pre-FSRS the threshold may have been effectively unreachable for most users; now most active users will cross it.
+- Render the actual projection when the threshold is met (or remove the copy if the projection feature is being retired).
+- Spot-check on at least one other user account (not just the operator) before closing.
+
+Touchpoints to start from: search the mobile codebase for the literal "Start burning kanji to see a projection" string and trace back to the Velocity card data assembly on the Dashboard (the relevant card is around `apps/mobile/app/(tabs)/index.tsx` near the existing Velocity / TrendBadge block).
+
+This is independent of the Milestones rework's own scope but logically belongs to the same Dashboard refactor session.
+
+---
+
 ## Self-review checklist (for plan author)
 
 This is a checklist for the engineer reading the plan — confirm before starting:
