@@ -1,6 +1,7 @@
 // ─── JLPT ─────────────────────────────────────────────────────────────────────
 
-export const JLPT_LEVELS = ['N5', 'N4', 'N3', 'N2', 'N1'] as const
+// JLPT_LEVELS is exported from the milestones module (packages/shared/src/milestones/constants.ts)
+// as the typed readonly JlptLevel[] variant. Import from '@kanji-learn/shared' as before.
 
 export const JLPT_KANJI_COUNTS = {
   N5: 79,
