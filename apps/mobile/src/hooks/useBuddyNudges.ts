@@ -12,7 +12,7 @@
 // so api.get<BuddyNudge[]> yields BuddyNudge[] — no extra wrapper to strip.
 
 import { useCallback, useState } from 'react'
-import { useFocusEffect } from '@react-navigation/native'
+import { useFocusEffect } from 'expo-router'
 import { api } from '../lib/api'
 import type { BuddyNudge, BuddyScreen } from '@kanji-learn/shared'
 
