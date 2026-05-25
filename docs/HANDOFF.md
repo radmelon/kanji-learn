@@ -1,31 +1,23 @@
-# Session Handoff — 2026-05-24 (Phase 1' execution paused at Task 3 of 12; resume Task 4 next session)
+# Session Handoff — 2026-05-25 (Phase 1' shipped — B136 in TestFlight; T15 on-device walkthrough pending)
 
-## TL;DR (this session, 2026-05-24)
+## TL;DR (this session, 2026-05-25)
 
-**Buddy v2 is back in motion.** Brainstormed a "Phase 1+ Refresh" of the April 2026 Buddy v2 design + spec — confirms the original 17-section design stands, but updates the §14 phase plan to reflect what shipped between April and May (Spec 1 Practice Loop, Spec 1.5 FSRS) and corrects a major inventory error: Phase 0 schema is actually live in production (16 tables via the drizzle migration track), not "unmigrated" as a prior agent had reported. Refresh doc at [`docs/superpowers/specs/2026-05-23-buddy-v2-phase-1-refresh.md`](superpowers/specs/2026-05-23-buddy-v2-phase-1-refresh.md). Re-anchors leech detection on FSRS R(t), captures the "kanji monkey off your back" voice evolution, and defers the Apple Watch role-refactor to its own brainstorm.
+**Phase 1' is shipped, end-to-end.** Migration 0025 applied to live; API deployed twice (first rollback on a runtime import bug, second SUCCEEDED at op `c955bd8cb5f64cbab032e24df83c4c00`); B136 EAS build cut and submitted to TestFlight (build `f5b04f00-1799-41f7-aafe-6b99f39bf104`; submission `f58e6982-156d-4635-9d04-52679a6b1114`). What's left is T15 — the on-device walkthrough on B136 and the closeout findings doc. Once that's done the next slice per the refresh doc §9 ordering is Phase 5 (Contextual Mnemonic Co-Creation — the signature feature).
 
-**Refreshed phase ordering (constructivist-first):** Phase 0a (cleanup) → 1' (BuddyCard delivery) → 5 (Mnemonic Co-Creation) → 6 (Study Log) → 3 (Orchestration with R(t)) → 4 (Social) → 7a (Buddy onboarding). Spec 3 = Practice Loop intervention routing (lifted out of Buddy v2). Phase 2 (on-device LLM) deferred until cloud path is proven.
+**Phase 1' executed via `superpowers:subagent-driven-development`** — fresh subagent per task, two-stage spec + quality review after each, then a final integration review across the whole diff. The pattern caught two production bugs that per-task reviews would have shipped silently:
 
-**Phase 0a shipped — API-only, no migration, no mobile changes.** Wired the orphaned `LearnerStateService` into a post-`submitReview` refresh hook (fire-and-forget via `setImmediate`, 30s per-user frequency cap). Added daily Buddy metrics (structured-JSON log line at 03:05 UTC). Deployed; op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED in 3:35. Operator did a real review on B135 TestFlight; `learner_state_cache` populated within seconds with sensible values (471 kanji seen, 3-day streak, buddy_mood=supportive). End-to-end behavior validated in production.
+1. **jsonb double-encoding (storage-layer)** — drizzle's `PgJsonb.mapToDriverValue` calls `JSON.stringify(value)`, then postgres-js's jsonb serializer calls `JSON.stringify` on what it received. Result: `actionPayload: { kind: 'meet_buddy' }` was stored as `"{\"kind\":\"meet_buddy\"}"` (a JSON-encoded string). SQL-side `->>` returns NULL on a string, so the partial unique indexes from migration 0025 never enforced. Round-trips via JS appeared to work (mapFromDriverValue JSON.parses), masking the bug. Fixed globally with a one-line `PgJsonb.prototype.mapToDriverValue = v => v` override in [`packages/db/src/client.ts`](packages/db/src/client.ts) (commit `f1d111b`). Side-benefit: closes the long-standing `interventions.payload` double-encoded note from prior HANDOFFs for new writes.
 
-**Phase 1' brainstormed + designed + planned + 3 of 12 tasks executed — paused.** Design at [`docs/superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md`](superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md) (commit `26f9f4c`). Plan at [`docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`](superpowers/plans/2026-05-24-buddy-phase-1-prime.md) (commit `ead9164`). 15 tasks total: 12 implementation (server + mobile) + 3 operator. Executing via `superpowers:subagent-driven-development` (fresh subagent per task, two-stage spec + quality review).
+2. **GET envelope mismatch (caught by final review only)** — `/v1/buddy/nudges` initially returned `{ data: nudges }`; the mobile ApiClient throws on `!json.ok`. Every BuddyCard would have been invisible in production. Fixed to `{ ok: true, data: nudges }` with a regression-catching test assertion (commit `b0a37d4`).
 
-**Tasks 1-3 of 12 complete:**
-- ✅ T1 Migration 0025 — `buddy_nudges_streak_dedupe` + `buddy_nudges_meet_buddy_dedupe` partial unique indexes (`886e779` + `e5cc53b` NULL-semantics doc note)
-- ✅ T2 Content templates — `streak.ts` (9 milestone strings) + `meet-buddy.ts` intro (`2d46177` + `7ca6ebb` apostrophe normalize)
-- ✅ T3 NudgeService + streak rule (TDD) — `nudge.service.ts` with `evaluateNudgesForScreen` (pull) + `maybeFireMilestoneNudges` (push); first integration test green (`c6fc070` initial + `c6cdf6a` spec §4.2 alignment fix + `25fed6a` typecheck cleanup with `@ts-expect-error` pointing at T6)
+**Other notable in-flight discoveries:**
+- Drizzle's `.onConflictDoNothing({ target })` only accepts PgColumn refs — can't target migration 0025's partial unique indexes whose targets are SQL expressions (`action_payload->>'milestone'`). Fix: typed `isUniqueViolation(err)` helper using `instanceof PostgresError && code === '23505'`. Re-routed `PostgresError` through `@kanji-learn/db` because `apps/api/node_modules` doesn't contain `postgres` at runtime even though it's a declared dep (this was the cause of the first deploy's rollback).
+- `BuddyNotifier` port interface extracted to drop 7 `as any` casts from the test files.
+- T8 introduced a stealth typecheck regression — `useFocusEffect` was imported from `@react-navigation/native` (not a project dep). The project uses `expo-router`. Caught in T9's typecheck run, fixed in commit `9134db9`.
 
-Test status: 239 passing (1 new from T3). Typecheck: clean modulo the documented pre-existing `social-mute.test.ts:25` error.
+**Final pre-ship review** (Opus, full Phase 1' diff): "Ship with one Critical fix" — addressed before deploy.
 
-**Quality findings caught by review pattern (Tasks 1-3):**
-- T1: NULL-uniqueness footgun in partial index — documented inline in the migration file.
-- T2: Curly U+2019 apostrophe in Day 60 template — normalized to straight quote.
-- T3: Implementer deviated from spec §4.2 stacking rule (short-circuited Meet Buddy when streak fired) — reverted and the dictated test reshaped to use `.find()`.
-- T3: Forward-reference typecheck error from calling `notifier.sendBuddyNudgePush` (Task 6 adds it) — suppressed with `@ts-expect-error` so typecheck stays a clean signal.
-
-**Next session — resume Phase 1' at Task 4.** Tasks 4-12 are 9 implementation tasks: full nudge-rule-engine test coverage (T4) → API routes (T5) → push integration on NotificationService (T6) → wire `maybeFireMilestoneNudges` into `submitReview`'s `setImmediate` chain (T7) → useBuddyNudges hook (T8) → BuddyCard component + Stack wrapper (T9) → Dashboard / Study Ready / Progress surface mounts (T10-12). Then operator tasks 13-15: apply migration to live, deploy + cut B136, verify + closeout. The `@ts-expect-error` in `nudge.service.ts:146` should fail-loud once T6 lands the method — that's the cue to remove the directive.
-
-**Then:** Phase 5 brainstorm — Contextual Mnemonic Co-Creation (the signature feature).
+**B137 refinement queued and Velocity-card bug filed.** Operator feedback during the B136 walkthrough flagged a placement adjustment (BuddyCard up under Drill Weak Spots) — captured in [`docs/superpowers/findings/2026-05-25-b137-refinements.md`](superpowers/findings/2026-05-25-b137-refinements.md). Separate find: the Velocity card on Dashboard still shows "Start burning kanji to see a projection" despite the operator having 174 burned cards post-Spec-1.5 — copy assumed the pre-FSRS unreachable-burned state. Filed into [`docs/superpowers/plans/2026-05-25-milestones-panel-rework.md`](superpowers/plans/2026-05-25-milestones-panel-rework.md) under "Related Dashboard fixes (file while in the area)" so the Milestones session picks it up while doing adjacent UI work.
 
 ---
 
@@ -39,31 +31,72 @@ Test status: 239 passing (1 new from T3). Typecheck: clean modulo the documented
 
 ## Current state
 
-- **Branch:** `main`. All Phase 1' work to date will be pushed to `origin/main` at session end. Working tree: same housekeeping queue as prior session.
-- **Recent `main` history (today's session, in order):**
-  - **Phase 0a brainstorm + plan + execution:** `3de48f3` → `73b591f` → `5aaaaa1` → `571d439` → `c577306` → `74b8047` → `18b6be7` → `1807a72` → `efab7c3` → `aa96580` → `0bc519b`.
-  - **Phase 1' brainstorm + design + plan:** `26f9f4c` (design spec) → `ead9164` (implementation plan).
-  - **Phase 1' execution (Tasks 1-3):** `886e779` (T1 migration) → `e5cc53b` (T1 doc note) → `2d46177` (T2 templates) → `7ca6ebb` (T2 apostrophe fix) → `21c3a50` (mid-session HANDOFF update) → `c6fc070` (T3 initial) → `c6cdf6a` (T3 spec §4.2 alignment fix) → `25fed6a` (T3 typecheck cleanup).
-- **Live DB (Supabase ap-southeast-2):** no migration applied this session. Phase 1' migration `0025_buddy_nudges_dedupe_indexes.sql` is committed locally and applied to the LOCAL test DB only — will go to live as Plan Task 13 (operator step) once Tasks 4-12 land.
-- **API:** Last deployed 2026-05-24 with Phase 0a content (ECR digest `77b757b...`, op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED). Phase 1' API changes (`NudgeService`) are committed locally; not yet deployed.
-- **TestFlight:** B135 still current. Phase 1' will cut B136 as Plan Task 14 once all server + mobile commits are in.
+- **Branch:** `main`, fully pushed to `origin`. Working tree: same housekeeping queue as prior session (no new untracked items resolved this session).
+- **Recent `main` history (today's session, 22 commits in order):**
+  - **Phase 1' T4** (test coverage + bug fixes caught by tests): `f1d111b` (jsonb storage-layer fix) → `8db3854` (23505 try/catch in NudgeService) → `1946de4` (T4 tests) → `ee2911e` (typed PostgresError + isUniqueViolation helper, T4 review-fix)
+  - **Phase 1' T5** (API routes): `60cc638` (routes + wiring) → `cf51a0a` (envelope + preHandler array, T5 review-fix)
+  - **Phase 1' T6** (push method): `f016dcc` (sendBuddyNudgePush) → `ae29d5b` (notificationsEnabled + sound, T6 review-fix)
+  - **Phase 1' T7** (setImmediate wiring): `2b00e3c` (4th SrsService arg + 6 callsites) → `e18265c` (BuddyNotifier port extraction, T7 review-fix)
+  - **Phase 1' T8** (mobile hook): `838e9b8` (useBuddyNudges) → `9813a90` (drop double-fetch + clarify dismiss posture, T8 review-fix)
+  - **Phase 1' T9** (components): `ef68cd8` (BuddyCard + BuddyCardStack) → `9134db9` (T8 retroactive: useFocusEffect from expo-router, not @react-navigation/native)
+  - **Phase 1' T10-12** (surface mounts): `2a416c7` (Dashboard / Study Ready / Progress, bundled commit)
+  - **Final pre-ship review fixes:** `b0a37d4` (Critical envelope `ok:true` + Important width + a11y role)
+  - **Operator T13 + T14:** (no new commits for T13; database-only) → `6846822` (PostgresError import fix, deploy-rollback recovery) → `1d793f3` (record EAS-bumped buildNumber 136)
+  - **Post-ship docs:** `4820559` (file B137 refinement + Velocity-projection bug)
+  - (Two parallel docs commits from the operator's separate Milestones-rework work landed mid-session: `12f1a50` and `5684527` — unrelated to Phase 1')
+- **Live DB (Supabase ap-southeast-2):** migration `0025_buddy_nudges_dedupe_indexes.sql` applied 2026-05-25 via `psql -f`. Both partial unique indexes verified present on the live `buddy_nudges` table. Pre-migration safety dump at `/tmp/buddy-phase1-safety/live-20260525-1138.sql` (5.7M; delete after 24h stability). Pre-T13 dup-row check returned 0 rows in both buckets (table was empty at apply time despite the prior HANDOFF's "16 rows" claim).
+- **API:** Currently running op `c955bd8cb5f64cbab032e24df83c4c00` SUCCEEDED at ~2026-05-25 12:00 PT. **Heads up: first deploy of the session (`5515dd9608de4e979086f8e3b863279b`) ROLLED BACK** — `apps/api/src/services/buddy/nudge.service.ts` had `import postgres from 'postgres'` which resolved fine in vitest but couldn't resolve at runtime (apps/api/node_modules in the production image doesn't include postgres; only packages/db/node_modules does). Service auto-restored to the prior good version; second deploy after the fix succeeded clean. Smoke: `/v1/review/status` 401, `/v1/buddy/nudges?screen=dashboard` 401, `/health` 200.
+- **TestFlight:** B136 submitted today (build `f5b04f00-1799-41f7-aafe-6b99f39bf104`; submission `f58e6982-156d-4635-9d04-52679a6b1114`). Apple processing 5–10 min from submit. EAS auto-bumped `app.json ios.buildNumber` 135 → 136; recorded in commit `1d793f3`.
 - **Watch:** unchanged. Per refresh §6.3, deferred for complete reconceptualization in its own brainstorm.
 
 ## How to resume next session
 
+The next session's job is **T15 — on-device walkthrough + closeout findings doc + HANDOFF refresh**, plus picking up the B137 refinement and the Velocity-projection bug.
+
 When starting the next session, give the new agent this orientation:
 
-> "Resume Phase 1' implementation at Task 4. Plan is at `docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`. Design spec is at `docs/superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md`. Tasks 1-3 are complete on `main` (see HANDOFF.md for commit log). Use `superpowers:subagent-driven-development` to continue with Task 4 — Streak + Meet Buddy rule full coverage. Heads-up: there's a `@ts-expect-error` on `apps/api/src/services/buddy/nudge.service.ts:146` that becomes obsolete once Task 6 lands `notification.service.ts`'s `sendBuddyNudgePush` method — remove it then."
+> "Phase 1' is fully shipped through B136 in TestFlight (HANDOFF.md has the full state). Your job is T15 from `docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`: walk the on-device checklist on B136 (operator drives the device; you guide), then write the findings doc at `docs/superpowers/findings/2026-05-25-phase-1-prime-verification.md` and update HANDOFF.md. After T15, the next slice per the refresh doc §9 ordering is the Phase 5 brainstorm (Contextual Mnemonic Co-Creation)."
 
-The new agent reads only the plan + spec + this HANDOFF and continues. No need to re-load this conversation's context.
+Operator user_id (for the Supabase verification query): `b8503589-1695-4659-b69d-b9e77d1cf655` (display_name 'Buddy', email buddydennis@gmail.com).
 
-**Phase 1' work session 2 will run:** T4 (test coverage) → T5 (routes) → T6 (push method, removes the `@ts-expect-error`) → T7 (`setImmediate` wiring) → T8 (mobile hook) → T9 (BuddyCard + Stack) → T10-12 (surface mounts) → T13 (operator: migration to live) → T14 (operator: deploy + B136) → T15 (operator: verify + closeout).
+**T15 checklist** (from the plan + final-review additions):
+1. Dashboard shows Meet Buddy card on first launch post-deploy
+2. Dismiss it → re-open Dashboard → card stays gone
+3. Study Ready: streak card only if on a milestone-day streak (3/7/14/30/60/90/100/180/365)
+4. Progress: no Buddy card visible (rules don't fire there in v1)
+5. If on a milestone-day streak, grade a card to complete a session → watch for Expo push
+6. Supabase SQL spot-check: rows for the operator's user_id with `dismissed_at`/`push_delivered_at` matching observed behavior
+
+**Operator gotcha to confirm first:** the operator's `user_profiles.notificationsEnabled` must be `true` for the milestone push to actually fire. The in-app BuddyCard appears regardless.
+
+**B137 refinements queue:** see [`docs/superpowers/findings/2026-05-25-b137-refinements.md`](superpowers/findings/2026-05-25-b137-refinements.md) — currently one item (BuddyCard placement under Drill Weak Spots).
 
 ---
 
-## On-device walkthrough — owed on B135 (FSRS items + B134 carry-forward)
+## On-device walkthrough — owed on B136 (Phase 1' items + B135 + B134 carry-forward)
 
-User has verified B135 boots and the burned-count visibly changed (positive signal). The full systematic walkthrough is still owed:
+The B136 build supersedes B135 in TestFlight. The B135 systematic walkthrough was never fully completed (only the burned-count was eyeballed); B136 absorbs it AND adds Phase 1'-specific items.
+
+### Phase 1' specific (NEW in B136)
+
+- [ ] **Dashboard: Meet Buddy card** appears on first launch post-deploy (one-time, lifetime per user)
+- [ ] Dismiss Meet Buddy → re-open Dashboard → card stays gone (verify both same-session and after a kill-and-relaunch)
+- [ ] **Dashboard: streak card** appears if the operator is currently on a milestone-day streak (3/7/14/30/60/90/100/180/365). If not on a milestone day, Dashboard shows Meet Buddy only.
+- [ ] When BOTH cards are present on Dashboard: Meet Buddy renders above streak (priority 10 > priority 5, design spec §4.2 stacking)
+- [ ] **Study Ready screen: streak mirror card** appears between the stats row and the Begin button if on a milestone day. Dismissing the Dashboard streak card does NOT dismiss the Study Ready one (independent rows by design — separate dedupe keys).
+- [ ] **Progress tab: no Buddy card visible** (placement is wired but no rules fire on Progress in v1)
+- [ ] If the operator is on a milestone-day streak: grade a card to complete a review session → watch for an Expo push notification ("Kanji Buddy" title, streak message body, with sound). Push fires exactly once per milestone — a second session same day does not re-fire.
+- [ ] No `[BuddyPush]` or `[Buddy post-submit]` warnings in App Runner logs during the walkthrough
+- [ ] Supabase SQL spot-check (operator user_id `b8503589-1695-4659-b69d-b9e77d1cf655`):
+  ```sql
+  SELECT id, user_id, screen, nudge_type, content, dismissed_at, push_delivered_at, created_at
+  FROM buddy_nudges
+  WHERE user_id = 'b8503589-1695-4659-b69d-b9e77d1cf655'
+  ORDER BY created_at DESC LIMIT 10;
+  ```
+  Expected: Meet Buddy row + (if milestone) Dashboard + Study Ready streak rows; `push_delivered_at` set on the Dashboard streak row only.
+
+### FSRS-specific (carry-forward from B135)
 
 ### FSRS-specific (NEW in Spec 1.5)
 
@@ -76,7 +109,7 @@ User has verified B135 boots and the burned-count visibly changed (positive sign
 - [ ] After a loop quiz: a `testSessions` row exists with `test_type = 'loop_check'` and matching `testResults` (Supabase SQL spot-check)
 - [ ] No FSRS-related errors in App Runner logs
 
-### B134 carry-forward — Plans A/B/C combined (originally owed on B134, now on B135)
+### B134 carry-forward — Plans A/B/C combined (originally owed on B134, now on B136)
 
 **Plan A (minutes-budget time-box):**
 - [ ] Onboarding asks "How many minutes per day?" (5/10/15/20/30, default 15)
@@ -218,7 +251,10 @@ Untracked items in the main checkout. Still need eyeball decisions:
 | ✅ | **Run FSRS replay against live DB** | done 2026-05-23 |
 | ✅ | **Deploy API for Spec 1.5** | done 2026-05-23, op `3f6c157cd008489e8ac85778cf893eda` SUCCEEDED |
 | ✅ | **Cut + submit B135 to TestFlight (Spec 1.5)** | done 2026-05-23 — verified on-device |
-| 🚀 | On-device walkthrough on B135 (Spec 1 + Spec 1.5 combined) | partial — burned count verified; full systematic checklist still owed |
+| ✅ | **Apply migration `0025` (Phase 1') to the live DB** | done 2026-05-25; pre-check passed, table was empty |
+| ✅ | **Deploy API for Phase 1'** | done 2026-05-25, op `c955bd8cb5f64cbab032e24df83c4c00` SUCCEEDED (first deploy `5515dd9608...` rolled back on missing-postgres-import; fixed in `6846822` and redeployed) |
+| ✅ | **Cut + submit B136 to TestFlight (Phase 1')** | done 2026-05-25 — Apple processing |
+| 🚀 | On-device walkthrough on B136 (Phase 1' + Spec 1 + Spec 1.5 combined) | T15 owed — see "On-device walkthrough" section above |
 | 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed |
 | 🚀 | Migrate Supabase DB `ap-southeast-2` → `us-east-1` | Cross-region tax; dedicated session |
 | 🚀 | SES out of sandbox | Needed for tutor-share email at scale |
@@ -236,17 +272,19 @@ Untracked items in the main checkout. Still need eyeball decisions:
 - **Truncated kanji readings** — `kanji.kun_readings`/`on_readings` capped at ~5 sorted entries; re-import full KanjiDic2 readings.
 - **The "Kanji Buddy 1.0" rebrand** — rename Kanji Learn → Kanji Buddy, splash polish, About/Credits branding. Needs a brand-decision block first.
 - **Tutor report writing scope-down** — the report still surfaces a Writing modality; Study no longer serves standalone writing prompts (writing is a loop leg). `getWriting` + `weakestModality` in the tutor report need scoping/removal. (Spec 2 territory.)
-- **Phase 3 #13 — Milestones panel refactor** — spec captured earlier.
-- **`interventions.payload` double-encoded** — stored double-encoded jsonb (a Drizzle/postgres-js quirk); harmless to the JS round-trip but breaks SQL-side payload queries.
+- **Milestones panel rework** — design spec [`docs/superpowers/specs/2026-05-25-milestones-panel-rework.md`](superpowers/specs/2026-05-25-milestones-panel-rework.md) (commit `12f1a50`), implementation plan [`docs/superpowers/plans/2026-05-25-milestones-panel-rework.md`](superpowers/plans/2026-05-25-milestones-panel-rework.md) (commit `5684527`, 24 tasks). NEW: plan now also tracks the Velocity-card "Start burning kanji to see a projection" bug as a Related Dashboard fix (filed 2026-05-25 from B136 walkthrough — copy is stale post-FSRS).
+- ~~**`interventions.payload` double-encoded**~~ — FIXED for new writes by Phase 1' T4's storage-layer jsonb fix (commit `f1d111b`, `packages/db/src/client.ts`). Existing legacy rows remain double-encoded; only SQL-side `->>` queries against historical interventions are affected (none in current code paths).
+- **B137 refinements queue** — [`docs/superpowers/findings/2026-05-25-b137-refinements.md`](superpowers/findings/2026-05-25-b137-refinements.md). Currently one item: move BuddyCardStack on Dashboard up under the Drill Weak Spots button (operator feedback from B136 walkthrough).
 - **App-wide accessibility pass** — touch targets / `accessibilityLabel`s, plus the `textMuted` contrast debt. Warrants its own task given WCAG 2.1 AA standard.
-- **Pre-existing `social-mute.test.ts:25` typecheck error** — Spec 1.5 follow-up #4.
+- **Pre-existing `social-mute.test.ts:25` typecheck error** — Spec 1.5 follow-up #4. Still present; expected to keep showing in typecheck output until a separate housekeeping pass.
+- **`useBuddyNudges` hook tests** — design spec §6.4 called for them; Phase 1' shipped without (per the project convention of not unit-testing mobile hooks). Worth adding if any complex behavior accrues.
 
 ---
 
 ## Working environment notes
 
-- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`. Spec 1.5 FSRS code is live as of 2026-05-23.
-- **Supabase:** still `ap-southeast-2`. Migration files in `packages/db/supabase/migrations/` (`0001`–`0024`). `0024` (FSRS) applied to live DB 2026-05-23 via `psql -f`.
+- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com`. Phase 1' (Buddy NudgeService + routes + push) code is live as of 2026-05-25; Spec 1.5 FSRS still in there from 2026-05-23.
+- **Supabase:** still `ap-southeast-2`. Migration files in `packages/db/supabase/migrations/` (`0001`–`0025`). `0024` (FSRS) applied 2026-05-23, `0025` (buddy_nudges dedupe partial indexes) applied 2026-05-25 — both via `psql -f`.
 - **Docker / API deploy:** `./scripts/deploy-api.sh` from repo root. Builds + pushes the image to ECR and triggers an App Runner deployment. Returns immediately; monitor rollout via the App Runner console or `aws apprunner list-operations`.
 - **EAS builds:** from `apps/mobile/`, ~$2/build. `eas build --platform ios --profile production --non-interactive`. EAS auto-bumps `ios.buildNumber` — **never hand-edit `app.json`** (it tracks the LAST shipped build; EAS bumps to +1 server-side). Submit with `eas submit --platform ios --latest --non-interactive`. Apple processing follows (~5–10 min from submit).
 - **Watch builds:** **manual Xcode rebuild only** — EAS does not build the watchOS target. Spec 1.5 was API-only; no Watch rebuild required.
