@@ -33,7 +33,7 @@ Milestones recognize student progress to reinforce effort. The current implement
 | Kanji burned | 10, 50, 100, 250, 500, 750, 1000, 1250, 1500, 2000 |
 | Streak days | 3, 7, 10, 14, 21, 28, 35, 42, 49, then +7 forever (open-ended) |
 | JLPT level (N5 → N1) | Per level, two tiers: **Silver** (all kanji remembered or burned) and **Gold** (all kanji burned). Gated: Silver+ at N5 unlocks N4 detection, etc. |
-| Grade-level (Kyouiku 1–9) | Per grade, three tiers: **Bronze** (`remembered > reviewing` AND `learning == 0`), **Silver** (all remembered or burned), **Gold** (all burned). Gated: Silver+ at grade `g` unlocks grade `g+1` detection. |
+| Grade-level (Kyouiku 1–9) | Per grade, three tiers: **Bronze** (`learning == 0` AND `remembered > reviewing` AND `burned > remembered`), **Silver** (all remembered or burned), **Gold** (all burned). Gated: Silver+ at grade `g` unlocks grade `g+1` detection. |
 
 Ladders and tier definitions are shared between server detection and mobile presentation via a `packages/` module (final package location chosen in the implementation plan). No duplication.
 
@@ -86,6 +86,11 @@ type MilestoneEntry = {
     tier?:  'bronze' | 'silver' | 'gold';
   };
   achievedAt:  string;                    // ISO timestamp OR sentinel "grandfathered"
+  location?:   {                          // OPTIONAL — present only if user opted in
+    lat:       number;                    //   AND location capture succeeded at refresh
+    lon:       number;
+    accuracy?: number;                    // meters (best-effort)
+  };
 };
 
 type MilestoneType =
@@ -120,45 +125,44 @@ detectCrossings(currentCounts, perGradeState, perJlptState, existing):
       if not existing.has({type: category, threshold}):
         newEntries.push({type: category, threshold})
 
-  // 2. JLPT — Silver/Gold tiers, gated N5 → N1
+  // 2. JLPT — independent tier evaluation per level, gated N5 → N1
   prevJlptUnlocked = true   // N5 always eligible
   for level in [N5, N4, N3, N2, N1]:
     if !prevJlptUnlocked: break
-    tier = computeJlptTier(perJlptState[level])   // silver | gold | null
-    if tier:
-      for t in jlptTiersUpTo(tier):  // silver, then silver+gold
-        if not existing.has({type: jlpt_level, payload: {level, tier: t}}):
-          newEntries.push({type: jlpt_level, payload: {level, tier: t}})
-      prevJlptUnlocked = (tier === 'silver' || tier === 'gold')
-    else:
-      prevJlptUnlocked = false
+    state = perJlptState[level]
+    for tier in [silver, gold]:                    // independent evaluation
+      if jlptTierRule(state, tier):
+        if not existing.has({type: jlpt_level, payload: {level, tier}}):
+          newEntries.push({type: jlpt_level, payload: {level, tier}})
+    // Gate next level on the strongest rule that currently holds
+    prevJlptUnlocked = jlptTierRule(state, silver) || jlptTierRule(state, gold)
 
-  // 3. Grade-level — Bronze/Silver/Gold, gated grade 1 → 9
+  // 3. Grade-level — independent tier evaluation per grade, gated 1 → 9
   prevGradeUnlocked = true   // grade 1 always eligible
   for grade in 1..9:
     if !prevGradeUnlocked: break
-    tier = computeGradeTier(perGradeState[grade])  // bronze | silver | gold | null
-    if tier:
-      for t in gradeTiersUpTo(tier):
-        if not existing.has({type: grade_level, payload: {grade, tier: t}}):
-          newEntries.push({type: grade_level, payload: {grade, tier: t}})
-      prevGradeUnlocked = (tier === 'silver' || tier === 'gold')
-    else:
-      prevGradeUnlocked = false
+    state = perGradeState[grade]
+    for tier in [bronze, silver, gold]:            // independent evaluation
+      if gradeTierRule(state, tier):
+        if not existing.has({type: grade_level, payload: {grade, tier}}):
+          newEntries.push({type: grade_level, payload: {grade, tier}})
+    prevGradeUnlocked = gradeTierRule(state, silver) || gradeTierRule(state, gold)
 
   return newEntries
 ```
 
-**Tier rules** (shared with mobile presentation):
-- `computeGradeTier(state)`:
-  - Gold if `learning + reviewing + remembered == 0` AND `burned > 0`
-  - Silver if `learning + reviewing == 0` AND `(remembered + burned) > 0`
-  - Bronze if `learning == 0` AND `remembered > reviewing`
-  - null otherwise
-- `computeJlptTier(state)`:
-  - Gold if `learning + reviewing + remembered == 0` AND `burned > 0`
-  - Silver if `learning + reviewing == 0` AND `(remembered + burned) > 0`
-  - null otherwise (no Bronze for JLPT)
+**Why independent tier evaluation instead of "emit all tiers up to current":**
+Under the tightened Bronze rule (`burned > remembered`), Bronze is no longer implied by Silver — a user with mostly-remembered, little-burned state can be Silver-eligible while failing Bronze. Independent evaluation records only the tiers actually crossed. The display side already shows the highest tier per grade, so user-visible behaviour is identical; the change makes the event log honest.
+
+**Tier rules** (shared with mobile presentation; each rule evaluated independently):
+- `gradeTierRule(state, tier)`:
+  - `gold`: `learning + reviewing + remembered == 0` AND `burned > 0`
+  - `silver`: `learning + reviewing == 0` AND `(remembered + burned) > 0`
+  - `bronze`: `learning == 0` AND `remembered > reviewing` AND `burned > remembered`
+- `jlptTierRule(state, tier)`:
+  - `gold`: `learning + reviewing + remembered == 0` AND `burned > 0`
+  - `silver`: `learning + reviewing == 0` AND `(remembered + burned) > 0`
+  - (no Bronze for JLPT)
 
 **Key properties:**
 - **Idempotent.** Re-running on the same state emits nothing. Safe on every refresh.
@@ -218,7 +222,43 @@ Reworked: [apps/mobile/app/(tabs)/progress.tsx](apps/mobile/app/(tabs)/progress.
 
 Theme tokens: add `theme.milestones.tier.{bronze,silver,gold}.{bg,border,label}` to the mobile theme module. Starting values from the v2 mockup (`#f5b07a` / `#f0f0f0` / `#ffe066` family); implementer verifies WCAG AA at implementation time.
 
-## 11. Testing
+## 11. Location capture (opt-in)
+
+Records *where* each milestone was earned, for later use by mnemonic co-creation and Buddy celebration nudges. Nothing in this rework displays the location; this section lays the plumbing.
+
+**User setting** (new Profile/Settings toggle):
+- Label: *"Attach location to milestones"* (final copy chosen at implementation)
+- Default: **OFF**. User must explicitly opt in. Toggling ON triggers the platform location-permission prompt if not already granted.
+- Stored alongside other user settings (`user_profiles` or equivalent — final location chosen at implementation).
+
+**Mobile capture flow:**
+- When sending the request that triggers a `LearnerStateService.refresh()`:
+  - If the setting is OFF, send no location.
+  - If ON and OS permission is granted, attempt a single foreground location read with a short timeout (low-accuracy mode is fine — we don't need GPS lock).
+  - If capture fails for any reason (permission denied at OS level, timeout, hardware off, airplane mode), proceed without location. No retry, no error surfaced to the user.
+- Attach to the request body as `clientContext: { location: { lat, lon, accuracy? } }` when available.
+
+**Server persistence:**
+- On refresh, if the request body includes `clientContext.location`, stamp `location` on every newly created milestone entry from that refresh pass.
+- Existing entries are never updated retroactively.
+- Grandfathered entries get no location (we don't know historical positions).
+
+**Privacy boundary:**
+- Location is stored only on milestone entries. It is *not* aggregated into a separate location-history table.
+- Toggling the setting OFF later does not delete past entries' locations — those represent a moment the user opted in. (A separate "delete my milestone locations" affordance is out of scope; flag for a later privacy-controls phase.)
+- Location is the user's own data and is never shared outside their account.
+
+**iOS/Android setup:**
+- iOS: add `NSLocationWhenInUseUsageDescription` to `apps/mobile/app.json` with copy referencing milestone enrichment.
+- Android: add `ACCESS_COARSE_LOCATION` (coarse is sufficient — we don't need fine-grained).
+
+**Out of scope this rework:**
+- Reverse geocoding (lat/lon → place name). Defer until a consuming feature lands.
+- Display of location anywhere in the UI.
+- Background location, geofencing, "places you study often" surfaces.
+- Bulk export / delete-my-locations affordance.
+
+## 12. Testing
 
 **Server unit tests** — `apps/api/src/services/milestones/__tests__/`:
 - Numeric ladder single + multiple crossings in one pass
@@ -227,11 +267,17 @@ Theme tokens: add `theme.milestones.tier.{bronze,silver,gold}.{bg,border,label}`
 - Streak ladder beyond 49
 - Grade gating blocks / unblocks
 - Grade tier progression (bronze → silver → gold within a grade)
+- **Tightened Bronze rule**: state where `remembered > reviewing` AND `learning == 0` but `burned <= remembered` → no Bronze emitted
+- **Tightened Bronze rule**: state where `burned > remembered > reviewing` AND `learning == 0` → Bronze emitted
+- **Independent tier evaluation**: state that is Silver-eligible but fails Bronze (lots remembered, little burned) → emits Silver only, not Bronze
 - JLPT gating and Silver-then-Gold progression per level
 - JLPT has no Bronze
 - Migration grandfather pass populates with `"grandfathered"` sentinel
 - Migration skip for new users (no pre-deploy history)
 - Migration skip if cache already populated
+- **Location persistence**: refresh request with `clientContext.location` → newly created entries have `location` field
+- **Location absent**: refresh request without `clientContext.location` → newly created entries omit `location`
+- **Location not applied retroactively**: existing entries' `location` never modified
 
 **Server integration test** — `LearnerStateService.refresh()` end-to-end against a test DB. Pattern: commit 1807a72.
 
@@ -246,8 +292,10 @@ Theme tokens: add `theme.milestones.tier.{bronze,silver,gold}.{bg,border,label}`
 - Bottom-sheet tap response
 - Long labels on iPhone SE width
 - Empty-state copy on a fresh test account
+- Location-setting toggle (default OFF) → enabling triggers OS permission prompt; subsequent refresh stamps `location` on new entries; toggle OFF stops stamping but doesn't touch existing entries
+- Location permission denied at OS level → refresh proceeds normally, no entries get `location`
 
-## 12. Decisions log (from 2026-05-25 brainstorm)
+## 13. Decisions log (from 2026-05-25 brainstorm)
 
 | Decision | Choice | Rationale |
 |---|---|---|
@@ -263,8 +311,14 @@ Theme tokens: add `theme.milestones.tier.{bronze,silver,gold}.{bg,border,label}`
 | Streak ladder | Open-ended (+7 forever) | No artificial ceiling |
 | Date UX | Bottom-sheet on tap | Lighter than modal |
 | Constants/helpers sharing | Shared `packages/` module | Avoid logic duplication between server and mobile |
+| Bronze tier criterion | Tightened: `learning == 0` AND `remembered > reviewing` AND `burned > remembered` | Requires substantive burning activity for Bronze, not just memorization-vs-review progress |
+| Tier emission | Independent per-tier evaluation | Tightened Bronze breaks the "Silver implies Bronze" assumption; emit only tiers actually crossed |
+| Location field | Optional `{lat, lon, accuracy?}` on each entry | Future use: mnemonic co-creation, Buddy celebration nudges |
+| Location privacy default | Opt-in toggle, default OFF | Privacy-conservative; user explicitly chooses to enrich milestones with location |
+| Reverse geocoding | Deferred to consuming feature | YAGNI for this rework; lat/lon is enough to plumb the data |
+| Location display | Out of scope (no UI surfacing this rework) | Pure plumbing; consumers (mnemonics / Buddy nudges) own display |
 
-## 13. Acceptance criteria
+## 14. Acceptance criteria
 
 - [ ] Panel renders the 5 active categories (Seen / Remembered / Burned / Streak / JLPT) with at most one badge each.
 - [ ] Grade-level row renders up to 3 most-recently-earned tier badges, with WCAG AA contrast.
@@ -273,5 +327,9 @@ Theme tokens: add `theme.milestones.tier.{bronze,silver,gold}.{bg,border,label}`
 - [ ] Server detection runs idempotently on every post-review refresh; no duplicate entries appear in `recentMilestones`.
 - [ ] First refresh after deploy for an existing user grandfathers their current active state with the sentinel; subsequent crossings get real timestamps.
 - [ ] New users (no pre-deploy SRS history) skip the grandfather pass entirely.
+- [ ] Bronze grade-level rule requires `burned > remembered`; a Silver-eligible user who fails this earns Silver-only (no Bronze) and that is reflected in `recentMilestones`.
+- [ ] Profile setting "Attach location to milestones" exists, defaults OFF, and triggers the OS location-permission prompt on first enable.
+- [ ] When the setting is ON and OS permission is granted, new milestone entries persist `location: { lat, lon, accuracy? }`; when OFF or permission denied, entries omit the field.
+- [ ] iOS `NSLocationWhenInUseUsageDescription` and Android `ACCESS_COARSE_LOCATION` are wired in [apps/mobile/app.json](apps/mobile/app.json).
 - [ ] All server unit tests pass; mobile unit tests pass; on-device manual verification clean.
 - [ ] No client-side `computeMilestones()` usage remains; old flat-array path deleted.
