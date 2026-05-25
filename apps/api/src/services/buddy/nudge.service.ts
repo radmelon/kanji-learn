@@ -16,9 +16,15 @@ import postgres from 'postgres'
 import { buddyNudges, learnerStateCache } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import type { BuddyNudge, BuddyScreen } from '@kanji-learn/shared'
-import type { NotificationService } from '../notification.service'
 import { isStreakMilestone, streakContent } from './templates/streak'
 import { MEET_BUDDY_CONTENT } from './templates/meet-buddy'
+
+// Narrow port — only the notifier method NudgeService actually calls.
+// NotificationService satisfies this structurally; tests stub against the
+// interface instead of casting the full service to any.
+export interface BuddyNotifier {
+  sendBuddyNudgePush(userId: string, nudge: BuddyNudge): Promise<void>
+}
 
 const STREAK_PRIORITY = 5
 const MEET_BUDDY_PRIORITY = 10
@@ -36,7 +42,7 @@ function isUniqueViolation(err: unknown): boolean {
 export class NudgeService {
   constructor(
     private readonly db: Db,
-    private readonly notifier: NotificationService,
+    private readonly notifier: BuddyNotifier,
   ) {}
 
   /**

@@ -28,7 +28,7 @@ import * as schema from '@kanji-learn/db'
 import { SrsService } from '../../src/services/srs.service'
 import { DualWriteService } from '../../src/services/buddy/dual-write.service'
 import { LearnerStateService } from '../../src/services/buddy/learner-state.service'
-import { NudgeService } from '../../src/services/buddy/nudge.service'
+import { NudgeService, type BuddyNotifier } from '../../src/services/buddy/nudge.service'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
@@ -38,7 +38,7 @@ const TEST_CHAR = '新'
 
 const dualWrite = new DualWriteService(db)
 const learnerState = new LearnerStateService(db)
-const nudgeService = new NudgeService(db, { sendBuddyNudgePush: async () => {} } as any)
+const nudgeService = new NudgeService(db, { sendBuddyNudgePush: async () => {} } satisfies BuddyNotifier)
 const srs = new SrsService(db, dualWrite, learnerState, nudgeService)
 
 let testKanjiId: number

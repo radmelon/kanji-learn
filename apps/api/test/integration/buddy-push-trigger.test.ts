@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { sql } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
-import { NudgeService } from '../../src/services/buddy/nudge.service'
+import { NudgeService, type BuddyNotifier } from '../../src/services/buddy/nudge.service'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
@@ -29,7 +29,7 @@ afterAll(async () => {
 describe('NudgeService.maybeFireMilestoneNudges (push path)', () => {
   it('inserts dashboard row + fires push on milestone day', async () => {
     const spy = vi.fn().mockResolvedValue(undefined)
-    const notifier = { sendBuddyNudgePush: spy } as any
+    const notifier: BuddyNotifier = { sendBuddyNudgePush: spy }
     const service = new NudgeService(db, notifier)
 
     await service.maybeFireMilestoneNudges(USER_A, { currentStreakDays: 30 })
@@ -46,7 +46,7 @@ describe('NudgeService.maybeFireMilestoneNudges (push path)', () => {
 
   it('does not fire on non-milestone days', async () => {
     const spy = vi.fn().mockResolvedValue(undefined)
-    const notifier = { sendBuddyNudgePush: spy } as any
+    const notifier: BuddyNotifier = { sendBuddyNudgePush: spy }
     const service = new NudgeService(db, notifier)
 
     await service.maybeFireMilestoneNudges(USER_A, { currentStreakDays: 4 })
@@ -55,7 +55,7 @@ describe('NudgeService.maybeFireMilestoneNudges (push path)', () => {
 
   it('does not double-fire if milestone already recorded', async () => {
     const spy = vi.fn().mockResolvedValue(undefined)
-    const notifier = { sendBuddyNudgePush: spy } as any
+    const notifier: BuddyNotifier = { sendBuddyNudgePush: spy }
     const service = new NudgeService(db, notifier)
 
     await service.maybeFireMilestoneNudges(USER_A, { currentStreakDays: 30 })

@@ -14,7 +14,7 @@ import * as schema from '@kanji-learn/db'
 import { SrsService } from '../../src/services/srs.service'
 import { DualWriteService } from '../../src/services/buddy/dual-write.service'
 import { LearnerStateService } from '../../src/services/buddy/learner-state.service'
-import { NudgeService } from '../../src/services/buddy/nudge.service'
+import { NudgeService, type BuddyNotifier } from '../../src/services/buddy/nudge.service'
 import type { ReviewResult } from '@kanji-learn/shared'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
@@ -55,7 +55,7 @@ describe('LearnerStateService frequency cap', () => {
     // once." Casting via `unknown` lets us reach the private member.
     const persistSpy = vi.spyOn(learnerState as unknown as { persist: () => Promise<void> }, 'persist')
 
-    const nudgeService = new NudgeService(db, { sendBuddyNudgePush: async () => {} } as any)
+    const nudgeService = new NudgeService(db, { sendBuddyNudgePush: async () => {} } satisfies BuddyNotifier)
     const srs = new SrsService(db, dualWrite, learnerState, nudgeService)
 
     const results: ReviewResult[] = [

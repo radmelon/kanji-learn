@@ -4,15 +4,15 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { eq, sql } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
-import { NudgeService } from '../../src/services/buddy/nudge.service'
+import { NudgeService, type BuddyNotifier } from '../../src/services/buddy/nudge.service'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
 
 const USER_A = '00000000-0000-0000-0000-0000000000b1'
 
-// Stub NotificationService — never fires real push in these tests.
-const stubNotifier = { sendBuddyNudgePush: async () => {} } as any
+// Stub notifier — never fires real push in these tests.
+const stubNotifier: BuddyNotifier = { sendBuddyNudgePush: async () => {} }
 
 beforeAll(async () => {
   await db.execute(sql`
