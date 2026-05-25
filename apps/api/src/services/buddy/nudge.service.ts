@@ -71,9 +71,8 @@ export class NudgeService {
     if (!isStreakMilestone(days)) return
 
     const expiresAt = new Date(Date.now() + STREAK_EXPIRY_DAYS * 86_400_000)
-    await this.db
-      .insert(buddyNudges)
-      .values({
+    try {
+      await this.db.insert(buddyNudges).values({
         userId,
         screen,
         nudgeType: 'streak',
@@ -86,14 +85,20 @@ export class NudgeService {
         generatedBy: 'template',
         socialFraming: false,
       })
-      .onConflictDoNothing()
+    } catch (err) {
+      // Migration 0025's partial unique index raises 23505 on duplicate.
+      // Drizzle's bare onConflictDoNothing() can't be used here: target
+      // requires a PgColumn ref, but our index target is an SQL expression
+      // (action_payload->>'milestone'). Swallow the unique violation; any
+      // other error propagates.
+      if ((err as { code?: string })?.code !== '23505') throw err
+    }
   }
 
   private async maybeInsertMeetBuddy(userId: string): Promise<void> {
     const expiresAt = new Date(Date.now() + MEET_BUDDY_EXPIRY_YEARS * 365 * 86_400_000)
-    await this.db
-      .insert(buddyNudges)
-      .values({
+    try {
+      await this.db.insert(buddyNudges).values({
         userId,
         screen: 'dashboard',
         nudgeType: 'encouragement',
@@ -106,7 +111,11 @@ export class NudgeService {
         generatedBy: 'template',
         socialFraming: false,
       })
-      .onConflictDoNothing()
+    } catch (err) {
+      // Same partial-index pattern as maybeInsertStreak. One MB row per user
+      // forever — the second attempt is the normal case after first launch.
+      if ((err as { code?: string })?.code !== '23505') throw err
+    }
   }
 
   /**
@@ -123,23 +132,30 @@ export class NudgeService {
     if (!isStreakMilestone(days)) return
 
     const expiresAt = new Date(Date.now() + STREAK_EXPIRY_DAYS * 86_400_000)
-    const inserted = await this.db
-      .insert(buddyNudges)
-      .values({
-        userId,
-        screen: 'dashboard',
-        nudgeType: 'streak',
-        content: streakContent(days),
-        actionType: 'dismiss',
-        actionPayload: { kind: 'streak_milestone', milestone: days },
-        priority: STREAK_PRIORITY,
-        deliveryTarget: 'all',
-        expiresAt,
-        generatedBy: 'template',
-        socialFraming: false,
-      })
-      .onConflictDoNothing()
-      .returning()
+    let inserted: Array<typeof buddyNudges.$inferSelect>
+    try {
+      inserted = await this.db
+        .insert(buddyNudges)
+        .values({
+          userId,
+          screen: 'dashboard',
+          nudgeType: 'streak',
+          content: streakContent(days),
+          actionType: 'dismiss',
+          actionPayload: { kind: 'streak_milestone', milestone: days },
+          priority: STREAK_PRIORITY,
+          deliveryTarget: 'all',
+          expiresAt,
+          generatedBy: 'template',
+          socialFraming: false,
+        })
+        .returning()
+    } catch (err) {
+      // Same 23505 swallow as maybeInsertStreak — duplicate means the
+      // milestone already fired (push too), so no-op.
+      if ((err as { code?: string })?.code !== '23505') throw err
+      return
+    }
 
     if (inserted.length > 0) {
       // @ts-expect-error - sendBuddyNudgePush is added in Phase 1' Task 6.
