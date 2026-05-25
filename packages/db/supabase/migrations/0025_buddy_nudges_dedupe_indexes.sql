@@ -9,6 +9,15 @@
 -- Dashboard and Study Ready are independent, each dismissable separately.
 --
 -- Meet Buddy is one row per user, forever — once dismissed, never returns.
+--
+-- NB on NULL semantics: Postgres treats NULLs as distinct for unique-index
+-- enforcement. The streak index keys on (action_payload->>'milestone'); if a
+-- streak row is ever inserted without a non-null `milestone` value in
+-- action_payload, the dedupe guarantee does NOT apply to that row. Callers
+-- that insert streak nudges MUST set action_payload->>'milestone' to a
+-- non-null value. Same applies to the meet_buddy WHERE clause's
+-- action_payload->>'kind' filter. The NudgeService in apps/api/src/services/
+-- buddy/nudge.service.ts is the only writer today and is built to this rule.
 
 BEGIN;
 
