@@ -35,10 +35,7 @@ export function MilestonesSection() {
   const isEmpty = core.length === 0 && grade.length === 0;
 
   return (
-    <View style={{ gap: 20, paddingVertical: 16 }}>
-      <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '700' }}>
-        Milestones
-      </Text>
+    <View style={{ gap: 20 }}>
       {isEmpty ? (
         <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
           Your first milestone awaits — start studying to earn your first badge.
