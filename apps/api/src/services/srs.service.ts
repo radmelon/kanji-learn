@@ -329,7 +329,8 @@ export class SrsService {
   async submitReview(
     userId: string,
     results: ReviewResult[],
-    studyTimeMs: number
+    studyTimeMs: number,
+    location?: { lat: number; lon: number; accuracy?: number }
   ): Promise<SessionSummary> {
     const sessionId = crypto.randomUUID()
     const now = new Date()
@@ -485,7 +486,7 @@ export class SrsService {
     // per-user frequency cap internally so heavy sessions don't thrash.
     setImmediate(async () => {
       try {
-        const newState = await this.learnerState.refreshState(userId)
+        const newState = await this.learnerState.refreshState(userId, { location })
         if (newState) {
           await this.nudgeService.maybeFireMilestoneNudges(userId, {
             currentStreakDays: newState.currentStreakDays,

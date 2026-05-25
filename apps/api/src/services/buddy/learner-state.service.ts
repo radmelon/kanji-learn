@@ -8,6 +8,13 @@ import {
 } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import { scaffoldForSignals, type ScaffoldLevel } from './constants'
+import {
+  detectCrossings,
+  hasPreDeployHistory,
+  computePerGradeBuckets,
+  computePerJlptBuckets,
+} from '../milestones'
+import { type MilestoneEntry, GRANDFATHERED } from '@kanji-learn/shared'
 
 // ─── Shared input/output types ───────────────────────────────────────────────
 
@@ -17,6 +24,7 @@ export interface RawLearnerInputs {
   longestStreakDays: number
   totalKanjiSeen: number
   totalKanjiBurned: number
+  totalKanjiRemembered: number
   reviewsLast7Days: number[] // length 7
   reviewsPrev7Days: number[] // length 7
   recentAccuracy: {
@@ -118,7 +126,10 @@ export class LearnerStateService {
    * ignore the return value; callers that want the value should call
    * `getState()` instead.
    */
-  async refreshState(userId: string): Promise<ComputedLearnerState | null> {
+  async refreshState(
+    userId: string,
+    opts?: { location?: { lat: number; lon: number; accuracy?: number } },
+  ): Promise<ComputedLearnerState | null> {
     const now = Date.now()
     const last = this.lastRefreshAt.get(userId) ?? 0
     if (now - last < LearnerStateService.CAP_WINDOW_MS) {
@@ -128,7 +139,49 @@ export class LearnerStateService {
 
     const raw = await this.loadRawInputs(userId)
     const computed = computeLearnerState(raw)
-    await this.persist(computed)
+
+    // ── Milestone detection ───────────────────────────────────────────────────
+    // Fetch the existing cache row's milestones (default to empty array).
+    const cacheRow = await this.db.query.learnerStateCache.findFirst({
+      where: eq(learnerStateCache.userId, userId),
+      columns: { recentMilestones: true },
+    })
+    const existing = (cacheRow?.recentMilestones ?? []) as unknown as MilestoneEntry[]
+
+    // Run per-grade and per-JLPT bucket queries in parallel.
+    const [perGrade, perJlpt] = await Promise.all([
+      computePerGradeBuckets(this.db, userId),
+      computePerJlptBuckets(this.db, userId),
+    ])
+
+    const proposed = detectCrossings({
+      counts: {
+        seen: computed.totalKanjiSeen,
+        remembered: raw.totalKanjiRemembered,
+        burned: computed.totalKanjiBurned,
+        streak: computed.currentStreakDays,
+      },
+      perGrade,
+      perJlpt,
+      existing,
+    })
+
+    // Grandfather path: on the very first refresh for a pre-deploy user,
+    // all crossed thresholds get the GRANDFATHERED sentinel instead of a
+    // real timestamp.
+    const isGrandfather = existing.length === 0 && await hasPreDeployHistory(this.db, userId)
+    const achievedAt = isGrandfather ? GRANDFATHERED : new Date().toISOString()
+
+    const newEntries: MilestoneEntry[] = proposed.map((p) => ({
+      ...p,
+      achievedAt,
+      ...(opts?.location ? { location: opts.location } : {}),
+    }))
+
+    const updatedMilestones: MilestoneEntry[] = [...existing, ...newEntries]
+    // ─────────────────────────────────────────────────────────────────────────
+
+    await this.persist(computed, updatedMilestones)
     return computed
   }
 
@@ -163,6 +216,7 @@ export class LearnerStateService {
     })
     const totalKanjiSeen = progress.filter((p) => p.status !== 'unseen').length
     const totalKanjiBurned = progress.filter((p) => p.status === 'burned').length
+    const totalKanjiRemembered = progress.filter((p) => p.status === 'remembered').length
 
     // 2. Recent review logs — cap at 500 so this query doesn't balloon for
     // heavy users; the computation only needs enough to cover accuracy,
@@ -236,6 +290,7 @@ export class LearnerStateService {
       longestStreakDays,
       totalKanjiSeen,
       totalKanjiBurned,
+      totalKanjiRemembered,
       reviewsLast7Days: pad(last7),
       reviewsPrev7Days: pad(prev7),
       recentAccuracy,
@@ -245,7 +300,7 @@ export class LearnerStateService {
     }
   }
 
-  private async persist(state: ComputedLearnerState): Promise<void> {
+  private async persist(state: ComputedLearnerState, milestones: MilestoneEntry[]): Promise<void> {
     const values = {
       userId: state.userId,
       currentStreakDays: state.currentStreakDays,
@@ -259,6 +314,7 @@ export class LearnerStateService {
       lastSessionAt: state.lastSessionAt,
       recentAccuracy: state.recentAccuracy,
       updatedAt: state.computedAt,
+      recentMilestones: milestones as unknown as typeof learnerStateCache.$inferInsert.recentMilestones,
     }
     await this.db
       .insert(learnerStateCache)
@@ -277,6 +333,7 @@ export class LearnerStateService {
           lastSessionAt: values.lastSessionAt,
           recentAccuracy: values.recentAccuracy,
           updatedAt: values.updatedAt,
+          recentMilestones: values.recentMilestones,
         },
       })
   }

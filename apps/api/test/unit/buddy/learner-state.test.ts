@@ -11,6 +11,7 @@ function baseInputs(overrides: Partial<RawLearnerInputs> = {}): RawLearnerInputs
     longestStreakDays: 5,
     totalKanjiSeen: 50,
     totalKanjiBurned: 10,
+    totalKanjiRemembered: 5,
     reviewsLast7Days: [8, 9, 10, 11, 12, 13, 14], // accelerating
     reviewsPrev7Days: [5, 5, 5, 5, 5, 5, 5],
     recentAccuracy: {

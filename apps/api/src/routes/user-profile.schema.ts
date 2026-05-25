@@ -9,4 +9,5 @@ export const updateProfileSchema = z.object({
   restDay: z.number().int().min(0).max(6).nullable().optional(),
   onboardingCompletedAt: z.coerce.date().optional(),
   showPitchAccent: z.boolean().optional(),
+  attachLocationToMilestones: z.boolean().optional(),
 })

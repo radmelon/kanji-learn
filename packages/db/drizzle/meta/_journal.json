@@ -85,6 +85,20 @@
       "when": 1776153600000,
       "tag": "0011_schema_drift_fix",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1748131200000,
+      "tag": "0012_kanji_grade_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1748131201000,
+      "tag": "0013_user_profile_attach_location",
+      "breakpoints": true
     }
   ]
 }

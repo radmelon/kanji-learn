@@ -1,7 +1,7 @@
 import { and, eq, gte, desc, sql, lte } from 'drizzle-orm'
-import { dailyStats, reviewLogs, reviewSessions, userKanjiProgress, kanji, writingAttempts, voiceAttempts, testResults } from '@kanji-learn/db'
+import { dailyStats, reviewLogs, reviewSessions, userKanjiProgress, kanji, writingAttempts, voiceAttempts, testResults, learnerStateCache } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
-import type { DailyStats, VelocityMetrics, JlptLevelProjection } from '@kanji-learn/shared'
+import type { DailyStats, VelocityMetrics, JlptLevelProjection, MilestoneEntry } from '@kanji-learn/shared'
 import {
   VELOCITY_DROP_THRESHOLD,
   PLATEAU_DAYS_THRESHOLD,
@@ -9,6 +9,7 @@ import {
   JLPT_LEVELS,
   JLPT_KANJI_COUNTS,
 } from '@kanji-learn/shared'
+import { computePerGradeBuckets } from './milestones'
 
 // Weighted confidence: Easy=3, Good=2, Hard=1, Again=0. Normalized 0–100.
 // quality 5/4/3/1 → weights 3/2/1/0. Quality 0 and 2 (legacy SM-2 edge cases) → 0.
@@ -248,7 +249,7 @@ export class AnalyticsService {
   // ── Full summary for dashboard ──────────────────────────────────────────────
 
   async getSummary(userId: string) {
-    const [velocity, confidence, confidenceByType, quizAccuracy, statusCounts, streakDays, recentStats, jlptProgress, writing, voice] =
+    const [velocity, confidence, confidenceByType, quizAccuracy, statusCounts, streakDays, recentStats, jlptProgress, writing, voice, perGradeBuckets, cacheRow] =
       await Promise.all([
         this.getVelocityMetrics(userId),
         this.getConfidenceRate(userId),
@@ -260,8 +261,14 @@ export class AnalyticsService {
         this.getJlptProgress(userId),
         this.getWritingStats(userId),
         this.getVoiceStats(userId),
+        computePerGradeBuckets(this.db, userId),
+        this.db.query.learnerStateCache.findFirst({
+          where: eq(learnerStateCache.userId, userId),
+          columns: { recentMilestones: true },
+        }),
       ])
 
+    const recentMilestones = (cacheRow?.recentMilestones ?? []) as unknown as MilestoneEntry[]
     const totalSeen = TOTAL_JOUYOU_KANJI - statusCounts.unseen
     const completionPct = Math.round((statusCounts.burned / TOTAL_JOUYOU_KANJI) * 100)
 
@@ -278,6 +285,8 @@ export class AnalyticsService {
       completionPct,
       writing,
       voice,
+      perGradeBuckets,
+      recentMilestones,
     }
   }
 

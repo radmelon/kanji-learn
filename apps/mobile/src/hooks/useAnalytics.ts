@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
 import { storage } from '../lib/storage'
-import type { DailyStats, VelocityMetrics } from '@kanji-learn/shared'
+import type { DailyStats, VelocityMetrics, MilestoneEntry, Grade, SrsBucketCounts } from '@kanji-learn/shared'
 
 const CACHE_KEY = 'kl:analytics_cache'
 
@@ -51,6 +51,8 @@ interface AnalyticsSummary {
     correctPct: number
     worstKanji: KanjiMissRow[]
   }
+  perGradeBuckets: Record<Grade, SrsBucketCounts>
+  recentMilestones: MilestoneEntry[]
 }
 
 export function useAnalytics() {
