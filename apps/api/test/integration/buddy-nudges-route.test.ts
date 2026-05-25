@@ -56,14 +56,17 @@ describe('GET /v1/buddy/nudges', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('returns an array (possibly empty) on valid auth', async () => {
+  it('returns { ok: true, data: [...] } envelope on valid auth', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/v1/buddy/nudges?screen=dashboard',
       headers: { 'x-test-user-id': USER_A },
     })
     expect(res.statusCode).toBe(200)
-    const body = res.json() as { data: unknown[] }
+    const body = res.json() as { ok: boolean; data: unknown[] }
+    // Mobile ApiClient throws on !json.ok — pinning the envelope here so a
+    // future "let me just send { data }" change can't silently break the app.
+    expect(body.ok).toBe(true)
     expect(Array.isArray(body.data)).toBe(true)
   })
 })

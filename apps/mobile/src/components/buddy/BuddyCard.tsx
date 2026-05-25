@@ -19,7 +19,7 @@ export function BuddyCard({ nudge, onDismiss }: BuddyCardProps) {
   return (
     <View
       style={styles.container}
-      accessibilityRole="text"
+      accessible
       accessibilityLabel={`Buddy says: ${nudge.content}`}
     >
       <View style={styles.avatar}>

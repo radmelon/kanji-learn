@@ -17,7 +17,9 @@ export async function buddyNudgesRoutes(server: FastifyInstance) {
 
     const userId = request.userId!
     const nudges = await server.nudgeService.evaluateNudgesForScreen(userId, parsed.data.screen)
-    return reply.send({ data: nudges })
+    // Mobile ApiClient unwraps json.data and throws on !json.ok — every
+    // success response in this codebase has shape { ok: true, data }.
+    return reply.send({ ok: true, data: nudges })
   })
 
   // POST /v1/buddy/nudges/:id/dismiss

@@ -8,6 +8,7 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 import { BuddyCard } from './BuddyCard'
 import { useBuddyNudges } from '../../hooks/useBuddyNudges'
+import { spacing } from '../../theme'
 import type { BuddyScreen } from '@kanji-learn/shared'
 
 interface BuddyCardStackProps {
@@ -30,7 +31,10 @@ export function BuddyCardStack({ screen }: BuddyCardStackProps) {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 8,
-    marginVertical: 8,
+    // width:'100%' so parents with alignItems:'center' (e.g. ReadyScreen)
+    // still get a full-bleed card matching the surrounding cards' bleed.
+    width: '100%',
+    gap: spacing.sm,
+    marginVertical: spacing.sm,
   },
 })
