@@ -1,4 +1,4 @@
-# Session Handoff — 2026-05-24 (Buddy v2 Refresh + Phase 0a shipped)
+# Session Handoff — 2026-05-24 (Buddy v2 Refresh + Phase 0a shipped + Phase 1' in progress)
 
 ## TL;DR (this session, 2026-05-24)
 
@@ -6,9 +6,15 @@
 
 **Refreshed phase ordering (constructivist-first):** Phase 0a (cleanup) → 1' (BuddyCard delivery) → 5 (Mnemonic Co-Creation) → 6 (Study Log) → 3 (Orchestration with R(t)) → 4 (Social) → 7a (Buddy onboarding). Spec 3 = Practice Loop intervention routing (lifted out of Buddy v2). Phase 2 (on-device LLM) deferred until cloud path is proven.
 
-**Phase 0a shipped — API-only, no migration, no mobile changes.** Wired the orphaned `LearnerStateService` into a post-`submitReview` refresh hook (fire-and-forget via `setImmediate`, 30s per-user frequency cap). Added daily Buddy metrics (structured-JSON log line at 03:05 UTC covering 24h `learner_state_cache` refreshes, `buddy_llm_telemetry` rows, `learner_timeline_events` rows). Deployed via `./scripts/deploy-api.sh` — op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED in 3:35. Operator did a real review on B135 TestFlight; `learner_state_cache` populated within seconds with sensible values (471 kanji seen, 3-day streak, buddy_mood=supportive). End-to-end behavior validated in production.
+**Phase 0a shipped — API-only, no migration, no mobile changes.** Wired the orphaned `LearnerStateService` into a post-`submitReview` refresh hook (fire-and-forget via `setImmediate`, 30s per-user frequency cap). Added daily Buddy metrics (structured-JSON log line at 03:05 UTC). Deployed; op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED in 3:35. Operator did a real review on B135 TestFlight; `learner_state_cache` populated within seconds with sensible values (471 kanji seen, 3-day streak, buddy_mood=supportive). End-to-end behavior validated in production.
 
-**Next creative work:** Phase 1' brainstorm — BuddyCard delivery skeleton. Settles surface placement (Dashboard / Study Ready / Progress), frequency cap discipline, template-vs-LLM enrichment, and whether to ship Watch nudges in Phase 1' (recommended: phone-only pending the deferred Watch refactor).
+**Phase 1' brainstormed + designed + planned — execution in progress.** Design at [`docs/superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md`](superpowers/specs/2026-05-24-buddy-phase-1-prime-design.md) (commit `26f9f4c`). Plan at [`docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`](superpowers/plans/2026-05-24-buddy-phase-1-prime.md) (commit `ead9164`). 15 tasks: 12 implementation (server + mobile) + 3 operator. Executing via `superpowers:subagent-driven-development` (fresh subagent per task, two-stage review). **2 of 15 done so far:**
+- Task 1 ✅ Migration 0025 — `buddy_nudges_streak_dedupe` + `buddy_nudges_meet_buddy_dedupe` partial unique indexes (commits `886e779`, `e5cc53b`)
+- Task 2 ✅ Content templates — `streak.ts` (9 milestone strings) + `meet-buddy.ts` (commits `2d46177`, `7ca6ebb`)
+
+Quality: code-review caught two real Minor findings — NULL-uniqueness footgun in the streak partial index (documented inline) and a stray curly apostrophe in Day 60 template (normalized).
+
+**Next creative work:** complete Phase 1' execution (Tasks 3-12 implementation + Tasks 13-15 operator). Then Phase 5 brainstorm — Contextual Mnemonic Co-Creation (the signature feature).
 
 ---
 
@@ -22,13 +28,16 @@
 
 ## Current state
 
-- **Branch:** `main` ahead of `origin/main` by 0 commits (pushed at end of session). Working tree: same housekeeping queue as prior session.
-- **Recent `main` history (today's session):** `3de48f3` (refresh doc) → `73b591f` (Watch deferral) → `5aaaaa1` (initial Phase 0a plan — superseded) → `571d439` (RLS amendment — also superseded) → `c577306` (refresh §2.4 correction) → `74b8047` (rewritten Phase 0a plan) → `18b6be7` (Task 1 findings) → `1807a72` (failing tests) → `efab7c3` (LearnerStateService wiring) → `aa96580` (daily Buddy metrics).
-- **Pushed to `origin/main`** ✅ — `origin/main` = `aa96580`.
-- **Live DB (Supabase ap-southeast-2):** no migration this session. Confirmed via direct SQL that all 16 Buddy/UKG tables exist (Phase 0 shipped via the drizzle track in April). Dual-write health verified: 726 `learner_knowledge_state` rows, 2062 `learner_timeline_events` rows, 80 `buddy_llm_telemetry` rows. Post-Phase 0a deploy: `learner_state_cache` populating live.
-- **API:** Deployed 2026-05-24. ECR digest `sha256:77b757b48424090acada90eab9156ae878508d8794d7503c15c078ee98406c30`. App Runner op `52099409c3d74f13bb81cb7a58885101` reported `SUCCEEDED` at 21:37 UTC. Smoke: `GET /v1/review/status` → 401 (route exists); `GET /` → 404 (Fastify default).
-- **TestFlight:** B135 still current — Phase 0a is API-only, no new build needed. The mobile app submits to `/v1/review/submit` the same as before; the server-side wiring is invisible to the client.
-- **Watch:** unchanged.
+- **Branch:** `main` ahead of `origin/main` by **the Phase 1' execution commits** (`886e779`, `e5cc53b`, `2d46177`, `7ca6ebb`, plus this HANDOFF update). Phase 1' execution-in-progress commits are local-only; will push at end of execution batch. Working tree: same housekeeping queue as prior session.
+- **Recent `main` history (today's session, in order):**
+  - **Phase 0a brainstorm + plan + execution:** `3de48f3` → `73b591f` → `5aaaaa1` → `571d439` → `c577306` → `74b8047` → `18b6be7` → `1807a72` → `efab7c3` → `aa96580` → `0bc519b`.
+  - **Phase 1' brainstorm + design + plan:** `26f9f4c` (design spec) → `ead9164` (implementation plan).
+  - **Phase 1' execution (local, not yet pushed):** `886e779` (T1 migration) → `e5cc53b` (T1 doc note) → `2d46177` (T2 templates) → `7ca6ebb` (T2 apostrophe fix).
+- **Pushed to `origin/main`** = `0bc519b` (end of Phase 0a closeout). Local-ahead by 4 Phase 1' commits + this HANDOFF.
+- **Live DB (Supabase ap-southeast-2):** no migration applied to live yet. **Phase 1' migration `0025_buddy_nudges_dedupe_indexes.sql` is committed locally (`886e779` + `e5cc53b`) and applied to the local test DB.** Will go to live as Task 13 of the plan (operator step). Phase 0a dual-write health unchanged: 726 / 2062 / 3 / 80 / 0 row counts at last verification.
+- **API:** Last deployed 2026-05-24 with Phase 0a content (ECR digest `77b757b...`, op `52099409c3d74f13bb81cb7a58885101` SUCCEEDED). Phase 1' API changes (NudgeService, routes, push integration) are local-only until Task 14 deploy.
+- **TestFlight:** B135 still current. Phase 1' will cut B136 as Task 14 of the plan once all server + mobile commits are in.
+- **Watch:** unchanged. Per refresh §6.3, deferred for complete reconceptualization in its own brainstorm.
 
 ---
 
