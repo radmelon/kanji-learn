@@ -79,7 +79,7 @@ Suggested orientation for the next agent:
 
 > "Phase 1' API+DB shipped to B136 (T15 walkthrough still owed). Milestones panel rework API+DB also shipped to live today — see HANDOFF.md TL;DR for full state including the `MILESTONES_DEPLOY_CUTOFF_ISO` env var. Mobile changes for milestones are NOT in TestFlight yet. Two jobs: (Track A) walk T15 on B136 per `docs/superpowers/plans/2026-05-24-buddy-phase-1-prime.md`; (Track B) cut B137 bundling Milestones UI + Profile location-opt-in toggle + B137 placement refinement + Velocity-card copy fix, then walk a milestones checklist (Progress tab badges + UpNext + date sheet, Profile toggle, optional location attached to a newly-earned milestone). Pick whichever the operator prefers to verify first; B137 cut takes ~30min EAS time so it can run in the background while T15 walkthrough proceeds. After both verifications, the next slice per the refresh doc §9 ordering is the Phase 5 brainstorm (Contextual Mnemonic Co-Creation)."
 
-Operator user_id (for the Supabase verification query): `b8503589-1695-4659-b69d-b9e77d1cf655` (display_name 'Buddy', email buddydennis@gmail.com).
+**Canonical operator test account (for Supabase verification queries):** `7c707446-a006-4be6-8c9e-6e1f207a76df` (display_name `RAD`, email `buddydennis@me.com`). This is the account RAD actually walks builds on. A second parallel account exists — `b8503589-1695-4659-b69d-b9e77d1cf655` (display_name `Buddy`, email `buddydennis@gmail.com`) — historically referenced in prior HANDOFFs but NOT the verification target. Always default to the RAD user_id unless explicitly told otherwise.
 
 **T15 checklist** (from the plan + final-review additions):
 1. Dashboard shows Meet Buddy card on first launch post-deploy
@@ -109,11 +109,11 @@ The B136 build supersedes B135 in TestFlight. The B135 systematic walkthrough wa
 - [ ] **Progress tab: no Buddy card visible** (placement is wired but no rules fire on Progress in v1)
 - [ ] If the operator is on a milestone-day streak: grade a card to complete a review session → watch for an Expo push notification ("Kanji Buddy" title, streak message body, with sound). Push fires exactly once per milestone — a second session same day does not re-fire.
 - [ ] No `[BuddyPush]` or `[Buddy post-submit]` warnings in App Runner logs during the walkthrough
-- [ ] Supabase SQL spot-check (operator user_id `b8503589-1695-4659-b69d-b9e77d1cf655`):
+- [ ] Supabase SQL spot-check (RAD user_id `7c707446-a006-4be6-8c9e-6e1f207a76df`):
   ```sql
-  SELECT id, user_id, screen, nudge_type, content, dismissed_at, push_delivered_at, created_at
+  SELECT id, user_id, screen, nudge_type, action_payload, dismissed_at, push_delivered_at, created_at
   FROM buddy_nudges
-  WHERE user_id = 'b8503589-1695-4659-b69d-b9e77d1cf655'
+  WHERE user_id = '7c707446-a006-4be6-8c9e-6e1f207a76df'
   ORDER BY created_at DESC LIMIT 10;
   ```
   Expected: Meet Buddy row + (if milestone) Dashboard + Study Ready streak rows; `push_delivered_at` set on the Dashboard streak row only.
