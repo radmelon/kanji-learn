@@ -307,6 +307,9 @@ export default function Dashboard() {
           {!isDrillLoading && <Ionicons name="arrow-forward" size={18} color={colors.textMuted} />}
         </TouchableOpacity>
 
+        {/* ── Buddy nudges ── */}
+        <BuddyCardStack screen="dashboard" />
+
         {isLoading && !summary ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xxl }} />
         ) : summary ? (
@@ -339,9 +342,6 @@ export default function Dashboard() {
               <Text style={styles.cardTitle}>Kanji Status</Text>
               <SrsStatusBar counts={summary.statusCounts} />
             </View>
-
-            {/* ── Buddy nudges ── */}
-            <BuddyCardStack screen="dashboard" />
 
             {/* ── Velocity ── */}
             <View style={styles.card}>
@@ -390,7 +390,7 @@ export default function Dashboard() {
                         })}
                       </Text>
                     ) : (
-                      <Text style={styles.milestoneDate}>Start burning kanji to see a projection</Text>
+                      <Text style={styles.milestoneDate}>Projection coming soon</Text>
                     )}
                   </View>
                 </View>
