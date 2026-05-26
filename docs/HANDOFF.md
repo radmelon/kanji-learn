@@ -1,6 +1,23 @@
-# Session Handoff — 2026-05-26 (B138 hot-fix in TestFlight — grandfather-location + stale-cache bugs; Milestones shipped end-to-end; T15 + B138 walkthroughs pending)
+# Session Handoff — 2026-05-26 (Softened silver rule shipped (API); B138 hot-fix in TestFlight; T15 + B138 walkthroughs + mobile rule sync pending)
 
-## TL;DR (this session, 2026-05-26 — third session, hot-fix B138 after walkthrough findings)
+## TL;DR (this session, 2026-05-26 — fourth slice: softened silver tier rule)
+
+**Silver tier rule softened to allow long-tail reviewing stragglers.** Walkthrough finding: Buddy's 78/79 N5 mastery (98.7%) earned ZERO JLPT recognition because one card (語, next-review 11 days out) was still in `reviewing` status. The strict `learning === 0 && reviewing === 0` silver rule treats a single straggler as a hard block. Softened to `learning === 0 && reviewing <= max(1, floor(total * 0.02)) && (remembered + burned) > 0` in [`packages/shared/src/milestones/tier-rules.ts`](../packages/shared/src/milestones/tier-rules.ts) (commit `7fe82c2`). Learning gate stays strict (cards being introduced don't count toward "done"). Bronze/gold unaffected.
+
+**Impact under live data (probed before patching):** exactly ONE new silver fires — **Buddy N5**. No existing silvers regress, no other account gains anything spurious. Probed via SQL over all 4 users + N1-N5 + G1-G9.
+
+**Rollout this slice:**
+- ✅ API deployed: op `c677b8b5ec6b4e3a98b89080c8a9775c` SUCCEEDED at ~2026-05-25 19:44 PT; image `sha256:c89367c6bed524e0c49e066672e748640bcb0d4e1984d2cf29dc00068c353ab6`. Smoke 200.
+- ✅ Buddy's N5 silver written directly via `tsx LearnerStateService.refreshState` (using the local patched code against `packages/db/.env` DATABASE_URL) — milestone count 14 → 15. Entry: `{type: jlpt_level, payload: {tier: silver, level: N5}, achievedAt: "2026-05-26T02:40:12.769Z"}`. Real timestamp (not grandfathered, since existing.length > 0). NO location field (Bug B fix held — opts.location wasn't supplied to this manual refresh).
+- 🚀 **Mobile (shared package) NOT yet rebuilt and shipped.** Per the bundling choice, deferred to the next mobile cut. Caveat: mobile's `computeUpNext` uses the old rule semantics from the cached shared bundle in B138 — Buddy may briefly see N5 silver in BOTH the badges row AND the "Up Next" list until B139 (or whenever the next EAS cut bundles the shared change). Cosmetic mismatch only; no data integrity issue.
+
+**Diagnostic pattern reinforced:** before changing a rule, run a SQL impact probe across ALL users to see who gains/loses — this caught that softening would only affect Buddy N5 (zero other deltas), validating the change as low-risk and well-targeted before patching.
+
+---
+
+## Earlier session — 2026-05-26 (B138 hot-fix in TestFlight — grandfather-location + stale-cache bugs)
+
+### TL;DR (2026-05-26 — third session, hot-fix B138 after walkthrough findings)
 
 **B138 hot-fix shipped to TestFlight.** During the B137 walkthrough on the RAD account (me.com, `7c707446…`), badges didn't appear despite the DB having 3 grandfathered milestones. Diagnosis caught two real bugs in the milestones rollout, both patched and shipped as B138:
 
@@ -301,6 +318,8 @@ Untracked items in the main checkout. Still need eyeball decisions:
 | ✅ | **Cut + submit B137 to TestFlight (Milestones mobile + Phase 1' refinement + Velocity copy)** | done 2026-05-26 — build `aa732953…`, submission `44850bda…`; Apple processing |
 | ✅ | **Deploy API for B138 hot-fix (grandfather location)** | done 2026-05-26, op `6d5fb02183884733894b60508557f22d` SUCCEEDED; image `sha256:7c6a7b49…` |
 | ✅ | **Cut + submit B138 to TestFlight (stale-cache + grandfather-location hot-fix)** | done 2026-05-26 — build `5fc58b14-6fed-4f74-bc27-54dd94617c56`, submission `af845507-d016-44b2-8e80-eb9e001c915c`; Apple processing |
+| ✅ | **Deploy API for softened silver rule** | done 2026-05-26, op `c677b8b5ec6b4e3a98b89080c8a9775c` SUCCEEDED; image `sha256:c89367c6…`. Buddy N5 silver written via direct refreshState; milestone count 14 → 15. |
+| 🚀 | **Mobile/shared cut bundling the softened silver rule** | bundle into next mobile EAS cut. Cosmetic mismatch until then (UpNext may double-show silvers). |
 | 🚀 | On-device walkthrough on B136 (Phase 1' + Spec 1 + Spec 1.5 combined) | T15 owed — see "On-device walkthrough" section above |
 | 🚀 | On-device walkthrough on B138 (Milestones rework + B137 refinements + B138 hot-fix) | B138 supersedes B137; once it lands, verify badges actually appear on first launch (no force-quit), and that a fresh review on Buddy/gmail account populates milestones WITHOUT location. Findings doc at `docs/superpowers/findings/2026-05-25-milestones-panel-rework.md` (combine with B137 refinements + B138 hot-fix verification). |
 | 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed |
