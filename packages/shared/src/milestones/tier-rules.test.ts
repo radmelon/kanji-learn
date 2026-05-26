@@ -8,10 +8,27 @@ describe('gradeTierRule', () => {
     expect(gradeTierRule({ learning: 0, reviewing: 0, remembered: 0, burned: 0 }, 'gold')).toBe(false);
   });
 
-  it('silver when learning + reviewing == 0 and (remembered + burned) > 0', () => {
+  it('silver requires learning==0, (remembered+burned)>0, and reviewing within long-tail tolerance', () => {
+    // Strict-clean: zero reviewing always silver-eligible.
     expect(gradeTierRule({ learning: 0, reviewing: 0, remembered: 3, burned: 2 }, 'silver')).toBe(true);
-    expect(gradeTierRule({ learning: 0, reviewing: 1, remembered: 3, burned: 2 }, 'silver')).toBe(false);
+    // learning > 0 always blocks silver (cards being introduced aren't "done").
     expect(gradeTierRule({ learning: 1, reviewing: 0, remembered: 3, burned: 2 }, 'silver')).toBe(false);
+  });
+
+  it('silver tolerance: tiny levels allow 1 reviewing card (max(1, 2%) floor)', () => {
+    // total=6, tolerance = max(1, floor(0.12)) = 1 → reviewing=1 allowed
+    expect(gradeTierRule({ learning: 0, reviewing: 1, remembered: 3, burned: 2 }, 'silver')).toBe(true);
+    // total=6, reviewing=2 exceeds tolerance → blocked
+    expect(gradeTierRule({ learning: 0, reviewing: 2, remembered: 2, burned: 2 }, 'silver')).toBe(false);
+  });
+
+  it('silver tolerance scales: ~2% of total reviewing cards allowed', () => {
+    // total=102, tolerance = max(1, floor(2.04)) = 2 → reviewing=2 allowed
+    expect(gradeTierRule({ learning: 0, reviewing: 2, remembered: 50, burned: 50 }, 'silver')).toBe(true);
+    // total=103, tolerance = max(1, floor(2.06)) = 2 → reviewing=3 blocked
+    expect(gradeTierRule({ learning: 0, reviewing: 3, remembered: 50, burned: 50 }, 'silver')).toBe(false);
+    // Real-world: Buddy's N5 — total=79, tolerance = max(1, floor(1.58)) = 1, reviewing=1 → silver
+    expect(gradeTierRule({ learning: 0, reviewing: 1, remembered: 6, burned: 72 }, 'silver')).toBe(true);
   });
 
   it('bronze requires learning==0 AND remembered>reviewing AND burned>remembered', () => {
