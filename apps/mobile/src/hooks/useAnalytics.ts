@@ -3,7 +3,12 @@ import { api } from '../lib/api'
 import { storage } from '../lib/storage'
 import type { DailyStats, VelocityMetrics, MilestoneEntry, Grade, SrsBucketCounts } from '@kanji-learn/shared'
 
-const CACHE_KEY = 'kl:analytics_cache'
+// v2 — bumped when the AnalyticsSummary shape changed in B137 (added
+// recentMilestones + perGradeBuckets). Pre-B137 caches lack those fields, and
+// the hook serves cache before the fresh fetch lands; if that fetch then fails
+// transiently the user sees the stale shape stuck. A new key auto-invalidates
+// all old caches on first run of B138.
+const CACHE_KEY = 'kl:analytics_cache_v2'
 
 interface KanjiMissRow {
   kanjiId: number

@@ -175,7 +175,10 @@ export class LearnerStateService {
     const newEntries: MilestoneEntry[] = proposed.map((p) => ({
       ...p,
       achievedAt,
-      ...(opts?.location ? { location: opts.location } : {}),
+      // Location only attaches to genuine new crossings, not the grandfather pass.
+      // Grandfather entries represent historical achievements; today's coordinates
+      // would be geographically meaningless on them.
+      ...(!isGrandfather && opts?.location ? { location: opts.location } : {}),
     }))
 
     const updatedMilestones: MilestoneEntry[] = [...existing, ...newEntries]
