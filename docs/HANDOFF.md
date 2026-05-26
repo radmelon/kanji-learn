@@ -1,6 +1,25 @@
-# Session Handoff — 2026-05-25 (Milestones panel rework shipped end-to-end + B137 in TestFlight; T15 + B137 walkthroughs pending)
+# Session Handoff — 2026-05-26 (B138 hot-fix in TestFlight — grandfather-location + stale-cache bugs; Milestones shipped end-to-end; T15 + B138 walkthroughs pending)
 
-## TL;DR (this session, 2026-05-25 — second session of the day)
+## TL;DR (this session, 2026-05-26 — third session, hot-fix B138 after walkthrough findings)
+
+**B138 hot-fix shipped to TestFlight.** During the B137 walkthrough on the RAD account (me.com, `7c707446…`), badges didn't appear despite the DB having 3 grandfathered milestones. Diagnosis caught two real bugs in the milestones rollout, both patched and shipped as B138:
+
+- **Bug A — stale analytics cache (mobile).** `useAnalytics` cache key `'kl:analytics_cache'` wasn't versioned. B137 added `recentMilestones` + `perGradeBuckets` to the response shape; existing users upgrading from B135/B136 get the OLD shape from local cache on first paint. The hook fetches fresh in background and overwrites — but if the fresh fetch transiently fails (network blip, expired token), the catch block leaves stale cache in place and MilestonesSection renders the "first milestone awaits" placeholder. RAD hit this; pull-to-refresh didn't unstick (silent fetch failure); force-quit + reopen did. Fix: bump key to `'kl:analytics_cache_v2'` in [`apps/mobile/src/hooks/useAnalytics.ts`](../apps/mobile/src/hooks/useAnalytics.ts). Auto-invalidates every stale cached blob on first run of B138.
+- **Bug B — grandfather location attachment (API).** [`LearnerStateService.refreshState`](../apps/api/src/services/buddy/learner-state.service.ts) was attaching the current device location to ALL newly-detected milestones, including those from the grandfather pass. Grandfather entries are historical; today's coordinates are geographically meaningless on them and may leak the user's location without the intent the opt-in toggle implies ("where I earned this *now*"). Fix: gate the location attachment by `!isGrandfather` at line 175-180.
+
+**Rollout this session (clean, no surprises):** API redeploy op `6d5fb02183884733894b60508557f22d` SUCCEEDED at ~2026-05-25 18:01 PT (image `sha256:7c6a7b495e6d041a457b2c68273e7675440987daa83a63d1f310b327c327a7aa`, no env-var change so single-deploy worked this time). B138 EAS build `5fc58b14-6fed-4f74-bc27-54dd94617c56` (buildNumber 137 → 138), submitted to TestFlight as submission `af845507-d016-44b2-8e80-eb9e001c915c`. Apple processing.
+
+**Data cleanup applied to RAD:** the 3 grandfather entries already in RAD's `learner_state_cache.recent_milestones` were polluted with location data from the bug. One-row UPDATE stripped the `location` field from any entry where `achievedAt = 'grandfathered'`. Verified post-update: entries now contain only `type`/`threshold`/`achievedAt`.
+
+**Buddy/gmail account still has zero milestones** in DB (its last refresh was 2026-05-25 16:20Z, PRE the milestones deploy at 23:40Z). To populate: submit one review on that account; the post-review `setImmediate` triggers `LearnerStateService.refreshState` which runs the new MilestoneDetector code and writes the grandfather entries — now without spurious location data thanks to Bug B's fix.
+
+**Diagnostic pattern worth remembering:** when mobile renders the empty state but DB has data, the bug is almost always either (a) the API response is missing the field, or (b) the local cache is masking it. To distinguish without a JWT: use `apps/api/node_modules/.bin/tsx` to run the service code directly against `packages/db/.env`'s DATABASE_URL — proves whether the API would return the expected shape. Used here to definitively rule out the API as the cause, pointing to mobile cache.
+
+---
+
+## Earlier session — 2026-05-25 (Milestones panel rework shipped end-to-end + B137 in TestFlight; T15 + B137 walkthroughs pending)
+
+### TL;DR (2026-05-25 — second session of the day)
 
 **Milestones panel rework is fully landed on `main`, on the live DB, and in the deployed API.** The 24-task `milestones-rework` branch (28 commits, +1807/-139 across 40 files) merged into `main` via `--no-ff` merge commit `52ff639`, drizzle migrations `0012_kanji_grade_idx.sql` and `0013_user_profile_attach_location.sql` applied via `psql -f` against live Supabase, API redeployed twice (op `4f7b21c40b1541898d9960ffb434b755` SUCCEEDED with the new image; op `2f536eedd4ce4f459e7fc8eb77236dd0` SUCCEEDED with `MILESTONES_DEPLOY_CUTOFF_ISO=2026-05-25T23:50:00Z` added to the runtime env vars). Smoke: `/health` 200, `/v1/buddy/nudges` 401. Pre-migration safety dump at `/tmp/buddy-milestones-safety/live-20260525-2329.sql` (5.8M; delete after 24h stability).
 
@@ -280,8 +299,10 @@ Untracked items in the main checkout. Still need eyeball decisions:
 | ✅ | **Apply drizzle migrations `0012` + `0013` (Milestones) to live DB** | done 2026-05-25; both verified present |
 | ✅ | **Deploy API for Milestones rework + set `MILESTONES_DEPLOY_CUTOFF_ISO`** | done 2026-05-25, ops `4f7b21c4…` then `2f536ee…` both SUCCEEDED; env var set to `2026-05-25T23:50:00Z` |
 | ✅ | **Cut + submit B137 to TestFlight (Milestones mobile + Phase 1' refinement + Velocity copy)** | done 2026-05-26 — build `aa732953…`, submission `44850bda…`; Apple processing |
+| ✅ | **Deploy API for B138 hot-fix (grandfather location)** | done 2026-05-26, op `6d5fb02183884733894b60508557f22d` SUCCEEDED; image `sha256:7c6a7b49…` |
+| ✅ | **Cut + submit B138 to TestFlight (stale-cache + grandfather-location hot-fix)** | done 2026-05-26 — build `5fc58b14-6fed-4f74-bc27-54dd94617c56`, submission `af845507-d016-44b2-8e80-eb9e001c915c`; Apple processing |
 | 🚀 | On-device walkthrough on B136 (Phase 1' + Spec 1 + Spec 1.5 combined) | T15 owed — see "On-device walkthrough" section above |
-| 🚀 | On-device walkthrough on B137 (Milestones rework + B137 refinements + Velocity copy) | owed once B137 finishes processing; findings doc at `docs/superpowers/findings/2026-05-25-milestones-panel-rework.md` (combine with B137 refinements verification) |
+| 🚀 | On-device walkthrough on B138 (Milestones rework + B137 refinements + B138 hot-fix) | B138 supersedes B137; once it lands, verify badges actually appear on first launch (no force-quit), and that a fresh review on Buddy/gmail account populates milestones WITHOUT location. Findings doc at `docs/superpowers/findings/2026-05-25-milestones-panel-rework.md` (combine with B137 refinements + B138 hot-fix verification). |
 | 🚀 | Secrets rotation + SSM Parameter Store migration | 7 keys still owed |
 | 🚀 | Migrate Supabase DB `ap-southeast-2` → `us-east-1` | Cross-region tax; dedicated session |
 | 🚀 | SES out of sandbox | Needed for tutor-share email at scale |
