@@ -2,6 +2,7 @@ export {
   selectActiveBadges,
   computeUpNext,
   formatAchievedAt,
+  milestoneFocusFromReasons,
   LADDERS,
   GRADE_BADGE_DISPLAY_CAP,
   nextStreakThreshold,
