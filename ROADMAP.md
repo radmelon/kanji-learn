@@ -2,6 +2,29 @@
 
 A phased development plan for all unimplemented enhancements. Grouped by impact and logical development order. Reference phases by number (e.g., "Phase 1, item 2") when starting work.
 
+> *Horizon planning. The authoritative "what's next this session" lives in `docs/HANDOFF.md`; current defects in `BUGS.md`.*
+
+---
+
+## Recently shipped (2026-05) — not yet reflected in the phase tables below
+
+- **FSRS-5 migration** (Spec 1.5, B135) — replaced SM-2 with hand-rolled FSRS-5
+  (migration `0024` + one-time replay). Surfaced the previously-unreachable
+  "burned" tier. The phase tables still say "SRS core"; the engine is FSRS now.
+- **Buddy Phase 1' nudges** (B136) — Meet Buddy + streak cards on Dashboard /
+  Study Ready, with Expo push on milestone-day streaks.
+- **Milestones Panel Refactor** (Phase 3 #13, B137; hot-fixed B138) — numeric /
+  JLPT / grade tier badges, Up Next, date sheet, grandfathering. Silver tier
+  rule later softened (API).
+- **Pitch accent (#16) + vocab-word speaking (#16b)** — shipped as part of the
+  Build 3-C / study-loop work.
+
+**Queued for the next mobile EAS cut** (B138 testing follow-ups — see BUGS.md):
+vocab voice reading uses kana not kanji (B-205); softened silver rule
+shared-package sync; milestones panel paints cached badges immediately (B-206);
+milestone badge-row scroll affordance (B-207). API-side session-minutes cap fix
+(B-209) is already deployed.
+
 ---
 
 ## Phase 0 — Security ✅ COMPLETE
@@ -70,8 +93,9 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 
 ---
 
-## Phase 3 — Learning Engine (M effort, strengthens SRS core)
+## Phase 3 — Learning Engine (M effort, strengthens the FSRS core)
 *Make the study loop smarter and give users deeper insight into their progress.*
+*(Scheduler is FSRS-5 as of Spec 1.5 — earlier "SRS core" wording predates that.)*
 
 | # | Enhancement | Impact | Backend | Status |
 |---|------------|--------|---------|--------|
@@ -79,7 +103,7 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 | 10 | Cram Mode | Med | No | Pending |
 | 11 | Grade Level Equivalent (Kyouiku Kanji) | Med | Yes | Pending |
 | 12 | Retention Rate Over Time Graph | Med | No | Pending |
-| 13 | Milestones Panel Refactor | Med | No | Pending |
+| 13 | Milestones Panel Refactor | Med | No | ✅ Done — shipped B137, hot-fixed B138 (see "Recently shipped" above) |
 
 **Why grouped:**
 - Leech detection first — highest-impact SRS improvement, informs the AI study plan later (Phase 6)
@@ -134,8 +158,8 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
 | 13 | Custom Study Session Builder | High | Yes | Pending |
 | 14 | Adaptive Daily Goal | Med | Yes | Pending |
 | 15 | Data Export (CSV / JSON) | Med | Yes | Pending |
-| 16 | Pitch Accent Indicator | Med | Yes | Pending |
-| 16b | Speaking: Vocab Words Instead of Single Kanji Readings | Med | Yes | Pending |
+| 16 | Pitch Accent Indicator | Med | Yes | ✅ Done (Build 3-C) |
+| 16b | Speaking: Vocab Words Instead of Single Kanji Readings | Med | Yes | ✅ Done (Build 3-C / Plan C) |
 
 **Why grouped:**
 - Custom session builder is the natural extension of leech mode + cram mode from Phase 3 — all three share "filtered study session" infrastructure

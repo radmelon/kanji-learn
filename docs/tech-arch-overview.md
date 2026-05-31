@@ -14,6 +14,8 @@ This is **not** an exhaustive code-tour. The goal is the level of detail a senio
 ## Sections
 
 - [Apple Watch](#apple-watch)
+- [Scheduling engine (FSRS-5)](#scheduling-engine-fsrs-5)
+- [Milestones](#milestones)
 - [Pedagogy](#pedagogy)
 
 ---
@@ -132,6 +134,127 @@ sequenceDiagram
 
 ---
 
+## Scheduling engine (FSRS-5)
+
+### Summary
+
+The spaced-repetition scheduler is **FSRS-5, hand-rolled**, living in
+`packages/shared/src/srs.ts` as pure functions that the API and mobile import
+verbatim so scheduling never drifts between optimistic-offline (mobile) and
+authoritative (server) computation. It **replaced SM-2** in Spec 1.5
+(2026-05-23): migration `0024` dropped the SM-2 columns
+(`ease_factor`/`interval`/`repetitions`) and added the FSRS columns
+(`stability`/`difficulty`/`lapses`/`total_reviews`); a one-time replay walked
+every user's `review_logs` to seed the new per-card state.
+
+> If you read older notes or code comments referring to SM-2, ease factor, or
+> growing-interval scheduling, they predate the FSRS migration. The scheduler is
+> FSRS now.
+
+### How it works
+
+Each review takes a quality grade (Again / Hard / Good / Easy). The engine
+maintains two per-card parameters and schedules from target retrievability:
+
+- **stability (S)** — roughly the number of days until retrievability decays to
+  90%. Grows on success; larger S ⇒ longer next interval. `status`
+  (`learning`/`reviewing`/`remembered`/`burned`) is derived from S thresholds
+  (`statusFromStability`).
+- **difficulty (D, 1–10)** — mean-reverts toward Good on each review.
+- **retrievability** R(t) = exp(ln(0.9) · elapsedDays / S) — drives the
+  `maybeSlipping` quiz-leg predicate. Because it operates on already-loaded card
+  state, it eliminated the old unbounded `reviewLogs` fetch that the queue used
+  to do per card.
+- A wrong answer (Again) increments `lapses` and drops stability.
+
+```
+learning ──> reviewing ──> remembered ──> burned
+```
+
+A side-effect confirmed on rollout: under SM-2 the "burned" tier was effectively
+unreachable (interval reset on every Hard/Again), so it sat empty despite months
+of use. After the FSRS replay, 174/742 cards (23%) correctly sit in burned.
+
+### Subtle state worth knowing
+
+- **Deliberate divergences from canonical FSRS-5** are documented inline in
+  `srs.ts` (exponential R, no linear damping, mean-reversion-toward-Good,
+  post-update D in `(11−D)`). First-review matches ts-fsrs to 8 decimals; later
+  reviews diverge ~20–28%. A fidelity sweep is parked (ROADMAP / BUGS) for if
+  per-user parameter fitting ever matters.
+- **`srsEaseFactor` footgun** — a field still named `srsEaseFactor` (API route +
+  mobile type) now carries FSRS `difficulty` (1–10 absolute), not an SM-2 ease
+  multiplier. Typed but unrendered; tracked in BUGS.md (B-202). Rename or drop.
+- **Session study-time** is a single client wall-clock (`studyStartMs` → session
+  end) that spans all loop legs; the server clamps only at a 60-minute ceiling
+  (the per-flashcard cap was removed — it undercounted multi-leg sessions; see
+  BUGS B-209).
+
+### Files of interest
+
+- `packages/shared/src/srs.ts` — FSRS-5 math: `calculateNextReview`,
+  `createNewCard`, `retrievability`, `statusFromStability`, `ratingFromQuality`.
+- `apps/api/src/services/srs.service.ts` — queue construction, `submitReview`
+  (batched dual-write), `maybeSlipping` predicate, `pickReviewType`.
+- `packages/db/supabase/migrations/0024_*.sql` — the SM-2 → FSRS schema swap.
+- `scripts/replay-srs-fsrs.mjs` — the one-time (idempotent) state replay.
+
+---
+
+## Milestones
+
+### Summary
+
+Earned badges shown on the Progress tab in three families — **numeric**
+(kanji seen / remembered / burned, streaks), **JLPT-level** (N5–N1, tiered),
+and **grade** (Kyōiku 1–9, tiered) — each with bronze/silver/gold tiers where
+applicable. Badges are **persisted**, not recomputed on the client: the detector
+writes them into `learner_state_cache.recent_milestones` (jsonb) and mobile
+renders that array.
+
+### How it works
+
+On each post-review `LearnerStateService.refreshState`, the milestone detector
+(`apps/api/src/services/milestones/`) recomputes per-grade and per-JLPT SRS
+bucket counts, applies the tier rules in
+`packages/shared/src/milestones/tier-rules.ts`, and appends any newly-crossed
+milestones to the cache with an `achievedAt` timestamp. Pre-deploy history is
+**grandfathered** (gated by the `MILESTONES_DEPLOY_CUTOFF_ISO` env var) so the
+rollout didn't fire a flood of "new" badges for existing users — grandfathered
+entries carry an `achievedAt` sentinel and render as earned-before-this-update.
+
+The analytics summary (`getSummary`) returns `recentMilestones` +
+`perGradeBuckets` + `jlptProgress`; the mobile `selectActiveBadges` /
+`computeUpNext` helpers (shared package) turn those into the badge rows and the
+"Up Next" list.
+
+### Subtle state worth knowing
+
+- **API ⇄ mobile version skew.** The shared package (tier rules, selection
+  helpers) is *bundled into the EAS build*. An API deploy that changes shared
+  logic — e.g. the softened silver tier rule — doesn't reach the app until the
+  next cut, producing transient cosmetic mismatches (a badge can show in both
+  the earned row and "Up Next" until the bundle catches up). This is the single
+  most common source of "the server and app disagree" milestone confusion.
+- **Cache-paint vs. fetch.** `useAnalytics` paints cached badges immediately then
+  refetches; a component that gates on `isLoading` instead of `!summary` will
+  show an empty panel until the (cross-region, slow) fetch returns (BUGS B-206).
+- **Tier rules.** Silver/gold for grade & JLPT delegate to `gradeTierRule`;
+  silver was softened to tolerate a small long-tail of still-`reviewing` cards
+  (`reviewing ≤ max(1, floor(total·0.02))`) so a single straggler doesn't block
+  recognition.
+
+### Files of interest
+
+- `packages/shared/src/milestones/tier-rules.ts` — bronze/silver/gold predicates.
+- `packages/shared/src/milestones/selection.ts` — `selectActiveBadges`, ordering.
+- `apps/api/src/services/milestones/` — detector + per-grade/per-JLPT queries.
+- `apps/api/src/services/buddy/learner-state.service.ts` — refresh + grandfather.
+- `apps/mobile/src/components/milestones/` — `MilestonesSection`, badge rows,
+  date sheet.
+
+---
+
 ## Pedagogy
 
 > **Status:** scaffold. This section captures the *learning and instruction principles* that drive Kanji Buddy's design, and how each principle is implemented in the codebase. It will be filled in across sessions as principles are made explicit. Cross-references point at the concrete file:line where a principle is encoded so the doc and the code stay synchronised.
@@ -151,7 +274,7 @@ Subsections to expand over time. Each will end with a "How it shows up" pointer 
 - **Multi-modal encoding** — the Study / Speaking / Writing split, and the explicit thesis that recognition + production + vocalisation each strengthen retention through different cognitive pathways. Implemented partially today (separate Study and Speaking tabs); fully realised by the planned **Three-Modality Learning Loop** (ROADMAP Phase 6 #23).
 - **Confidence over correctness** — graded recall (Again / Hard / Good / Easy) feeds a confidence metric distinct from raw accuracy. Already encoded in B121's weighted 3/2/1/0 scoring (see `apps/api/src/services/srs.service.ts`, plus the analytics confidence panels). The principle: a kanji you got "right with effort" is not the same as one you got "right easily," and the schedule should reflect that.
 - **Stage-aware prompt selection** — within a single `(user, kanji)` pair, the prompt type advances with mastery: meaning → reading → reading → compound. Encoded in `srs.service.ts` `pickReviewType(readingStage, status)`. Principle: don't drill the same surface forever; once a kanji is recognised, push the learner to produce its readings, then to integrate it with vocab.
-- **Spaced repetition with surprise checks** — the queue is overdue-first by `nextReviewAt`, with a small `~12%` "surprise burned" tier so retention is verified beyond 6-month intervals (rather than treating "burned" as a graveyard). Encoded in `getReviewQueue` (`srs.service.ts`).
+- **Spaced repetition with surprise checks** — scheduling is **FSRS-5** (see the [Scheduling engine](#scheduling-engine-fsrs-5) section; migrated from SM-2 in Spec 1.5). The queue is retrievability-driven, with a small `~12%` "surprise burned" tier so retention is verified beyond long intervals (rather than treating "burned" as a graveyard). Encoded in `getReviewQueue` (`srs.service.ts`).
 - **Motivation as first-class signal** — streaks, milestones, and the leaderboard exist to convert effort into observable rewards. The Milestones Panel Refactor (ROADMAP Phase 3 #13) is the clearest current articulation of how reward design serves pedagogy: replacement-rule badges focus attention on *progress*, not accumulation.
 - **Pedagogical lookup, not just drilling** — informed by reference works the owner used to learn (e.g. Hadamitzky-Spahn *Kanji & Kana*). The Kanji Browser, JIS / Nelson / Morohashi codes, and stroke-order data are deliberately surfaced so the app supports lookup-driven study, not only flashcard-driven study.
 - **Tutor channel as scaffolded support** — tutor sharing is not analytics-for-parents; it's a designed channel for an instructor to leave notes that the learner sees in their normal flow. The pedagogical bet is that occasional human input per week beats more app-time per day. Today's surface: `tutor-sharing.service.ts` + the report HTML the tutor sees + the notes the learner reads in-app.

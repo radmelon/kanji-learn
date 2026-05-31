@@ -6,6 +6,30 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-206) Milestones panel blank ~10–15s on entering Progress, then fills** — Found during B138 testing (2026-05-30, owner report). On opening the Progress tab the milestone badges area is empty for 10–15s, then populates. Root cause traced: `useAnalytics` deliberately paints the cached summary immediately (to avoid a loading flash), but `MilestonesSection` gates its render on `if (isLoading || !summary) return null` — and `isLoading` stays true until the network fetch completes, so the cached badges never get a chance to paint. The wait is the slow `/v1/analytics/summary` round-trip (see B-208).
+
+  **Fix:** in `apps/mobile/src/components/milestones/MilestonesSection.tsx` change the guard to `if (!summary) return null` (drop `isLoading`). Cached badges then paint instantly; fresh data swaps in silently. Mobile-only; queue for next EAS cut.
+
+  `[Effort: XS]` `[Impact: Med — looks broken on every Progress visit]` `[Status: 🐛 Active — fix identified, not yet applied]`
+
+- [ ] **(B-208) Progress-tab analytics summary is slow (~10–15s)** — `/v1/analytics/summary` (`AnalyticsService.getSummary`) fires ~12 aggregate queries in parallel against Supabase, which still lives in `ap-southeast-2` (Sydney) while the operator is in the US. Cross-region latency dominates. Surfaces as the visible symptom behind B-206.
+
+  **Fix:** the real fix is the **Supabase region migration to us-east-1** (already a pre-launch infra item in ROADMAP). B-206 hides the symptom in the meantime by painting cached data first.
+
+  `[Effort: L (region migration)]` `[Impact: Med]` `[Status: 🐛 Active — root cause is infra, see ROADMAP pre-launch]`
+
+- [ ] **(B-207) Milestone badge rows scroll horizontally with no affordance** — Found during B138 testing (2026-05-30). The earned-badge rows (`CoreBadgesRow`, `GradeBadgesRow`) are plain horizontal ScrollViews. The operator's JLPT N5 badge sat off-screen to the right and they only found it by chance-scrolling; a regular user won't. No edge fade / chevron / "more →" hint.
+
+  **Fix:** add a right-edge gradient/chevron when content overflows, and/or reorder so the highest-value badge (JLPT level) renders left-most. Filed as a spin-off task. Mobile-only; queue for next EAS cut.
+
+  **Affected files:** `apps/mobile/src/components/milestones/CoreBadgesRow.tsx`, `GradeBadgesRow.tsx`, `packages/shared/src/milestones/selection.ts` (ordering).
+
+  `[Effort: S]` `[Impact: Med — users miss earned JLPT/grade badges]` `[Status: 🐛 Active — filed as spawn task]`
+
+- [ ] **(B-202) `srsEaseFactor` field name carries FSRS difficulty, not SM-2 ease** — Post-FSRS-migration footgun. A field still named `srsEaseFactor` (in the kanji API route + the mobile type) now holds FSRS `difficulty` (1–10 absolute), not an SM-2 ease multiplier (1.3–2.5). It's typed but never rendered, so no user-visible bug — but it's a trap for the next reader. Either rename to `srsDifficulty` (coordinated API + mobile change) or drop entirely. From the Spec 1.5 follow-up list.
+
+  `[Effort: XS]` `[Impact: Low — naming trap, unrendered]` `[Status: 🐛 Active — cleanup]`
+
 - [ ] **TTS playback intermittently plays at very low volume despite system volume set high (speak icons on study cards, browse cards, kun/on rows, vocab, example sentences)** — Owner reports the speak function appears to have a *hidden volume control* independent of the device volume. Has been triggered accidentally on occasion; once in the low-volume state, all TTS (kun, on, vocab, sentence) is barely audible even at max iPhone/iPad system volume. Not reproducible on demand yet — appears latched state that persists across speak invocations until some undiscovered action resets it.
 
   **Suspected causes (to investigate):**
@@ -201,7 +225,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: 0 (verify only)]` `[Impact: High]` `[Status: ✅ Complete]`
 
-- [ ] **Study Time Timer Doesn't Pause When App Backgrounds** — The mobile review store records session study time as `Date.now() - studyStartMs`. If the user backgrounds the app mid-session and returns later to finish, the wall-clock difference includes all idle time. Observed a 29-review session that reported 16.8 hours of study time on one user. A server-side cap (30s/item, 60min hard max) was added in `srs.service.ts::submitReview` to protect the daily_stats rollup, but the mobile client should also pause the timer on `AppState` change to 'background' and resume on 'active'. Fix location: `apps/mobile/src/stores/review.store.ts` — wrap the timer in a pause/resume pattern keyed off `AppState`. Also wipe the elapsed time on session restore from offline queue.
+- [ ] **Study Time Timer Doesn't Pause When App Backgrounds** — The mobile review store records session study time as `Date.now() - studyStartMs`. If the user backgrounds the app mid-session and returns later to finish, the wall-clock difference includes all idle time. Observed a 29-review session that reported 16.8 hours of study time on one user. The mobile client should pause the timer on `AppState` change to 'background' and resume on 'active'. Fix location: `apps/mobile/src/stores/review.store.ts` — wrap the timer in a pause/resume pattern keyed off `AppState`. Also wipe the elapsed time on session restore from offline queue.
+
+  **Note (2026-05-30):** the server-side cap that previously protected the rollup was `30s/item × flashcard count` + a 60-min hard max. The per-item portion was **removed** (B-209) because it undercounted multi-leg Practice Loop sessions; only the 60-min hard ceiling remains as the runaway-clock guard. So this entry's client-side AppState pause is now the *primary* defense against background-idle inflation under 60 min — bumped in relevance.
 
   `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
 
@@ -299,6 +325,18 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 ---
 
 ## ✅ Fixed Bugs
+
+### (B-209) Session-complete minutes undercounted — excluded writing/speaking/quiz legs (2026-05-30)
+- **Symptom:** The "Time" stat on the Session Complete screen reflected only ~flashcard time, not the whole multi-leg session. Found during B138 testing.
+- **Root cause:** Not the client clock (which correctly spans all legs via a single `studyStartMs` → session-end wall-clock). It was a server-side anti-cheat cap in `apps/api/src/services/srs.service.ts::submitReview` that clamped `studyTimeMs` to `30s × results.length`, where `results` counts flashcard grades only. In the Practice Loop one flashcard grade fans out to writing/speaking/quiz legs that add real minutes but no extra `results` entries, so legitimate sessions were crushed to ~flashcard-only time. The capped server value overrides the (correct) client value on Session Complete.
+- **Fix:** dropped the per-item cap; kept the 60-minute hard ceiling as the runaway-clock guard (the daily minutes budget already bounds normal sessions). Commit `bf0f300` + regression tests `9014aed` (phase0-smoke). **API deployed** (op `f62eb461`); live now.
+- `[Effort: S]` `[Impact: Med — users saw wrong study-time]` `[Status: ✅ Fixed — deployed]`
+
+### (B-205) Vocab voice reading spoke the kanji surface form instead of the kana reading (2026-05-30)
+- **Symptom:** Tapping the speaker icon on a vocab word (e.g. 然り) pronounced it "zenri" instead of しかり. Found during B138 testing.
+- **Root cause:** The vocab speaker buttons passed `v.word` (the kanji surface form) to iOS `expo-speech`, which guesses the on-reading from raw kanji. The correct kana reading `v.reading` was on the same object (used for display) but unused for audio — the kun/on speaker buttons already correctly spoke kana.
+- **Fix:** speak `v.reading` at both call sites — `apps/mobile/src/components/study/KanjiCard.tsx` (study flashcard) and `apps/mobile/app/kanji/[id].tsx` (Browse detail). Commit `b170653`. **Mobile-only — committed, ships in the next EAS cut** (not in B138).
+- `[Effort: XS]` `[Impact: Med — wrong pronunciation undermines the speaking feature]` `[Status: ✅ Fixed in code — pending next EAS cut]`
 
 ### Multi-device push sends to only one device (B127, 2026-04-21)
 - **Symptom:** User signed in on iPhone + iPad received a "Bucky just studied" mate-alert on the iPad only. iPhone and paired Watch were silent. Root-caused 2026-04-21: single `user_profiles.push_token` column is last-write-wins; whichever device most recently registered overwrote the others.
