@@ -140,4 +140,27 @@ describe('Phase 0 smoke — end-to-end review submission', () => {
     expect(cacheRows.length).toBe(1)
     expect((cacheRows[0] as { seen: number }).seen).toBeGreaterThan(0)
   })
+
+  it('does not clamp a legitimate multi-leg loop session', async () => {
+    // The Practice Loop runs each kanji through flashcard → writing → speaking
+    // (→ quiz) legs, but only the flashcard grade appears in `results`. A single
+    // new kanji legitimately takes minutes across its legs. The old per-item cap
+    // (30s × results.length) clamped this down to ~flashcard-only time; with the
+    // per-item cap removed, the genuine wall-clock is preserved.
+    const result = await srs.submitReview(
+      TEST_USER,
+      [{ kanjiId: testKanjiId, quality: 4, responseTimeMs: 1100, reviewType: 'meaning' }],
+      3 * 60_000, // 3 minutes across all legs for a single flashcard grade
+    )
+    expect(result.studyTimeMs).toBe(3 * 60_000)
+  })
+
+  it('applies the 60-minute hard ceiling against a runaway client clock', async () => {
+    const result = await srs.submitReview(
+      TEST_USER,
+      [{ kanjiId: testKanjiId, quality: 4, responseTimeMs: 1100, reviewType: 'meaning' }],
+      9_999_999, // ~2.7 hours — e.g. app backgrounded with the timer running
+    )
+    expect(result.studyTimeMs).toBe(60 * 60_000)
+  })
 })
