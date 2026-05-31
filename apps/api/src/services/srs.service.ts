@@ -339,16 +339,17 @@ export class SrsService {
     let correctItems = 0
 
     // Cap study time per session to protect against client-side timer bugs
-    // (e.g. app backgrounded mid-session and clock kept running). Clamp to
-    // 30 seconds per reviewed item with a hard ceiling of 60 min. Legitimate
-    // study almost never exceeds ~10s/card; this cap only kicks in on outliers.
-    const MAX_MS_PER_ITEM = 30_000
+    // (e.g. app backgrounded mid-session and clock kept running). We clamp only
+    // at a 60-minute hard ceiling. We deliberately do NOT scale the cap by
+    // results.length: in the Practice Loop a single flashcard grade fans out to
+    // writing/speaking/quiz legs that add real minutes but no extra `results`
+    // entries, so a per-item cap (30s × flashcard count) would crush legitimate
+    // multi-leg sessions down to roughly flashcard-only time. The daily minutes
+    // budget already bounds normal sessions; the 60-min ceiling guards outliers.
     const MAX_SESSION_MS = 60 * 60_000 // 60 minutes
-    const perItemCap = Math.max(results.length, 1) * MAX_MS_PER_ITEM
-    const cap = Math.min(perItemCap, MAX_SESSION_MS)
-    if (studyTimeMs > cap) {
-      console.warn(`[srs.submitReview] capping studyTimeMs for userId=${userId}: ${studyTimeMs}ms → ${cap}ms (${results.length} items)`)
-      studyTimeMs = cap
+    if (studyTimeMs > MAX_SESSION_MS) {
+      console.warn(`[srs.submitReview] capping studyTimeMs for userId=${userId}: ${studyTimeMs}ms → ${MAX_SESSION_MS}ms (${results.length} items)`)
+      studyTimeMs = MAX_SESSION_MS
     }
 
     // Ensure user profile row exists (created on first review submission)
