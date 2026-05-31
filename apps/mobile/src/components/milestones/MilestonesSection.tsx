@@ -13,10 +13,14 @@ import { useAnalytics } from '../../hooks/useAnalytics';
 import { colors } from '../../theme';
 
 export function MilestonesSection() {
-  const { summary, isLoading } = useAnalytics();
+  const { summary } = useAnalytics();
   const [tapped, setTapped] = useState<MilestoneEntry | null>(null);
 
-  if (isLoading || !summary) return null;
+  // Render as soon as we have a summary — useAnalytics paints cached data
+  // immediately, so gating on isLoading would blank the panel until the
+  // (slow, cross-region) fetch returns. Cached badges show instantly; fresh
+  // data swaps in silently. (B-206)
+  if (!summary) return null;
 
   const recentMilestones = summary.recentMilestones ?? [];
   const counts = {
