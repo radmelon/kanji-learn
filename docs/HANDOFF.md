@@ -13,6 +13,28 @@ Two bugs reported from B138 testing, both root-caused (subagent fan-out + verifi
 - ✅ API deployed: op `f62eb461828c40129d34611e2a2e6fdc` SUCCEEDED 2026-05-31T00:33:51Z; image `sha256:71fb7e496ba0b4000ff5f12171b39ad964345f30c5a31e7f1afcca369428bf23`. Smoke: `/health` 200, `/v1/buddy/nudges` 401. Full suite 281/281 green.
 - 🚀 **Mobile (Bug 1) NOT yet in TestFlight** — bundle into the next EAS cut with the softened-silver-rule shared change. Until then, vocab TTS still says "zenri" on-device.
 
+## More B138 milestone findings (same session run, 2026-05-30/31)
+
+After the two fixes above, the operator continued the B138 milestone walkthrough. Findings (all logged in BUGS.md):
+
+- **JLPT badge "missing" → not a bug.** The N5 silver badge renders fine; it was just off-screen to the right in the horizontally-scrolling badges row. Surfaced a real **discoverability** issue (B-207): no scroll affordance, so users miss earned JLPT/grade badges. Filed as a spawn task; queue for next EAS cut.
+- **B-206 — milestones panel blank ~10–15s on entering Progress, then fills.** Root cause: `MilestonesSection` gates render on `if (isLoading || !summary)`, defeating the `useAnalytics` cache-paint (which is designed to show cached badges immediately). Fix identified (`if (!summary) return null`), **not yet applied** — mobile-only, queue for next EAS cut. The underlying slowness (B-208) is the cross-region Supabase (`ap-southeast-2`) analytics query (~12 parallel aggregates); real fix is the us-east-1 migration.
+
+**Queued for next mobile EAS cut (consolidated):**
+1. Vocab kana TTS — `b170653` (committed).
+2. Softened silver tier rule — shared-package sync so mobile matches the API.
+3. B-206 milestones cache-paint — `if (!summary) return null` (not yet applied).
+4. B-207 badge-row scroll affordance (not yet applied; spawn task filed).
+
+## Docs + housekeeping (same session run)
+
+- ✅ **Doc refresh** — commit `5988e26`. `docs/tech-arch-overview.md` gained a **Scheduling engine (FSRS-5)** section and a **Milestones** section (the doc still described SM-2; it's FSRS since Spec 1.5). `ROADMAP.md` got a "Recently shipped (2026-05)" block + marked #13/#16/#16b done. `BUGS.md` got B-202/B-205/B-206/B-207/B-208/B-209 entries.
+- ✅ **House-cleaning** — commit `c66f0ae`. Cleared the long-standing working-tree queue: branding art → `docs/branding/`; gitignored `apps/mobile/credentials.json` (EAS secrets), Lambda `*.zip`, Xcode `xcshareddata/`, `.claude/scheduled_tasks.lock`, and the stray `KanjiBuddyMonkey.html`/`_files` saved webpage; deleted orphan root `app.json`/`eas.json` + stray `tooclose.jpg`; committed the 7 historical `2026-04-*` plan docs, the pitch-contrast mockup, b134 checklist, and Open Brain notes. **Working tree is now clean.**
+
+**Session commit chain (oldest→newest):** `b170653` (vocab TTS) → `bf0f300` (study-time cap) → `9014aed` (cap tests) → `3f231a0` (handoff: B138 fixes) → `5988e26` (docs refresh) → `c66f0ae` (house-cleaning). All pushed; `main` in sync with `origin/main`.
+
+**Process note (env):** the Bash tool dropped output intermittently across this session — caused repeated probe commands and a couple of cancelled parallel batches (recovered each time). When it's flaky, run git/deploy steps strictly sequentially.
+
 **Process notes (for next time):** (1) A research subagent hallucinated a non-existent `srs.service.test.ts` with a `makeDb()` mock; the first "tests pass" was the pre-existing suite — the regression test never ran. Caught by checking the vitest `include` (`test/**/*.test.ts`) and `git status`; re-added the 2 cases to the real integration file `phase0-smoke.test.ts`. (2) `submitReview` requires `responseTimeMs` on each result (NOT NULL in `review_logs`) — the first test draft omitted it and tripped a 23502. (3) A force-push to amend an already-pushed commit was (correctly) auto-denied — landed the test fix as a forward commit instead. (4) Batching sequential git/deploy commands in one parallel block caused a cascade of cancellations when the first failed — run git/deploy strictly sequentially.
 
 ---
