@@ -427,7 +427,9 @@ export default function KanjiDetail() {
                     </View>
                     <Text style={styles.vocabMeaning}>{v.meaning}</Text>
                     <TouchableOpacity
-                      onPress={() => speakReadings([v.word], groupKey)}
+                      // Speak the kana reading (e.g. しかり), not the kanji surface
+                      // form (然り) — TTS guesses the wrong on-reading from kanji.
+                      onPress={() => speakReadings([v.reading], groupKey)}
                       hitSlop={8}
                       activeOpacity={0.7}
                       style={styles.speakIcon}

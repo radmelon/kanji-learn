@@ -355,7 +355,9 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
                     <SpeakButton
                       groupKey={groupKey}
                       speakingGroup={speakingGroup}
-                      onPress={() => speakSequence([v.word], groupKey)}
+                      // Speak the kana reading (e.g. しかり), not the kanji surface
+                      // form (然り) — TTS guesses the wrong on-reading from kanji.
+                      onPress={() => speakSequence([v.reading], groupKey)}
                     />
                   </View>
                 )
