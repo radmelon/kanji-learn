@@ -1,4 +1,4 @@
-import { ScrollView } from 'react-native';
+import { ScrollFadeRow } from './ScrollFadeRow';
 import { GradeBadge } from './GradeBadge';
 import type { MilestoneEntry } from '../../constants/milestones';
 
@@ -10,14 +10,10 @@ type Props = {
 export function GradeBadgesRow({ badges, onBadgePress }: Props) {
   if (badges.length === 0) return null;
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 12, paddingVertical: 4 }}
-    >
+    <ScrollFadeRow contentContainerStyle={{ gap: 12, paddingVertical: 4 }}>
       {badges.map((b, i) => (
         <GradeBadge key={`grade-${b.payload?.grade}-${b.payload?.tier}-${i}`} entry={b} onPress={onBadgePress} />
       ))}
-    </ScrollView>
+    </ScrollFadeRow>
   );
 }
