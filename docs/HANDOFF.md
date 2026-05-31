@@ -1,3 +1,31 @@
+# Session Handoff — 2026-05-31 (B138 walkthrough complete; B139 building on EAS — 6 mobile fixes; eas submit owed by operator)
+
+## TL;DR (2026-05-31 — B138 on-device walkthrough + B139 cut)
+
+**B138 walkthrough complete on the Buddy/gmail account (`b8503589…`), zero open defects.** All items passed: milestones first-launch/date-sheet/grandfathered (A1–A3), session-minutes now full multi-leg time (B5, the API cap fix verified on-device), Meet Buddy dismiss-persist (6), no Buddy card on Progress (8), integer interval (10), burned count (11). Items 7/9 (streak card + push) verified **as-designed**: the operator is on a 10-day streak, and 10 is on the *milestones badge* ladder `[3,7,10,14,21,…]` but NOT the *Buddy streak-card/push* ladder `[3,7,14,30,60,90,100,180,365]` — so no card/push at 10 is correct. `notifications_enabled=true` confirmed in DB, so the 14-day milestone will fire.
+
+**A4 (grandfather-location) verified clean in DB.** Buddy/gmail has 18 milestones; 3 carry a `location` field but all 3 are *genuinely-earned recent* crossings (streak 05-28, kanji_seen 05-30, streak 05-31) and the account has `attach_location_to_milestones=true` (opted in). Grandfathered entries with location = **0 of 14** — Bug B's fix ([learner-state.service.ts:181](../apps/api/src/services/buddy/learner-state.service.ts), `!isGrandfather && opts?.location`) holds exactly as designed.
+
+**New finding fixed during the walkthrough — flame/streak icon collision.** The Dashboard day-streak badge used `Ionicons "flame"` + "Streak 🔥", colliding with "burned" (the app's mastery term, which owns fire everywhere). Switched streak to lightning `flash` + "Streak ⚡" (commit `18086b6`), matching notification.service.ts which already used ⚡ for streaks.
+
+**B139 cut and building on EAS** — build `f32b3545-2dc0-4766-a657-cdfbbd94a695`, **on commit `f65d3e4`** (the corrected HEAD), buildNumber 138 → 139. Bundles SIX mobile fixes:
+| Fix | Commit |
+|---|---|
+| Vocab kana TTS (然り → しかり, not "zenri") | `b170653` |
+| Softened silver tier rule (shared-pkg sync to match live API) | `7fe82c2` |
+| Milestones cache-paint — no blank-on-entry (B-206) | `6487f38` |
+| Streak icon flame → lightning | `18086b6` |
+| Focus-aware badge ordering (B-207) | `621af1c` + re-export fix `f65d3e4` |
+| Badge-row scroll-fade affordance (spawned task) | `844d6a0` |
+
+(The API session-minutes cap fix `bf0f300` is already live server-side, not part of this cut.)
+
+**OWED BY OPERATOR: `eas submit`.** When EAS reports build `f32b3545` finished, run from `apps/mobile/`: `eas submit --platform ios --latest --non-interactive`. Then the agent records the EAS-bumped `ios.buildNumber` (138 → 139) in `app.json` via a chore commit. `app.json` was reverted to 138 after the canceled build so the next bump is clean.
+
+**Process lesson (cost a wasted build).** A `constants/milestones.ts` Edit silently failed ("File has not been read yet"), so the B-207 re-export barrel never gained `milestoneFocusFromReasons` — a TS2305 regression that would crash the Progress tab at runtime. It was committed (`621af1c`) and an EAS build (`1ef1fe08`) was kicked off **without running `pnpm --filter @kanji-learn/mobile typecheck` first**. Caught via `eas build:list` (build was on the broken commit), **canceled on EAS** (`eas build:cancel` — note: stopping the local CLI poller does NOT cancel the server-side build), barrel fixed, typecheck confirmed 0 errors as a gate, re-cut on `f65d3e4`. **Rules now: (1) always run the mobile typecheck to 0 errors BEFORE any EAS build; (2) verify each Edit actually applied — watch for "File has not been read yet".** Separately, the Bash tool dropped stdout intermittently all session (commands executed fine; output capture was the problem) — when flaky, run git/eas strictly sequentially, never batched in parallel.
+
+---
+
 # Session Handoff — 2026-05-30 (Two B138 testing bugs fixed: vocab TTS reading + session-minutes cap; API deployed, mobile fix pending next cut)
 
 ## TL;DR (this session, 2026-05-30 — two B138 walkthrough bugs)
