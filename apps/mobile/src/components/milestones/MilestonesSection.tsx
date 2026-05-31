@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import {
   selectActiveBadges,
   computeUpNext,
+  milestoneFocusFromReasons,
   type MilestoneEntry,
 } from '../../constants/milestones';
 import { CoreBadgesRow } from './CoreBadgesRow';
@@ -10,10 +11,12 @@ import { GradeBadgesRow } from './GradeBadgesRow';
 import { UpNextList } from './UpNextList';
 import { MilestoneDateSheet } from './MilestoneDateSheet';
 import { useAnalytics } from '../../hooks/useAnalytics';
+import { useLearnerProfile } from '../../hooks/useLearnerProfile';
 import { colors } from '../../theme';
 
 export function MilestonesSection() {
   const { summary } = useAnalytics();
+  const { learnerProfile } = useLearnerProfile();
   const [tapped, setTapped] = useState<MilestoneEntry | null>(null);
 
   // Render as soon as we have a summary — useAnalytics paints cached data
@@ -38,16 +41,28 @@ export function MilestonesSection() {
 
   const isEmpty = core.length === 0 && grade.length === 0;
 
+  // Lead with the badge family that matches the learner's onboarding focus:
+  // JLPT/Work-Business learners see the JLPT (core) row first; Heritage/Curiosity
+  // learners see the grade row first. JLPT wins ties; default JLPT. (B-207)
+  const focus = milestoneFocusFromReasons(learnerProfile?.reasonsForLearning ?? []);
+  const coreRow = <CoreBadgesRow badges={core} onBadgePress={setTapped} />;
+  const gradeRow = <GradeBadgesRow badges={grade} onBadgePress={setTapped} />;
+
   return (
     <View style={{ gap: 20 }}>
       {isEmpty ? (
         <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
           Your first milestone awaits — start studying to earn your first badge.
         </Text>
+      ) : focus === 'grade' ? (
+        <>
+          {gradeRow}
+          {coreRow}
+        </>
       ) : (
         <>
-          <CoreBadgesRow badges={core} onBadgePress={setTapped} />
-          <GradeBadgesRow badges={grade} onBadgePress={setTapped} />
+          {coreRow}
+          {gradeRow}
         </>
       )}
       <UpNextList entries={upNext} />

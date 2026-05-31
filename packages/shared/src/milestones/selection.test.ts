@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectActiveBadges, computeUpNext, formatAchievedAt } from './selection';
+import { selectActiveBadges, computeUpNext, formatAchievedAt, milestoneFocusFromReasons } from './selection';
 import { GRANDFATHERED, type MilestoneEntry } from './types';
 
 describe('selectActiveBadges', () => {
@@ -96,5 +96,38 @@ describe('formatAchievedAt', () => {
     const result = formatAchievedAt('2026-05-21T15:00:00Z');
     expect(result).toMatch(/^Earned /);
     expect(result).toMatch(/2026/);
+  });
+});
+
+describe('milestoneFocusFromReasons', () => {
+  it("returns 'jlpt' when reasons include JLPT exam", () => {
+    expect(milestoneFocusFromReasons(['JLPT exam'])).toBe('jlpt');
+  });
+
+  it("returns 'jlpt' when reasons include Work / Business", () => {
+    expect(milestoneFocusFromReasons(['Work / Business'])).toBe('jlpt');
+  });
+
+  it("returns 'grade' when reasons include Heritage", () => {
+    expect(milestoneFocusFromReasons(['Heritage'])).toBe('grade');
+  });
+
+  it("returns 'grade' when reasons include Curiosity", () => {
+    expect(milestoneFocusFromReasons(['Curiosity'])).toBe('grade');
+  });
+
+  it('JLPT wins ties when both groups are selected', () => {
+    expect(milestoneFocusFromReasons(['Heritage', 'JLPT exam'])).toBe('jlpt');
+    expect(milestoneFocusFromReasons(['Curiosity', 'Work / Business'])).toBe('jlpt');
+  });
+
+  it("defaults to 'jlpt' for empty or unrelated reasons", () => {
+    expect(milestoneFocusFromReasons([])).toBe('jlpt');
+    expect(milestoneFocusFromReasons(['Travel', 'Anime / Manga', 'Other'])).toBe('jlpt');
+  });
+
+  it('is tolerant of casing/whitespace variants', () => {
+    expect(milestoneFocusFromReasons(['  jlpt exam '])).toBe('jlpt');
+    expect(milestoneFocusFromReasons(['heritage'])).toBe('grade');
   });
 });

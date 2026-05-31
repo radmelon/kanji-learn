@@ -172,6 +172,30 @@ export function computeUpNext(input: UpNextInput): UpNextEntry[] {
   return out;
 }
 
+/**
+ * Which milestone family leads the badge display, derived from the learner's
+ * onboarding "reasons for learning" (free-ish chips: 'JLPT exam',
+ * 'Work / Business', 'Heritage', 'Curiosity', etc.).
+ *
+ * - reasons touching JLPT or work/business → 'jlpt' (lead with the JLPT badge)
+ * - else reasons touching heritage or curiosity → 'grade' (lead with grade badges)
+ * - JLPT wins ties (checked first); empty/unrelated defaults to 'jlpt'.
+ *
+ * Matching is case- and whitespace-insensitive substring so minor chip-label
+ * drift doesn't silently flip behavior.
+ */
+export type MilestoneFocus = 'jlpt' | 'grade';
+
+export function milestoneFocusFromReasons(reasons: string[]): MilestoneFocus {
+  const norm = (reasons ?? []).map(r => r.toLowerCase().trim());
+  const has = (needles: string[]) => norm.some(r => needles.some(n => r.includes(n)));
+
+  // JLPT checked first so it wins when both groups are present.
+  if (has(['jlpt', 'work', 'business'])) return 'jlpt';
+  if (has(['heritage', 'curiosity'])) return 'grade';
+  return 'jlpt';
+}
+
 export function formatAchievedAt(achievedAt: string): string {
   if (achievedAt === GRANDFATHERED) return 'Earned before this update';
   const d = new Date(achievedAt);
