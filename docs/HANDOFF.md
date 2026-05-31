@@ -1,3 +1,22 @@
+# Session Handoff — 2026-05-30 (Two B138 testing bugs fixed: vocab TTS reading + session-minutes cap; API deployed, mobile fix pending next cut)
+
+## TL;DR (this session, 2026-05-30 — two B138 walkthrough bugs)
+
+Two bugs reported from B138 testing, both root-caused (subagent fan-out + verified against code) and fixed:
+
+**Bug 1 — vocab voice reading wrong (mobile).** Tapping the speaker icon on a vocab word (e.g. 然り) fed the **kanji surface form** `v.word` to iOS TTS, which guessed the on-reading and said "zenri" instead of しかり. The correct kana reading `v.reading` sits on the same object (used for display) but wasn't used for audio — the kun/on speaker buttons already correctly speak kana. Fixed both call sites to speak `v.reading`: [`KanjiCard.tsx:358`](../apps/mobile/src/components/study/KanjiCard.tsx) (study flashcard) + [`kanji/[id].tsx:430`](../apps/mobile/app/kanji/[id].tsx) (Browse detail). Commit `b170653`. **Mobile-only — NOT yet in TestFlight; bundle into the next EAS cut** alongside the pending softened-silver-rule shared change.
+
+**Bug 2 — session minutes undercounted (API).** The Session Complete "Time" stat only reflected ~flashcard time, excluding writing/speaking/quiz legs. Root cause was NOT the client clock (which correctly spans all legs via a single `studyStartMs` → session-end wall-clock). It was a server-side anti-cheat cap in [`srs.service.ts:341`](../apps/api/src/services/srs.service.ts) that clamped `studyTimeMs` to `30s × results.length`, where `results` counts flashcard grades only. In the Practice Loop one flashcard grade fans out to writing/speaking/quiz legs that add real minutes but no extra `results` entries, so legitimate multi-leg sessions were crushed down to roughly flashcard-only time. The capped server value overrides the (correct) client value on Session Complete. Fix: dropped the per-item cap; kept the 60-minute hard ceiling as the runaway-clock guard (daily minutes budget already bounds normal sessions). Commit `bf0f300` + regression tests `9014aed` (2 cases in phase0-smoke: 3-min single-flashcard loop not clamped; 60-min ceiling still fires).
+
+**Rollout this slice:**
+- ✅ Both fixes committed to `main` and pushed (`b170653`, `bf0f300`, `9014aed`).
+- ✅ API deployed: op `f62eb461828c40129d34611e2a2e6fdc` SUCCEEDED 2026-05-31T00:33:51Z; image `sha256:71fb7e496ba0b4000ff5f12171b39ad964345f30c5a31e7f1afcca369428bf23`. Smoke: `/health` 200, `/v1/buddy/nudges` 401. Full suite 281/281 green.
+- 🚀 **Mobile (Bug 1) NOT yet in TestFlight** — bundle into the next EAS cut with the softened-silver-rule shared change. Until then, vocab TTS still says "zenri" on-device.
+
+**Process notes (for next time):** (1) A research subagent hallucinated a non-existent `srs.service.test.ts` with a `makeDb()` mock; the first "tests pass" was the pre-existing suite — the regression test never ran. Caught by checking the vitest `include` (`test/**/*.test.ts`) and `git status`; re-added the 2 cases to the real integration file `phase0-smoke.test.ts`. (2) `submitReview` requires `responseTimeMs` on each result (NOT NULL in `review_logs`) — the first test draft omitted it and tripped a 23502. (3) A force-push to amend an already-pushed commit was (correctly) auto-denied — landed the test fix as a forward commit instead. (4) Batching sequential git/deploy commands in one parallel block caused a cascade of cancellations when the first failed — run git/deploy strictly sequentially.
+
+---
+
 # Session Handoff — 2026-05-26 (Softened silver rule shipped (API); B138 hot-fix in TestFlight; T15 + B138 walkthroughs + mobile rule sync pending)
 
 ## TL;DR (this session, 2026-05-26 — fourth slice: softened silver tier rule)
