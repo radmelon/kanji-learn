@@ -67,4 +67,18 @@ apps/watch/**/DerivedData/
 apps/watch/**/*.xccheckout
 apps/watch/**/*.moved-aside
 apps/watch/**/build/
+apps/watch/**/xcshareddata/
 .worktrees/
+
+# ── Claude Code runtime ───────────────────────────────────────────────────────
+.claude/scheduled_tasks.lock
+
+# ── Build artifacts ───────────────────────────────────────────────────────────
+apps/lambda/**/*.zip
+
+# ── Local credentials (EAS / signing — never commit) ──────────────────────────
+apps/mobile/credentials.json
+
+# ── Saved-webpage scratch (local reference, not a project asset) ───────────────
+KanjiBuddyMonkey.html
+KanjiBuddyMonkey_files/

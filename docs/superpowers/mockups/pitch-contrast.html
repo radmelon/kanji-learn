@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Pitch overlay contrast — B125 vs B126</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      /* Theme tokens — copied verbatim from apps/mobile/src/theme/index.ts */
+      :root {
+        --bg:           #0F0F1A;
+        --bgCard:       #1A1A2E;
+        --bgElevated:   #16213E;
+        --accent:       #F4A261;
+        --textPrimary:  #F0F0F5;
+        --textSecondary:#A0A0B0;
+        --textMuted:    #6E6E8A;
+        --border:       #2A2A3E;
+        --success:      #10B981;
+        --error:        #EF4444;
+
+        /* System default for untouched text — this is what B125 actually gets */
+        --rnDefault:    #000000;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans", sans-serif;
+        background: var(--bg);
+        color: var(--textPrimary);
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-weight: 600;
+        font-size: 20px;
+      }
+      .sub {
+        margin: 0 0 24px;
+        color: var(--textMuted);
+        font-size: 13px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .panel {
+        background: var(--bgCard);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 16px;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 12px;
+      }
+
+      .panel-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--textSecondary);
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+      }
+
+      .panel-tag {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 999px;
+        letter-spacing: 0.4px;
+      }
+      .panel-tag.broken { background: rgba(239,68,68,0.15); color: var(--error); border: 1px solid var(--error); }
+      .panel-tag.fixed  { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid var(--success); }
+
+      /* Vocab row layout — approximates apps/mobile/src/components/study/KanjiCard.tsx reveal panel */
+      .vocab-row {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 8px 0;
+      }
+      .vocab-row + .vocab-row {
+        border-top: 1px solid var(--border);
+      }
+      .vocab-word {
+        color: var(--textPrimary);
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .vocab-meaning {
+        color: var(--textMuted);
+        font-size: 13px;
+        font-style: italic;
+      }
+      .vocab-bracket {
+        color: var(--textSecondary);
+        font-size: 15px;
+      }
+
+      /* Pitch overlay — approximates PitchAccentReading with per-mora spans */
+      .pitch {
+        display: inline-flex;
+        align-items: flex-end;
+        letter-spacing: 1px;
+      }
+      .mora {
+        position: relative;
+        font-size: 15px;
+        line-height: 22px;
+        padding: 0 1px;
+      }
+      .mora.high {
+        border-top: 2px solid var(--accent);
+      }
+      .mora.drop::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: -3px;
+        width: 6px;
+        height: 6px;
+        border-right: 2px solid var(--accent);
+        border-bottom: 2px solid var(--accent);
+      }
+
+      /* B125 (broken) — no explicit colour, falls to system black (invisible on dark bg) */
+      .broken .mora { color: var(--rnDefault); }
+
+      /* B126 (fixed) — explicit textPrimary, WCAG AA */
+      .fixed .mora { color: var(--textPrimary); }
+
+      /* Size variants */
+      .size-label {
+        margin-top: 16px;
+        margin-bottom: 6px;
+        font-size: 11px;
+        color: var(--textMuted);
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+      }
+      .size-large .mora   { font-size: 22px; line-height: 30px; padding: 0 2px; }
+      .size-medium .mora  { font-size: 16px; line-height: 22px; padding: 0 1px; }
+      .size-small .mora   { font-size: 13px; line-height: 18px; padding: 0 1px; }
+
+      .contrast-meta {
+        margin-top: 20px;
+        padding: 12px;
+        background: var(--bgElevated);
+        border-radius: 12px;
+        font-size: 12px;
+        color: var(--textSecondary);
+        line-height: 1.5;
+      }
+      .contrast-meta b { color: var(--textPrimary); }
+      .contrast-meta code { color: var(--accent); font-family: "SF Mono", Menlo, monospace; }
+
+      .legend {
+        margin-top: 18px;
+        padding: 10px 12px;
+        border: 1px dashed var(--border);
+        border-radius: 10px;
+        font-size: 12px;
+        color: var(--textMuted);
+        line-height: 1.5;
+      }
+      .legend b { color: var(--textSecondary); }
+    </style>
+  </head>
+  <body>
+    <h1>Pitch-overlay contrast — B125 vs B126</h1>
+    <p class="sub">
+      Both panels use the real mobile theme (<code style="color:var(--accent)">bgCard #1A1A2E</code>). Left panel shows what ships in B125 today — <code style="color:var(--error)">PitchAccentReading</code> had no explicit text colour, so RN defaulted to black. Right panel shows the B126 fix (<code style="color:var(--accent)">colors.textPrimary #F0F0F5</code>, ~15.5:1 on bgCard).
+    </p>
+
+    <div class="grid">
+
+      <!-- LEFT: B125 (broken) -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">B125 (current)</span>
+          <span class="panel-tag broken">BROKEN</span>
+        </div>
+
+        <div class="size-label">Study-card reveal (size: small, 13pt)</div>
+        <div class="broken">
+          <div class="vocab-row">
+            <span class="vocab-word">息子</span>
+            <span class="vocab-bracket">【</span>
+            <span class="pitch size-small"><span class="mora high drop">む</span><span class="mora">す</span><span class="mora">こ</span></span>
+            <span class="vocab-bracket">】</span>
+            <span class="vocab-meaning">son</span>
+          </div>
+          <div class="vocab-row">
+            <span class="vocab-word">紙</span>
+            <span class="vocab-bracket">【</span>
+            <span class="pitch size-small"><span class="mora high drop">か</span><span class="mora">み</span></span>
+            <span class="vocab-bracket">】</span>
+            <span class="vocab-meaning">paper</span>
+          </div>
+        </div>
+
+        <div class="size-label">Kanji details page (size: small, 13pt)</div>
+        <div class="broken">
+          <div class="vocab-row">
+            <span class="vocab-word">感動</span>
+            <span class="pitch size-small"><span class="mora">か</span><span class="mora high">ん</span><span class="mora high">ど</span><span class="mora high">う</span></span>
+            <span class="vocab-meaning">emotion · being moved</span>
+          </div>
+        </div>
+
+        <div class="size-label">Voice tab vocab prompt (size: large, 22pt)</div>
+        <div class="broken" style="text-align:center; padding: 12px 0;">
+          <div style="font-size: 48px; color: var(--textPrimary); font-weight: 300; letter-spacing: -2px;">感動</div>
+          <div class="pitch size-large" style="justify-content:center; margin-top:6px;">
+            <span class="mora">か</span><span class="mora high">ん</span><span class="mora high">ど</span><span class="mora high">う</span>
+          </div>
+          <div style="margin-top:6px; font-size: 14px; color: var(--textSecondary);">Say this word</div>
+          <div style="margin-top:2px; font-size: 14px; color: var(--textMuted);">(かんどう)</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: B126 (fixed) -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">B126 (fixed)</span>
+          <span class="panel-tag fixed">WCAG AA</span>
+        </div>
+
+        <div class="size-label">Study-card reveal (size: small, 13pt)</div>
+        <div class="fixed">
+          <div class="vocab-row">
+            <span class="vocab-word">息子</span>
+            <span class="vocab-bracket">【</span>
+            <span class="pitch size-small"><span class="mora high drop">む</span><span class="mora">す</span><span class="mora">こ</span></span>
+            <span class="vocab-bracket">】</span>
+            <span class="vocab-meaning">son</span>
+          </div>
+          <div class="vocab-row">
+            <span class="vocab-word">紙</span>
+            <span class="vocab-bracket">【</span>
+            <span class="pitch size-small"><span class="mora high drop">か</span><span class="mora">み</span></span>
+            <span class="vocab-bracket">】</span>
+            <span class="vocab-meaning">paper</span>
+          </div>
+        </div>
+
+        <div class="size-label">Kanji details page (size: small, 13pt)</div>
+        <div class="fixed">
+          <div class="vocab-row">
+            <span class="vocab-word">感動</span>
+            <span class="pitch size-small"><span class="mora">か</span><span class="mora high">ん</span><span class="mora high">ど</span><span class="mora high">う</span></span>
+            <span class="vocab-meaning">emotion · being moved</span>
+          </div>
+        </div>
+
+        <div class="size-label">Voice tab vocab prompt (size: large, 22pt)</div>
+        <div class="fixed" style="text-align:center; padding: 12px 0;">
+          <div style="font-size: 48px; color: var(--textPrimary); font-weight: 300; letter-spacing: -2px;">感動</div>
+          <div class="pitch size-large" style="justify-content:center; margin-top:6px;">
+            <span class="mora">か</span><span class="mora high">ん</span><span class="mora high">ど</span><span class="mora high">う</span>
+          </div>
+          <div style="margin-top:6px; font-size: 14px; color: var(--textSecondary);">Say this word</div>
+          <div style="margin-top:2px; font-size: 14px; color: var(--textMuted);">(かんどう)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="contrast-meta">
+      <b>Contrast math:</b>
+      <code>#F0F0F5</code> (textPrimary) on <code>#1A1A2E</code> (bgCard) ≈ <b>15.5 : 1</b> — well above WCAG 2.1 AA's 4.5:1 threshold for normal text.<br />
+      <code>#F4A261</code> (accent overline + drop hook) on <code>#1A1A2E</code> ≈ <b>7.9 : 1</b> — passes AA for graphical UI (3:1) and even AA for text (4.5:1).
+    </div>
+
+    <div class="legend">
+      <b>Legend:</b>
+      Overline on a mora = high pitch for that mora.
+      Small amber hook at the trailing edge of a high mora = pitch drop to the next mora (e.g. <code style="color:var(--accent)">atamadaka</code>: 息子 むすこ pattern [1,0,0] → high on む, drop after, low on すこ).
+      <br /><br />
+      <i>Note: this HTML is an approximation — the real React Native component uses <code style="color:var(--accent)">borderTopWidth: 2</code> and an absolutely-positioned drop <code style="color:var(--accent)">&lt;View&gt;</code>. Spacing on iOS will be slightly tighter than what you see here due to native font metrics, but contrast behaviour is identical (same hex values).</i>
+    </div>
+  </body>
+</html>
