@@ -166,7 +166,7 @@ const INFO_LEADERBOARD: InfoSection[] = [
     body: 'Total kanji burned (mastered). A kanji is burned when the SRS interval reaches ~6 months — meaning your brain has proven it can recall the character from genuine long-term memory, not just recent study. This is the highest-quality signal on the leaderboard and can\'t be faked; it takes months of correct answers.',
   },
   {
-    title: 'Streak 🔥',
+    title: 'Streak ⚡',
     body: 'Consecutive days with at least one SRS review session completed. Long streaks signal habit formation — the strongest single predictor of reaching fluency in a foreign language.',
   },
   {
@@ -256,7 +256,8 @@ export default function Dashboard() {
             <Text style={styles.name}>{displayName}</Text>
           </View>
           <View style={styles.streakBadge}>
-            <Ionicons name="flame" size={18} color={colors.accent} />
+            {/* Lightning, not flame — flame is reserved for "burned" (mastery). */}
+            <Ionicons name="flash" size={18} color={colors.accent} />
             <Text style={styles.streakText}>
               {summary?.streakDays ?? 0}
             </Text>
