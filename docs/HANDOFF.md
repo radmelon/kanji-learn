@@ -1,4 +1,15 @@
-# Session Handoff — 2026-05-31 (B138 walkthrough complete; B139 shipped to TestFlight — 6 mobile fixes; Apple processing)
+# Session Handoff — 2026-05-31 (B139 shipped to TestFlight; B139 feedback fixes queued for B140)
+
+## B139 on-device feedback (2026-05-31) → fixes queued for B140
+
+Operator walked B139 on the Buddy/gmail account. Results:
+- ✅ **#3 milestones cache-paint (B-206)** — confirmed: "much faster, badges appeared instantly."
+- ⚠️ **#4 streak flame still on Progress page** — the flame→⚡ swap (`18086b6`) only fixed the *Dashboard* streak badge; a SECOND "Day streak" HeroStat on the Progress page still used `icon="flame"` (and Progress is where the operator looked). **Fixed** `a6434ff`: Progress HeroStat → `flash`. Grep confirms zero streak-flames remain anywhere; fire is now exclusive to "burned"/mastery.
+- ⚠️ **#6 badge scroll-fade too subtle** — the first-pass fade dissolved toward the card surface (`colors.bgCard`), so it barely registered ("I was looking for it and barely noticed"). **Reworked** `a6434ff`: `ScrollFadeRow` now fades toward the darker app bg (`colors.bg`) at higher opacity + wider 44px edge, PLUS a high-contrast tappable chevron pill on each overflow edge (pages ~80% viewport). Pure `computeFadeEdges` logic unchanged (7 jest tests still pass); only visual rendering changed.
+
+**🚀 Queued for B140 (committed `a6434ff`, NOT yet built):** Progress streak flame→⚡, and the stronger badge scroll cue (chevron + fade). Mobile-only. Per operator: commit-now, bundle into the next EAS cut (alongside whatever Phase 5 / other work lands) — no immediate build to avoid a near-back-to-back cut after B139. When cut, re-verify #4 and #6 on-device.
+
+---
 
 ## TL;DR (2026-05-31 — B138 on-device walkthrough + B139 cut)
 
