@@ -234,7 +234,7 @@ export default function ProgressScreen() {
             {/* Streak + completion hero */}
             <View style={styles.heroRow}>
               <HeroStat
-                icon="flame"
+                icon="flash"
                 iconColor={colors.accent}
                 value={`${summary.streakDays}`}
                 label="Day streak"
