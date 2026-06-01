@@ -1,3 +1,27 @@
+# Session Handoff — 2026-05-31 (Phase 5 Contextual Mnemonic Co-Creation: brainstormed → spec'd → Plan 1/4 foundation MERGED to main; B140 held)
+
+## TL;DR (2026-05-31 — Phase 5 designed end-to-end; foundation shipped to `main`)
+
+**Phase 5 (Contextual Mnemonic Co-Creation — the signature feature) brainstormed, spec'd, and Plan 1 of 4 implemented + merged.**
+- **Spec:** [`docs/superpowers/specs/2026-05-31-phase-5-mnemonic-cocreation-design.md`](superpowers/specs/2026-05-31-phase-5-mnemonic-cocreation-design.md) (16 sections, committed).
+- **Plan 1 (Foundation):** [`docs/superpowers/plans/2026-05-31-phase-5-foundation.md`](superpowers/plans/2026-05-31-phase-5-foundation.md) — 7 TDD tasks executed **subagent-driven** (per-task spec + code-quality review), **merged to `main` as merge commit `d78ad1f`**. Adds pure logic in `packages/shared/src/mnemonics/`: types, cadence (EMA effectiveness + deepen gate), trigger (hybrid single-worst), distractors, radical-dictionary (20-entry seed + coverage gate), template assembler. **82 shared tests green; shared + mobile typecheck 0 errors** (verified on the merged result).
+
+**Key locked decisions** (full rationale in the spec):
+- Entry: end-of-session **"Buddy moment"**, ONE action/session (reinforce > create); manual "Build a hook"/"Go deeper" from kanji detail.
+- Trigger: hybrid — single worst kanji that slipped today **AND** has ≥3 lifetime lapses.
+- Assembly cascade: **cloud (Anthropic) → on-device (Apple Foundation Models) → template**. **CLOUD-FIRST during the testing phase** (operator absorbs cost); **BYOK-gated before launch** (see pre-launch checklist below). BYOK UI = pre-launch slice, not v1.
+- Reinforce: full loop, end-of-session, recall mnemonic→kanji, 👍/👎; **deepen (additive layers), never discard**.
+- New **story→kanji `mnemonic_recall` quiz** first-tests a fresh hook (immediate quick-check + early item next session).
+- Old mnemonic system superseded; all pre-Phase-5 `mnemonics` rows discarded behind a safety dump (in Plan 2).
+
+**Only device-visible change from this session = the radical-name relabel.** Mobile `RADICAL_NAMES` now derives from the shared dictionary (shared wins → precise 部首名: **人 'hito' / 水 'mizu' standalone vs 亻 'ninben' / 氵 'sanzui' variants**) — an operator-approved correctness change visible in Browse / KanjiCard / kanji-detail. The co-creation feature itself has **NO UI yet** (foundation is not wired up; that's Plans 3–4).
+
+**🛑 B140: HELD on purpose — do NOT cut a build for this session's work alone.** Nothing co-creation-related is on-device-testable yet (foundation is dead code until Plans 3–4), B139 still owes its on-device walkthrough, and EAS just cleared a 5h outage. When B140 *is* eventually cut it should bundle: the queued `a6434ff` fixes (Progress flame→⚡, badge scroll cue) **+** the radical-name relabel (re-verify radical labels in Browse/KanjiCard) **+** ideally **Plan 3's first co-creation UI** so the cut delivers something walkable. Per the bundling rule, flag the ~$2 cost before cutting.
+
+**Plans 2–4 outstanding** (each needs its own file-level exploration before its plan is written): **2** Data & API (`cocreation_context` jsonb extension; adapt `generateHaiku`/`generateSonnet` into the cloud-assembly endpoint; retire the 30-day refresh nudge; clone-rehearsed cleanup of old mnemonics) · **3** Mobile co-creation flow (`CoCreationSession` state machine + Apple Foundation Models native module — verify a community Expo wrapper exists first) · **4** Quiz + reinforce/deepen + surfacing. Status mirrored in memory `project-phase5-status`.
+
+---
+
 # Session Handoff — 2026-05-31 (B139 shipped to TestFlight; B139 feedback fixes queued for B140)
 
 ## B139 on-device feedback (2026-05-31) → fixes queued for B140
@@ -406,6 +430,7 @@ Untracked items in the main checkout. Still need eyeball decisions:
 | 🚀 | Migrate Supabase DB `ap-southeast-2` → `us-east-1` | Cross-region tax; dedicated session |
 | 🚀 | SES out of sandbox | Needed for tutor-share email at scale |
 | 🚀 | Revert testing-phase flags | `EXPO_PUBLIC_DEV_TOOLS=1` (in `eas.json` production profile) + the 2h study-mate alert cap |
+| 🚀 | **Reorder/gate Phase 5 cloud-first assembly + ship BYOK UI** | Phase 5 mnemonic assembly is **cloud-first** during testing (our Anthropic key, any user). Before App Store launch: flip keyless users to **on-device-first** (`on-device → template`, our key NOT used) and ship the **BYOK settings UI + secure storage** so opt-in users keep cloud-first on their own key. At scale, our-key cloud-first = unbounded spend + sends personal data off-device. See spec §7.3/§14 + memory `project-testing-phase-flags`. |
 
 ---
 

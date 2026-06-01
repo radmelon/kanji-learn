@@ -18,12 +18,24 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
   rule later softened (API).
 - **Pitch accent (#16) + vocab-word speaking (#16b)** — shipped as part of the
   Build 3-C / study-loop work.
+- **Buddy Phase 5 (Contextual Mnemonic Co-Creation) — Plan 1/4 foundation**
+  (merge `d78ad1f`, not yet in any build) — pure shared logic in
+  `packages/shared/src/mnemonics/` (radical dictionary, template assembler,
+  cadence/trigger/distractor selection) + mobile `RADICAL_NAMES` now derived
+  from the shared dictionary (precise 部首名 win; 人→hito, 水→mizu). Design:
+  [`docs/superpowers/specs/2026-05-31-phase-5-mnemonic-cocreation-design.md`](docs/superpowers/specs/2026-05-31-phase-5-mnemonic-cocreation-design.md).
+  Plans 2–4 (Data/API, mobile flow + Apple Foundation Models, quiz/surfacing)
+  outstanding. NB: "Buddy Phase 5" (the signature feature, per the buddy-v2
+  refresh §9 ordering) is distinct from this roadmap's "Phase 5 — Platform &
+  Scale" below.
 
 **Queued for the next mobile EAS cut** (B138 testing follow-ups — see BUGS.md):
 vocab voice reading uses kana not kanji (B-205); softened silver rule
 shared-package sync; milestones panel paints cached badges immediately (B-206);
 milestone badge-row scroll affordance (B-207). API-side session-minutes cap fix
-(B-209) is already deployed.
+(B-209) is already deployed. **B140 add-ons (on `main`, unbuilt):** Progress
+streak flame→⚡ + badge scroll cue (`a6434ff`); radical-name relabel from the
+shared dictionary (`d78ad1f`).
 
 ---
 
