@@ -1,4 +1,4 @@
-# Session Handoff — 2026-05-31 (B138 walkthrough complete; B139 building on EAS — 6 mobile fixes; eas submit owed by operator)
+# Session Handoff — 2026-05-31 (B138 walkthrough complete; B139 shipped to TestFlight — 6 mobile fixes; Apple processing)
 
 ## TL;DR (2026-05-31 — B138 on-device walkthrough + B139 cut)
 
@@ -8,7 +8,7 @@
 
 **New finding fixed during the walkthrough — flame/streak icon collision.** The Dashboard day-streak badge used `Ionicons "flame"` + "Streak 🔥", colliding with "burned" (the app's mastery term, which owns fire everywhere). Switched streak to lightning `flash` + "Streak ⚡" (commit `18086b6`), matching notification.service.ts which already used ⚡ for streaks.
 
-**B139 cut and building on EAS** — build `f32b3545-2dc0-4766-a657-cdfbbd94a695`, **on commit `f65d3e4`** (the corrected HEAD), buildNumber 138 → 139. Bundles SIX mobile fixes:
+**B139 shipped to TestFlight.** Build `f32b3545-2dc0-4766-a657-cdfbbd94a695` (commit `f65d3e4`, buildNumber 139) finished after a ~5h Expo EAS outage (incident yw940lp7lm1z, macOS data-center networking — blocked the queue ~13:38→~18:37 PDT, recovered, build cleared the backlog). Submitted to TestFlight: submission `798cab66-cff3-4385-ac24-395faba3f5fa`, uploaded to App Store Connect, **Apple processing** (~5–10 min). `app.json ios.buildNumber` recorded 138 → 139 (commit `d584114`). Bundles SIX mobile fixes:
 | Fix | Commit |
 |---|---|
 | Vocab kana TTS (然り → しかり, not "zenri") | `b170653` |
@@ -20,7 +20,7 @@
 
 (The API session-minutes cap fix `bf0f300` is already live server-side, not part of this cut.)
 
-**OWED BY OPERATOR: `eas submit`.** When EAS reports build `f32b3545` finished, run from `apps/mobile/`: `eas submit --platform ios --latest --non-interactive`. Then the agent records the EAS-bumped `ios.buildNumber` (138 → 139) in `app.json` via a chore commit. `app.json` was reverted to 138 after the canceled build so the next bump is clean.
+**B139 verification owed (next session).** Once Apple finishes processing and B139 lands in TestFlight, walk the six bundled fixes on-device (Buddy/gmail): vocab speaker now says しかり not "zenri"; milestones panel paints instantly (no 10–15s blank); streak badge shows ⚡ not 🔥; JLPT badge leads the row for a JLPT-focused account (and scroll-fade hints more badges); silver rule matches the API. Then the next slice is the **Phase 5 brainstorm — Contextual Mnemonic Co-Creation** (the operator is starting that in a parallel session; see [`2026-05-23-buddy-v2-phase-1-refresh.md`](superpowers/specs/2026-05-23-buddy-v2-phase-1-refresh.md) §4/§9).
 
 **Process lesson (cost a wasted build).** A `constants/milestones.ts` Edit silently failed ("File has not been read yet"), so the B-207 re-export barrel never gained `milestoneFocusFromReasons` — a TS2305 regression that would crash the Progress tab at runtime. It was committed (`621af1c`) and an EAS build (`1ef1fe08`) was kicked off **without running `pnpm --filter @kanji-learn/mobile typecheck` first**. Caught via `eas build:list` (build was on the broken commit), **canceled on EAS** (`eas build:cancel` — note: stopping the local CLI poller does NOT cancel the server-side build), barrel fixed, typecheck confirmed 0 errors as a gate, re-cut on `f65d3e4`. **Rules now: (1) always run the mobile typecheck to 0 errors BEFORE any EAS build; (2) verify each Edit actually applied — watch for "File has not been read yet".** Separately, the Bash tool dropped stdout intermittently all session (commands executed fine; output capture was the problem) — when flaky, run git/eas strictly sequentially, never batched in parallel.
 
