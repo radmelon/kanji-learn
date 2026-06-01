@@ -7,12 +7,21 @@
  *    KANJIDIC2 backfill, e.g. 人 for radical #9, 艸 for #140.
  *  • Common component variants, e.g. 亻(ninben), 氵(sanzui), 艹(kusakanmuri).
  *
- * Names use the kanji-dictionary convention: the most recognisable label
- * comes first (e.g. "ninben" rather than "hito") so learners can cross-
- * reference standard dictionaries.
+ * Names come from the shared Phase 5 radical dictionary (@kanji-learn/shared)
+ * where a radical is defined there — those use the precise 部首名 per form
+ * (standalone vs side-variant, e.g. 人 'hito' vs 亻 'ninben'). The local map
+ * below extends the dictionary for radicals it does not yet name.
  */
 
-export const RADICAL_NAMES: Record<string, string> = {
+import { RADICAL_DICTIONARY } from '@kanji-learn/shared'
+
+// Names sourced from the shared Phase 5 radical dictionary (single source of truth).
+// Local entries below extend it for radicals not yet enriched in shared.
+const SHARED_NAMES: Record<string, string> = Object.fromEntries(
+  Object.values(RADICAL_DICTIONARY).map((e) => [e.char, e.name]),
+)
+
+const LOCAL_NAMES: Record<string, string> = {
 
   // ── 1–8: stroke radicals ──────────────────────────────────────────────────
   '一': 'ichi',
@@ -401,6 +410,8 @@ export const RADICAL_NAMES: Record<string, string> = {
   '弜': 'kyou',
   'ナ': 'mata',           // katakana-looking component, variant of 又
 }
+
+export const RADICAL_NAMES: Record<string, string> = { ...LOCAL_NAMES, ...SHARED_NAMES }
 
 /**
  * Returns the Japanese name for a radical character, or null if unknown.
