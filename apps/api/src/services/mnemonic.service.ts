@@ -245,25 +245,6 @@ export class MnemonicService {
     return result.length > 0
   }
 
-  // ── Seed system mnemonic (called by seed script) ───────────────────────────
-
-  async seedSystemMnemonic(
-    kanjiId: number,
-    storyText: string,
-    imagePrompt?: string
-  ): Promise<void> {
-    await this.db
-      .insert(mnemonics)
-      .values({
-        kanjiId,
-        userId: null,
-        type: 'system',
-        storyText,
-        imagePrompt: imagePrompt ?? null,
-      })
-      .onConflictDoNothing()
-  }
-
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private async fetchKanji(kanjiId: number) {
