@@ -53,6 +53,12 @@ const cocreatedSchema = z.object({
   context: contextSchema,
 }).merge(coordsSchema)
 
+const outcomeSchema = z.object({ outcome: z.union([z.literal(0), z.literal(1)]) })
+const deepenSchema = z.object({
+  storyText: z.string().min(1).max(2000),
+  context: contextSchema,
+})
+
 export async function mnemonicRoutes(
   server: FastifyInstance,
   opts?: { service?: MnemonicService },
@@ -138,6 +144,36 @@ export async function mnemonicRoutes(
         kanjiId, req.userId!, body.data.storyText, body.data.context, coords,
       )
       return reply.code(201).send({ ok: true, data: saved })
+    }
+  )
+
+  // POST /v1/mnemonics/:id/outcome — record a reinforcement/quiz outcome
+  server.post<{ Params: { id: string } }>(
+    '/:id/outcome',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const body = outcomeSchema.safeParse(req.body)
+      if (!body.success) {
+        return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
+      }
+      const updated = await service.recordOutcome(req.params.id, req.userId!, body.data.outcome)
+      if (!updated) return reply.code(404).send({ ok: false, error: 'Mnemonic not found', code: 'NOT_FOUND' })
+      return reply.send({ ok: true, data: updated })
+    }
+  )
+
+  // POST /v1/mnemonics/:id/deepen — append a layer (additive; never discard)
+  server.post<{ Params: { id: string } }>(
+    '/:id/deepen',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const body = deepenSchema.safeParse(req.body)
+      if (!body.success) {
+        return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
+      }
+      const updated = await service.applyDeepen(req.params.id, req.userId!, body.data.storyText, body.data.context)
+      if (!updated) return reply.code(404).send({ ok: false, error: 'Mnemonic not found', code: 'NOT_FOUND' })
+      return reply.send({ ok: true, data: updated })
     }
   )
 

@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { and, eq, isNull, lte } from 'drizzle-orm'
 import { mnemonics, kanji } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
-import { MNEMONIC_REFRESH_DAYS } from '@kanji-learn/shared'
+import { MNEMONIC_REFRESH_DAYS, updateEffectiveness, EFFECTIVENESS_DEFAULT } from '@kanji-learn/shared'
 import type { AssemblerSlots, CoCreationContext } from '@kanji-learn/shared'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -155,6 +155,52 @@ export class MnemonicService {
       })
       .returning()
     return this.toRecord(row)
+  }
+
+  // ── Reinforcement outcome → EMA effectiveness (spec §6.1) ──────────────────
+
+  /** outcome = 1 (👍 / quiz correct) or 0 (👎 / quiz wrong). */
+  async recordOutcome(mnemonicId: string, userId: string, outcome: 0 | 1): Promise<MnemonicRecord | null> {
+    const [existing] = await this.db
+      .select()
+      .from(mnemonics)
+      .where(and(eq(mnemonics.id, mnemonicId), eq(mnemonics.userId, userId)))
+    if (!existing) return null
+
+    const [updated] = await this.db
+      .update(mnemonics)
+      .set({
+        effectivenessScore: updateEffectiveness(existing.effectivenessScore, outcome),
+        reinforcementCount: existing.reinforcementCount + 1,
+        lastReinforcedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(mnemonics.id, mnemonicId), eq(mnemonics.userId, userId)))
+      .returning()
+    return updated ? this.toRecord(updated) : null
+  }
+
+  // ── Deepen: append a layer, reset score, keep history (spec §6.3) ──────────
+
+  /** Replaces story + context with the deepened versions; resets effectiveness
+   *  to the default (fresh chance) while reinforcementCount keeps climbing. */
+  async applyDeepen(
+    mnemonicId: string,
+    userId: string,
+    storyText: string,
+    context: CoCreationContext,
+  ): Promise<MnemonicRecord | null> {
+    const [updated] = await this.db
+      .update(mnemonics)
+      .set({
+        storyText,
+        cocreationContext: context,
+        effectivenessScore: EFFECTIVENESS_DEFAULT,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(mnemonics.id, mnemonicId), eq(mnemonics.userId, userId)))
+      .returning()
+    return updated ? this.toRecord(updated) : null
   }
 
   // ── Update a user's mnemonic ───────────────────────────────────────────────

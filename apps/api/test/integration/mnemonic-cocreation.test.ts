@@ -100,3 +100,38 @@ describe('POST /v1/mnemonics/:kanjiId/cocreated', () => {
     expect((probe[0] as { gen: string }).gen).toBe('cloud')
   })
 })
+
+describe('outcome + deepen mutations', () => {
+  let mnemonicId: string
+  beforeAll(async () => {
+    const [row] = await db.select().from(mnemonics).where(eq(mnemonics.userId, USER))
+    mnemonicId = row.id // the row created by the cocreated test above
+  })
+
+  it('a 👎 outcome moves effectiveness 0.5 → 0.30 and bumps reinforcementCount', async () => {
+    const app = await buildTestApp({ plugin: mnemonicRoutes, opts: { prefix: '/v1/mnemonics' } })
+    const res = await app.inject({
+      method: 'POST', url: `/v1/mnemonics/${mnemonicId}/outcome`,
+      headers: { 'x-test-user-id': USER }, payload: { outcome: 0 },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.effectivenessScore).toBeCloseTo(0.3, 5)
+    expect(res.json().data.reinforcementCount).toBe(1)
+    await app.close()
+  })
+
+  it('deepen resets effectiveness to 0.5 and replaces the context, keeping count', async () => {
+    const deepened = { ...CTX, layerCount: 2, layers: [...CTX.layers, { questions: ['connect?'], answers: ['my bike'], source: 'known_knowledge' as const }] }
+    const app = await buildTestApp({ plugin: mnemonicRoutes, opts: { prefix: '/v1/mnemonics' } })
+    const res = await app.inject({
+      method: 'POST', url: `/v1/mnemonics/${mnemonicId}/deepen`,
+      headers: { 'x-test-user-id': USER },
+      payload: { storyText: 'Now also like my old bike.', context: deepened },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().data.effectivenessScore).toBeCloseTo(0.5, 5)
+    expect(res.json().data.reinforcementCount).toBe(1) // unchanged by deepen
+    expect(res.json().data.cocreationContext.layerCount).toBe(2)
+    await app.close()
+  })
+})
