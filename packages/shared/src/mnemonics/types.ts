@@ -58,3 +58,28 @@ export type BuddyMomentAction =
   | { kind: 'reinforce'; kanjiId: number }
   | { kind: 'create'; kanjiId: number }
   | { kind: 'none' }
+
+// ── Persisted co-creation context (spec §10.1) ─────────────────────────────
+// Written to mnemonics.cocreation_context (jsonb). The mobile flow assembles
+// this client-side; the API persists it verbatim. The db schema mirrors this
+// shape inline in an $type<>() annotation (packages/db has no shared dep).
+
+/** One additive layer of a co-created hook. Deepening appends a layer; nothing is discarded. */
+export interface CoCreationLayer {
+  questions: string[]
+  answers: string[]
+  anchor?: string
+  source: 'environment' | 'known_knowledge'
+}
+
+/** Full structured context behind a co-created mnemonic story. */
+export interface CoCreationContext {
+  layers: CoCreationLayer[]
+  layerCount: number
+  locationName?: string
+  components: Array<{ char: string; meaning: string }>
+  generatedBy: AssemblyTier
+  /** ISO timestamp; set on create/deepen, cleared after the first story→kanji quiz. */
+  mnemonicQuizDueAt?: string
+  timeOfDay?: string
+}
