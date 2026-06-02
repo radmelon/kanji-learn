@@ -235,23 +235,4 @@ export async function mnemonicRoutes(
     }
   )
 
-  // GET /v1/mnemonics/refresh — mnemonics due for 30-day refresh prompt
-  server.get(
-    '/refresh',
-    { preHandler: [server.authenticate] },
-    async (req, reply) => {
-      const due = await service.getDueForRefresh(req.userId!)
-      return reply.send({ ok: true, data: due })
-    }
-  )
-
-  // POST /v1/mnemonics/:id/refresh/dismiss
-  server.post<{ Params: { id: string } }>(
-    '/:id/refresh/dismiss',
-    { preHandler: [server.authenticate] },
-    async (req, reply) => {
-      await service.dismissRefresh(req.params.id, req.userId!)
-      return reply.send({ ok: true })
-    }
-  )
 }

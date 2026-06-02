@@ -1,8 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { and, eq, isNull, lte } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { mnemonics, kanji } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
-import { MNEMONIC_REFRESH_DAYS, updateEffectiveness, EFFECTIVENESS_DEFAULT } from '@kanji-learn/shared'
+import { updateEffectiveness, EFFECTIVENESS_DEFAULT } from '@kanji-learn/shared'
 import type { AssemblerSlots, CoCreationContext } from '@kanji-learn/shared'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -214,7 +214,7 @@ export class MnemonicService {
     longitude?: number | null,
   ): Promise<MnemonicRecord | null> {
     const patch: Partial<typeof mnemonics.$inferInsert> = { updatedAt: new Date() }
-    if (storyText !== undefined) { patch.storyText = storyText; patch.refreshPromptAt = null }
+    if (storyText !== undefined) patch.storyText = storyText
     if (imageUrl !== undefined) patch.imageUrl = imageUrl
     if (latitude !== undefined) patch.latitude = latitude
     if (longitude !== undefined) patch.longitude = longitude
@@ -243,35 +243,6 @@ export class MnemonicService {
       .returning({ id: mnemonics.id })
 
     return result.length > 0
-  }
-
-  // ── Get mnemonics due for refresh prompt ───────────────────────────────────
-
-  async getDueForRefresh(userId: string): Promise<MnemonicRecord[]> {
-    const now = new Date()
-    const rows = await this.db
-      .select()
-      .from(mnemonics)
-      .where(
-        and(
-          eq(mnemonics.userId, userId),
-          lte(mnemonics.refreshPromptAt, now)
-        )
-      )
-
-    return rows.map(this.toRecord)
-  }
-
-  // ── Dismiss refresh prompt (user says mnemonic still works) ───────────────
-
-  async dismissRefresh(mnemonicId: string, userId: string): Promise<void> {
-    const nextRefresh = new Date()
-    nextRefresh.setDate(nextRefresh.getDate() + MNEMONIC_REFRESH_DAYS)
-
-    await this.db
-      .update(mnemonics)
-      .set({ refreshPromptAt: nextRefresh, updatedAt: new Date() })
-      .where(and(eq(mnemonics.id, mnemonicId), eq(mnemonics.userId, userId)))
   }
 
   // ── Seed system mnemonic (called by seed script) ───────────────────────────
@@ -363,17 +334,7 @@ IMAGE: <image prompt here>`
     latitude?: number
     longitude?: number
   }): Promise<MnemonicRecord> {
-    const refreshPromptAt = new Date()
-    refreshPromptAt.setDate(refreshPromptAt.getDate() + MNEMONIC_REFRESH_DAYS)
-
-    const [row] = await this.db
-      .insert(mnemonics)
-      .values({
-        ...data,
-        refreshPromptAt: data.type === 'user' ? refreshPromptAt : null,
-      })
-      .returning()
-
+    const [row] = await this.db.insert(mnemonics).values(data).returning()
     return this.toRecord(row)
   }
 
