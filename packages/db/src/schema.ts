@@ -113,7 +113,7 @@ export const kanji = pgTable(
       .notNull()
       .default([]),
     radicals: jsonb('radicals').$type<string[]>().notNull().default([]),
-    // Full KRADFILE component decomposition (Phase 5 teaching beat + distractors).
+    // IDS first-level component decomposition (Phase 5 teaching beat + distractors).
     // Distinct from `radicals` (the single classifying Kangxi radical, which drives
     // Browse "shares a radical"). Backfilled by seeds/backfill-components.ts.
     components: jsonb('components').$type<string[]>().notNull().default([]),
