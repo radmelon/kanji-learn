@@ -12,6 +12,7 @@ const SAMPLE = [
   'U+8A9E\t語\t⿰言吾',
   'U+4E00\t一\t一',                    // atomic → []
   'U+5840\t塀\t⿰土屏[GTV]\t⿰土屏[J]', // variant columns + region tag → take first
+  'U+247FF\t𤟿\t⿰&CDP-8BBF;寺',        // entity ref for a no-codepoint component → drop it
   '',
 ].join('\n')
 
@@ -36,5 +37,10 @@ describe('parseIds', () => {
 
   it('skips comment and blank lines', () => {
     expect(parseIds(SAMPLE).has('#comment')).toBe(false)
+  })
+
+  it('strips &…; entity references (no-codepoint components) — no garbage chars', () => {
+    // ⿰&CDP-8BBF;寺 must yield only [寺], never [C,D,P,-,8,B,B,F,寺].
+    expect(parseIds(SAMPLE).get('𤟿')).toEqual(['寺'])
   })
 })

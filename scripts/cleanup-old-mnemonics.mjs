@@ -5,8 +5,10 @@
 // effectively every current row. RUN ONLY AFTER a pg_dump safety dump (runbook).
 //
 // Usage:
-//   node scripts/cleanup-old-mnemonics.mjs --dry-run   # count only
-//   node scripts/cleanup-old-mnemonics.mjs             # delete
+//   node scripts/cleanup-old-mnemonics.mjs --dry-run   # count only (safe)
+//   node scripts/cleanup-old-mnemonics.mjs --yes       # actually delete
+// A bare invocation (no flag) refuses to delete — guards against an accidental
+// run against a live DATABASE_URL.
 
 import { createRequire } from 'node:module'
 
@@ -17,6 +19,7 @@ const require = createRequire(
 const postgres = require('postgres')
 
 const DRY = process.argv.includes('--dry-run')
+const YES = process.argv.includes('--yes')
 const url = process.env.DATABASE_URL
 if (!url) { console.error('DATABASE_URL required'); process.exit(1) }
 
@@ -27,6 +30,10 @@ console.log(`Found ${count} mnemonic rows.`)
 
 if (DRY) {
   console.log('[dry-run] no rows deleted.')
+} else if (!YES) {
+  console.error('Refusing to delete without --yes. Re-run with --yes (or --dry-run to preview).')
+  await sql.end()
+  process.exit(1)
 } else {
   const deleted = await sql`DELETE FROM mnemonics RETURNING id`
   console.log(`✅ Deleted ${deleted.length} rows.`)

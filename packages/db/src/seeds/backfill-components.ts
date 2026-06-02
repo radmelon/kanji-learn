@@ -36,7 +36,10 @@ export function parseIds(text: string): Map<string, string[]> {
     if (cols.length < 3) continue
     const char = cols[1]
     if (!char || [...char].length !== 1) continue
-    const ids = cols[2].replace(/\[[^\]]*\]/g, '').trim()
+    // Strip region tags ([GTJ…]) AND whole entity references (&CDP-8BBF; / &U-XXXX;)
+    // for components lacking a Unicode codepoint — otherwise the entity body
+    // (C, D, P, -, 8…) would leak through as spurious single-char components.
+    const ids = cols[2].replace(/\[[^\]]*\]/g, '').replace(/&[^;]*;/g, '').trim()
     const components = [...ids].filter((ch) => {
       const cp = ch.codePointAt(0)!
       if (cp >= 0x2ff0 && cp <= 0x2fff) return false // IDCs ⿰⿱⿲…

@@ -45,7 +45,7 @@ const contextSchema = z.object({
   locationName: z.string().optional(),
   components: z.array(z.object({ char: z.string(), meaning: z.string() })),
   generatedBy: z.enum(['template', 'on_device', 'cloud']),
-  mnemonicQuizDueAt: z.string().optional(),
+  mnemonicQuizDueAt: z.string().datetime().optional(),
   timeOfDay: z.string().optional(),
 })
 const cocreatedSchema = z.object({

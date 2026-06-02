@@ -14,7 +14,7 @@ pattern (docs/superpowers/runbooks/2026-05-22-fsrs-rollout.md).
    `DATABASE_URL=<live> pnpm --filter @kanji-learn/db seed:backfill-components`
    Spot-check: `psql "$DATABASE_URL" -c "SELECT components FROM kanji WHERE character='持'"` → contains 扌 and 寺.
 4. **Dry-run the cleanup:** `node scripts/cleanup-old-mnemonics.mjs --dry-run` → sanity-check the count.
-5. **Destructive cleanup:** `node scripts/cleanup-old-mnemonics.mjs` → deletes all mnemonic rows.
+5. **Destructive cleanup:** `node scripts/cleanup-old-mnemonics.mjs --yes` → deletes all mnemonic rows (a bare run with no flag refuses, as a safety guard).
 6. **Smoke:** API `/health` 200; create one co-created hook on the RAD account; confirm it persists with `generation_method='cocreated'`.
 
 ## Clone-rehearsal (BEFORE merge — mandatory)
