@@ -10,17 +10,18 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "seed:kanji": "tsx src/seeds/seed-kanji.ts",
     "seed:kanji:fetch": "tsx src/seeds/seed-kanji-fetch.ts",
     "seed:kanjidic2": "tsx src/seeds/import-kanjidic2.ts",
-    "seed:mnemonics": "tsx src/seeds/seed-mnemonics.ts",
     "seed:vocab": "tsx src/seeds/enrich-vocab.ts",
     "seed:backfill-radicals": "tsx src/seeds/backfill-radicals.ts",
+    "seed:backfill-components": "tsx src/seeds/backfill-components.ts",
     "seed:sentences": "tsx src/seeds/seed-sentences.ts",
-    "seed": "pnpm seed:kanji && pnpm seed:kanjidic2 && pnpm seed:mnemonics"
+    "seed": "pnpm seed:kanji && pnpm seed:kanjidic2"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -32,6 +33,7 @@
     "dotenv": "^16.4.5",
     "drizzle-kit": "^0.22.0",
     "tsx": "^4.15.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.4"
   }
 }

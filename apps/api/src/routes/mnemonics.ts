@@ -20,8 +20,50 @@ const generateSchema = z.object({
   model: z.enum(['haiku', 'sonnet']).default('haiku'),
 }).merge(coordsSchema)
 
-export async function mnemonicRoutes(server: FastifyInstance) {
-  const service = new MnemonicService(server.db)
+const assembleSchema = z.object({
+  kanji: z.string().min(1),
+  kanjiMeaning: z.string().min(1),
+  reading: z.string().min(1),
+  components: z
+    .array(z.object({ char: z.string(), name: z.string(), meaning: z.string(), imageKeyword: z.string() }))
+    .default([]),
+  locationName: z.string().min(1),
+  anchor: z.string().min(1),
+  personalDetail: z.string().optional(),
+  readingPlay: z.string().optional(),
+})
+
+const layerSchema = z.object({
+  questions: z.array(z.string()),
+  answers: z.array(z.string()),
+  anchor: z.string().optional(),
+  source: z.enum(['environment', 'known_knowledge']),
+})
+const contextSchema = z.object({
+  layers: z.array(layerSchema),
+  layerCount: z.number().int().nonnegative(),
+  locationName: z.string().optional(),
+  components: z.array(z.object({ char: z.string(), meaning: z.string() })),
+  generatedBy: z.enum(['template', 'on_device', 'cloud']),
+  mnemonicQuizDueAt: z.string().datetime().optional(),
+  timeOfDay: z.string().optional(),
+})
+const cocreatedSchema = z.object({
+  storyText: z.string().min(1).max(2000),
+  context: contextSchema,
+}).merge(coordsSchema)
+
+const outcomeSchema = z.object({ outcome: z.union([z.literal(0), z.literal(1)]) })
+const deepenSchema = z.object({
+  storyText: z.string().min(1).max(2000),
+  context: contextSchema,
+})
+
+export async function mnemonicRoutes(
+  server: FastifyInstance,
+  opts?: { service?: MnemonicService },
+) {
+  const service = opts?.service ?? new MnemonicService(server.db)
 
   // GET /v1/mnemonics/:kanjiId — system + user mnemonics for a kanji
   server.get<{ Params: { kanjiId: string } }>(
@@ -59,6 +101,79 @@ export async function mnemonicRoutes(server: FastifyInstance) {
           : await service.generateHaiku(kanjiId, req.userId!, coords)
 
       return reply.code(201).send({ ok: true, data: mnemonic })
+    }
+  )
+
+  // POST /v1/mnemonics/assemble — cloud-tier story assembly (no DB write)
+  server.post(
+    '/assemble',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const body = assembleSchema.safeParse(req.body)
+      if (!body.success) {
+        return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
+      }
+      try {
+        const storyText = await service.assembleFromSlots(body.data)
+        return reply.send({ ok: true, data: { storyText, generatedBy: 'cloud' } })
+      } catch {
+        // Signal the client to fall to the next cascade tier (on-device / template).
+        return reply.code(502).send({ ok: false, error: 'Assembly failed', code: 'ASSEMBLY_FAILED' })
+      }
+    }
+  )
+
+  // POST /v1/mnemonics/:kanjiId/cocreated — persist a finished co-created hook
+  server.post<{ Params: { kanjiId: string } }>(
+    '/:kanjiId/cocreated',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const kanjiId = Number(req.params.kanjiId)
+      if (!Number.isInteger(kanjiId) || kanjiId < 1) {
+        return reply.code(400).send({ ok: false, error: 'Invalid kanjiId', code: 'VALIDATION_ERROR' })
+      }
+      const body = cocreatedSchema.safeParse(req.body)
+      if (!body.success) {
+        return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
+      }
+      const coords =
+        body.data.latitude !== undefined && body.data.longitude !== undefined
+          ? { latitude: body.data.latitude, longitude: body.data.longitude }
+          : undefined
+      const saved = await service.saveCoCreatedMnemonic(
+        kanjiId, req.userId!, body.data.storyText, body.data.context, coords,
+      )
+      return reply.code(201).send({ ok: true, data: saved })
+    }
+  )
+
+  // POST /v1/mnemonics/:id/outcome — record a reinforcement/quiz outcome
+  server.post<{ Params: { id: string } }>(
+    '/:id/outcome',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const body = outcomeSchema.safeParse(req.body)
+      if (!body.success) {
+        return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
+      }
+      const updated = await service.recordOutcome(req.params.id, req.userId!, body.data.outcome)
+      if (!updated) return reply.code(404).send({ ok: false, error: 'Mnemonic not found', code: 'NOT_FOUND' })
+      return reply.send({ ok: true, data: updated })
+    }
+  )
+
+  // POST /v1/mnemonics/:id/deepen — append a layer (additive; never discard)
+  server.post<{ Params: { id: string } }>(
+    '/:id/deepen',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const body = deepenSchema.safeParse(req.body)
+      if (!body.success) {
+        return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
+      }
+      const updated = await service.applyDeepen(req.params.id, req.userId!, body.data.storyText, body.data.context)
+      if (!updated) return reply.code(404).send({ ok: false, error: 'Mnemonic not found', code: 'NOT_FOUND' })
+      return reply.send({ ok: true, data: updated })
     }
   )
 
@@ -120,23 +235,4 @@ export async function mnemonicRoutes(server: FastifyInstance) {
     }
   )
 
-  // GET /v1/mnemonics/refresh — mnemonics due for 30-day refresh prompt
-  server.get(
-    '/refresh',
-    { preHandler: [server.authenticate] },
-    async (req, reply) => {
-      const due = await service.getDueForRefresh(req.userId!)
-      return reply.send({ ok: true, data: due })
-    }
-  )
-
-  // POST /v1/mnemonics/:id/refresh/dismiss
-  server.post<{ Params: { id: string } }>(
-    '/:id/refresh/dismiss',
-    { preHandler: [server.authenticate] },
-    async (req, reply) => {
-      await service.dismissRefresh(req.params.id, req.userId!)
-      return reply.send({ ok: true })
-    }
-  )
 }
