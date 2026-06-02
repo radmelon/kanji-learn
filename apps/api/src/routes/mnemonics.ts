@@ -20,8 +20,24 @@ const generateSchema = z.object({
   model: z.enum(['haiku', 'sonnet']).default('haiku'),
 }).merge(coordsSchema)
 
-export async function mnemonicRoutes(server: FastifyInstance) {
-  const service = new MnemonicService(server.db)
+const assembleSchema = z.object({
+  kanji: z.string().min(1),
+  kanjiMeaning: z.string().min(1),
+  reading: z.string().min(1),
+  components: z
+    .array(z.object({ char: z.string(), name: z.string(), meaning: z.string(), imageKeyword: z.string() }))
+    .default([]),
+  locationName: z.string().min(1),
+  anchor: z.string().min(1),
+  personalDetail: z.string().optional(),
+  readingPlay: z.string().optional(),
+})
+
+export async function mnemonicRoutes(
+  server: FastifyInstance,
+  opts?: { service?: MnemonicService },
+) {
+  const service = opts?.service ?? new MnemonicService(server.db)
 
   // GET /v1/mnemonics/:kanjiId — system + user mnemonics for a kanji
   server.get<{ Params: { kanjiId: string } }>(
@@ -59,6 +75,25 @@ export async function mnemonicRoutes(server: FastifyInstance) {
           : await service.generateHaiku(kanjiId, req.userId!, coords)
 
       return reply.code(201).send({ ok: true, data: mnemonic })
+    }
+  )
+
+  // POST /v1/mnemonics/assemble — cloud-tier story assembly (no DB write)
+  server.post(
+    '/assemble',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const body = assembleSchema.safeParse(req.body)
+      if (!body.success) {
+        return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
+      }
+      try {
+        const storyText = await service.assembleFromSlots(body.data)
+        return reply.send({ ok: true, data: { storyText, generatedBy: 'cloud' } })
+      } catch {
+        // Signal the client to fall to the next cascade tier (on-device / template).
+        return reply.code(502).send({ ok: false, error: 'Assembly failed', code: 'ASSEMBLY_FAILED' })
+      }
     }
   )
 

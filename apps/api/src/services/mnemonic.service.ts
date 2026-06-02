@@ -3,6 +3,7 @@ import { and, eq, isNull, lte } from 'drizzle-orm'
 import { mnemonics, kanji } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import { MNEMONIC_REFRESH_DAYS } from '@kanji-learn/shared'
+import type { AssemblerSlots } from '@kanji-learn/shared'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,11 +29,24 @@ export interface GeneratedMnemonic {
 
 // ─── Mnemonic Service ─────────────────────────────────────────────────────────
 
-export class MnemonicService {
-  private anthropic: Anthropic
+/** Minimal seam over Anthropic.messages.create so the cloud tier is testable. */
+export interface AnthropicLike {
+  messages: {
+    create(args: {
+      model: string
+      max_tokens: number
+      system: string
+      messages: { role: 'user'; content: string }[]
+    }): Promise<{ content: Array<{ type: string; text?: string }> }>
+  }
+}
 
-  constructor(private db: Db) {
-    this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+export class MnemonicService {
+  private anthropic: AnthropicLike
+
+  constructor(private db: Db, anthropic?: AnthropicLike) {
+    this.anthropic =
+      anthropic ?? (new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) as unknown as AnthropicLike)
   }
 
   // ── Get mnemonics for a kanji (system + user) ──────────────────────────────
@@ -50,6 +64,23 @@ export class MnemonicService {
     return rows
       .filter((m) => m.type === 'system' || m.userId === userId)
       .map(this.toRecord)
+  }
+
+  // ── Cloud-tier assembly from co-creation slots (spec §7.3) ────────────────
+
+  /** Weaves the co-creation slots into a personal story via Claude. Throws on
+   *  Anthropic error so the client can fall to the next cascade tier. */
+  async assembleFromSlots(slots: AssemblerSlots): Promise<string> {
+    const res = await this.anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      system: COCREATION_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: buildAssemblyPrompt(slots) }],
+    })
+    const block = res.content[0]
+    const text = block?.type === 'text' ? block.text?.trim() : undefined
+    if (!text) throw new Error('Cloud assembly returned no text')
+    return text
   }
 
   // ── Generate mnemonic with Claude Haiku (fast, live) ──────────────────────
@@ -229,8 +260,8 @@ STORY: <your story here>
 IMAGE: <image prompt here>`
   }
 
-  private parseResponse(content: Anthropic.ContentBlock): GeneratedMnemonic {
-    if (content.type !== 'text') {
+  private parseResponse(content: { type: string; text?: string }): GeneratedMnemonic {
+    if (content.type !== 'text' || content.text === undefined) {
       return { storyText: 'Unable to generate mnemonic.', imagePrompt: '' }
     }
 
@@ -291,3 +322,23 @@ const MNEMONIC_SYSTEM_PROMPT = `You are an expert Japanese language teacher spec
 Your mnemonics use vivid imagery, phonetic wordplay, and narrative to make kanji unforgettable.
 You incorporate the kanji's radicals as visual building blocks and weave in the readings naturally.
 Keep stories concrete, surprising, and emotionally engaging. Avoid vague or generic associations.`
+
+const COCREATION_SYSTEM_PROMPT = `You are Buddy, a warm study companion helping a learner BUILD their own memory hook for a kanji.
+You are given real details the learner just gave you: where they are, something they can see, the kanji's component parts and meaning, and its reading.
+Weave ALL of them into one vivid 2–3 sentence second-person scene that connects the new kanji to what they already see and know (learning is constructed: new → known).
+Name each component's meaning, ground it in their place, use their anchor detail, and surface the reading naturally. Concrete and surprising, never generic. Output ONLY the story — no preamble, no labels.`
+
+function buildAssemblyPrompt(slots: AssemblerSlots): string {
+  const components = slots.components.length
+    ? slots.components.map((c) => `${c.char} (${c.meaning})`).join(', ')
+    : 'no mapped components'
+  const lines = [
+    `Kanji: ${slots.kanji} — means "${slots.kanjiMeaning}", read ${slots.reading}.`,
+    `Components: ${components}.`,
+    `Place: ${slots.locationName}.`,
+    `They are looking at: ${slots.anchor}.`,
+  ]
+  if (slots.personalDetail) lines.push(`Personal detail: ${slots.personalDetail}.`)
+  if (slots.readingPlay) lines.push(`Reading wordplay seed: ${slots.readingPlay}.`)
+  return lines.join('\n')
+}
