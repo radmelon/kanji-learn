@@ -3,7 +3,7 @@ import { and, eq, isNull, lte } from 'drizzle-orm'
 import { mnemonics, kanji } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import { MNEMONIC_REFRESH_DAYS } from '@kanji-learn/shared'
-import type { AssemblerSlots } from '@kanji-learn/shared'
+import type { AssemblerSlots, CoCreationContext } from '@kanji-learn/shared'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,7 +17,12 @@ export interface MnemonicRecord {
   imageUrl: string | null
   latitude: number | null
   longitude: number | null
-  refreshPromptAt: Date | null
+  generationMethod: 'system' | 'user' | 'cocreated'
+  locationType: string | null
+  cocreationContext: CoCreationContext | null
+  effectivenessScore: number
+  reinforcementCount: number
+  lastReinforcedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
@@ -122,6 +127,34 @@ export class MnemonicService {
     coords?: { latitude: number; longitude: number }
   ): Promise<MnemonicRecord> {
     return this.saveMnemonic({ kanjiId, userId, type: 'user', storyText, imagePrompt: null, ...coords })
+  }
+
+  // ── Persist a co-created mnemonic (client-owned flow; spec §10.1/§10.3) ────
+
+  async saveCoCreatedMnemonic(
+    kanjiId: number,
+    userId: string,
+    storyText: string,
+    context: CoCreationContext,
+    coords?: { latitude: number; longitude: number },
+  ): Promise<MnemonicRecord> {
+    const [row] = await this.db
+      .insert(mnemonics)
+      .values({
+        kanjiId,
+        userId,
+        type: 'user',
+        generationMethod: 'cocreated',
+        storyText,
+        imagePrompt: null,
+        cocreationContext: context,
+        locationType: context.locationName ?? null,
+        latitude: coords?.latitude,
+        longitude: coords?.longitude,
+        // No refreshPromptAt — the 30-day nudge is retired (later task).
+      })
+      .returning()
+    return this.toRecord(row)
   }
 
   // ── Update a user's mnemonic ───────────────────────────────────────────────
@@ -309,7 +342,12 @@ IMAGE: <image prompt here>`
       imageUrl: row.imageUrl,
       latitude: row.latitude,
       longitude: row.longitude,
-      refreshPromptAt: row.refreshPromptAt,
+      generationMethod: row.generationMethod,
+      locationType: row.locationType,
+      cocreationContext: (row.cocreationContext as CoCreationContext | null) ?? null,
+      effectivenessScore: row.effectivenessScore,
+      reinforcementCount: row.reinforcementCount,
+      lastReinforcedAt: row.lastReinforcedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }

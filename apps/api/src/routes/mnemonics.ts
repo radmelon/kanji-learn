@@ -33,6 +33,26 @@ const assembleSchema = z.object({
   readingPlay: z.string().optional(),
 })
 
+const layerSchema = z.object({
+  questions: z.array(z.string()),
+  answers: z.array(z.string()),
+  anchor: z.string().optional(),
+  source: z.enum(['environment', 'known_knowledge']),
+})
+const contextSchema = z.object({
+  layers: z.array(layerSchema),
+  layerCount: z.number().int().nonnegative(),
+  locationName: z.string().optional(),
+  components: z.array(z.object({ char: z.string(), meaning: z.string() })),
+  generatedBy: z.enum(['template', 'on_device', 'cloud']),
+  mnemonicQuizDueAt: z.string().optional(),
+  timeOfDay: z.string().optional(),
+})
+const cocreatedSchema = z.object({
+  storyText: z.string().min(1).max(2000),
+  context: contextSchema,
+}).merge(coordsSchema)
+
 export async function mnemonicRoutes(
   server: FastifyInstance,
   opts?: { service?: MnemonicService },
@@ -94,6 +114,30 @@ export async function mnemonicRoutes(
         // Signal the client to fall to the next cascade tier (on-device / template).
         return reply.code(502).send({ ok: false, error: 'Assembly failed', code: 'ASSEMBLY_FAILED' })
       }
+    }
+  )
+
+  // POST /v1/mnemonics/:kanjiId/cocreated — persist a finished co-created hook
+  server.post<{ Params: { kanjiId: string } }>(
+    '/:kanjiId/cocreated',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const kanjiId = Number(req.params.kanjiId)
+      if (!Number.isInteger(kanjiId) || kanjiId < 1) {
+        return reply.code(400).send({ ok: false, error: 'Invalid kanjiId', code: 'VALIDATION_ERROR' })
+      }
+      const body = cocreatedSchema.safeParse(req.body)
+      if (!body.success) {
+        return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
+      }
+      const coords =
+        body.data.latitude !== undefined && body.data.longitude !== undefined
+          ? { latitude: body.data.latitude, longitude: body.data.longitude }
+          : undefined
+      const saved = await service.saveCoCreatedMnemonic(
+        kanjiId, req.userId!, body.data.storyText, body.data.context, coords,
+      )
+      return reply.code(201).send({ ok: true, data: saved })
     }
   )
 
