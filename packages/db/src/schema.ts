@@ -113,6 +113,10 @@ export const kanji = pgTable(
       .notNull()
       .default([]),
     radicals: jsonb('radicals').$type<string[]>().notNull().default([]),
+    // Full KRADFILE component decomposition (Phase 5 teaching beat + distractors).
+    // Distinct from `radicals` (the single classifying Kangxi radical, which drives
+    // Browse "shares a radical"). Backfilled by seeds/backfill-components.ts.
+    components: jsonb('components').$type<string[]>().notNull().default([]),
     svgPath: text('svg_path'), // KanjiVG stroke order SVG
 
     // ── KANJIDIC2 reference codes ──────────────────────────────────────────
@@ -288,10 +292,21 @@ export const mnemonics = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     generationMethod: mnemonicGenerationMethodEnum('generation_method').notNull().default('system'),
     locationType: text('location_type'),
-    // Nullable jsonb — Drizzle already infers `T | null` from the missing .notNull().
+    // Nullable jsonb — Drizzle infers `T | null` from the missing .notNull().
+    // Shape mirrors @kanji-learn/shared `CoCreationContext` (spec §10.1). Kept
+    // inline because packages/db does not depend on @kanji-learn/shared.
     cocreationContext: jsonb('cocreation_context').$type<{
-      questions: string[]
-      answers: string[]
+      layers: Array<{
+        questions: string[]
+        answers: string[]
+        anchor?: string
+        source: 'environment' | 'known_knowledge'
+      }>
+      layerCount: number
+      locationName?: string
+      components: Array<{ char: string; meaning: string }>
+      generatedBy: 'template' | 'on_device' | 'cloud'
+      mnemonicQuizDueAt?: string
       timeOfDay?: string
     }>(),
     // effectivenessScore is only meaningful once reinforcementCount > 0;
