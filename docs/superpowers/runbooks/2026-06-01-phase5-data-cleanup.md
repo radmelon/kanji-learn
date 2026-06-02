@@ -22,6 +22,19 @@ pattern (docs/superpowers/runbooks/2026-05-22-fsrs-rollout.md).
 Restore a fresh `pg_dump` of live into a local Docker Postgres, run steps 2–5 against it,
 confirm: components populated, all old rows gone, a fresh co-created insert round-trips.
 
+## ⚠️ Deploy-ordering constraint (cross-package)
+
+Plan 2 **removes** two server routes the *currently-shipped* mobile app still calls:
+`GET /v1/mnemonics/refresh` and `POST /v1/mnemonics/:id/refresh/dismiss`.
+The mobile `dismissRefresh` call (`apps/mobile/src/hooks/useMnemonics.ts`, used by
+`MnemonicCard` in the Journal tab) has **no try/catch**, so it would throw an
+unhandled rejection on a 404 if this API deploys ahead of the mobile change.
+
+**Therefore: do NOT deploy this API to production before Plan 4 ships the mobile
+build that removes `useRefreshDue` + the `MnemonicNudgeSheet`/refresh UI.** Phase 5
+is a single coordinated cut (API + EAS build together) — deploy the API and submit
+the mobile build in the same release window, never the API alone.
+
 ## Rollback
 
 Restore the safety dump within 24h: `psql "$DATABASE_URL" < /tmp/phase5-safety/live-<ts>.sql`.
