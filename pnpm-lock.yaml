@@ -64,7 +64,7 @@ importers:
         version: 16.6.1
       drizzle-orm:
         specifier: ^0.31.0
-        version: 0.31.4(@types/react@19.1.17)(postgres@3.4.8)(react@19.1.0)
+        version: 0.31.4(@opentelemetry/api@1.9.1)(@types/react@19.1.17)(postgres@3.4.8)(react@19.1.0)
       eta:
         specifier: ^4.5.1
         version: 4.5.1
@@ -116,7 +116,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.4
-        version: 4.1.4(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.27.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.27.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
 
   apps/mobile:
     dependencies:
@@ -126,6 +126,9 @@ importers:
       '@kanji-learn/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@react-native-ai/apple':
+        specifier: ^0.12.0
+        version: 0.12.0(react-native@0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.84.1(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0))
       '@react-native-async-storage/async-storage':
         specifier: ^2.2.0
         version: 2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.84.1(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0))
@@ -240,7 +243,7 @@ importers:
         version: 0.39.0
       drizzle-orm:
         specifier: ^0.31.0
-        version: 0.31.4(@types/react@19.1.17)(postgres@3.4.8)(react@19.1.0)
+        version: 0.31.4(@opentelemetry/api@1.9.1)(@types/react@19.1.17)(postgres@3.4.8)(react@19.1.0)
       fast-xml-parser:
         specifier: ^5.5.9
         version: 5.5.9
@@ -262,7 +265,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.4
-        version: 4.1.4(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.19.12)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.19.12)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/shared:
     devDependencies:
@@ -271,7 +274,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.4
-        version: 4.1.4(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.27.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.27.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
 
 packages:
 
@@ -282,6 +285,16 @@ packages:
     peerDependenciesMeta:
       graphql:
         optional: true
+
+  '@ai-sdk/provider-utils@4.0.27':
+    resolution: {integrity: sha512-ubkAJ+xODouwtmN1tYlvTPphH1hPOBfZaEQe8U7skGvFAnIRs9PPpsq57bC2+Ky/MB4yzhd6YOsxTAx9sGpazw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/provider@3.0.10':
+    resolution: {integrity: sha512-Q3BZ27qfpYqnCYGvE3vt+Qi6LGOF9R5Nmzn+9JoM1lCRsD9mYaIhfJLkSunN48nfGXJ6n+XNV0J/XVpqGQl7Dw==}
+    engines: {node: '>=18'}
 
   '@anthropic-ai/sdk@0.27.3':
     resolution: {integrity: sha512-IjLt0gd3L4jlOfilxVXTifn42FnVffMgDC04RJK1KDZpmkBWLv0XC92MVVmkxrFZNS/7l3xWgP/I3nqtX1sQHw==}
@@ -1738,6 +1751,10 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
+  '@opentelemetry/api@1.9.1':
+    resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
+    engines: {node: '>=8.0.0'}
+
   '@oxc-project/types@0.124.0':
     resolution: {integrity: sha512-VBFWMTBvHxS11Z5Lvlr3IWgrwhMTXV+Md+EQF0Xf60+wAdsGFTBx7X7K/hP4pi8N7dcm1RvcHwDxZ16Qx8keUg==}
 
@@ -1982,6 +1999,11 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  '@react-native-ai/apple@0.12.0':
+    resolution: {integrity: sha512-BC/kEDbCZprv1xcQCWsgapXm/WEsj5lieBDvU1vJXStrN+BG+hWM01zoqDGTD/j71zvt9DEfHcMvEqbrGY2uAA==}
+    peerDependencies:
+      react-native: '>=0.76.0'
 
   '@react-native-async-storage/async-storage@2.2.0':
     resolution: {integrity: sha512-gvRvjR5JAaUZF8tv2Kcq/Gbt3JHwbKFYfmb445rhOj6NUMx3qPLixmDx5pZAyb9at1bYvJ4/eTUipU5aki45xw==}
@@ -3653,6 +3675,10 @@ packages:
     resolution: {integrity: sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q==}
     engines: {node: '>=0.8.x'}
 
+  eventsource-parser@3.1.0:
+    resolution: {integrity: sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg==}
+    engines: {node: '>=18.0.0'}
+
   execa@5.1.1:
     resolution: {integrity: sha512-8uSpZZocAZRBAPIEINJj3Lo9HyGitllczc27Eh5YYojjMFMn8yHMDMaUHE2Jqfq05D/wucwI4JGURyXt1vchyg==}
     engines: {node: '>=10'}
@@ -4579,6 +4605,9 @@ packages:
 
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
+
+  json-schema@0.4.0:
+    resolution: {integrity: sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA==}
 
   json-stable-stringify-without-jsonify@1.0.1:
     resolution: {integrity: sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw==}
@@ -6302,6 +6331,9 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
   zustand@5.0.12:
     resolution: {integrity: sha512-i77ae3aZq4dhMlRhJVCYgMLKuSiZAaUPAct2AksxQ+gOtimhGMdXljRT21P5BNpeT4kXlLIckvkPM029OljD7g==}
     engines: {node: '>=12.20.0'}
@@ -6325,6 +6357,17 @@ snapshots:
   '@0no-co/graphql.web@1.2.0(graphql@15.8.0)':
     optionalDependencies:
       graphql: 15.8.0
+
+  '@ai-sdk/provider-utils@4.0.27(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.10
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.1.0
+      zod: 4.4.3
+
+  '@ai-sdk/provider@3.0.10':
+    dependencies:
+      json-schema: 0.4.0
 
   '@anthropic-ai/sdk@0.27.3':
     dependencies:
@@ -8292,6 +8335,9 @@ snapshots:
       '@tybys/wasm-util': 0.10.1
     optional: true
 
+  '@opentelemetry/api@1.9.1':
+    optional: true
+
   '@oxc-project/types@0.124.0': {}
 
   '@pinojs/redact@0.4.0': {}
@@ -8494,6 +8540,13 @@ snapshots:
       react: 19.1.0
     optionalDependencies:
       '@types/react': 19.1.17
+
+  '@react-native-ai/apple@0.12.0(react-native@0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.84.1(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0))':
+    dependencies:
+      '@ai-sdk/provider': 3.0.10
+      '@ai-sdk/provider-utils': 4.0.27(zod@4.4.3)
+      react-native: 0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.84.1(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0)
+      zod: 4.4.3
 
   '@react-native-async-storage/async-storage@2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.84.1(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0))':
     dependencies:
@@ -9550,7 +9603,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 3.1.0
-      vitest: 4.1.4(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.19.12)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.27.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
 
   '@vitest/utils@4.1.4':
     dependencies:
@@ -10237,8 +10290,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.31.4(@types/react@19.1.17)(postgres@3.4.8)(react@19.1.0):
+  drizzle-orm@0.31.4(@opentelemetry/api@1.9.1)(@types/react@19.1.17)(postgres@3.4.8)(react@19.1.0):
     optionalDependencies:
+      '@opentelemetry/api': 1.9.1
       '@types/react': 19.1.17
       postgres: 3.4.8
       react: 19.1.0
@@ -10486,6 +10540,8 @@ snapshots:
   event-target-shim@5.0.1: {}
 
   events@3.3.0: {}
+
+  eventsource-parser@3.1.0: {}
 
   execa@5.1.1:
     dependencies:
@@ -11722,6 +11778,8 @@ snapshots:
   json-schema-traverse@0.4.1: {}
 
   json-schema-traverse@1.0.0: {}
+
+  json-schema@0.4.0: {}
 
   json-stable-stringify-without-jsonify@1.0.1: {}
 
@@ -13410,7 +13468,7 @@ snapshots:
       tsx: 4.21.0
       yaml: 2.8.3
 
-  vitest@4.1.4(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.19.12)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)):
+  vitest@4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.19.12)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)):
     dependencies:
       '@vitest/expect': 4.1.4
       '@vitest/mocker': 4.1.4(vite@8.0.8(@types/node@20.19.37)(esbuild@0.19.12)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
@@ -13433,12 +13491,13 @@ snapshots:
       vite: 8.0.8(@types/node@20.19.37)(esbuild@0.19.12)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      '@opentelemetry/api': 1.9.1
       '@types/node': 20.19.37
       '@vitest/ui': 4.1.4(vitest@4.1.4)
     transitivePeerDependencies:
       - msw
 
-  vitest@4.1.4(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.27.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)):
+  vitest@4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.37)(@vitest/ui@4.1.4)(vite@8.0.8(@types/node@20.19.37)(esbuild@0.27.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)):
     dependencies:
       '@vitest/expect': 4.1.4
       '@vitest/mocker': 4.1.4(vite@8.0.8(@types/node@20.19.37)(esbuild@0.27.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
@@ -13461,6 +13520,7 @@ snapshots:
       vite: 8.0.8(@types/node@20.19.37)(esbuild@0.27.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      '@opentelemetry/api': 1.9.1
       '@types/node': 20.19.37
       '@vitest/ui': 4.1.4(vitest@4.1.4)
     transitivePeerDependencies:
@@ -13595,6 +13655,8 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   zod@3.25.76: {}
+
+  zod@4.4.3: {}
 
   zustand@5.0.12(@types/react@19.1.17)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0)):
     optionalDependencies:

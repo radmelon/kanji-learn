@@ -14,6 +14,7 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@kanji-learn/shared": "workspace:*",
+    "@react-native-ai/apple": "^0.12.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@supabase/supabase-js": "^2.43.0",
     "expo": "~54.0.33",
