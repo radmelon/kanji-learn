@@ -1,3 +1,42 @@
+# Session Handoff — 2026-06-03 (Phase 5: Plan 2 + Plan 3a + Plan 3b-logic all MERGED to `main`; on-device Apple Foundation Models VERIFIED; 3b UI + Plan 4 remain)
+
+## TL;DR (2026-06-03 — three Phase-5 plans landed; on-device tier proven on-device)
+
+**Phase 5 status: Plans 1, 2, 3a, and 3b-logic-core are all merged to `main` (local, NOT pushed — `main` is ahead of origin by ~28). Nothing deployed; live DB rollout deferred.** Remaining: **Plan 3b UI (Tasks 6–8)** + **Plan 4** (quiz/reinforce/deepen/surfacing).
+
+| Plan | What | State |
+|---|---|---|
+| 1 Foundation | shared pure logic + dictionary | ✅ merged (`d78ad1f`, prior session) |
+| 2 Data & API | `cocreation_context $type`, `kanji.components` + **IDS** backfill, `/assemble` (injectable cloud tier), `/cocreated`, `/outcome`, `/deepen`, retire refresh+seed, clone-rehearsed cleanup | ✅ merged (`0498953`) |
+| 3a On-device | New Arch ON, `@react-native-ai/apple`, `assembleOnDevice` seam | ✅ merged (`97321b8`) — **verified on-device (15 Pro / iOS 26.5)** |
+| 3b logic core | expose `kanji.components`, `buddy-moment-context` endpoint, `assembleStory` cascade, `buildSlots`/`buildContext`, `useCoCreation` state machine | ✅ merged (`<this session>`) — api 288 + mobile 58 green |
+| 3b UI (Tasks 6–8) | `CoCreationSheet`, post-session trigger wiring in `study.tsx`, manual "Build a hook" in `kanji/[id].tsx` | 🚧 **NEXT** — RN screens, device-verified (no unit tests) |
+| 4 | quiz `mnemonic_recall` + reinforce/deepen + surfacing + remove old refresh mobile callers | ⬜ not drafted |
+
+**Plans + findings:** `docs/superpowers/plans/2026-06-01-phase-5-data-api.md` (Plan 2), `…/2026-06-03-phase-5-on-device-foundation-models.md` (3a), `…/2026-06-03-phase-5-mobile-cocreation-flow.md` (3b — Tasks 6–8 are the next-session blueprint), `docs/superpowers/findings/2026-06-03-on-device-foundation-models.md`.
+
+### Key decisions/corrections this session
+- **Data source = IDS (cjkvi-ids), NOT KRADFILE.** KRADFILE gave wrong granularity (持→寸土扎); IDS first-level gives 持→[扌,寺] matching the Plan 1 radical dictionary. Backfill: `packages/db/src/seeds/backfill-components.ts` (`parseIds`).
+- **On-device library API:** `@react-native-ai/apple@0.12.0` uses the **direct `AppleFoundationModels` TurboModule** (`isAvailable()` + `generateText(messages,options)→Array<{type:'text',text}>`), NOT the blog's `foundationModels.generateText`. Did NOT adopt the Vercel AI SDK (`expo install ai`→ai@6 vs lib's documented v5). On-device 持 assembly verified offline (airplane mode).
+- **New Architecture is ON** (`apps/mobile/app.json`) — **affects ALL builds incl. production**. **Watch config plugins REMOVED** (the watchOS app is being deprecated/reconceptualized — operator 2026-06-03; manual Watch signing conflicted with local auto-signing). `apps/mobile/ios/` is tracked (not gitignored) — prebuild churn / leftover Watch-source deletions are a separate cleanup.
+
+### 🛑 Carry-forward constraints
+- **DEPLOY ORDERING:** Plan 2 removed `GET /v1/mnemonics/refresh` + `POST /:id/refresh/dismiss`, which the SHIPPED mobile app still calls (`useMnemonics.dismissRefresh` has no try/catch → unhandled 404). **Do NOT deploy this API before Plan 4 removes the mobile refresh callers.** Phase 5 = one coordinated cut (API + EAS together). See `docs/superpowers/runbooks/2026-06-01-phase5-data-cleanup.md`.
+- **Live DB rollout deferred** to the coordinated cut: migration `0026_kanji_components.sql` + IDS backfill + destructive `mnemonics` cleanup — clone-rehearsed only. Runbook has the order + the `--yes` guard on `scripts/cleanup-old-mnemonics.mjs`.
+
+### How to resume (next session = Plan 3b UI)
+- **Worktree KEPT** at `.worktrees/phase-5-on-device` (New Arch build, `@react-native-ai/apple` installed, env files copied, on-device-verified). In it: `git checkout -b phase-5-cocreation-ui main` to start the UI branch off updated main.
+- **Local API:** start from the worktree with `env -u ANTHROPIC_API_KEY pnpm --filter @kanji-learn/api dev` (the dev shell exports an empty `ANTHROPIC_API_KEY` that overrides `.env`). Device build hits `http://192.168.4.59:3000` (`apps/mobile/.env.local`). Worktree needs the gitignored `apps/api/.env`, `.env.test`, `apps/mobile/.env.local` copied in.
+- **Plan 3b Tasks 6–8** are fully specified in the 3b plan doc: `CoCreationSheet` (mirror `MnemonicNudgeSheet` Modal pattern; renders by `useCoCreation` stage; teaching beat via `lookupComponents(kanji.components)`), wire the trigger in `study.tsx handleFinish` (`fetchBuddyMomentContext` → `pickBuddyMomentAction` → render sheet on `create`; reinforce no-op'd until Plan 4), manual "Build a hook" in `kanji/[id].tsx`. Then a device rebuild + on-device walkthrough (consent → location grant/deny → anchor → draft cloud + airplane-mode template → save → confirm `generation_method='cocreated'` on RAD).
+- **Device deep-link** to a route: `kanjilearn://<route>` tapped from iOS Notes. **Native module change ⇒ full rebuild** (`expo prebuild --clean && expo run:ios --device`); JS-only change ⇒ Metro reload.
+
+### Loose ends
+- **Rotate the Supabase DB password** — it was inadvertently printed in plaintext to a transcript this session (regex missed the `postgresql://` scheme). User-side action.
+- **Push to origin** when ready (local `main` ahead ~28; operator's usual rhythm is local).
+- B140 build still held (queued `a6434ff` Progress flame→⚡ + badge scroll cue + radical-name relabel) — when cut, ideally bundle the first walkable Phase-5 UI.
+
+---
+
 # Session Handoff — 2026-05-31 (Phase 5 Contextual Mnemonic Co-Creation: brainstormed → spec'd → Plan 1/4 foundation MERGED to main; B140 held)
 
 ## TL;DR (2026-05-31 — Phase 5 designed end-to-end; foundation shipped to `main`)
