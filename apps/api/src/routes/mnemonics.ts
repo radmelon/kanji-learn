@@ -59,6 +59,8 @@ const deepenSchema = z.object({
   context: contextSchema,
 })
 
+const buddyContextSchema = z.object({ kanjiIds: z.array(z.number().int().positive()).max(100) })
+
 export async function mnemonicRoutes(
   server: FastifyInstance,
   opts?: { service?: MnemonicService },
@@ -174,6 +176,20 @@ export async function mnemonicRoutes(
       const updated = await service.applyDeepen(req.params.id, req.userId!, body.data.storyText, body.data.context)
       if (!updated) return reply.code(404).send({ ok: false, error: 'Mnemonic not found', code: 'NOT_FOUND' })
       return reply.send({ ok: true, data: updated })
+    }
+  )
+
+  // POST /v1/mnemonics/buddy-moment-context — lapses + hasHook for graded kanji
+  server.post(
+    '/buddy-moment-context',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const body = buddyContextSchema.safeParse(req.body)
+      if (!body.success) {
+        return reply.code(400).send({ ok: false, error: 'Invalid body', code: 'VALIDATION_ERROR' })
+      }
+      const data = await service.getBuddyMomentContext(req.userId!, body.data.kanjiIds)
+      return reply.send({ ok: true, data })
     }
   )
 

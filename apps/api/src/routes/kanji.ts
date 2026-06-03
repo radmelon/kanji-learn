@@ -213,6 +213,7 @@ export async function kanjiRoutes(server: FastifyInstance) {
           exampleVocab: kanji.exampleVocab,
           exampleSentences: kanji.exampleSentences,
           radicals: kanji.radicals,
+          components: kanji.components,
           svgPath: kanji.svgPath,
           // Cross-reference codes
           jisCode: kanji.jisCode,
@@ -261,6 +262,7 @@ export async function kanjiRoutes(server: FastifyInstance) {
           kunReadings: toArr<string>(row.kunReadings),
           onReadings: toArr<string>(row.onReadings),
           radicals: toArr<string>(row.radicals),
+          components: toArr<string>(row.components),
           exampleVocab: toArr<{ word: string; reading: string; meaning: string }>(row.exampleVocab),
           exampleSentences: toArr<{ ja: string; en: string; vocab: string }>(row.exampleSentences),
           srsStatus: row.srsStatus ?? 'unseen',
