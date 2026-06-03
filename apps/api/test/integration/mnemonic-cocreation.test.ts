@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { eq, sql } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
-import { kanji, mnemonics, userProfiles } from '@kanji-learn/db'
+import { kanji, mnemonics, userProfiles, userKanjiProgress } from '@kanji-learn/db'
 import { buildTestApp } from '../helpers/test-app'
 import { mnemonicRoutes } from '../../src/routes/mnemonics'
 import { MnemonicService, type AnthropicLike } from '../../src/services/mnemonic.service'
@@ -35,7 +35,14 @@ const CTX = {
   mnemonicQuizDueAt: '2026-06-01T00:00:00.000Z',
 }
 
-afterAll(async () => { await client.end() })
+afterAll(async () => {
+  // Tear down everything this file seeds for USER so it doesn't pollute other
+  // files (e.g. backfillUniversalKg counts all users with progress).
+  await db.execute(sql`DELETE FROM user_kanji_progress WHERE user_id = ${USER}`)
+  await db.execute(sql`DELETE FROM mnemonics WHERE user_id = ${USER}`)
+  await db.execute(sql`DELETE FROM user_profiles WHERE id = ${USER}`)
+  await client.end()
+})
 
 describe('POST /v1/mnemonics/assemble', () => {
   it('returns the assembled cloud story on success', async () => {
@@ -132,6 +139,30 @@ describe('outcome + deepen mutations', () => {
     expect(res.json().data.effectivenessScore).toBeCloseTo(0.5, 5)
     expect(res.json().data.reinforcementCount).toBe(1) // unchanged by deepen
     expect(res.json().data.cocreationContext.layerCount).toBe(2)
+    await app.close()
+  })
+})
+
+describe('POST /v1/mnemonics/buddy-moment-context', () => {
+  let kanjiId: number
+  beforeAll(async () => {
+    const [row] = await db.select().from(mnemonics).where(eq(mnemonics.userId, USER))
+    kanjiId = row.kanjiId // kanji with a co-created hook from the cocreated test
+    await db.execute(sql`DELETE FROM user_kanji_progress WHERE user_id = ${USER} AND kanji_id = ${kanjiId}`)
+    // All NOT-NULL columns except userId/kanjiId have DB defaults; just override lapses.
+    await db.insert(userKanjiProgress).values({ userId: USER, kanjiId, lapses: 4 })
+  })
+
+  it('returns lapses + hasHook=true for a hooked, lapsing kanji', async () => {
+    const app = await buildTestApp({ plugin: mnemonicRoutes, opts: { prefix: '/v1/mnemonics' } })
+    const res = await app.inject({
+      method: 'POST', url: '/v1/mnemonics/buddy-moment-context',
+      headers: { 'x-test-user-id': USER }, payload: { kanjiIds: [kanjiId] },
+    })
+    expect(res.statusCode).toBe(200)
+    const card = res.json().data[0]
+    expect(card).toMatchObject({ kanjiId, lapses: 4, hasHook: true })
+    expect(typeof card.kanji).toBe('string')
     await app.close()
   })
 })

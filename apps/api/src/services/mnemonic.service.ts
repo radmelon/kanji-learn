@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { and, eq } from 'drizzle-orm'
-import { mnemonics, kanji } from '@kanji-learn/db'
+import { and, eq, inArray } from 'drizzle-orm'
+import { mnemonics, kanji, userKanjiProgress } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import { updateEffectiveness, EFFECTIVENESS_DEFAULT, COCREATION_SYSTEM_PROMPT, buildAssemblyPrompt } from '@kanji-learn/shared'
 import type { AssemblerSlots, CoCreationContext } from '@kanji-learn/shared'
@@ -30,6 +30,13 @@ export interface MnemonicRecord {
 export interface GeneratedMnemonic {
   storyText: string
   imagePrompt: string
+}
+
+export interface BuddyMomentCard {
+  kanjiId: number
+  kanji: string
+  lapses: number
+  hasHook: boolean
 }
 
 // ─── Mnemonic Service ─────────────────────────────────────────────────────────
@@ -201,6 +208,31 @@ export class MnemonicService {
       .where(and(eq(mnemonics.id, mnemonicId), eq(mnemonics.userId, userId)))
       .returning()
     return updated ? this.toRecord(updated) : null
+  }
+
+  // ── Buddy-moment context: lapses + hasHook per kanjiId (spec §post-session) ─
+
+  /** Per-kanji signals the post-session Buddy moment needs: lifetime lapses +
+   *  whether a co-created hook already exists. */
+  async getBuddyMomentContext(userId: string, kanjiIds: number[]): Promise<BuddyMomentCard[]> {
+    if (kanjiIds.length === 0) return []
+    const [chars, progress, hooks] = await Promise.all([
+      this.db.select({ id: kanji.id, character: kanji.character }).from(kanji).where(inArray(kanji.id, kanjiIds)),
+      this.db.select({ kanjiId: userKanjiProgress.kanjiId, lapses: userKanjiProgress.lapses })
+        .from(userKanjiProgress)
+        .where(and(eq(userKanjiProgress.userId, userId), inArray(userKanjiProgress.kanjiId, kanjiIds))),
+      this.db.select({ kanjiId: mnemonics.kanjiId })
+        .from(mnemonics)
+        .where(and(eq(mnemonics.userId, userId), inArray(mnemonics.kanjiId, kanjiIds), eq(mnemonics.generationMethod, 'cocreated'))),
+    ])
+    const lapseBy = new Map(progress.map((p) => [p.kanjiId, p.lapses]))
+    const hookSet = new Set(hooks.map((h) => h.kanjiId))
+    return chars.map((c) => ({
+      kanjiId: c.id,
+      kanji: c.character,
+      lapses: lapseBy.get(c.id) ?? 0,
+      hasHook: hookSet.has(c.id),
+    }))
   }
 
   // ── Update a user's mnemonic ───────────────────────────────────────────────
