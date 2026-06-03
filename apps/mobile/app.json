@@ -46,8 +46,6 @@
     },
     "plugins": [
       "./plugins/withXcode16Fix",
-      "./plugins/withWatchApp",
-      "./plugins/withWatchConnectivity",
       "expo-router",
       "expo-web-browser",
       [
@@ -84,7 +82,7 @@
     "experiments": {
       "typedRoutes": true
     },
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "extra": {
       "router": {},
       "eas": {
