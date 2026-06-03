@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { and, eq } from 'drizzle-orm'
 import { mnemonics, kanji } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
-import { updateEffectiveness, EFFECTIVENESS_DEFAULT } from '@kanji-learn/shared'
+import { updateEffectiveness, EFFECTIVENESS_DEFAULT, COCREATION_SYSTEM_PROMPT, buildAssemblyPrompt } from '@kanji-learn/shared'
 import type { AssemblerSlots, CoCreationContext } from '@kanji-learn/shared'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -348,23 +348,3 @@ const MNEMONIC_SYSTEM_PROMPT = `You are an expert Japanese language teacher spec
 Your mnemonics use vivid imagery, phonetic wordplay, and narrative to make kanji unforgettable.
 You incorporate the kanji's radicals as visual building blocks and weave in the readings naturally.
 Keep stories concrete, surprising, and emotionally engaging. Avoid vague or generic associations.`
-
-const COCREATION_SYSTEM_PROMPT = `You are Buddy, a warm study companion helping a learner BUILD their own memory hook for a kanji.
-You are given real details the learner just gave you: where they are, something they can see, the kanji's component parts and meaning, and its reading.
-Weave ALL of them into one vivid 2–3 sentence second-person scene that connects the new kanji to what they already see and know (learning is constructed: new → known).
-Name each component's meaning, ground it in their place, use their anchor detail, and surface the reading naturally. Concrete and surprising, never generic. Output ONLY the story — no preamble, no labels.`
-
-function buildAssemblyPrompt(slots: AssemblerSlots): string {
-  const components = slots.components.length
-    ? slots.components.map((c) => `${c.char} (${c.meaning})`).join(', ')
-    : 'no mapped components'
-  const lines = [
-    `Kanji: ${slots.kanji} — means "${slots.kanjiMeaning}", read ${slots.reading}.`,
-    `Components: ${components}.`,
-    `Place: ${slots.locationName}.`,
-    `They are looking at: ${slots.anchor}.`,
-  ]
-  if (slots.personalDetail) lines.push(`Personal detail: ${slots.personalDetail}.`)
-  if (slots.readingPlay) lines.push(`Reading wordplay seed: ${slots.readingPlay}.`)
-  return lines.join('\n')
-}
