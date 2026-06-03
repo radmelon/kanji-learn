@@ -13,6 +13,7 @@ module.exports = {
   },
   testMatch: ['<rootDir>/test/**/*.test.ts', '<rootDir>/test/**/*.test.tsx'],
   moduleNameMapper: {
+    '^@kanji-learn/shared$': '<rootDir>/../../packages/shared/src/index.ts',
     '^expo-web-browser$': '<rootDir>/test/__mocks__/expo-web-browser.ts',
     '^expo-auth-session$': '<rootDir>/test/__mocks__/expo-auth-session.ts',
     '^(\\.+/)*supabase$': '<rootDir>/test/__mocks__/supabase.ts',
