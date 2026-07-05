@@ -280,13 +280,15 @@ Before shipping a general-availability release, close these items (all tracked i
 | 20 | Multiple SRS Deck Support | High | Yes | Pending |
 | 21 | Graded Reading Passage Mode | High | Yes | Pending |
 | 22 | AI-Powered Personalized Study Plan | High | Yes | Pending |
-| 23 | **Three-Modality Learning Loop** — owner-proposed 2026-04-20. After each daily-goal flashcard batch, gate further flashcard sessions until the same kanji have been practiced in *writing* AND *speaking* modalities. Pedagogically motivated: multi-modal encoding (recognition → production → vocalisation) beats flashcard-only loops, and the gate forces integration of new kanji into active recall rather than pattern-matching. Differentiator vs. generic SRS apps. | High | Yes | Pending |
+| 23 | **Three-Modality Learning Loop** — owner-proposed 2026-04-20. After each daily-goal flashcard batch, gate further flashcard sessions until the same kanji have been practiced in *writing* AND *speaking* modalities. Pedagogically motivated: multi-modal encoding (recognition → production → vocalisation) beats flashcard-only loops, and the gate forces integration of new kanji into active recall rather than pattern-matching. Differentiator vs. generic SRS apps. | High | Yes | ✅ Core shipped (B134 "Practice Loop") — see note below |
 
 **Why last:**
 - Multiple decks is an architectural change (schema, SRS service, all UI) — highest risk
 - Reading passages are a new product surface, not an improvement to an existing one
 - AI study plan benefits from leech data (Phase 3) and session builder infrastructure (Phase 4)
-- Three-Modality Loop requires reliable writing + voice evaluators (currently in early-polish stages), a cross-tab session state machine that doesn't exist today, and careful UX design around edge cases (partial completion, sparse vocab data, subway-friendly escape hatches). Needs its own brainstorm → spec → plan cycle; estimated 1–2 weeks once prerequisites are solid. See ENHANCEMENTS.md for the full entry.
+- ~~Three-Modality Loop requires reliable writing + voice evaluators (currently in early-polish stages), a cross-tab session state machine that doesn't exist today, and careful UX design around edge cases (partial completion, sparse vocab data, subway-friendly escape hatches). Needs its own brainstorm → spec → plan cycle; estimated 1–2 weeks once prerequisites are solid. See ENHANCEMENTS.md for the full entry.~~
+
+**#23 status note (2026-07-04):** the multi-modal core shipped in B134 as the **Practice Loop** (Plans A/B/C), in a different — arguably better — form than originally spec'd. Instead of a batch-level gate between sessions, every *new* kanji and every review graded *Again/Hard* routes **inline** through flashcard → writing leg → speaking leg within the same session (`review.store.ts` leg state machine); "maybe slipping" Good/Easy reviews get a quiz leg. The inline design dissolved the spec's hardest open questions (partial completion, escape hatches, cross-tab state machine) because a session never cuts off mid-path. Weak-spot/missed drills stay flashcard-only by design. **Not built:** the original batch-gate variant (locking further flashcard sessions until the previous batch clears writing AND speaking) — retained here as an open idea only if the inline loop proves insufficient.
 
 ---
 
