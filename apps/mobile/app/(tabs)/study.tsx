@@ -357,8 +357,11 @@ function StudySession() {
 
   const handleFinish = useCallback(async () => {
     setIsSaving(true)
-    const { results } = useReviewStore.getState()
-    const { modalityCounts } = useReviewStore.getState()
+    // Read session state fresh from the store (not the render closure —
+    // handleFinish's deps don't include these, so closure values could be
+    // stale). goalMinutes is captured here, before anything can reset it,
+    // so it reflects THIS session: > 0 = main loop, 0 = weak/missed drill.
+    const { results, modalityCounts, goalMinutes: sessionGoalMinutes } = useReviewStore.getState()
     // Match the server-side definition (srs.service.ts:289): Good (4) and
     // Easy (5) count as "correct"; Hard (3) and Again (1) do not. Previously
     // the client used `>= 3`, which disagreed with daily_stats.correct and
@@ -416,6 +419,10 @@ function StudySession() {
     // Post-session Buddy moment (spec §4.1) — best-effort only. This runs
     // after Session Complete is already set, so it can never block or delay
     // it; any failure here silently degrades to the normal summary screen.
+    // Main-loop sessions only: weak/missed drills end through handleFinish
+    // too, but have goalMinutes 0 (the same convention the store's leg
+    // routing uses to keep drills flashcard-only) — no Buddy moment there.
+    if (sessionGoalMinutes <= 0) return
     try {
       // Capture the generation before the await: if the user leaves Session
       // Complete (or starts a new session) while the context fetch is in
