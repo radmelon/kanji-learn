@@ -1,3 +1,48 @@
+# Session Handoff — 2026-07-04 (TTS volume bug ROOT-CAUSED + fixed for real; B140+B141 cut; Plan 3b UI code-complete; 7GB worktree cleanup)
+
+## TL;DR (2026-07-04)
+
+Four big things happened this session:
+
+1. **The latched-low-TTS-volume bug is actually dead** (plagued every study session since April). The April fix (`f6eb823`) was a **native no-op**: expo-av's `Audio.setAudioModeAsync` only touches AVAudioSession when expo-av has active audio objects (`EXAV.m:286`) — and all TTS goes through expo-speech. Real fix: expo-speech-recognition's own `setCategoryIOS({category:'playback', mode:'default', categoryOptions:[]})` (mode MUST be explicit; native default is `.measurement`). Device-verified with session-state instrumentation: BEFORE `{playAndRecord, measurement}` → AFTER `{playback, default}`. Commits: `a6f5f85` (branch) / `4923bb3` (main). Full writeup in BUGS.md.
+2. **B140 and B141 cut to TestFlight.** B140 (first New-Arch EAS build) took 5 attempts — see "B140/EAS lessons" below + docs/SOP.md. B140 bundles the flame→⚡ fix, badge scroll cue, radical relabel (and the *broken* volume fix). **B141 (volume fix, real one) was building at session end** — check `eas build:list`; verify on iPad when it lands: study through a speaking leg → speak icons stay full volume.
+3. **Phase 5 Plan 3b UI (Tasks 6–8) is code-complete** on branch `phase-5-cocreation-ui` (pushed; 7 commits `14c6ff2..a6f5f85`). Subagent-driven, per-task + final whole-branch review, verdict "ready to merge". **Operator device walkthrough still owed** (checklist below). ⚠️ **Do NOT merge to main until you accept that main becomes unshippable-to-TestFlight** — the 3b UI calls Plan-2 API endpoints the production API doesn't have (deploy blocked until Plan 4 removes the mobile refresh callers; Phase 5 = one coordinated cut, see the 2026-06-03 section).
+4. **~7GB of stale worktrees purged; unlanded gold rescued.** `kanji-learn-phase-0`/`-phase-1` dirs archived+removed (phase-1 was a linked WORKTREE, not a copy). Rescued to pushed branches: `stash/a11y-contrast-pass` (textSubtle WCAG-AA token across 30 screens) and `stash/kanjidic2-full-readings` (importer fix — earlier seeds truncated reading arrays to 5). Kept: `.worktrees/phase-5-on-device` (the Plan 3b launch pad, now on branch `phase-5-cocreation-ui`).
+
+### B140/EAS lessons (also in docs/SOP.md — read before any build debugging)
+- **`apps/mobile/ios/` is GITIGNORED** → EAS never sees local ios/ edits; it prebuilds on the builder. Only app.json / eas.json / env vars reach EAS.
+- **RN 0.81.5 precompiled release XCFrameworks break New-Arch Release links** (`Undefined symbols: facebook::react::Sealable` — debug-guarded symbols referenced by ExpoModulesCore/RNSVG/RNGestureHandler). Fix (in eas.json production env, committed `c7e9ad9`): `RCT_USE_PREBUILT_RNCORE=0`, `RCT_USE_RN_DEP=0` (~+10 min/build). Local builds unaffected (debug prebuilt has the symbols).
+- EAS log blobs are **brotli** — `eas build:view --json <id>` → logFiles URLs → `node zlib.brotliDecompressSync`.
+- **Dev build & TestFlight share the bundle ID** — installing one replaces the other. TestFlight B139 had silently replaced the June dev client on the iPhone; rebuilt via `npx expo run:ios --device "iPhoneRAD" --port 8082` (device was still Xcode-paired, cable optional).
+
+### Plan 3b UI — what landed (branch `phase-5-cocreation-ui`)
+| Commit | What |
+|---|---|
+| `14c6ff2` | Task 6: `CoCreationSheet` — multi-step Modal (consent w/ teaching beat → location → anchor → assembly → commitment), mirrors MnemonicNudgeSheet pattern |
+| `385d315` + `b2786e3` + `fc71ffc` | Task 7: post-session Buddy moment trigger in study.tsx — non-blocking, generation-guarded against stale sheets, gated to main-loop sessions (drills excluded) |
+| `a85594f` | Task 8: manual "Build a hook" on kanji detail (no-hook check = `generationMethod === 'cocreated'`, same discriminator as the API's hasHook) |
+| `699706d` | Final-review fixes: fresh sheet per open, "Checking where you are…" inferring state, tier label map, double-tap guards |
+| `a6f5f85` | The real TTS volume fix (also cherry-picked to main as `4923bb3`) |
+
+### Plan 3b device walkthrough (OWED — next session's first job)
+Setup: local API from the worktree (`env -u ANTHROPIC_API_KEY pnpm --filter @kanji-learn/api dev`; device hits `http://192.168.4.59:3000` per `apps/mobile/.env.local`) + Metro `npx expo start --dev-client --port 8082` (8081 is often taken by abc-phonics). Dev client is on the iPhone 15 Pro (reinstalled 2026-07-04, replaces B139).
+- **Manual path:** hookless kanji → detail → Build a hook → consent (teaching beat) → location grant AND deny paths → anchor → draft (cloud tier tag) → Make it stickier → Save → detail hides the button. Repeat one in airplane mode → "Template"/"On-device" tag. Close mid-flow + reopen → must restart at consent. DB check (RAD `7c707446…`): `mnemonics` row with `generation_method='cocreated'`.
+- **Trigger path crib sheet (from the final review):** fires only for hookless + graded Again/Hard this session + `lapses ≥ 3`; suppressed entirely if any *hooked* kanji struggled the same session (reinforce outranks create and is a Plan-4 no-op — correct, not a bug). Drills never trigger. Expect NO "Looks like you're near X" line on the grant path (known plan-level reducer gap, deferred to Plan 4). At most one sheet per session.
+
+### After the walkthrough
+1. Merge `phase-5-cocreation-ui` (superpowers:finishing-a-development-branch) — accepting the main-unshippable constraint above, OR keep the branch until Plan 4 if an interim TestFlight cut might be needed.
+2. **Plan 4** (not drafted): `mnemonic_recall` quiz + reinforce/deepen + surfacing + REMOVE the mobile refresh callers (unblocks the API deploy) + the location_inference reducer cleanup + "Not now" 7-day cooldown. Then the **coordinated cut**: API deploy + migration 0026 + IDS backfill + mnemonics cleanup (runbook `docs/superpowers/runbooks/2026-06-01-phase5-data-cleanup.md`) + EAS build, together.
+
+### Loose ends
+- **Rotate the Supabase DB password** (outstanding since 2026-06-03 — user-side action).
+- B141 verification on iPad (volume through speaking legs) once Apple processes it.
+- B140 walkthrough items still unverified: Progress ⚡ (not 🔥), badge scroll chevron/fade, radical relabels in Browse/KanjiCard.
+- `stash/a11y-contrast-pass` + `stash/kanjidic2-full-readings` — review/land when convenient.
+- Unmerged single-fix branches from May triage (kept, zero cost): `claude/heuristic-cohen` (writing-queue endpoint removal — endpoint still exists on main; decide), `practice-loop-plan-c` (unused useEffect import in progress.tsx — still unused), `claude/magical-snyder` (romaji-leak seed guard), `claude/cranky-chebyshev` (FK back-port), `claude/lucid-nightingale` (Watch-era, likely obsolete — Watch is being rethought as a MOTIVATOR, not tiny flashcards, per operator 2026-07-04).
+- BUGS.md B-207 scroll affordance shipped B139/B140 but its entry may also be stale — check during the B140 walkthrough.
+
+---
+
 # Session Handoff — 2026-06-03 (Phase 5: Plan 2 + Plan 3a + Plan 3b-logic all MERGED to `main`; on-device Apple Foundation Models VERIFIED; 3b UI + Plan 4 remain)
 
 ## TL;DR (2026-06-03 — three Phase-5 plans landed; on-device tier proven on-device)
