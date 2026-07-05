@@ -1,3 +1,28 @@
+# Session Handoff — 2026-07-05 (Plan 3b walkthrough COMPLETE; migration 0026 LIVE; KanjiBuddy rebrand; B143 cut for first outside tester)
+
+## TL;DR (2026-07-05)
+
+1. **Plan 3b walkthrough COMPLETE — every checklist item verified**, most on the operator's device, the stubborn ones re-verified by driving the iOS Simulator directly (computer-use + throwaway Supabase test account via admin API, created and deleted same-session). Verified: manual path (円), grant path w/ GPS coords (聞 → "Calabasas" reverse-geocoded), typed-location path, all three assembly tiers (cloud 聞 / on_device 月 / template 行), save→button-hides, close-mid-flow→consent restart, stickier rebuild weaving the personal detail into the story + into `cocreation_context.layers`, and the **end-of-session trigger path** (敗, lapses artificially set to 3 on the gmail account — it's hooked now, so no re-fire risk; its hook lacks the "Yellow shirt" detail; delete its mnemonics row if the operator wants a rebuild).
+2. **Nine walkthrough-driven fixes on `phase-5-cocreation-ui`** (pushed, `3a2a22e`+`80b521c`, still NOT merged — Plan-4 constraint holds): CoCreationSheet KeyboardAvoidingView; Save pinned in a safe-area footer; ScrollView `flexShrink:1` (RN defaults 0 → tall content shoved the footer off-screen); Speak-it button (expo-speech); **stickier UX redesign after 3 straight silent data losses** — return key rebuilds, dirty inputs flip the footer primary to "Rebuild it" with Save demoted to "Save without it"; `getPlaceName` now REQUESTS location permission (check-only meant the grant path could never fire); detail page surfaces the co-created hook over stale system rows + hides Regenerate; GO_BACK guard for deep-link entry; MnemonicNudgeSheet given the same KAV/inset/flexShrink treatment.
+3. **Migration 0026 + IDS backfill applied to the LIVE DB** (operator-approved; safety dump `/tmp/phase5-safety/live-20260705-102639.sql`, 24h restore window now lapsed). `kanji.components` filled 2264/2294; spot-check 持→[扌,寺] ✅; ~30 empties are atomic kanji (円) with no IDS decomposition — correct. Browse in the dev client broke on the missing column, which is how this surfaced. **Destructive mnemonics cleanup + API deploy remain deferred to the coordinated cut.**
+4. **KanjiBuddy rebrand + B143 cut from main for the first outside tester.** `expo.name` + permission strings + About/sign-in/share copy → KanjiBuddy (slug/scheme/bundleId untouched); enamel-pin splash (`docs/branding/KanjiBuddyEnamel.jpg`, bg `#26221f`) with **1.8s minimum hold** via expo-splash-screen (NEW native module — dev clients predating B143 degrade gracefully); pin-crop app icon; nudge-sheet + DeleteAccountModal keyboard fixes ported to main; `getBestVoice` Enhanced-TTS upgrade (hook Speak-it en-US, detail+study readings ja-JP). **B143 built + auto-submitted** (`c5b22fa`); Apple processing; operator emails are the landing signal.
+
+### Debugging lesson that cost half the day
+Three rounds of remote layout fixes "failed" because the **iPhone ran a stale Metro bundle** — airplane-mode testing severed the connection and shake-reload silently didn't fetch. Freshness markers now: Speak-it on the draft card; two side-by-side footer buttons in stickier. When on-device reports contradict the code, **drive the Simulator with computer-use before patching again**: `npx expo run:ios --port 8082` from the worktree, throwaway auth user via Supabase admin API (`POST /auth/v1/admin/users`, set `onboarding_completed_at`, delete after), deep-link via `xcrun simctl openurl booted "kanjilearn://kanji/<id>"`, paste text via `pbcopy`+cmd-V (typing triggers the macOS accent popover), toggle software keyboard with cmd-K.
+
+### Operator actions owed (B143 / first tester)
+- **App Store Connect** (app 6761603490): (1) App Information → rename to **KanjiBuddy** (TestFlight shows the ASC name); (2) TestFlight → External group → add `Brausenhauser@gmail.com`; (3) attach **build 143** when processed → first external build = short Beta App Review → invite email sends when it clears.
+- **B141/B143 iPad volume verification still owed** (speak icons through a speaking leg) + B140 visual items (Progress ⚡, badge chevron/fade, radical relabels).
+- **Rotate the Supabase DB password** (since 2026-06-03).
+
+### Loose ends / next session
+- **Daily push notifications broken since April** (BUGS.md "Daily push notifications not firing", EventBridge rule exists, Lambda invokes ok, nothing arrives since B103) — the one real blemish an outside tester will hit in week one. Deserves its own debugging session BEFORE the friend enables reminders.
+- **EAS lesson (now in SOP): `autoIncrement: true` bumps buildNumber itself — hand-bumping 141→142 produced B143.** Never hand-bump; commit the auto-written app.json after each cut.
+- Plan 4 scope grew from walkthrough feedback (all in ENHANCEMENTS.md + Open Brain): stickier-after-save ("Go deeper" must reopen stickier inputs), `attach_location_to_hooks` privacy switch + first-time Buddy in-flow ask, "Buddy voice" cloud TTS cached per hook, `speakMixed` ja/en segmentation, Velocity rework + goal calculator ("Nov 2034 is discouraging"), Study on the Go flashcard-only mode, geo-triggered hook recall. Kanji-count discrepancy (constant 2294 vs UI "2254 Jōyō" vs official 2136) folded into the Velocity entry.
+- Merge decision for `phase-5-cocreation-ui` stays parked until Plan 4 (unshippable-API constraint). Simulator rig (test-account recipe above) makes future branch verification cheap.
+
+---
+
 # Session Handoff — 2026-07-04 (TTS volume bug ROOT-CAUSED + fixed for real; B140+B141 cut; Plan 3b UI code-complete; 7GB worktree cleanup)
 
 ## TL;DR (2026-07-04)
