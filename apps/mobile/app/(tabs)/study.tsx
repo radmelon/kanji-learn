@@ -91,6 +91,18 @@ function StudySession() {
   // lazily once we know which kanji (if any) the trigger picked.
   const [buddyMomentKanjiId, setBuddyMomentKanjiId] = useState<number | null>(null)
   const [buddyMomentKanji, setBuddyMomentKanji] = useState<(KanjiForHook & { id: number }) | null>(null)
+  // Generation guard for the Buddy moment (same ref-guard idiom as
+  // finishCalledRef below): clearBuddyMoment bumps the generation, and any
+  // buddy-moment fetch still in flight from an earlier session compares its
+  // captured generation before touching state — so a late response can never
+  // resurrect a sheet after the user has left Session Complete or started a
+  // new session.
+  const buddyMomentGenRef = useRef(0)
+  const clearBuddyMoment = useCallback(() => {
+    buddyMomentGenRef.current += 1
+    setBuddyMomentKanjiId(null)
+    setBuddyMomentKanji(null)
+  }, [])
   // Dev-only: force the current card's reviewType to exercise all four modes
   // without waiting for SRS to surface them. Visible when either __DEV__ is
   // true (local dev) OR EXPO_PUBLIC_DEV_TOOLS=1 is set (TestFlight builds
@@ -405,10 +417,16 @@ function StudySession() {
     // after Session Complete is already set, so it can never block or delay
     // it; any failure here silently degrades to the normal summary screen.
     try {
+      // Capture the generation before the await: if the user leaves Session
+      // Complete (or starts a new session) while the context fetch is in
+      // flight, clearBuddyMoment bumps the generation and this stale result
+      // is dropped instead of resurrecting a sheet in the next session.
+      const gen = buddyMomentGenRef.current
       const gradedIds = [...new Set(results.map((r) => r.kanjiId))]
       const struggledById = new Map<number, boolean>()
       for (const r of results) if (r.quality === 1 || r.quality === 3) struggledById.set(r.kanjiId, true)
       const ctx = await fetchBuddyMomentContext(gradedIds)
+      if (gen !== buddyMomentGenRef.current) return // stale — session moved on
       const cards: ReviewedCard[] = ctx.map((c) => ({
         kanjiId: c.kanjiId,
         kanji: c.kanji,
@@ -512,6 +530,7 @@ function StudySession() {
             // mounts a fresh queue instead of re-rendering the stale Session
             // Complete screen. Expo Router tabs stay mounted across navigations,
             // so without this reset the state survives and the user gets stuck.
+            clearBuddyMoment()
             setSessionSummary(null)
             reset()
             setPhase('ready')
@@ -520,6 +539,7 @@ function StudySession() {
           onReview={() => {
             const ok = loadMissedQueue()
             if (ok) {
+              clearBuddyMoment()
               setSessionSummary(null)
               setIsRevealed(false)
               isRevealedRef.current = false
@@ -527,6 +547,7 @@ function StudySession() {
             }
           }}
           onKeepStudying={() => {
+            clearBuddyMoment()
             setSessionSummary(null)
             setIsRevealed(false)
             isRevealedRef.current = false
@@ -536,15 +557,14 @@ function StudySession() {
         />
         {/* Post-session Buddy moment (spec §4.1) — modal, renders OVER Session
             Complete, which stays mounted beneath. At most one per session:
-            buddyMomentKanjiId is set at most once by handleFinish. */}
+            buddyMomentKanjiId is set at most once by handleFinish, and every
+            exit from Session Complete calls clearBuddyMoment, which also
+            invalidates any in-flight buddy-moment fetch via the generation ref. */}
         {buddyMomentKanji && (
           <CoCreationSheet
             visible
             kanji={buddyMomentKanji}
-            onClose={() => {
-              setBuddyMomentKanjiId(null)
-              setBuddyMomentKanji(null)
-            }}
+            onClose={clearBuddyMoment}
           />
         )}
       </>
