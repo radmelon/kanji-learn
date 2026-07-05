@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Audio } from 'expo-av'
 import * as Speech from 'expo-speech'
+import * as SplashScreen from 'expo-splash-screen'
 import { useAuthStore } from '../src/stores/auth.store'
 import { usePushNotifications } from '../src/hooks/usePushNotifications'
 import { useNetworkStatus } from '../src/hooks/useNetworkStatus'
@@ -14,6 +15,21 @@ import { colors } from '../src/theme'
 import { parseOAuthCallbackUrl } from '../src/lib/oauth'
 import { supabase } from '../src/lib/supabase'
 import { useProfile } from '../src/hooks/useProfile'
+
+// Hold the native splash until auth has initialized AND a minimum display
+// window has passed — without this it vanishes the instant the JS bundle
+// loads, too brief to register. Failsafe below guarantees it always hides.
+// catch(): on dev clients built before expo-splash-screen was added, the
+// native module is absent — degrade to the old instant-hide behavior.
+SplashScreen.preventAutoHideAsync().catch(() => {})
+try {
+  SplashScreen.setOptions({ fade: true, duration: 400 })
+} catch {
+  // native module absent on pre-B142 dev clients
+}
+const SPLASH_SHOWN_AT = Date.now()
+const MIN_SPLASH_VISIBLE_MS = 1800
+const SPLASH_FAILSAFE_MS = 8000
 
 export default function RootLayout() {
   const { isInitialized, session, initialize } = useAuthStore()
@@ -54,6 +70,25 @@ export default function RootLayout() {
       })
       .catch((e) => console.error('[TTS] getAvailableVoicesAsync failed:', e))
   }, [])
+
+  // Release the splash once auth init has settled and the minimum window has
+  // passed. The failsafe hides it unconditionally so a hung initialize() can
+  // never strand the user on the splash.
+  useEffect(() => {
+    const failsafe = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {})
+    }, SPLASH_FAILSAFE_MS)
+    return () => clearTimeout(failsafe)
+  }, [])
+
+  useEffect(() => {
+    if (!isInitialized) return
+    const remaining = Math.max(0, MIN_SPLASH_VISIBLE_MS - (Date.now() - SPLASH_SHOWN_AT))
+    const t = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {})
+    }, remaining)
+    return () => clearTimeout(t)
+  }, [isInitialized])
 
   usePushNotifications(!!session)
 
