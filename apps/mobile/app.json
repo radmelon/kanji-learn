@@ -30,7 +30,7 @@
         "NSLocationWhenInUseUsageDescription": "Allow KanjiBuddy to tag mnemonics with the place where you learned them.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "142"
+      "buildNumber": "143"
     },
     "android": {
       "adaptiveIcon": {
