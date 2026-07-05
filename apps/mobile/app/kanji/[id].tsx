@@ -23,6 +23,7 @@ import { getRadicalName } from '../../src/constants/radicals'
 import { useMnemonics } from '../../src/hooks/useMnemonics'
 import { useShowPitchAccent } from '../../src/hooks/useShowPitchAccent'
 import { PitchAccentReading } from '../../src/components/kanji/PitchAccentReading'
+import { CoCreationSheet } from '../../src/components/mnemonics/CoCreationSheet'
 
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.9 }
 
@@ -55,6 +56,7 @@ interface KanjiDetail {
   exampleVocab: VocabExample[]
   exampleSentences: { ja: string; en: string; vocab: string }[]
   radicals: string[]
+  components: string[]
   svgPath: string | null
   // Cross-reference codes
   jisCode: string | null
@@ -146,6 +148,8 @@ export default function KanjiDetail() {
     load: loadMnemonics,
     generate: generateMnemonic,
   } = useMnemonics(kanjiId)
+  const [showBuildHook, setShowBuildHook] = useState(false)
+  const hasCoCreatedHook = mnemonics.some((m) => m.generationMethod === 'cocreated')
 
   useEffect(() => {
     if (Number.isFinite(kanjiId)) loadMnemonics()
@@ -393,6 +397,20 @@ export default function KanjiDetail() {
                 </Text>
               </TouchableOpacity>
             )}
+
+            {/* Manual co-creation entry (spec §9.1): cold-start safety net when
+                the kanji has no co-created hook yet. Full MnemonicCard refactor
+                + "Go deeper" entry is Plan 4 — this is only the create entry. */}
+            {!hasCoCreatedHook && (
+              <TouchableOpacity
+                style={styles.mnemonicSecondaryButton}
+                onPress={() => setShowBuildHook(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="hammer-outline" size={16} color={colors.primary} />
+                <Text style={styles.mnemonicSecondaryButtonText}>Build a hook</Text>
+              </TouchableOpacity>
+            )}
           </Card>
 
           {/* Example Vocabulary */}
@@ -571,6 +589,21 @@ export default function KanjiDetail() {
           )}
         </ScrollView>
       ) : null}
+
+      {/* Manual "Build a hook" entry (spec §9.1) — cold-start safety net when
+          the kanji has no co-created hook. Refreshes the mnemonic list on save
+          via the screen's existing loadMnemonics path. */}
+      {kanji && (
+        <CoCreationSheet
+          visible={showBuildHook}
+          kanji={kanji}
+          onClose={() => setShowBuildHook(false)}
+          onSaved={() => {
+            setShowBuildHook(false)
+            loadMnemonics()
+          }}
+        />
+      )}
     </SafeAreaView>
   )
 }
