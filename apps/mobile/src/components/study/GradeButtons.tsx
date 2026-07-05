@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   },
   indicator: { width: 24, height: 4, borderRadius: radius.full, marginBottom: 4 },
   label: { ...typography.bodySmall, fontWeight: '700' },
-  sublabel: { ...typography.caption, color: colors.textMuted },
+  sublabel: { ...typography.caption, color: colors.textSubtle },
   helpBtn: { padding: spacing.xs },
 
   // Modal

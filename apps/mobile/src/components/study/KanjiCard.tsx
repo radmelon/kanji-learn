@@ -560,20 +560,20 @@ const drawerStyles = StyleSheet.create({
   sectionTitle: { ...typography.h3, color: colors.textPrimary },
   sectionBody: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
   meaningRow: { ...typography.body, color: colors.textPrimary },
-  meaningIndex: { color: colors.textMuted },
+  meaningIndex: { color: colors.textSubtle },
   readingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  readingLabel: { ...typography.caption, color: colors.textMuted, width: 28 },
+  readingLabel: { ...typography.caption, color: colors.textSubtle, width: 28 },
   readingValue: { ...typography.body, color: colors.textPrimary },
   vocabRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
   vocabWord: { ...typography.body, color: colors.textPrimary, fontWeight: '700' },
   vocabReading: { ...typography.body, color: colors.textSecondary },
-  vocabMeaning: { ...typography.bodySmall, color: colors.textMuted, flex: 1 },
+  vocabMeaning: { ...typography.bodySmall, color: colors.textSubtle, flex: 1 },
   radicalGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   radicalPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.bgElevated, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 4 },
   radicalChar: { ...typography.h3, color: colors.textPrimary },
-  radicalName: { ...typography.caption, color: colors.textMuted },
+  radicalName: { ...typography.caption, color: colors.textSubtle },
   refRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
-  refLabel: { ...typography.bodySmall, color: colors.textMuted },
+  refLabel: { ...typography.bodySmall, color: colors.textSubtle },
   refValue: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
   sentenceRow: {
     gap: 3,
@@ -582,7 +582,7 @@ const drawerStyles = StyleSheet.create({
     borderBottomColor: colors.divider,
   },
   sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22 },
-  sentenceEn: { ...typography.caption, color: colors.textMuted, lineHeight: 16 },
+  sentenceEn: { ...typography.caption, color: colors.textSubtle, lineHeight: 16 },
 })
 
 // ─── SpeakButton ──────────────────────────────────────────────────────────────
@@ -688,7 +688,7 @@ const styles = StyleSheet.create({
     borderColor: colors.info,
     backgroundColor: colors.info + '22',
   },
-  romajiToggleText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  romajiToggleText: { ...typography.caption, color: colors.textSubtle, fontWeight: '600' },
   romajiToggleTextActive: { color: colors.info },
 
   kanji: { ...typography.kanjiDisplay, color: colors.textPrimary },
@@ -720,7 +720,7 @@ const styles = StyleSheet.create({
   readingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   readingLabel: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     width: 24,
     textAlign: 'right',
     paddingTop: 2,
@@ -750,7 +750,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22 },
-  sentenceEn: { ...typography.caption, color: colors.textMuted, lineHeight: 16 },
+  sentenceEn: { ...typography.caption, color: colors.textSubtle, lineHeight: 16 },
 
   // Vocab examples
   vocab: { gap: 6, width: '100%' },

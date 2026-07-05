@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
   },
   tagline: {
     ...typography.bodySmall,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     textAlign: 'center',
     fontStyle: 'italic',
     marginBottom: spacing.xxl,
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
   },
   footerNote: {
     ...typography.bodySmall,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     textAlign: 'center',
     marginTop: spacing.sm,
     marginBottom: spacing.md,
@@ -563,7 +563,7 @@ const styles = StyleSheet.create({
   },
   countryPlaceholder: {
     ...typography.body,
-    color: colors.textMuted,
+    color: colors.textSubtle,
   },
   countryChevron: {
     ...typography.h2,
@@ -574,7 +574,7 @@ const styles = StyleSheet.create({
   // Focus & Daily Target chips
   subhead: {
     ...typography.bodySmall,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },

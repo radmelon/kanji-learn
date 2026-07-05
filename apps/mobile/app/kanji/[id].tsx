@@ -589,7 +589,7 @@ function RefRow({ label, value, onPress }: { label: string; value: string; onPre
 
 const refRowStyles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
-  label: { ...typography.bodySmall, color: colors.textMuted },
+  label: { ...typography.bodySmall, color: colors.textSubtle },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   value: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
   valueLink: { color: colors.primary },
@@ -658,7 +658,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm, paddingVertical: 3,
     borderWidth: 1, borderColor: colors.border,
   },
-  strokeText: { ...typography.caption, color: colors.textMuted },
+  strokeText: { ...typography.caption, color: colors.textSubtle },
   primaryMeaning: { ...typography.h2, color: colors.textSecondary, textAlign: 'center' },
 
   // SRS
@@ -667,7 +667,7 @@ const styles = StyleSheet.create({
   srsStatusText: { ...typography.body, fontWeight: '700' },
   srsMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   srsMetaItem: { gap: 2 },
-  srsMetaLabel: { ...typography.caption, color: colors.textMuted },
+  srsMetaLabel: { ...typography.caption, color: colors.textSubtle },
   srsMetaValue: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
 
   // Meanings
@@ -685,7 +685,7 @@ const styles = StyleSheet.create({
   readingGroup: { gap: spacing.xs },
   readingGroupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   readingGroupLabel: {
-    ...typography.caption, color: colors.textMuted,
+    ...typography.caption, color: colors.textSubtle,
     fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5,
   },
   readingPills: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
@@ -706,7 +706,7 @@ const styles = StyleSheet.create({
   vocabRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
   vocabLeft: { gap: 2 },
   vocabWord: { ...typography.h3, color: colors.textPrimary },
-  vocabReading: { ...typography.caption, color: colors.textMuted },
+  vocabReading: { ...typography.caption, color: colors.textSubtle },
 
   pitchToggle: {
     paddingHorizontal: 10,
@@ -720,7 +720,7 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     backgroundColor: colors.accent + '22',
   },
-  pitchToggleText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  pitchToggleText: { ...typography.caption, color: colors.textSubtle, fontWeight: '600' },
   pitchToggleTextActive: { color: colors.accent },
   vocabMeaning: { ...typography.bodySmall, color: colors.textSecondary, flex: 1, textAlign: 'right' },
   speakIcon: { marginLeft: spacing.xs },
@@ -731,7 +731,7 @@ const styles = StyleSheet.create({
   sentenceJaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
   sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22, flex: 1 },
   sentenceVocabHighlight: { color: colors.accent, fontWeight: '700' },
-  sentenceEn: { ...typography.caption, color: colors.textMuted, lineHeight: 16 },
+  sentenceEn: { ...typography.caption, color: colors.textSubtle, lineHeight: 16 },
 
   // Radicals
   radicalPills: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
@@ -745,17 +745,17 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   radicalText: { ...typography.h3, color: colors.textPrimary },
-  radicalName: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
+  radicalName: { ...typography.caption, color: colors.textSubtle, textAlign: 'center' },
 
   // References
   refCredit: {
-    ...typography.caption, color: colors.textMuted, fontStyle: 'italic',
+    ...typography.caption, color: colors.textSubtle, fontStyle: 'italic',
     lineHeight: 16, marginTop: spacing.xs,
     borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.xs,
   },
 
   // Related Kanji
-  relatedSubtitle: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.xs },
+  relatedSubtitle: { ...typography.caption, color: colors.textSubtle, marginBottom: spacing.xs },
   relatedGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   relatedChip: {
     width: '47%',
@@ -776,7 +776,7 @@ const styles = StyleSheet.create({
   },
   relatedChar: { ...typography.h3, color: colors.textPrimary, minWidth: 24 },
   relatedLevel: { ...typography.caption, fontWeight: '700', minWidth: 20 },
-  relatedMeaning: { ...typography.caption, color: colors.textMuted, flex: 1 },
+  relatedMeaning: { ...typography.caption, color: colors.textSubtle, flex: 1 },
 
   // Mnemonic
   mnemonicText: {

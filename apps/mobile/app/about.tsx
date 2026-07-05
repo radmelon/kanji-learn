@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   },
   appVersion: {
     ...typography.bodySmall,
-    color: colors.textMuted,
+    color: colors.textSubtle,
   },
 
   // Cards
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   // Footer
   footer: {
     ...typography.bodySmall,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     textAlign: 'center',
     marginTop: spacing.md,
   },

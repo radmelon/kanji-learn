@@ -700,7 +700,7 @@ const barStyles = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', gap: 4 },
   track: { flex: 1, width: '60%', backgroundColor: colors.bgSurface, borderRadius: radius.sm, justifyContent: 'flex-end', overflow: 'hidden' },
   fill: { width: '100%', backgroundColor: colors.primary, borderRadius: radius.sm },
-  label: { ...typography.caption, color: colors.textMuted },
+  label: { ...typography.caption, color: colors.textSubtle },
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -744,11 +744,11 @@ const styles = StyleSheet.create({
   milestoneLevelText: { ...typography.h3, color: colors.primary },
   milestoneTitle: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
   milestoneDate: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  projection: { ...typography.caption, color: colors.textMuted },
+  projection: { ...typography.caption, color: colors.textSubtle },
   activityBars: { flexDirection: 'row', height: 80, gap: spacing.xs, alignItems: 'flex-end' },
   progressTrack: { height: 8, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radius.full },
-  progressLabel: { ...typography.caption, color: colors.textMuted },
+  progressLabel: { ...typography.caption, color: colors.textSubtle },
   completionPct: { ...typography.bodySmall, color: colors.primary, fontWeight: '600' },
 
   // Quiz card
@@ -757,7 +757,7 @@ const styles = StyleSheet.create({
   quizStatRow: { flexDirection: 'row', justifyContent: 'space-between' },
   quizStatItem: { alignItems: 'center', gap: 2 },
   quizStatValue: { ...typography.h3, color: colors.textPrimary },
-  quizStatLabel: { ...typography.caption, color: colors.textMuted },
+  quizStatLabel: { ...typography.caption, color: colors.textSubtle },
 
   // Accuracy by Type
   accTypeRows: { gap: spacing.sm, marginTop: spacing.xs },
@@ -773,10 +773,10 @@ const styles = StyleSheet.create({
   },
   accTypeFill: { height: '100%', borderRadius: radius.full },
   accTypePct: { ...typography.caption, fontWeight: '700', width: 32, textAlign: 'right' },
-  accTypeCount: { ...typography.caption, color: colors.textMuted, width: 44, textAlign: 'right' },
+  accTypeCount: { ...typography.caption, color: colors.textSubtle, width: 44, textAlign: 'right' },
 
   // Leaderboard
-  lbSubtitle: { ...typography.caption, color: colors.textMuted },
+  lbSubtitle: { ...typography.caption, color: colors.textSubtle },
   lbRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -792,11 +792,11 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.accent,
   },
   lbRowMe: { backgroundColor: colors.primary + '11', borderRadius: radius.sm, paddingHorizontal: spacing.xs },
-  lbRank: { ...typography.bodySmall, color: colors.textMuted, fontWeight: '700', width: 20, textAlign: 'center' },
+  lbRank: { ...typography.bodySmall, color: colors.textSubtle, fontWeight: '700', width: 20, textAlign: 'center' },
   lbInfo: { flex: 1, gap: 1 },
   lbName: { ...typography.body, color: colors.textPrimary },
   lbNameMe: { color: colors.primary, fontWeight: '600' },
-  lbStats: { ...typography.caption, color: colors.textMuted },
+  lbStats: { ...typography.caption, color: colors.textSubtle },
 
   // Daily goal progress
   progressRow: {
@@ -809,6 +809,6 @@ const styles = StyleSheet.create({
   },
   progressText: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
   },
 })

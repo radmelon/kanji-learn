@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { padding: 4 },
   title: { ...typography.h2, color: colors.textPrimary, flex: 1 },
-  count: { ...typography.caption, color: colors.textMuted },
+  count: { ...typography.caption, color: colors.textSubtle },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -314,9 +314,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
-  pillText: { ...typography.caption, color: colors.textMuted },
+  pillText: { ...typography.caption, color: colors.textSubtle },
   listContent: { padding: spacing.md, paddingTop: spacing.sm },
   columnWrap: { gap: spacing.sm, marginBottom: spacing.sm },
   empty: { alignItems: 'center', paddingTop: spacing.xxl },
-  emptyText: { ...typography.body, color: colors.textMuted },
+  emptyText: { ...typography.body, color: colors.textSubtle },
 })

@@ -558,7 +558,7 @@ function MilestonesSection({ burned, streakDays, totalSeen, jlptProgress }: {
 }
 
 const milestoneStyles = StyleSheet.create({
-  empty: { ...typography.bodySmall, color: colors.textMuted, fontStyle: 'italic' },
+  empty: { ...typography.bodySmall, color: colors.textSubtle, fontStyle: 'italic' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   badge: {
     alignItems: 'center',
@@ -574,10 +574,10 @@ const milestoneStyles = StyleSheet.create({
   emoji: { fontSize: 22, lineHeight: 28 },
   badgeLabel: { ...typography.caption, color: colors.primary, textAlign: 'center', fontWeight: '600' },
   nextRow: { gap: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm, marginTop: spacing.xs },
-  nextTitle: { ...typography.caption, color: colors.textMuted, fontWeight: '600', marginBottom: 2 },
+  nextTitle: { ...typography.caption, color: colors.textSubtle, fontWeight: '600', marginBottom: 2 },
   nextItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   nextEmoji: { fontSize: 14, opacity: 0.4 },
-  nextLabel: { ...typography.caption, color: colors.textMuted },
+  nextLabel: { ...typography.caption, color: colors.textSubtle },
 })
 
 function HeroStat({ icon, iconColor, value, label }: { icon: string; iconColor: string; value: string; label: string }) {
@@ -593,7 +593,7 @@ function HeroStat({ icon, iconColor, value, label }: { icon: string; iconColor: 
 const heroStyles = StyleSheet.create({
   item: { flex: 1, alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.md, gap: 4, borderWidth: 1, borderColor: colors.border },
   value: { ...typography.h2, color: colors.textPrimary },
-  label: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
+  label: { ...typography.caption, color: colors.textSubtle, textAlign: 'center' },
 })
 
 function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
@@ -635,7 +635,7 @@ const periodStyles = StyleSheet.create({
   container: { flexDirection: 'row', backgroundColor: colors.bgSurface, borderRadius: radius.md, padding: 2 },
   btn: { paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.sm - 2 },
   active: { backgroundColor: colors.primary },
-  label: { ...typography.caption, color: colors.textMuted },
+  label: { ...typography.caption, color: colors.textSubtle },
   activeLabel: { color: '#fff', fontWeight: '700' },
 })
 
@@ -681,7 +681,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
-      <Text style={{ ...typography.caption, color: colors.textMuted }}>{label}</Text>
+      <Text style={{ ...typography.caption, color: colors.textSubtle }}>{label}</Text>
     </View>
   )
 }
@@ -725,9 +725,9 @@ function VelocityItem({ label, value, unit, isText, color }: { label: string; va
 
 const velStyles = StyleSheet.create({
   item: { flex: 1, minWidth: '45%' },
-  label: { ...typography.caption, color: colors.textMuted },
+  label: { ...typography.caption, color: colors.textSubtle },
   value: { ...typography.h3, color: colors.textPrimary },
-  unit: { ...typography.caption, color: colors.textMuted, fontWeight: '400' },
+  unit: { ...typography.caption, color: colors.textSubtle, fontWeight: '400' },
 })
 
 // ─── InfoButton ───────────────────────────────────────────────────────────────
@@ -815,10 +815,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   accuracyPct: { ...typography.h2, color: colors.primary },
-  accuracyLabel: { ...typography.caption, color: colors.textMuted },
+  accuracyLabel: { ...typography.caption, color: colors.textSubtle },
   accuracyDetails: { flex: 1, gap: spacing.xs },
   velocityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  sectionNote: { ...typography.caption, color: colors.textMuted },
+  sectionNote: { ...typography.caption, color: colors.textSubtle },
   quizHistory: { gap: spacing.sm },
   quizBars: { flexDirection: 'row', height: 80, gap: 3, alignItems: 'flex-end' },
   quizBarWrapper: { flex: 1, height: '100%', justifyContent: 'flex-end' },
@@ -826,20 +826,20 @@ const styles = StyleSheet.create({
   quizBarFill: { position: 'absolute', bottom: 0, width: '100%', borderRadius: 3 },
   quizBarLegend: { flexDirection: 'row', gap: spacing.md },
   worstKanjiList: { gap: spacing.sm, paddingTop: spacing.xs },
-  worstKanjiTitle: { ...typography.caption, color: colors.textMuted, fontWeight: '700', textTransform: 'uppercase' },
+  worstKanjiTitle: { ...typography.caption, color: colors.textSubtle, fontWeight: '700', textTransform: 'uppercase' },
   worstKanjiRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   worstKanjiChar: { ...typography.h3, color: colors.textPrimary, width: 32, textAlign: 'center' },
   worstKanjiBar: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
   worstKanjiBarFill: { height: '100%', borderRadius: radius.full },
-  worstKanjiPct: { ...typography.caption, color: colors.textMuted, width: 36, textAlign: 'right' },
+  worstKanjiPct: { ...typography.caption, color: colors.textSubtle, width: 36, textAlign: 'right' },
   // Session History
   sessionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
   sessionDate: { width: 72 },
   sessionDateMain: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '600' },
-  sessionDateTime: { ...typography.caption, color: colors.textMuted },
+  sessionDateTime: { ...typography.caption, color: colors.textSubtle },
   sessionMeta: { flex: 1, flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   sessionItems: { ...typography.bodySmall, color: colors.textSecondary },
-  sessionTime: { ...typography.caption, color: colors.textMuted },
+  sessionTime: { ...typography.caption, color: colors.textSubtle },
   sessionAccBadge: { borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   sessionAccText: { ...typography.caption, fontWeight: '700' },
   showMoreBtn: {
@@ -847,11 +847,11 @@ const styles = StyleSheet.create({
     gap: spacing.xs, paddingVertical: spacing.sm,
     borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.xs,
   },
-  showMoreText: { ...typography.caption, color: colors.textMuted },
+  showMoreText: { ...typography.caption, color: colors.textSubtle },
 
   errorBox: { alignItems: 'center', gap: spacing.md, marginTop: spacing.xxl, padding: spacing.xl },
   errorText: { ...typography.h3, color: colors.textPrimary },
-  errorSub: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center' },
+  errorSub: { ...typography.bodySmall, color: colors.textSubtle, textAlign: 'center' },
   retryBtn: { backgroundColor: colors.primary, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, borderRadius: radius.lg },
   retryText: { ...typography.body, color: '#fff', fontWeight: '600' },
 })

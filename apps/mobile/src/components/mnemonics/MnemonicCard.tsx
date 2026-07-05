@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
   systemLabel: { color: colors.accent },
   userLabel: { color: colors.primary },
   locationBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  locationText: { ...typography.caption, color: colors.textMuted },
+  locationText: { ...typography.caption, color: colors.textSubtle },
   actions: { flexDirection: 'row', gap: spacing.xs },
   iconBtn: { padding: spacing.xs },
   story: { ...typography.body, color: colors.textPrimary, lineHeight: 24 },
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   },
   editControls: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   cancelBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  cancelText: { ...typography.bodySmall, color: colors.textMuted },
+  cancelText: { ...typography.bodySmall, color: colors.textSubtle },
   saveBtn: {
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.md,
@@ -300,5 +300,5 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     alignSelf: 'flex-start',
   },
-  addPhotoText: { ...typography.caption, color: colors.textMuted },
+  addPhotoText: { ...typography.caption, color: colors.textSubtle },
 })

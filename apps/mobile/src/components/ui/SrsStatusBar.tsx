@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   legendLabel: { ...typography.caption, color: colors.textSecondary },
-  legendCount: { ...typography.caption, color: colors.textMuted },
+  legendCount: { ...typography.caption, color: colors.textSubtle },
 
   // Expandable
   descriptions: {
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   introRow: { gap: spacing.xs },
   introText: { ...typography.caption, color: colors.textSecondary, lineHeight: 18 },
   introEmphasis: { fontWeight: '700', color: colors.textPrimary },
-  introCredit: { color: colors.textMuted, fontStyle: 'italic', marginTop: 4 },
+  introCredit: { color: colors.textSubtle, fontStyle: 'italic', marginTop: 4 },
   divider: { height: 1, backgroundColor: colors.border },
   descRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
   descDot: { width: 10, height: 10, borderRadius: 5, marginTop: 3 },

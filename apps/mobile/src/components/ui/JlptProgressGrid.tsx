@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
   wrapper: { gap: spacing.sm },
   grid: { gap: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  level: { ...typography.caption, color: colors.textMuted, width: 24, fontWeight: '700' },
+  level: { ...typography.caption, color: colors.textSubtle, width: 24, fontWeight: '700' },
   track: {
     flex: 1,
     height: 6,
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   seg: { height: '100%' },
-  count: { ...typography.caption, color: colors.textMuted, width: 64, textAlign: 'right' },
+  count: { ...typography.caption, color: colors.textSubtle, width: 64, textAlign: 'right' },
   legend: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -121,6 +121,6 @@ const styles = StyleSheet.create({
   },
   legendLabel: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
   },
 })

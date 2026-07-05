@@ -387,8 +387,8 @@ const styles = StyleSheet.create({
   prompt: { alignItems: 'center', gap: 4 },
   character: { ...typography.kanjiLarge, color: colors.textPrimary },
   promptLabel: { ...typography.body, color: colors.textSecondary },
-  expectedHint: { ...typography.reading, color: colors.textMuted },
-  meaningHint: { ...typography.bodySmall, color: colors.textMuted, fontStyle: 'italic' },
+  expectedHint: { ...typography.reading, color: colors.textSubtle },
+  meaningHint: { ...typography.bodySmall, color: colors.textSubtle, fontStyle: 'italic' },
   micBtn: {
     width: 80, height: 80, borderRadius: 40,
     backgroundColor: colors.primary,

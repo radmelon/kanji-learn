@@ -158,8 +158,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   pillOn: { borderColor: colors.primary + '44' },
-  pillLabel: { ...typography.caption, color: colors.textMuted },
+  pillLabel: { ...typography.caption, color: colors.textSubtle },
   pillValue: { ...typography.caption, color: colors.textPrimary, letterSpacing: 0.5 },
   moreVocab: { gap: 4, width: '100%' },
-  vocabItem: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center' },
+  vocabItem: { ...typography.bodySmall, color: colors.textSubtle, textAlign: 'center' },
 })

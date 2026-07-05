@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
   },
   actionBtnText: { ...typography.h3, color: '#fff' },
   secondaryBtn: { paddingVertical: spacing.sm, marginTop: spacing.xs },
-  secondaryBtnText: { ...typography.body, color: colors.textMuted },
+  secondaryBtnText: { ...typography.body, color: colors.textSubtle },
 
   completeCard: {
     flex: 1,
@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: 'row', gap: spacing.xl },
   statBlock: { alignItems: 'center', gap: 4 },
   statValue: { ...typography.h1, color: colors.textPrimary },
-  statLabel: { ...typography.caption, color: colors.textMuted },
+  statLabel: { ...typography.caption, color: colors.textSubtle },
 })
 
 // ─── InfoButton ───────────────────────────────────────────────────────────────

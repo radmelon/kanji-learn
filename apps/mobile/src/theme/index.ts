@@ -41,7 +41,11 @@ export const colors = {
   // Text
   textPrimary: '#F0F0F5',
   textSecondary: '#A0A0B0',
+  // textMuted is dim — clears WCAG AA only for non-text (icons, 3:1) and large text.
+  // For normal-size text (caption/bodySmall) use textSubtle, which clears AA 4.5:1
+  // on every dark surface (worst case 5.0:1 on bgSurface).
   textMuted: '#6E6E8A',
+  textSubtle: '#8F8FAD',
 
   // UI
   border: '#2A2A3E',

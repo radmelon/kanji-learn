@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
   },
   counter: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     minWidth: 36,
     textAlign: 'right',
   },
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
   },
   prompt: {
     ...typography.bodySmall,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     marginTop: spacing.xs,
   },
 
@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   modeBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  modeBtnText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  modeBtnText: { ...typography.caption, color: colors.textSubtle, fontWeight: '600' },
   modeBtnTextActive: { color: '#fff' },
 
   // Complete state
@@ -577,7 +577,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
   },
   statDivider: {
     width: 1,
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
   },
   errorDetail: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     textAlign: 'center',
     marginTop: spacing.sm,
     fontFamily: 'Courier',

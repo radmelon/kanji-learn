@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  strokeCount: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  strokeCount: { ...typography.caption, color: colors.textSubtle, fontWeight: '600' },
   controls: { flexDirection: 'row', gap: spacing.sm, width: '100%' },
   controlBtn: {
     flex: 1,

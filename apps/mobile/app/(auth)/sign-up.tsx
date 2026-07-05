@@ -130,6 +130,6 @@ const styles = StyleSheet.create({
   },
   dividerText: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
   },
 })

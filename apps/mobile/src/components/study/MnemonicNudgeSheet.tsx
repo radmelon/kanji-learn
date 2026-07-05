@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
   meaning: { ...typography.bodySmall, color: colors.textSecondary },
   scroll: { flexGrow: 0 },
   scrollContent: { gap: spacing.md, paddingBottom: spacing.md },
-  emptyText: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.lg },
+  emptyText: { ...typography.bodySmall, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing.lg },
   mnemonicCard: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.md,
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   },
   composeActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   cancelBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  cancelText: { ...typography.bodySmall, color: colors.textMuted },
+  cancelText: { ...typography.bodySmall, color: colors.textSubtle },
   saveBtn: {
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.md,

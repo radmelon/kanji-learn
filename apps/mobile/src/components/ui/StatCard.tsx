@@ -31,5 +31,5 @@ const styles = StyleSheet.create({
   },
   value: { ...typography.h1, fontWeight: '700' },
   label: { ...typography.caption, color: colors.textSecondary, textAlign: 'center' },
-  subtitle: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
+  subtitle: { ...typography.caption, color: colors.textSubtle, textAlign: 'center' },
 })

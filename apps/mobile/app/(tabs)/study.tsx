@@ -682,8 +682,8 @@ const styles = StyleSheet.create({
   undoBtn: { padding: spacing.xs },
   progressTrack: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radius.full },
-  counter: { ...typography.caption, color: colors.textMuted, minWidth: 36, textAlign: 'right' },
-  timeLeft: { ...typography.caption, color: colors.textMuted, minWidth: 48, textAlign: 'right' },
+  counter: { ...typography.caption, color: colors.textSubtle, minWidth: 36, textAlign: 'right' },
+  timeLeft: { ...typography.caption, color: colors.textSubtle, minWidth: 48, textAlign: 'right' },
   devModeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -706,8 +706,8 @@ const styles = StyleSheet.create({
   cardArea: { flex: 1, width: '100%' },
   footer: { width: '100%', paddingBottom: spacing.lg, minHeight: 90, justifyContent: 'center' },
   revealHint: { alignItems: 'center', paddingVertical: spacing.md },
-  hintText: { ...typography.bodySmall, color: colors.textMuted },
-  swipeHint: { ...typography.caption, color: colors.textMuted, textAlign: 'center', marginTop: spacing.xs, opacity: 0.6 },
+  hintText: { ...typography.bodySmall, color: colors.textSubtle },
+  swipeHint: { ...typography.caption, color: colors.textSubtle, textAlign: 'center', marginTop: spacing.xs },
 
   // Swipe overlay badges
   swipeBadge: {

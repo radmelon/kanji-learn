@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   centerView: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, padding: spacing.xl },
   loadingText: { ...typography.body, color: colors.textSecondary },
   errorText: { ...typography.h3, color: colors.textPrimary },
-  errorDetail: { ...typography.caption, color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.lg },
+  errorDetail: { ...typography.caption, color: colors.textSubtle, textAlign: 'center', paddingHorizontal: spacing.lg },
 
   // Intro
   introContainer: { flex: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.lg },
@@ -295,11 +295,11 @@ const styles = StyleSheet.create({
   primaryBtn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
   primaryBtnText: { ...typography.h3, color: '#fff' },
   skipBtn: { alignItems: 'center', paddingVertical: spacing.sm },
-  skipBtnText: { ...typography.body, color: colors.textMuted },
+  skipBtnText: { ...typography.body, color: colors.textSubtle },
 
   // Top bar
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  progressText: { ...typography.body, color: colors.textMuted },
+  progressText: { ...typography.body, color: colors.textSubtle },
   stopText: { ...typography.body, color: colors.error },
 
   // Character display
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   resultsHeroLabel: { ...typography.h2, color: colors.textSecondary },
   resultsSubtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center', lineHeight: 24 },
   resultsBreakdown: { gap: spacing.sm, backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
-  resultsSectionTitle: { ...typography.caption, color: colors.textMuted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.xs },
+  resultsSectionTitle: { ...typography.caption, color: colors.textSubtle, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.xs },
   resultsLevelRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
   resultsLevelLabel: { ...typography.body, color: colors.textPrimary, fontWeight: '600' },
   resultsLevelCount: { ...typography.body, color: colors.textSecondary },

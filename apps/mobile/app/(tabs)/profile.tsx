@@ -1146,7 +1146,7 @@ const tutorStyles = StyleSheet.create({
   },
   noteDate: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: colors.textSubtle,
   },
 })
 
@@ -1221,7 +1221,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { ...typography.h1, color: colors.primary },
-  email: { ...typography.bodySmall, color: colors.textMuted },
+  email: { ...typography.bodySmall, color: colors.textSubtle },
 
   // Section
   section: {
@@ -1242,7 +1242,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   sectionTitle: { ...typography.bodySmall, color: colors.textSecondary, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
-  sectionSubtitle: { ...typography.caption, color: colors.textMuted },
+  sectionSubtitle: { ...typography.caption, color: colors.textSubtle },
   sectionBody: { padding: spacing.md },
 
   // Text input
@@ -1289,7 +1289,7 @@ const styles = StyleSheet.create({
   },
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
   rowLabel: { ...typography.body, color: colors.textPrimary },
-  rowSub: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+  rowSub: { ...typography.caption, color: colors.textSubtle, marginTop: 2 },
 
   // Apple Watch status
   watchStatusRow: {
@@ -1298,7 +1298,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingTop: spacing.xs,
   },
-  watchStatusText: { ...typography.caption, color: colors.textMuted, flex: 1 },
+  watchStatusText: { ...typography.caption, color: colors.textSubtle, flex: 1 },
   watchSyncBtn: { paddingHorizontal: 8, paddingVertical: 2, backgroundColor: colors.bgSurface, borderRadius: 4, borderWidth: 1, borderColor: colors.border },
   watchSyncBtnText: { ...typography.caption, color: colors.primary },
 
@@ -1323,7 +1323,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   reminderPillActive: { backgroundColor: colors.primary + '22', borderColor: colors.primary },
-  reminderPillText: { ...typography.caption, color: colors.textMuted },
+  reminderPillText: { ...typography.caption, color: colors.textSubtle },
   reminderPillTextActive: { color: colors.primary, fontWeight: '700' },
 
   // Study Mates
@@ -1398,7 +1398,7 @@ const styles = StyleSheet.create({
   },
   muteHintText: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     marginBottom: spacing.xs,
     fontStyle: 'italic',
   },
@@ -1428,7 +1428,7 @@ const styles = StyleSheet.create({
   },
   dangerLabel: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },

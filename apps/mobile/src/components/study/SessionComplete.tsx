@@ -136,7 +136,7 @@ const chipStyles = StyleSheet.create({
     borderColor: colors.border,
   },
   value: { ...typography.h2 },
-  label: { ...typography.caption, color: colors.textMuted },
+  label: { ...typography.caption, color: colors.textSubtle },
 })
 
 const styles = StyleSheet.create({
@@ -170,12 +170,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   accuracyPct: { ...typography.h2, fontWeight: '800' },
-  accuracyLabel: { ...typography.caption, color: colors.textMuted },
+  accuracyLabel: { ...typography.caption, color: colors.textSubtle },
   accuracyBreakdown: { flex: 1, gap: spacing.sm },
   breakdownItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   breakdownDot: { width: 8, height: 8, borderRadius: 4 },
   breakdownCount: { ...typography.bodySmall, color: colors.textPrimary, fontWeight: '700', width: 28 },
-  breakdownLabel: { ...typography.caption, color: colors.textMuted },
+  breakdownLabel: { ...typography.caption, color: colors.textSubtle },
   accBarTrack: {
     height: 6,
     backgroundColor: colors.bgSurface,

@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border,
   },
-  placeholderText: { ...typography.caption, color: colors.textMuted },
+  placeholderText: { ...typography.caption, color: colors.textSubtle },
 
   canvas: {
     borderRadius: radius.lg, backgroundColor: colors.bgCard,
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   },
   chipDone: { backgroundColor: '#1A3D35', borderColor: colors.success },
   chipActive: { backgroundColor: colors.bgElevated, borderColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  chipText: { ...typography.caption, color: colors.textSubtle, fontWeight: '600' },
   chipDone2: { color: colors.success },
   chipActive2: { color: colors.primary },
 
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: colors.border,
   },
   sideBtnText: { ...typography.bodySmall, color: colors.textSecondary },
-  progressText: { ...typography.bodySmall, color: colors.textMuted },
+  progressText: { ...typography.bodySmall, color: colors.textSubtle },
   playBtn: {
     flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: spacing.sm + 2,
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
   },
   speedBtnText: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: colors.textSubtle,
     fontWeight: '600',
   },
   speedBtnTextActive: {

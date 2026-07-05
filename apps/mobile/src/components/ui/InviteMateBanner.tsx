@@ -63,6 +63,6 @@ const styles = StyleSheet.create({
   icon: { marginLeft: spacing.xs },
   textWrap: { flex: 1, gap: 2 },
   title: { ...typography.body, color: colors.textPrimary, fontWeight: '600' },
-  subtitle: { ...typography.caption, color: colors.textMuted },
+  subtitle: { ...typography.caption, color: colors.textSubtle },
   dismiss: { padding: spacing.xs },
 })

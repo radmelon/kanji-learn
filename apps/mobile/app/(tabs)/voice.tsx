@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radius.full },
-  progressCount: { ...typography.caption, color: colors.textMuted },
+  progressCount: { ...typography.caption, color: colors.textSubtle },
 
   cardHeader: { alignItems: 'center', gap: spacing.xs, paddingTop: spacing.sm },
   levelBadge: {
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: radius.sm,
   },
-  levelText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+  levelText: { ...typography.caption, color: colors.textSubtle, fontWeight: '600' },
   meaningText: { ...typography.h3, color: colors.textSecondary, textAlign: 'center' },
 
   readingChips: {
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   readingGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  readingGroupLabel: { ...typography.caption, color: colors.textMuted, fontWeight: '700' },
+  readingGroupLabel: { ...typography.caption, color: colors.textSubtle, fontWeight: '700' },
   readingChip: {
     backgroundColor: colors.bgCard,
     borderWidth: 1,
@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
   },
   actionBtnText: { ...typography.h3, color: '#fff' },
   secondaryBtn: { paddingVertical: spacing.sm, marginTop: spacing.xs },
-  secondaryBtnText: { ...typography.body, color: colors.textMuted },
+  secondaryBtnText: { ...typography.body, color: colors.textSubtle },
 
   completeCard: {
     flex: 1,
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: 'row', gap: spacing.xl },
   statBlock: { alignItems: 'center', gap: 4 },
   statValue: { ...typography.h1, color: colors.textPrimary },
-  statLabel: { ...typography.caption, color: colors.textMuted },
+  statLabel: { ...typography.caption, color: colors.textSubtle },
 })
 
 // ─── InfoButton ───────────────────────────────────────────────────────────────
