@@ -17,6 +17,14 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 > **Highest priority** — directly requested by users. Several of these (stroke order, radicals, Nelson IDs) use data already stored in the database that just isn't surfaced in the UI yet, making them relatively quick wins.
 
+- [ ] **"Study on the Go" — flashcard-only study mode on the Dashboard** — A second study entry point next to the regular Study button that drills flashcards WITHOUT the writing and speaking legs of the B134 three-modality practice loop. When the student is on a train or in public, finger-writing and speaking aloud are awkward — this mode restores the original flip-and-grade flashcard process as a first-class alternative. Grading feeds the SRS as normal; the writing/speaking legs are simply skipped for that session.
+
+  **Design consideration for the spec pass:** how a legs-skipped session interacts with per-kanji modality progression (`reading_stage`, writing/speaking accuracy metrics) so on-the-go sessions don't stall or skew multi-modal stats. Also decide whether the co-creation Buddy-moment trigger fires after on-the-go sessions (probably yes — it's a main-loop session, not a drill).
+
+  Captured 2026-07-05 (owner idea, during Plan 3b walkthrough). Also in Open Brain.
+
+  `[Effort: M]` `[Impact: High — removes a real-world barrier to daily study]` `[Backend: Maybe — depends on how session type is recorded]` `[Status: 💡 Idea]`
+
 - [x] **Full On/Kun Reading Display with Romaji Toggle** — Expand the KanjiCard to show all on-yomi and kun-yomi readings instead of capping at 3 each. Add a toggle button to show/hide romaji transliterations alongside the kana for learners who haven't memorized the kana sets yet.
   `[Effort: S]` `[Impact: High]` `[Backend: No]` `[Status: ✅ Shipped]`
 
@@ -257,6 +265,29 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
   Found 2026-04-22 (owner note, post-B127).
 
   `[Effort: M]` `[Impact: Med — unlocks content-quality feedback]` `[Backend: Yes — read-only endpoint to join reviews→kanji]` `[Status: 💡 Idea — merge into Journal brainstorm]`
+
+- [ ] **"Buddy voice": cloud TTS for hooks, tiered like the assembly cascade (Plan 4)** — The free tier shipped 2026-07-05 (`src/utils/tts.ts` `getBestVoice`: prefer the device's Enhanced voice over the compact default, applied to hook Speak-it, kanji-detail readings, and study-card readings). Next tiers, deferred to Plan 4 / pre-launch: **(a) Cloud TTS cached per hook** — synthesize audio once at hook creation (OpenAI TTS / ElevenLabs / Polly; multilingual voice fixes Japanese pronunciation for free), store the file, play thereafter; works offline after first fetch; gives Buddy a consistent branded voice; needs a backend surface + the BYOK cost story. **(b) Tiered fallback** mirroring the assembly cascade: cloud TTS when online → best local Enhanced voice offline. Consider alongside `speakMixed` (entry above) — a multilingual cloud voice may make per-run language segmentation unnecessary on the cloud tier.
+
+  Captured 2026-07-05 (owner: "the voice was not very good" — Speak-it walkthrough feedback). Also in Open Brain.
+
+  `[Effort: M (cloud tier) ]` `[Impact: High — Buddy gets a voice; every speak surface improves]` `[Backend: Yes — synthesis + audio storage]` `[Status: 💡 Planned — Plan 4 / pre-launch]`
+
+- [ ] **Mixed-language TTS: Japanese voice for Japanese runs inside English speech** — The co-creation "Speak it" button (added 2026-07-05 on `phase-5-cocreation-ui`) reads the whole hook story with the en-US voice, so embedded Japanese — kanji (円), kana (まど), readings, `readingPlay` wordplay — gets mangled. Build a shared `speakMixed(text)` utility that segments text into language runs (Unicode kana/kanji/CJK ranges vs everything else) and speaks each run with the matching expo-speech voice (`ja-JP` vs `en-US`), queued sequentially — the kanji detail screen already uses the sequential-speak pattern for reading lists (mind its noted iOS transient "stopping" state issue when chaining `Speech.speak`). Apply everywhere speech mixes languages: hook Speak-it, mnemonic display on kanji detail, future Buddy speech.
+
+  Captured 2026-07-05 (owner request, during Plan 3b walkthrough). Also in Open Brain.
+
+  `[Effort: S]` `[Impact: Med — polish that compounds across every speak surface]` `[Backend: No]` `[Status: 💡 Idea]`
+
+- [ ] **Hook co-creation location: `attach_location_to_hooks` privacy switch + first-time Buddy explainer (Plan 4)** — Co-created hooks store GPS coordinates (`mnemonics.latitude/longitude`) gated only by the app-wide iOS location permission, so a user who granted location for milestones silently opts into hook coordinates too. Add a second Privacy switch on the Profile page (`attach_location_to_hooks`), mirroring the `attach_location_to_milestones` pattern in all four layers: `user_profiles` column, `user-profile.schema.ts`, a Switch row in the Privacy section, and a gate in `useCoCreation.accept()` (skip `getPlace()` when off).
+
+  **Decision (owner, 2026-07-05):** the **first time** a learner enters hook co-creation, Buddy asks in-flow whether to turn the feature on — new users won't discover or understand the value from a buried settings row, and the moment gives Buddy the chance to explain what is stored and why (future geo-triggered recall: re-surfacing a hook when the learner returns to the place they built it — see Open Brain "Geo-triggered Recall" idea). After that single ask, the switch governs absolutely:
+  - **OFF** → skip GPS inference; typed "Where are you right now?" question only; no coordinates stored; never re-ask (optional passive caption: "Location is off for hooks · Profile → Privacy").
+  - **ON + OS permission not determined** → the iOS dialog fires mid-flow right after "Let's do it".
+  - **ON + OS denied** → typed question (re-enable lives in iOS Settings).
+
+  Needs a per-user first-ask-seen flag, server-side so it survives reinstalls. Slots into Plan 4 alongside the `location_inference` reducer cleanup and the "Not now" 7-day cooldown.
+
+  `[Effort: S]` `[Impact: High — privacy trust + unlocks geo-recall]` `[Backend: Yes — profile column + schema]` `[Status: 💡 Planned — Plan 4]`
 
 ---
 
