@@ -21,6 +21,7 @@ import { colors, spacing, radius, typography } from '../../src/theme'
 import type { SrsStatus } from '@kanji-learn/shared'
 import { getRadicalName } from '../../src/constants/radicals'
 import { useMnemonics } from '../../src/hooks/useMnemonics'
+import { getBestVoice } from '../../src/utils/tts'
 import { useShowPitchAccent } from '../../src/hooks/useShowPitchAccent'
 import { PitchAccentReading } from '../../src/components/kanji/PitchAccentReading'
 import { CoCreationSheet } from '../../src/components/mnemonics/CoCreationSheet'
@@ -150,6 +151,11 @@ export default function KanjiDetail() {
   } = useMnemonics(kanjiId)
   const [showBuildHook, setShowBuildHook] = useState(false)
   const hasCoCreatedHook = mnemonics.some((m) => m.generationMethod === 'cocreated')
+  // A co-created hook supersedes the old system/haiku mnemonics (spec §9), but
+  // getForKanji returns rows unordered so the March-era system row can sit at
+  // [0] — always surface the hook when one exists.
+  const displayedMnemonic =
+    mnemonics.find((m) => m.generationMethod === 'cocreated') ?? mnemonics[0]
 
   useEffect(() => {
     if (Number.isFinite(kanjiId)) loadMnemonics()
@@ -164,6 +170,13 @@ export default function KanjiDetail() {
       speakingGroupRef.current = null
       Speech.stop()
     }
+  }, [])
+
+  // Warm the best installed ja-JP voice (Enhanced beats the compact default);
+  // ref because speakReadings' sequential chain is synchronous.
+  const jaVoiceRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    getBestVoice('ja-JP').then((v) => { jaVoiceRef.current = v })
   }, [])
 
   // Play a list of readings sequentially; tap again to stop
@@ -191,6 +204,7 @@ export default function KanjiDetail() {
       }
       Speech.speak(cleaned[idx], {
         ...SPEECH_OPTS,
+        voice: jaVoiceRef.current,
         onDone: () => speakAt(idx + 1),
         onError: () => {
           if (isMountedRef.current) {
@@ -225,7 +239,14 @@ export default function KanjiDetail() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Back bar */}
       <View style={styles.bar}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={10} activeOpacity={0.7} style={styles.backBtn}>
+        {/* Deep-link entry (kanjilearn://kanji/N) lands here with an empty stack —
+            back() would throw GO_BACK-not-handled, so fall back to the tabs. */}
+        <TouchableOpacity
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+          hitSlop={10}
+          activeOpacity={0.7}
+          style={styles.backBtn}
+        >
           <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           <Text style={styles.backLabel}>Back</Text>
         </TouchableOpacity>
@@ -371,18 +392,23 @@ export default function KanjiDetail() {
               <ActivityIndicator color={colors.primary} />
             ) : mnemonics.length > 0 ? (
               <>
-                <Text style={styles.mnemonicText}>{mnemonics[0].storyText}</Text>
-                <TouchableOpacity
-                  style={styles.mnemonicSecondaryButton}
-                  onPress={() => generateMnemonic('haiku')}
-                  disabled={isGenerating}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="refresh" size={16} color={colors.primary} />
-                  <Text style={styles.mnemonicSecondaryButtonText}>
-                    {isGenerating ? 'Regenerating…' : 'Regenerate'}
-                  </Text>
-                </TouchableOpacity>
+                <Text style={styles.mnemonicText}>{displayedMnemonic.storyText}</Text>
+                {/* Regenerate only applies to the old haiku/system mnemonics —
+                    a co-created hook is reinforced/deepened (Plan 4), not
+                    regenerated, and a fresh haiku would not displace it. */}
+                {!hasCoCreatedHook && (
+                  <TouchableOpacity
+                    style={styles.mnemonicSecondaryButton}
+                    onPress={() => generateMnemonic('haiku')}
+                    disabled={isGenerating}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="refresh" size={16} color={colors.primary} />
+                    <Text style={styles.mnemonicSecondaryButtonText}>
+                      {isGenerating ? 'Regenerating…' : 'Regenerate'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </>
             ) : (
               <TouchableOpacity

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   View, Text, StyleSheet, Modal, Pressable, TouchableOpacity,
-  ScrollView, TextInput, ActivityIndicator,
+  ScrollView, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import * as Speech from 'expo-speech'
 import { lookupComponents } from '@kanji-learn/shared'
 import { useCoCreation } from '../../mnemonics/useCoCreation'
+import { getBestVoice } from '../../utils/tts'
 import type { KanjiForHook } from '../../mnemonics/buildSlots'
 import { colors, spacing, radius, typography } from '../../theme'
 
@@ -38,12 +41,34 @@ function teachingBeat(kanji: KanjiForHook): string {
 
 export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
   const { state, accept, setLocationText, submitAnchor, commit } = useCoCreation(kanji, kanji.id)
+  // The sheet is pinned to the physical screen bottom (Modal ignores SafeAreaView),
+  // so the home-indicator zone eats into the footer without this.
+  const insets = useSafeAreaInsets()
 
   const [locationInput, setLocationInput] = useState('')
   const [anchorInput, setAnchorInput] = useState('')
   const [stickier, setStickier] = useState(false)
   const [personalDetailInput, setPersonalDetailInput] = useState('')
   const [readingPlayInput, setReadingPlayInput] = useState('')
+
+  // The extras the CURRENT draft was built with. Typed text that differs from
+  // this is "dirty" — the learner expects it in the story, but it isn't yet.
+  // Three walkthrough failures in a row proved every natural gesture (return
+  // key, tapping the big Save) silently discarded the detail, so: return key
+  // rebuilds, and while dirty the footer's primary action becomes Rebuild.
+  const [builtExtras, setBuiltExtras] = useState<{ p?: string; r?: string }>({})
+  const trimmedDetail = personalDetailInput.trim() || undefined
+  const trimmedPlay = readingPlayInput.trim() || undefined
+  const stickierDirty =
+    stickier &&
+    (trimmedDetail !== undefined || trimmedPlay !== undefined) &&
+    (trimmedDetail !== builtExtras.p || trimmedPlay !== builtExtras.r)
+
+  const rebuildWithExtras = () => {
+    if (!state.anchor || state.assembling) return
+    setBuiltExtras({ p: trimmedDetail, r: trimmedPlay })
+    submitAnchor(state.anchor, { personalDetail: trimmedDetail, readingPlay: trimmedPlay })
+  }
 
   // Auto-advance out of location_inference once a name is inferred (e.g. from GPS).
   useEffect(() => {
@@ -100,13 +125,52 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
     }
   }
 
+  // "Speak it" on the draft card — Buddy reads the hook aloud (complements the
+  // "Read it aloud" microcopy). English voice: the story is English prose.
+  const [speakingHook, setSpeakingHook] = useState(false)
+  useEffect(() => {
+    // Stop TTS if the draft changes (rebuild) or the sheet unmounts.
+    Speech.stop()
+    setSpeakingHook(false)
+    return () => {
+      Speech.stop()
+    }
+  }, [state.draft])
+
+  const toggleSpeakHook = async () => {
+    if (speakingHook) {
+      Speech.stop()
+      setSpeakingHook(false)
+      return
+    }
+    if (!state.draft) return
+    setSpeakingHook(true)
+    const voice = await getBestVoice('en-US')
+    Speech.speak(state.draft, {
+      language: 'en-US',
+      voice,
+      onDone: () => setSpeakingHook(false),
+      onStopped: () => setSpeakingHook(false),
+      onError: () => setSpeakingHook(false),
+    })
+  }
+
   const meaning = kanji.meanings[0] ?? ''
   const beat = teachingBeat(kanji)
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {/* Lift the whole sheet above the keyboard — the autoFocus inputs otherwise
+          leave the prompt hidden behind the keyboard on open. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable
+          style={[styles.sheet, { paddingBottom: Math.max(spacing.xxl, insets.bottom + spacing.md) }]}
+          onPress={() => {}}
+        >
           <View style={styles.handle} />
 
           <View style={styles.header}>
@@ -219,13 +283,25 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
                   <>
                     <View style={styles.draftCard}>
                       <Text style={styles.storyText}>{state.draft}</Text>
-                      {state.generatedBy && (
-                        <View style={styles.generatedByTag}>
-                          <Text style={styles.generatedByText}>
-                            {GENERATED_BY_LABELS[state.generatedBy] ?? state.generatedBy}
-                          </Text>
-                        </View>
-                      )}
+                      <View style={styles.draftMetaRow}>
+                        {state.generatedBy ? (
+                          <View style={styles.generatedByTag}>
+                            <Text style={styles.generatedByText}>
+                              {GENERATED_BY_LABELS[state.generatedBy] ?? state.generatedBy}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View />
+                        )}
+                        <TouchableOpacity style={styles.speakBtn} onPress={toggleSpeakHook} hitSlop={8}>
+                          <Ionicons
+                            name={speakingHook ? 'volume-high' : 'volume-medium-outline'}
+                            size={18}
+                            color={colors.primary}
+                          />
+                          <Text style={styles.speakBtnText}>{speakingHook ? 'Stop' : 'Speak it'}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
 
                     {stickier ? (
@@ -237,6 +313,8 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
                           onChangeText={setPersonalDetailInput}
                           placeholder="e.g. wearing my blue jacket"
                           placeholderTextColor={colors.textMuted}
+                          returnKeyType="done"
+                          onSubmitEditing={rebuildWithExtras}
                         />
                         <Text style={styles.subPrompt}>A sound or wordplay for the reading?</Text>
                         <TextInput
@@ -245,33 +323,20 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
                           onChangeText={setReadingPlayInput}
                           placeholder='e.g. sounds like "mochi"'
                           placeholderTextColor={colors.textMuted}
+                          returnKeyType="done"
+                          onSubmitEditing={rebuildWithExtras}
                         />
-                        <TouchableOpacity
-                          style={[styles.primaryBtn, state.assembling && styles.disabled]}
-                          onPress={() =>
-                            submitAnchor(state.anchor!, {
-                              personalDetail: personalDetailInput.trim() || undefined,
-                              readingPlay: readingPlayInput.trim() || undefined,
-                            })
-                          }
-                          disabled={state.assembling}
-                        >
-                          <Text style={styles.primaryBtnText}>Rebuild it</Text>
-                        </TouchableOpacity>
+                        {/* "Rebuild it" lives in the pinned footer, not here — buried
+                            under the inputs it loses to the always-visible Save, and
+                            typed details silently never make it into the hook. The
+                            return key also rebuilds: "type answer, hit enter" is the
+                            gesture learners actually reach for. */}
                       </View>
                     ) : (
                       <TouchableOpacity style={styles.secondaryBtn} onPress={() => setStickier(true)}>
                         <Text style={styles.secondaryBtnText}>Make it stickier</Text>
                       </TouchableOpacity>
                     )}
-
-                    <Text style={styles.microcopy}>Read it aloud — even a whisper.</Text>
-                    <TouchableOpacity style={styles.primaryBtn} onPress={commit} disabled={state.saving}>
-                      {state.saving
-                        ? <ActivityIndicator size="small" color="#fff" />
-                        : <Text style={styles.primaryBtnText}>Save this</Text>
-                      }
-                    </TouchableOpacity>
                   </>
                 ) : null}
               </View>
@@ -292,8 +357,47 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
               </View>
             )}
           </ScrollView>
+
+          {/* Save is pinned below the scroll area — on smaller screens the draft
+              card + stickier inputs push it below the fold inside the ScrollView,
+              and an off-screen primary CTA reads as "no way to save". */}
+          {state.stage === 'assembly' && !state.assembling && state.draft ? (
+            <View style={styles.footer}>
+              <Text style={styles.microcopy}>Read it aloud — even a whisper.</Text>
+              <View style={styles.actionRow}>
+                {stickier && (
+                  <TouchableOpacity
+                    style={[
+                      stickierDirty ? styles.primaryBtn : styles.secondaryBtn,
+                      !trimmedDetail && !trimmedPlay && styles.disabled,
+                    ]}
+                    onPress={rebuildWithExtras}
+                    disabled={!trimmedDetail && !trimmedPlay}
+                  >
+                    <Text style={stickierDirty ? styles.primaryBtnText : styles.secondaryBtnText}>
+                      Rebuild it
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={stickierDirty ? styles.secondaryBtn : styles.primaryBtn}
+                  onPress={commit}
+                  disabled={state.saving}
+                >
+                  {state.saving ? (
+                    <ActivityIndicator size="small" color={stickierDirty ? colors.primary : '#fff'} />
+                  ) : (
+                    <Text style={stickierDirty ? styles.secondaryBtnText : styles.primaryBtnText}>
+                      {stickierDirty ? 'Save without it' : 'Save this'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -341,7 +445,9 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   title: { ...typography.h3, color: colors.textPrimary },
   meaning: { ...typography.bodySmall, color: colors.textSecondary },
-  scroll: { flexGrow: 0 },
+  // flexShrink is required: RN defaults it to 0, so a long draft would push the
+  // pinned footer past the sheet's maxHeight instead of scrolling.
+  scroll: { flexGrow: 0, flexShrink: 1 },
   scrollContent: { gap: spacing.md, paddingBottom: spacing.md },
   stageBox: { gap: spacing.md },
   inferringRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -396,7 +502,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
   },
   generatedByText: { ...typography.caption, color: colors.accent, fontWeight: '700' },
+  draftMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  speakBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: 2, paddingHorizontal: spacing.sm },
+  speakBtnText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
   stickierBox: { gap: spacing.sm },
+  footer: {
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
   microcopy: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
   errorBanner: {
     flexDirection: 'row',
