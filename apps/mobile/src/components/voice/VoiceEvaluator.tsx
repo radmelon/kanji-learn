@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Animated, AccessibilityInfo } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
+import { Audio } from 'expo-av'
 import { api } from '../../lib/api'
 import { colors, spacing, radius, typography } from '../../theme'
 import { PitchAccentReading } from '../kanji/PitchAccentReading'
@@ -9,6 +10,30 @@ import { useShowPitchAccent } from '../../hooks/useShowPitchAccent'
 import type { VoicePrompt } from '@kanji-learn/shared'
 import { TargetChip } from './TargetChip'
 import { computeAttemptsCount, targetChipMask } from './voiceReveal.logic'
+
+// ─── Audio session restore ──────────────────────────────────────────────────
+// expo-speech-recognition flips the iOS AVAudioSession to .playAndRecord +
+// mode: .measurement when recognition starts (see the library's
+// ExpoSpeechRecognizer.swift setupAudioSession). Its reset() path does NOT
+// restore the session on stop — so every subsequent Speech.speak() runs
+// under .measurement, which disables system audio processing and drops
+// TTS volume dramatically. The only "reset" was app cold-kill.
+//
+// These options mirror apps/mobile/app/_layout.tsx's boot-time audio setup
+// so TTS routes to the main loudspeaker at full volume again.
+const PLAYBACK_AUDIO_MODE = {
+  allowsRecordingIOS: false,
+  playsInSilentModeIOS: true,
+  staysActiveInBackground: false,
+  shouldDuckAndroid: true,
+  playThroughEarpieceAndroid: false,
+}
+
+function restorePlaybackAudioMode() {
+  Audio.setAudioModeAsync(PLAYBACK_AUDIO_MODE).catch((e) => {
+    if (__DEV__) console.warn('[VoiceEvaluator] restore audio mode failed', e)
+  })
+}
 
 // ─── Safe native module loading ───────────────────────────────────────────────
 // expo-speech-recognition calls requireNativeModule at import time, which
@@ -110,6 +135,17 @@ export function VoiceEvaluator({
     })
   }, [])
 
+  // ── Unmount cleanup — stop any running recognition and restore audio mode
+  // so the "latched low TTS volume" state can't leak into the next screen
+  // if the user navigates away mid-drill.
+
+  useEffect(() => {
+    return () => {
+      _SpeechRecognitionModule?.stop()
+      restorePlaybackAudioMode()
+    }
+  }, [])
+
   // ── Reduce-motion accessibility preference ────────────────────────────────
 
   useEffect(() => {
@@ -198,6 +234,10 @@ export function VoiceEvaluator({
   })
 
   _useSpeechRecognitionEvent('end', () => {
+    // Restore audio session first — expo-speech-recognition doesn't clean up
+    // after itself, and any subsequent Speech.speak() would run under the
+    // stuck .playAndRecord + .measurement session at near-inaudible volume.
+    restorePlaybackAudioMode()
     const currentTranscript = transcriptRef.current
     if (!currentTranscript) {
       // Recognizer ended with nothing transcribed — surface an inline retry
@@ -212,6 +252,7 @@ export function VoiceEvaluator({
   })
 
   _useSpeechRecognitionEvent('error', () => {
+    restorePlaybackAudioMode()
     setPhase('idle')
   })
 

@@ -30,24 +30,13 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: XS]` `[Impact: Low — naming trap, unrendered]` `[Status: 🐛 Active — cleanup]`
 
-- [ ] **TTS playback intermittently plays at very low volume despite system volume set high (speak icons on study cards, browse cards, kun/on rows, vocab, example sentences)** — Owner reports the speak function appears to have a *hidden volume control* independent of the device volume. Has been triggered accidentally on occasion; once in the low-volume state, all TTS (kun, on, vocab, sentence) is barely audible even at max iPhone/iPad system volume. Not reproducible on demand yet — appears latched state that persists across speak invocations until some undiscovered action resets it.
+- [ ] **TTS playback drops to barely audible after the speaking leg (speak icons on study cards, browse cards, kun/on rows, vocab, example sentences)** — ROOT-CAUSED 2026-04-23 (commit `f6eb823` on `feature/speaking-progressive-hints`, never merged): `expo-speech-recognition` flips the iOS `AVAudioSession` to `.playAndRecord` + mode `.measurement` when recognition starts (`ExpoSpeechRecognizer.swift setupAudioSession`) and its `reset()` path never restores it. Every subsequent `Speech.speak()` runs under `.measurement`, which disables system audio processing and attenuates output dramatically. Only recovery was app cold-kill (`_layout.tsx` re-runs `setAudioModeAsync` at boot). Since the Practice Loop (B134) routes every new/Again/Hard kanji through the speaking leg, the bug now fires in virtually every study session — matches owner's "fine for the first few plays, then drops" report (re-reported 2026-07-04).
 
-  **Suspected causes (to investigate):**
-  - `expo-speech` `Speech.speak(..., { volume })` parameter — any code path passing `volume < 1.0`, or reading volume from stale state (mute toggle, pitch-accent demo, TTS rate slider if one exists).
-  - iOS `AVAudioSession` category/mode interaction — if the app ever switches to `.record` for `expo-speech-recognition` and doesn't cleanly restore `.playback`, subsequent TTS can attenuate. Same class of issue as the voice-evaluator flow.
-  - Silent/ringer switch interaction with a non-playback audio session category (we've seen this before in the "speak icons not working" entry below).
-  - A debug/dev-only volume override left in.
+  **Fix:** `VoiceEvaluator` restores the boot-time playback audio mode in the recognition `end`/`error` handlers and in an unmount cleanup effect. Cherry-picked from `f6eb823` to `main` 2026-07-04.
 
-  **Reproduction:** Unknown trigger. Next time it happens, capture: (a) which screen the user was on immediately before (study card vs. details vs. evaluator), (b) whether the mic was used recently, (c) whether toggling the physical ringer switch restores volume, (d) whether backgrounding/foregrounding the app restores it.
+  Found 2026-04-22 (owner report, post-B127); fixed on `main` 2026-07-04 — **mobile-only, NOT on-device until the next EAS cut (B140)**. Verify on-device: study session → speaking leg → then tap any speak icon; volume must stay full.
 
-  **Affected files (likely):**
-  - `apps/mobile/src/components/voice/VoiceEvaluator.tsx` — `AVAudioSession` transitions
-  - Anywhere `Speech.speak(` is called — grep for volume/rate/pitch overrides
-  - Any TTS wrapper (e.g., `speakKanji.ts`, `useSpeak.ts` — TBD during investigation)
-
-  Found 2026-04-22 (owner report, post-B127).
-
-  `[Effort: S–M (investigation heavy)]` `[Impact: High — TTS is unusable when triggered; core study flow]` `[Status: 🐛 Active — needs repro]`
+  `[Effort: done]` `[Impact: High — TTS is unusable when triggered; core study flow]` `[Status: ✅ Fixed on main — pending B140 build + on-device verification]`
 
 - [ ] **Progress page — Activity panel "Reviewed" vs "Correct" stacked bars: data source and terminology inconsistent with rest of app** — The green/red stacked bars label them as "Reviewed" and "Correct." Owner questions (a) whether the underlying data is quiz outcomes or self-reported confidence from study-card grading, and (b) if the latter, the term "correct" conflicts with the app's established convention (per B123/B124: study cards use "remembered/missed" based on `quality >= 4`; "correct" is reserved for quiz outcomes).
 
