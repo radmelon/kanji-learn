@@ -36,7 +36,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Device-verified 2026-07-04** (15 Pro dev build, session-state instrumentation): BEFORE restore `{playAndRecord, measurement}` → AFTER `{playback, default}`; volume stable across multiple write/speak legs, owner-confirmed by ear.
 
-  `[Effort: done]` `[Impact: High — TTS is unusable when triggered; core study flow]` `[Status: ✅ Fixed + device-verified — ships with the next TestFlight cut (B141)]`
+  `[Effort: done]` `[Impact: High — TTS is unusable when triggered; core study flow]` `[Status: ✅ CLOSED — shipped B141, owner-verified on TestFlight build 2026-07-05: volume stays full through speaking legs]`
 
 - [ ] **Progress page — Activity panel "Reviewed" vs "Correct" stacked bars: data source and terminology inconsistent with rest of app** — The green/red stacked bars label them as "Reviewed" and "Correct." Owner questions (a) whether the underlying data is quiz outcomes or self-reported confidence from study-card grading, and (b) if the latter, the term "correct" conflicts with the app's established convention (per B123/B124: study cards use "remembered/missed" based on `quality >= 4`; "correct" is reserved for quiz outcomes).
 
