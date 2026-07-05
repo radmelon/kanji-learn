@@ -6,11 +6,11 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
-- [ ] **(B-206) Milestones panel blank ~10–15s on entering Progress, then fills** — Found during B138 testing (2026-05-30, owner report). On opening the Progress tab the milestone badges area is empty for 10–15s, then populates. Root cause traced: `useAnalytics` deliberately paints the cached summary immediately (to avoid a loading flash), but `MilestonesSection` gates its render on `if (isLoading || !summary) return null` — and `isLoading` stays true until the network fetch completes, so the cached badges never get a chance to paint. The wait is the slow `/v1/analytics/summary` round-trip (see B-208).
+- [x] **(B-206) Milestones panel blank ~10–15s on entering Progress, then fills** — Found during B138 testing (2026-05-30, owner report). Root cause: `MilestonesSection` gated render on `if (isLoading || !summary)`, defeating `useAnalytics`'s immediate cache paint while the slow `/v1/analytics/summary` round-trip (B-208) completed.
 
-  **Fix:** in `apps/mobile/src/components/milestones/MilestonesSection.tsx` change the guard to `if (!summary) return null` (drop `isLoading`). Cached badges then paint instantly; fresh data swaps in silently. Mobile-only; queue for next EAS cut.
+  **Fixed** in `6487f38` (guard is now `if (!summary) return null`), shipped in **B139**, and **verified on-device during the B139 walkthrough** ("much faster, badges appeared instantly"). This entry was stale — closed 2026-07-04 during the B141 triage.
 
-  `[Effort: XS]` `[Impact: Med — looks broken on every Progress visit]` `[Status: 🐛 Active — fix identified, not yet applied]`
+  `[Effort: XS]` `[Impact: Med]` `[Status: ✅ Fixed B139 + verified — entry was stale]`
 
 - [ ] **(B-208) Progress-tab analytics summary is slow (~10–15s)** — `/v1/analytics/summary` (`AnalyticsService.getSummary`) fires ~12 aggregate queries in parallel against Supabase, which still lives in `ap-southeast-2` (Sydney) while the operator is in the US. Cross-region latency dominates. Surfaces as the visible symptom behind B-206.
 
