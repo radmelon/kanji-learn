@@ -2,8 +2,14 @@
  * import-kanjidic2.ts
  *
  * One-time enrichment script. Downloads KANJIDIC2 from EDRDG, parses it, and
- * updates every kl_kanji row with JIS code, Nelson indices and Morohashi
- * volume/page/index references.
+ * updates every kanji row with JIS code, Nelson/Morohashi references, grade,
+ * frequency rank, Hadamitzky-Spahn index, and the COMPLETE on/kun reading
+ * lists.
+ *
+ * KANJIDIC2 is authoritative for readings: ja_on are katakana, ja_kun are
+ * hiragana (a deliberate lexicographic convention, not a bug). Earlier seeds
+ * (seed-kanji-fetch.ts) truncated each reading array to 5 entries, dropping
+ * common readings — this importer overwrites them with the full lists.
  *
  * KANJIDIC2 is © James Breen and the Electronic Dictionary Research and
  * Development Group (edrdg.org), distributed under CC BY-SA 4.0.
@@ -21,7 +27,7 @@ import { createGunzip } from 'zlib'
 import https from 'https'
 import { db } from '../client.js'
 import { kanji } from '../schema.js'
-import { eq } from 'drizzle-orm'
+import { eq, sql, type SQL } from 'drizzle-orm'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +47,8 @@ interface KanjiEntry {
   grade:            number | null  // <grade>: 1-6 elementary, 8 other Jouyou, 9-10 Jinmeiyou
   frequencyRank:    number | null  // <freq>: Mainichi Shimbun rank, 1 = most common
   hadamitzkySpahn:  number | null  // <dic_ref dr_type="sh_kk2"> with sh_kk fallback
+  onReadings:       string[]       // <reading r_type="ja_on">  — katakana
+  kunReadings:      string[]       // <reading r_type="ja_kun"> — hiragana
 }
 
 // ─── Download ─────────────────────────────────────────────────────────────────
@@ -71,7 +79,8 @@ function parseKanjidic2(xml: string): Map<string, KanjiEntry> {
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
     isArray: (name) =>
-      ['cp_value', 'dic_ref', 'reading', 'meaning', 'character'].includes(name),
+      ['cp_value', 'dic_ref', 'reading', 'meaning', 'character',
+       'reading_meaning', 'rmgroup'].includes(name),
   })
 
   const doc = parser.parse(xml)
@@ -119,6 +128,33 @@ function parseKanjidic2(xml: string): Map<string, KanjiEntry> {
     const grade       = misc?.grade != null ? toInt(misc.grade) : null
     const frequencyRank = misc?.freq != null ? toInt(misc.freq) : null
 
+    // ── Readings (ja_on katakana / ja_kun hiragana) ───────────────────────
+    // KanjiDic2 lists readings primary-first; preserve that document order
+    // (do NOT sort). <nanori> name readings are a separate element and are
+    // intentionally excluded. A few kanji split readings across multiple
+    // rmgroups, so collect from all and dedupe (first occurrence wins).
+    const onReadings: string[] = []
+    const kunReadings: string[] = []
+    const readingMeaning = (c.reading_meaning ?? []) as Array<Record<string, unknown>>
+    for (const rm of readingMeaning) {
+      const rmgroups = (rm.rmgroup ?? []) as Array<Record<string, unknown>>
+      for (const g of rmgroups) {
+        const readings = (g.reading ?? []) as Array<{
+          '#text': string | number
+          '@_r_type': string
+        }>
+        for (const r of readings) {
+          const text = String(r['#text'] ?? '').trim()
+          if (!text) continue
+          if (r['@_r_type'] === 'ja_on') {
+            if (!onReadings.includes(text)) onReadings.push(text)
+          } else if (r['@_r_type'] === 'ja_kun') {
+            if (!kunReadings.includes(text)) kunReadings.push(text)
+          }
+        }
+      }
+    }
+
     map.set(literal, {
       literal,
       jisCode,
@@ -130,20 +166,36 @@ function parseKanjidic2(xml: string): Map<string, KanjiEntry> {
       grade,
       frequencyRank,
       hadamitzkySpahn: hadamitzkyEntry ? toInt(hadamitzkyEntry['#text']) : null,
+      onReadings,
+      kunReadings,
     })
   }
 
-  let withGrade = 0, withFreq = 0, withHadamitzky = 0
+  let withGrade = 0, withFreq = 0, withHadamitzky = 0, withReadings = 0
   for (const entry of map.values()) {
     if (entry.grade != null) withGrade++
     if (entry.frequencyRank != null) withFreq++
     if (entry.hadamitzkySpahn != null) withHadamitzky++
+    if (entry.onReadings.length > 0 || entry.kunReadings.length > 0) withReadings++
   }
-  console.log(`✓  Parsed ${map.size} entries (grade: ${withGrade}, freq: ${withFreq}, sh_kk: ${withHadamitzky}).`)
+  console.log(`✓  Parsed ${map.size} entries (grade: ${withGrade}, freq: ${withFreq}, sh_kk: ${withHadamitzky}, readings: ${withReadings}).`)
   return map
 }
 
 // ─── Enrich ───────────────────────────────────────────────────────────────────
+
+/**
+ * Build a jsonb array from a string list, constructed server-side.
+ *
+ * A raw array, or a JSON string + `::jsonb` cast, both double-encode through
+ * the Drizzle/postgres-js layer and land as a quoted jsonb *string* scalar
+ * (still readable via Drizzle's jsonb mapper, but breaks jsonb_array_length,
+ * containment, etc.). jsonb_build_array builds a genuine array from text
+ * params — each element is cast to text so Postgres can resolve its type.
+ */
+function jsonbArray(values: string[]): SQL {
+  return sql`jsonb_build_array(${sql.join(values.map((v) => sql`${v}::text`), sql`, `)})`
+}
 
 async function enrichKanji(entries: Map<string, KanjiEntry>): Promise<void> {
   const allKanji = await db
@@ -174,6 +226,8 @@ async function enrichKanji(entries: Map<string, KanjiEntry>): Promise<void> {
         grade:            entry.grade,
         frequencyRank:    entry.frequencyRank,
         hadamitzkySpahn:  entry.hadamitzkySpahn,
+        onReadings:       jsonbArray(entry.onReadings),
+        kunReadings:      jsonbArray(entry.kunReadings),
       })
       .where(eq(kanji.id, k.id))
 

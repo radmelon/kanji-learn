@@ -109,8 +109,8 @@ async function upsertKanji(
   jlptOrder: number
 ): Promise<void> {
   const meanings = JSON.stringify(detail.meanings.slice(0, 6))
-  const onReadings = JSON.stringify(detail.on_readings.slice(0, 5))
-  const kunReadings = JSON.stringify(detail.kun_readings.slice(0, 5))
+  const onReadings = JSON.stringify(detail.on_readings)
+  const kunReadings = JSON.stringify(detail.kun_readings)
   const radicals = JSON.stringify([])   // kanjiapi.dev doesn't return radicals
   const exampleVocab = JSON.stringify([])
 
