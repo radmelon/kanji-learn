@@ -591,13 +591,20 @@ export default function KanjiDetail() {
       ) : null}
 
       {/* Manual "Build a hook" entry (spec §9.1) — cold-start safety net when
-          the kanji has no co-created hook. Refreshes the mnemonic list on save
-          via the screen's existing loadMnemonics path. */}
-      {kanji && (
+          the kanji has no co-created hook. Conditionally MOUNTED (not just
+          visible-toggled) so every open gets a fresh useCoCreation reducer —
+          otherwise stage/draft state from a prior session leaks into the next
+          open. Refreshes the mnemonic list on save via the screen's existing
+          loadMnemonics path, and also on backdrop-close so a save followed by
+          tapping outside the sheet still refreshes the mnemonic view. */}
+      {showBuildHook && kanji && (
         <CoCreationSheet
-          visible={showBuildHook}
+          visible
           kanji={kanji}
-          onClose={() => setShowBuildHook(false)}
+          onClose={() => {
+            setShowBuildHook(false)
+            loadMnemonics()
+          }}
           onSaved={() => {
             setShowBuildHook(false)
             loadMnemonics()

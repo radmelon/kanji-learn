@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   View, Text, StyleSheet, Modal, Pressable, TouchableOpacity,
   ScrollView, TextInput, ActivityIndicator,
@@ -14,6 +14,14 @@ interface Props {
   kanji: KanjiForHook & { id: number }
   onClose: () => void
   onSaved?: (mnemonicId: string) => void
+}
+
+/** Human-friendly label for the assembly tier shown on the draft card — the raw
+ *  AssemblyTier value (e.g. "on_device") is an internal identifier, not copy. */
+const GENERATED_BY_LABELS: Record<string, string> = {
+  cloud: 'Buddy cloud',
+  on_device: 'On-device',
+  template: 'Template',
 }
 
 /** "扌 (hand) beside 寺 (temple)" style teaching beat; degrades to "this part" for unmapped components. */
@@ -43,6 +51,54 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
       setLocationText(state.locationName)
     }
   }, [state.stage, state.locationName, setLocationText])
+
+  // "Inferring location" feedback: accept() kicks off GPS + permission dialog +
+  // reverse geocode, which can take seconds. Without this, the manual location
+  // TextInput is visible (with autoFocus) the whole time, and a late GPS success
+  // silently discards whatever the user already typed. Show a spinner instead
+  // while inference is in flight; fall back to the TextInput on failure/timeout.
+  const [inferring, setInferring] = useState(false)
+  const inferringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (state.stage !== 'location_inference') {
+      setInferring(false)
+      if (inferringTimeoutRef.current) {
+        clearTimeout(inferringTimeoutRef.current)
+        inferringTimeoutRef.current = null
+      }
+    }
+  }, [state.stage])
+
+  useEffect(() => {
+    if (state.stage === 'location_inference' && state.locationName && inferring) {
+      setInferring(false)
+    }
+  }, [state.stage, state.locationName, inferring])
+
+  useEffect(() => () => {
+    if (inferringTimeoutRef.current) clearTimeout(inferringTimeoutRef.current)
+  }, [])
+
+  const handleAccept = async () => {
+    setInferring(true)
+    if (inferringTimeoutRef.current) clearTimeout(inferringTimeoutRef.current)
+    inferringTimeoutRef.current = setTimeout(() => setInferring(false), 4000)
+    try {
+      await accept()
+    } finally {
+      // accept() has settled either way (place found or getPlace() returned
+      // null) — the location_inference effect above already flips `inferring`
+      // off if a name landed; this covers the "no location available" case
+      // where the TextInput should reveal immediately rather than waiting
+      // out the full timeout.
+      setInferring(false)
+      if (inferringTimeoutRef.current) {
+        clearTimeout(inferringTimeoutRef.current)
+        inferringTimeoutRef.current = null
+      }
+    }
+  }
 
   const meaning = kanji.meanings[0] ?? ''
   const beat = teachingBeat(kanji)
@@ -92,7 +148,7 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
                   <Text style={styles.teachingBeat}>{beat}</Text>
                 )}
                 <View style={styles.actionRow}>
-                  <TouchableOpacity style={styles.primaryBtn} onPress={accept}>
+                  <TouchableOpacity style={styles.primaryBtn} onPress={handleAccept}>
                     <Text style={styles.primaryBtnText}>Let's do it</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.secondaryBtn} onPress={onClose}>
@@ -106,6 +162,11 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
               <View style={styles.stageBox}>
                 {state.locationName ? (
                   <Text style={styles.prompt}>Looks like you're near {state.locationName}.</Text>
+                ) : inferring ? (
+                  <View style={styles.inferringRow}>
+                    <ActivityIndicator color={colors.primary} />
+                    <Text style={styles.prompt}>Checking where you are…</Text>
+                  </View>
                 ) : (
                   <>
                     <Text style={styles.prompt}>Where are you right now?</Text>
@@ -141,9 +202,9 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
                   autoFocus
                 />
                 <TouchableOpacity
-                  style={[styles.primaryBtn, !anchorInput.trim() && styles.disabled]}
+                  style={[styles.primaryBtn, (!anchorInput.trim() || state.assembling) && styles.disabled]}
                   onPress={() => submitAnchor(anchorInput.trim())}
-                  disabled={!anchorInput.trim()}
+                  disabled={!anchorInput.trim() || state.assembling}
                 >
                   <Text style={styles.primaryBtnText}>Build it</Text>
                 </TouchableOpacity>
@@ -160,7 +221,9 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
                       <Text style={styles.storyText}>{state.draft}</Text>
                       {state.generatedBy && (
                         <View style={styles.generatedByTag}>
-                          <Text style={styles.generatedByText}>{state.generatedBy}</Text>
+                          <Text style={styles.generatedByText}>
+                            {GENERATED_BY_LABELS[state.generatedBy] ?? state.generatedBy}
+                          </Text>
                         </View>
                       )}
                     </View>
@@ -184,13 +247,14 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
                           placeholderTextColor={colors.textMuted}
                         />
                         <TouchableOpacity
-                          style={styles.primaryBtn}
+                          style={[styles.primaryBtn, state.assembling && styles.disabled]}
                           onPress={() =>
                             submitAnchor(state.anchor!, {
                               personalDetail: personalDetailInput.trim() || undefined,
                               readingPlay: readingPlayInput.trim() || undefined,
                             })
                           }
+                          disabled={state.assembling}
                         >
                           <Text style={styles.primaryBtnText}>Rebuild it</Text>
                         </TouchableOpacity>
@@ -280,6 +344,7 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 0 },
   scrollContent: { gap: spacing.md, paddingBottom: spacing.md },
   stageBox: { gap: spacing.md },
+  inferringRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   prompt: { ...typography.body, color: colors.textPrimary, lineHeight: 22 },
   subPrompt: { ...typography.bodySmall, color: colors.textSecondary },
   teachingBeat: { ...typography.bodySmall, color: colors.textSecondary, fontStyle: 'italic' },
