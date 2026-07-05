@@ -21,6 +21,7 @@
 
 import { useState, useEffect, useRef, useCallback, Component, type FC } from 'react'
 import type { ReviewResult } from '@kanji-learn/shared'
+import { pickBuddyMomentAction, type ReviewedCard } from '@kanji-learn/shared'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Pressable,
   PanResponder, Animated, Alert,
@@ -35,16 +36,20 @@ import * as SecureStore from 'expo-secure-store'
 import { useReviewStore } from '../../src/stores/review.store'
 import type { ModalityCounts } from '../../src/stores/review.store'
 import { useProfile } from '../../src/hooks/useProfile'
+import { api } from '../../src/lib/api'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { KanjiCard } from '../../src/components/study/KanjiCard'
 import { CompoundCard } from '../../src/components/study/CompoundCard'
 import { GradeButtons } from '../../src/components/study/GradeButtons'
 import { SessionComplete } from '../../src/components/study/SessionComplete'
 import { MnemonicNudgeSheet } from '../../src/components/study/MnemonicNudgeSheet'
+import { CoCreationSheet } from '../../src/components/mnemonics/CoCreationSheet'
 import { WritingLeg } from '../../src/components/study/WritingLeg'
 import { SpeakingLeg } from '../../src/components/study/SpeakingLeg'
 import { QuizLeg } from '../../src/components/study/QuizLeg'
 import { ReadyScreen } from '../../src/components/study/ReadyScreen'
+import { fetchBuddyMomentContext } from '../../src/mnemonics/cocreationApi'
+import type { KanjiForHook } from '../../src/mnemonics/buildSlots'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
 const HELP_KEY = 'kl_has_seen_study_help'
@@ -80,6 +85,12 @@ function StudySession() {
   } | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [nudgeItem, setNudgeItem] = useState<{ kanjiId: number; character: string; meaning: string } | null>(null)
+  // Post-session Buddy moment (spec §4.1): at most one CoCreationSheet offer
+  // per session, rendered modally over Session Complete. Set from handleFinish
+  // once the session summary is computed; the full kanji payload is fetched
+  // lazily once we know which kanji (if any) the trigger picked.
+  const [buddyMomentKanjiId, setBuddyMomentKanjiId] = useState<number | null>(null)
+  const [buddyMomentKanji, setBuddyMomentKanji] = useState<(KanjiForHook & { id: number }) | null>(null)
   // Dev-only: force the current card's reviewType to exercise all four modes
   // without waiting for SRS to surface them. Visible when either __DEV__ is
   // true (local dev) OR EXPO_PUBLIC_DEV_TOOLS=1 is set (TestFlight builds
@@ -389,7 +400,44 @@ function StudySession() {
     } finally {
       setIsSaving(false)
     }
+
+    // Post-session Buddy moment (spec §4.1) — best-effort only. This runs
+    // after Session Complete is already set, so it can never block or delay
+    // it; any failure here silently degrades to the normal summary screen.
+    try {
+      const gradedIds = [...new Set(results.map((r) => r.kanjiId))]
+      const struggledById = new Map<number, boolean>()
+      for (const r of results) if (r.quality === 1 || r.quality === 3) struggledById.set(r.kanjiId, true)
+      const ctx = await fetchBuddyMomentContext(gradedIds)
+      const cards: ReviewedCard[] = ctx.map((c) => ({
+        kanjiId: c.kanjiId,
+        kanji: c.kanji,
+        struggledToday: struggledById.get(c.kanjiId) ?? false,
+        lapses: c.lapses,
+        hasHook: c.hasHook,
+      }))
+      const action = pickBuddyMomentAction(cards) // cooldown set wired in Plan 4
+      if (action.kind === 'create') {
+        setBuddyMomentKanjiId(action.kanjiId) // renders CoCreationSheet once the kanji payload loads
+      }
+      // action.kind === 'reinforce' | 'none' → no-op in Plan 3b
+    } catch {
+      // A Buddy moment is best-effort; never surface this to the user.
+    }
   }, [finishSession, queue])
+
+  // Fetch the full kanji payload for the Buddy moment once the trigger picks
+  // a kanji. Reuses the existing kanji-detail endpoint (GET /v1/kanji/:id) —
+  // no new API surface. Any failure here just means no sheet renders; the
+  // user still sees Session Complete undisturbed.
+  useEffect(() => {
+    if (buddyMomentKanjiId === null) return
+    let cancelled = false
+    api.get<KanjiForHook & { id: number }>(`/v1/kanji/${buddyMomentKanjiId}`)
+      .then((detail) => { if (!cancelled) setBuddyMomentKanji(detail) })
+      .catch(() => { if (!cancelled) setBuddyMomentKanjiId(null) })
+    return () => { cancelled = true }
+  }, [buddyMomentKanjiId])
 
   // ── Ready screen ──────────────────────────────────────────────────────────
 
@@ -455,36 +503,51 @@ function StudySession() {
 
   if (sessionSummary) {
     return (
-      <SessionComplete
-        {...sessionSummary}
-        onDone={() => {
-          // Clear local summary + Zustand review state BEFORE navigating so
-          // re-entering the Study tab (via Dashboard → Start Today's Reviews)
-          // mounts a fresh queue instead of re-rendering the stale Session
-          // Complete screen. Expo Router tabs stay mounted across navigations,
-          // so without this reset the state survives and the user gets stuck.
-          setSessionSummary(null)
-          reset()
-          setPhase('ready')
-          router.replace('/(tabs)')
-        }}
-        onReview={() => {
-          const ok = loadMissedQueue()
-          if (ok) {
+      <>
+        <SessionComplete
+          {...sessionSummary}
+          onDone={() => {
+            // Clear local summary + Zustand review state BEFORE navigating so
+            // re-entering the Study tab (via Dashboard → Start Today's Reviews)
+            // mounts a fresh queue instead of re-rendering the stale Session
+            // Complete screen. Expo Router tabs stay mounted across navigations,
+            // so without this reset the state survives and the user gets stuck.
+            setSessionSummary(null)
+            reset()
+            setPhase('ready')
+            router.replace('/(tabs)')
+          }}
+          onReview={() => {
+            const ok = loadMissedQueue()
+            if (ok) {
+              setSessionSummary(null)
+              setIsRevealed(false)
+              isRevealedRef.current = false
+              swipeX.setValue(0)
+            }
+          }}
+          onKeepStudying={() => {
             setSessionSummary(null)
             setIsRevealed(false)
             isRevealedRef.current = false
             swipeX.setValue(0)
-          }
-        }}
-        onKeepStudying={() => {
-          setSessionSummary(null)
-          setIsRevealed(false)
-          isRevealedRef.current = false
-          swipeX.setValue(0)
-          loadQueue(dailyGoal)
-        }}
-      />
+            loadQueue(dailyGoal)
+          }}
+        />
+        {/* Post-session Buddy moment (spec §4.1) — modal, renders OVER Session
+            Complete, which stays mounted beneath. At most one per session:
+            buddyMomentKanjiId is set at most once by handleFinish. */}
+        {buddyMomentKanji && (
+          <CoCreationSheet
+            visible
+            kanji={buddyMomentKanji}
+            onClose={() => {
+              setBuddyMomentKanjiId(null)
+              setBuddyMomentKanji(null)
+            }}
+          />
+        )}
+      </>
     )
   }
 
