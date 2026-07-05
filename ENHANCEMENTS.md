@@ -95,6 +95,12 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 📊 Analytics & Progress
 
+- [ ] **Rework Velocity estimate: near-term milestones + goal calculator** — The Dashboard Velocity section projects the FULL Jōyō horizon ("All 2254 Jōyō Kanji: Nov 2034" for the owner) — a decade-out date that reads as discouraging rather than motivating. Three-part rework: (1) **lead with the nearest milestone** — next JLPT level, next 100 kanji, next Kyōiku grade — full-Jōyō becomes a secondary line, if shown at all; (2) **explain the estimate** — surface how it's calculated (current pace, review load) and make explicit that more effort shortens it; (3) **goal calculator** — learner picks a target ("N2 by July 2027") and the app computes the required pace: new kanji/day, minutes/day, vs their current pace. Framing principle: velocity should feel like a lever the learner controls, not a sentence being served. Same discouragement dynamic as the shipped Journey-bar fix above (a 2% sliver vs a 2034 date — both "the mountain is too big" signals). The calculator is arguably the lightweight first slice of the AI-Powered Personalized Study Plan idea (Future/Big Ideas).
+
+  Captured 2026-07-05 (owner: "Nov 2034 — I find that a little discouraging"). Also in Open Brain.
+
+  `[Effort: M]` `[Impact: High — motivation is the product]` `[Backend: Maybe — pace math may live client-side on existing analytics]` `[Status: 💡 Idea]`
+
 - [x] **Fix: JLPT Progress Bars Show as Blank** — The JLPT progress bars on the dashboard are empty for most users because the bar width is calculated as `burned / total`. Burning a kanji requires months of correct reviews, so new and early-stage users see no fill at all. Fix: switch to a stacked bar showing all meaningful SRS stages — **seen** (learning + reviewing + remembered) in a muted fill, **burned** in a solid highlight — so the bar reflects real study progress from day one. This also makes the bar a richer signal (e.g. N5: 60% seen / 5% burned vs N1: 2% seen / 0% burned). Backend change: `levelProjections` in `GET /v1/analytics/summary` needs to return `seen` count in addition to `burned`; currently only `burned` is exposed.
   `[Effort: S]` `[Impact: High]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 
