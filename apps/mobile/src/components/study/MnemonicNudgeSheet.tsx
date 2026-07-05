@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, StyleSheet, Modal, Pressable, TouchableOpacity,
-  ScrollView, TextInput, ActivityIndicator, Alert,
+  ScrollView, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useMnemonics } from '../../hooks/useMnemonics'
 import { colors, spacing, radius, typography } from '../../theme'
 
@@ -17,6 +18,7 @@ interface Props {
 
 export function MnemonicNudgeSheet({ visible, kanjiId, character, meaning, onDismiss }: Props) {
   const { mnemonics, isLoading, isGenerating, load, generate, save } = useMnemonics(kanjiId)
+  const insets = useSafeAreaInsets()
   const [composing, setComposing] = useState(false)
   const [draft, setDraft] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -53,8 +55,18 @@ export function MnemonicNudgeSheet({ visible, kanjiId, character, meaning, onDis
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
+      {/* Same keyboard + home-indicator treatment as CoCreationSheet: lift the
+          sheet above the keyboard (the compose TextInput autoFocuses) and pad
+          past the home-indicator zone. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       <Pressable style={styles.backdrop} onPress={onDismiss}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable
+          style={[styles.sheet, { paddingBottom: Math.max(spacing.xxl, insets.bottom + spacing.md) }]}
+          onPress={() => {}}
+        >
           {/* Handle */}
           <View style={styles.handle} />
 
@@ -164,6 +176,7 @@ export function MnemonicNudgeSheet({ visible, kanjiId, character, meaning, onDis
           </TouchableOpacity>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -211,7 +224,9 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   title: { ...typography.h3, color: colors.textPrimary },
   meaning: { ...typography.bodySmall, color: colors.textSecondary },
-  scroll: { flexGrow: 0 },
+  // flexShrink required — RN defaults it to 0, so tall content would push the
+  // Continue button past the sheet's maxHeight instead of scrolling.
+  scroll: { flexGrow: 0, flexShrink: 1 },
   scrollContent: { gap: spacing.md, paddingBottom: spacing.md },
   emptyText: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.lg },
   mnemonicCard: {

@@ -21,6 +21,7 @@ import { colors, spacing, radius, typography } from '../../src/theme'
 import type { SrsStatus } from '@kanji-learn/shared'
 import { getRadicalName } from '../../src/constants/radicals'
 import { useMnemonics } from '../../src/hooks/useMnemonics'
+import { getBestVoice } from '../../src/utils/tts'
 import { useShowPitchAccent } from '../../src/hooks/useShowPitchAccent'
 import { PitchAccentReading } from '../../src/components/kanji/PitchAccentReading'
 
@@ -162,6 +163,13 @@ export default function KanjiDetail() {
     }
   }, [])
 
+  // Warm the best installed ja-JP voice (Enhanced beats the compact default);
+  // ref because speakReadings' sequential chain is synchronous.
+  const jaVoiceRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    getBestVoice('ja-JP').then((v) => { jaVoiceRef.current = v })
+  }, [])
+
   // Play a list of readings sequentially; tap again to stop
   const speakReadings = useCallback((readings: string[], groupKey: string, stripDot = false) => {
     if (speakingGroupRef.current === groupKey) {
@@ -187,6 +195,7 @@ export default function KanjiDetail() {
       }
       Speech.speak(cleaned[idx], {
         ...SPEECH_OPTS,
+        voice: jaVoiceRef.current,
         onDone: () => speakAt(idx + 1),
         onError: () => {
           if (isMountedRef.current) {

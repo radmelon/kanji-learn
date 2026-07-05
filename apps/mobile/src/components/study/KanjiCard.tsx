@@ -22,6 +22,7 @@ import { PitchAccentReading } from '../kanji/PitchAccentReading'
 import { useShowPitchAccent } from '../../hooks/useShowPitchAccent'
 import { StrokeOrderAnimation } from '../writing/StrokeOrderAnimation'
 import { getRadicalName } from '../../constants/radicals'
+import { getBestVoice } from '../../utils/tts'
 
 /** Render a Japanese sentence with the target vocab word highlighted in accent color. */
 function highlightVocab(sentence: string, vocab: string): React.ReactNode {
@@ -116,6 +117,13 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
   // component and crash the native animation thread when its node is destroyed.
   const activeFlipRef = useRef<Animated.CompositeAnimation | null>(null)
 
+  // Warm the best installed ja-JP voice (Enhanced beats the compact default);
+  // ref because the sequential speak chain below is synchronous.
+  const jaVoiceRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    getBestVoice('ja-JP').then((v) => { jaVoiceRef.current = v })
+  }, [])
+
   useEffect(() => {
     isMountedRef.current = true
     return () => {
@@ -208,6 +216,7 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       }, 8000)
       Speech.speak(cleaned[idx], {
         ...SPEECH_OPTS,
+        voice: jaVoiceRef.current,
         onDone: () => speakAt(idx + 1),
         onError: (e) => {
           clearSpeakWatchdog()

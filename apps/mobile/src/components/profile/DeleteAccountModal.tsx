@@ -10,7 +10,7 @@
 import { useState } from 'react'
 import {
   View, Text, Modal, TextInput, TouchableOpacity,
-  StyleSheet, ActivityIndicator, Alert,
+  StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useAuthStore } from '../../stores/auth.store'
@@ -60,6 +60,11 @@ export function DeleteAccountModal({ visible, onDismiss }: Props) {
       transparent
       onRequestClose={handleCancel}
     >
+      {/* Keyboard covers the centered card's input/buttons without this */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <Text style={styles.title}>Delete account</Text>
@@ -107,6 +112,7 @@ export function DeleteAccountModal({ visible, onDismiss }: Props) {
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
