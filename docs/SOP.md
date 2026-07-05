@@ -27,6 +27,12 @@ eas build:list --platform ios --limit 5
 ```
 The `Distribution: store` + `Status: finished` combination confirms the `.ipa` is built. A missing TestFlight entry always means submit was skipped — run `eas submit`.
 
+### EAS + New Architecture gotchas (learned the hard way, B140, 2026-07-04)
+
+1. **`apps/mobile/ios/` is gitignored** — EAS never sees your local `ios/` directory (except the 7 legacy-tracked Watch swift files). It runs prebuild + pod install fresh on the builder. Editing `ios/Podfile` or `ios/Podfile.properties.json` locally does NOTHING for EAS builds; only `app.json`, `eas.json`, and env vars reach the builder.
+2. **RN 0.81.x precompiled release XCFrameworks break Release links under New Arch** — `Undefined symbols: facebook::react::Sealable` (a debug-guarded symbol source-compiled pods still reference). Local builds don't hit it (debug prebuilt has the symbols). Fix in `eas.json` production env: `RCT_USE_PREBUILT_RNCORE=0`, `RCT_USE_RN_DEP=0` (builds RN from source, ~+10 min per build). Revisit after upgrading past RN 0.81.5.
+3. **Reading EAS build logs from the CLI:** `eas build:view --json <id>` → `logFiles` URLs (15-min signed) → the blobs are **brotli**-compressed; decode with `node -e "zlib.brotliDecompressSync(...)"`.
+
 ### Build credits
 EAS has a monthly free-tier quota. Each build counts against it; overages are billed per-build. To debug without spending credits:
 ```bash
