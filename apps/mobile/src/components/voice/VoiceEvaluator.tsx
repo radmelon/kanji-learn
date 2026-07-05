@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Animated, AccessibilityInfo } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
-import { Audio } from 'expo-av'
 import { api } from '../../lib/api'
 import { colors, spacing, radius, typography } from '../../theme'
 import { PitchAccentReading } from '../kanji/PitchAccentReading'
@@ -13,26 +12,30 @@ import { computeAttemptsCount, targetChipMask } from './voiceReveal.logic'
 
 // ─── Audio session restore ──────────────────────────────────────────────────
 // expo-speech-recognition flips the iOS AVAudioSession to .playAndRecord +
-// mode: .measurement when recognition starts (see the library's
-// ExpoSpeechRecognizer.swift setupAudioSession). Its reset() path does NOT
-// restore the session on stop — so every subsequent Speech.speak() runs
-// under .measurement, which disables system audio processing and drops
-// TTS volume dramatically. The only "reset" was app cold-kill.
+// mode: .measurement when recognition starts (ExpoSpeechRecognizer.swift
+// setupAudioSession) and its reset() path never restores it — so every
+// subsequent Speech.speak() runs under .measurement, which disables system
+// audio processing and drops TTS volume dramatically until app cold-kill.
 //
-// These options mirror apps/mobile/app/_layout.tsx's boot-time audio setup
-// so TTS routes to the main loudspeaker at full volume again.
-const PLAYBACK_AUDIO_MODE = {
-  allowsRecordingIOS: false,
-  playsInSilentModeIOS: true,
-  staysActiveInBackground: false,
-  shouldDuckAndroid: true,
-  playThroughEarpieceAndroid: false,
-}
-
+// The restore must write AVAudioSession directly via the library's own
+// setCategoryIOS. expo-av's Audio.setAudioModeAsync CANNOT do this: EXAV
+// only applies the category when expo-av itself has active audio objects
+// (EXAV.m:286, `_currentAudioSessionMode != Inactive`) and this app plays
+// all TTS through expo-speech — so that call is a native no-op here (the
+// original 2026-04 fix used it and never worked). `mode` must be explicit:
+// the native param defaults to .measurement (SpeechRecognitionOptions.swift:188).
+// Device-verified 2026-07-04: BEFORE {playAndRecord, measurement} →
+// AFTER {playback, default}, volume stable across legs.
 function restorePlaybackAudioMode() {
-  Audio.setAudioModeAsync(PLAYBACK_AUDIO_MODE).catch((e) => {
-    if (__DEV__) console.warn('[VoiceEvaluator] restore audio mode failed', e)
-  })
+  try {
+    _SpeechRecognitionModule?.setCategoryIOS({
+      category: 'playback',
+      mode: 'default',
+      categoryOptions: [],
+    })
+  } catch (e) {
+    if (__DEV__) console.warn('[VoiceEvaluator] audio session restore failed', e)
+  }
 }
 
 // ─── Safe native module loading ───────────────────────────────────────────────
