@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Kanji Learn",
+    "name": "KanjiBuddy",
     "slug": "kanji-learn",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -20,14 +20,14 @@
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
         },
-        "NSLocalNetworkUsageDescription": "Allow Kanji Learn to connect to a local development server.",
+        "NSLocalNetworkUsageDescription": "Allow KanjiBuddy to connect to a local development server.",
         "NSBonjourServices": [
           "_react-native-packager._tcp"
         ],
         "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
-        "NSMicrophoneUsageDescription": "Allow Kanji Learn to use the microphone for reading evaluation.",
-        "NSPhotoLibraryUsageDescription": "Allow Kanji Learn to attach photos to your mnemonics.",
-        "NSLocationWhenInUseUsageDescription": "Allow Kanji Learn to tag mnemonics with the place where you learned them.",
+        "NSMicrophoneUsageDescription": "Allow KanjiBuddy to use the microphone for reading evaluation.",
+        "NSPhotoLibraryUsageDescription": "Allow KanjiBuddy to attach photos to your mnemonics.",
+        "NSLocationWhenInUseUsageDescription": "Allow KanjiBuddy to tag mnemonics with the place where you learned them.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "buildNumber": "141"
@@ -51,7 +51,7 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow Kanji Learn to use the microphone for reading evaluation."
+          "microphonePermission": "Allow KanjiBuddy to use the microphone for reading evaluation."
         }
       ],
       [
@@ -65,13 +65,13 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Kanji Learn to attach photos to your mnemonics."
+          "photosPermission": "Allow KanjiBuddy to attach photos to your mnemonics."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Kanji Learn to tag mnemonics with the place where you learned them."
+          "locationWhenInUsePermission": "Allow KanjiBuddy to tag mnemonics with the place where you learned them."
         }
       ]
     ],

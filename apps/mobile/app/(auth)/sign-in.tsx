@@ -38,7 +38,7 @@ export default function SignIn() {
     >
       <View style={styles.inner}>
         <Text style={styles.kanji}>漢字</Text>
-        <Text style={styles.title}>Kanji Learn</Text>
+        <Text style={styles.title}>KanjiBuddy</Text>
         <Text style={styles.subtitle}>Master 2,136 Jōyō kanji</Text>
 
         <SocialAuthButtons mode="sign-in" disabled={isLoading} />

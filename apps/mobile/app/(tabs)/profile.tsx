@@ -285,7 +285,7 @@ export default function ProfileScreen() {
 
   const handleInviteExternal = useCallback(async () => {
     await Share.share({
-      message: `Hey! I'm using Kanji Learn to study Japanese kanji. Join me as a study mate! Download it and look me up by email: ${user?.email}`,
+      message: `Hey! I'm using KanjiBuddy to study Japanese kanji. Join me as a study mate! Download it and look me up by email: ${user?.email}`,
     })
   }, [user?.email])
 
@@ -854,7 +854,7 @@ export default function ProfileScreen() {
                   onPress={async () => {
                     try {
                       await Share.share({
-                        message: `Here's the link to view my Kanji Learn progress: ${tutorShare.shareUrl}`,
+                        message: `Here's the link to view my KanjiBuddy progress: ${tutorShare.shareUrl}`,
                         url: tutorShare.shareUrl,
                       })
                     } catch {

@@ -36,7 +36,7 @@ export default function AboutScreen() {
           <View style={styles.logoBox}>
             <Text style={styles.logoKanji}>漢</Text>
           </View>
-          <Text style={styles.appName}>Kanji Learn</Text>
+          <Text style={styles.appName}>KanjiBuddy</Text>
           <Text style={styles.appVersion}>Version {APP_VERSION}</Text>
         </View>
 
@@ -130,7 +130,7 @@ export default function AboutScreen() {
           icon="code-slash"
         >
           <Text style={styles.attrBody}>
-            Kanji Learn is built on React Native, Expo, Fastify, Drizzle ORM, wanakana,
+            KanjiBuddy is built on React Native, Expo, Fastify, Drizzle ORM, wanakana,
             react-native-svg, and many other open-source projects. We thank every
             contributor whose work makes this app possible.
           </Text>
