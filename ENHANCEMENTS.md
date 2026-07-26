@@ -295,6 +295,16 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   `[Effort: S]` `[Impact: High — privacy trust + unlocks geo-recall]` `[Backend: Yes — profile column + schema]` `[Status: 💡 Planned — Plan 4]`
 
+- [ ] **Stickier-after-save: "Go deeper" must reopen the stickier inputs on an existing hook (Plan 4)** — Today "Make it stickier" (the step where the learner adds a personal detail and Buddy rebuilds the story to weave it in, plus records it in `cocreation_context.layers`) exists **only inside the create flow**, in `CoCreationSheet.tsx`. Once the hook is saved the door closes: the sheet unmounts, and `kanji/[id].tsx` hides the manual entry point entirely once `generationMethod === 'cocreated'` — the branch already marks the gap in-line ("Go deeper" entry is Plan 4 — this is only the create entry).
+
+  Practical effect: a hook can only ever be improved during the ~60 seconds it is first built. A learner who later discovers a better personal anchor — which is exactly when the memory work is most valuable, since the hook has by then failed them in a review — has no way in. The kanji detail page shows the co-created hook with no affordance to strengthen it.
+
+  **Shape:** replace the hidden "Build a hook" button with a **"Go deeper"** button on kanji detail whenever a co-created hook exists. It reopens `CoCreationSheet` directly at the stickier step, pre-loaded with the saved story, and routes the rebuild through the existing `/deepen` endpoint (shipped in Plan 2) rather than `/assemble`. Per the spec, deepen is **additive — append a layer, never discard** the prior story, so previous layers stay in `cocreation_context.layers` and the learner can't lose a hook by experimenting with it.
+
+  Captured 2026-07-05 (Plan 3b walkthrough). Was previously tracked only in the HANDOFF Plan-4 scope line and Open Brain — written up here 2026-07-26 so the Plan 4 input list is complete.
+
+  `[Effort: S–M]` `[Impact: High — a hook is only improvable in the one minute it's born]` `[Backend: No — /deepen already exists]` `[Status: 💡 Planned — Plan 4]`
+
 ---
 
 ## 🔐 Authentication

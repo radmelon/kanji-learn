@@ -1,19 +1,21 @@
 # 漢字 Buddy — Enhancement Roadmap
 
-A phased development plan for all unimplemented enhancements. Grouped by impact and logical development order. Reference phases by number (e.g., "Phase 1, item 2") when starting work.
+A wave-based development plan for all unimplemented enhancements. Grouped by impact and logical development order. Reference waves by number (e.g., "Wave 1, item 2") when starting work.
 
 > *Horizon planning. The authoritative "what's next this session" lives in `docs/HANDOFF.md`; current defects in `BUGS.md`.*
 
+> **Naming note (2026-07-26):** this document's groupings were renamed **Phase N → Wave N** to end a collision with the *Buddy product phases* (Buddy Phase 1' nudges, Buddy Phase 5 Contextual Mnemonic Co-Creation, etc.), which are tracked in `docs/superpowers/specs/` and `docs/superpowers/plans/`. Historical references to "Roadmap Phase N" map 1:1 onto "Wave N". Unqualified **"Phase N" now always means a Buddy product phase**, never a roadmap grouping.
+
 ---
 
-## Recently shipped (2026-05) — not yet reflected in the phase tables below
+## Recently shipped (2026-05) — not yet reflected in the wave tables below
 
 - **FSRS-5 migration** (Spec 1.5, B135) — replaced SM-2 with hand-rolled FSRS-5
   (migration `0024` + one-time replay). Surfaced the previously-unreachable
-  "burned" tier. The phase tables still say "SRS core"; the engine is FSRS now.
+  "burned" tier. The wave tables still say "SRS core"; the engine is FSRS now.
 - **Buddy Phase 1' nudges** (B136) — Meet Buddy + streak cards on Dashboard /
   Study Ready, with Expo push on milestone-day streaks.
-- **Milestones Panel Refactor** (Phase 3 #13, B137; hot-fixed B138) — numeric /
+- **Milestones Panel Refactor** (Wave 3 #13, B137; hot-fixed B138) — numeric /
   JLPT / grade tier badges, Up Next, date sheet, grandfathering. Silver tier
   rule later softened (API).
 - **Pitch accent (#16) + vocab-word speaking (#16b)** — shipped as part of the
@@ -26,8 +28,8 @@ A phased development plan for all unimplemented enhancements. Grouped by impact 
   [`docs/superpowers/specs/2026-05-31-phase-5-mnemonic-cocreation-design.md`](docs/superpowers/specs/2026-05-31-phase-5-mnemonic-cocreation-design.md).
   Plans 2–4 (Data/API, mobile flow + Apple Foundation Models, quiz/surfacing)
   outstanding. NB: "Buddy Phase 5" (the signature feature, per the buddy-v2
-  refresh §9 ordering) is distinct from this roadmap's "Phase 5 — Platform &
-  Scale" below.
+  refresh §9 ordering) is distinct from this roadmap's "Wave 5 — Platform &
+  Scale" below — see the naming note at the top.
 
 **Queued for the next mobile EAS cut** (B138 testing follow-ups — see BUGS.md):
 vocab voice reading uses kana not kanji (B-205); softened silver rule
@@ -39,7 +41,7 @@ shared dictionary (`d78ad1f`).
 
 ---
 
-## Phase 0 — Security ✅ COMPLETE
+## Wave 0 — Security ✅ COMPLETE
 *Deployed to prod 2026-04-11. PR #1 merged.*
 
 | # | Enhancement | Impact | Backend | Status |
@@ -60,7 +62,7 @@ shared dictionary (`d78ad1f`).
 
 ---
 
-## Phase 1 — Quick Wins ✅ COMPLETE
+## Wave 1 — Quick Wins ✅ COMPLETE
 *Deployed 2026-04-11.*
 
 | # | Enhancement | Impact | Backend | Status |
@@ -74,7 +76,7 @@ shared dictionary (`d78ad1f`).
 
 ---
 
-## Phase 2 — Core UX & Onboarding (M effort, High impact)
+## Wave 2 — Core UX & Onboarding (M effort, High impact)
 *Reduce churn, widen the front door, improve daily experience. These affect every user.*
 
 | # | Enhancement | Impact | Backend | Status |
@@ -99,13 +101,13 @@ shared dictionary (`d78ad1f`).
 - #6 shipped via the onboarding branch, merged into tutor-analytics-sharing, landed on main via PR #6 on 2026-04-17.
 - #12 design spec at `docs/superpowers/specs/2026-04-17-delete-account-design.md`; implementation plan at `docs/superpowers/plans/2026-04-17-delete-account.md`. Initial cascade gap on `learner_identity` (no FK to `user_profiles`) caught in B120 code review and fixed via migration 0016. Second cascade gap (relational tables referencing the deleted user from other users' viewpoints) surfaced in B121 verification and is pending migration 0017 — see BUGS.md.
 
-**2026-04-18 session (B121):** Two bundled builds merged and shipped in a single TestFlight cut — see `docs/superpowers/plans/2026-04-18-b121-copy-and-ux-sweep.md` and `docs/superpowers/plans/2026-04-18-b122-study-loop-and-leaderboard.md`. No explicit Phase 2 items were closed, but a substantial refinement bundle shipped: accuracy→confidence terminology audit, Dashboard auto-refresh, Take Quiz empty state, JLPT color legend, weighted 3/2/1/0 confidence scoring (API + client, fully verified via controlled DB test), mnemonic trigger narrowed to Again only, "Show mnemonic" button on Kanji details page, meaning/reading visual cue on study cards, dismissible invite-a-mate banner, leaderboard days-studied + remembered columns, onboarding motivational footer. 12 of 14 verification items passed; 4 new bugs logged (three still open: stale Session Complete state, daily goal hardcoded to 20, post-delete relational cascade confirmed); 3 new refinements logged (gesture mapping clarity, Session Complete breakdown, speak on sentences).
+**2026-04-18 session (B121):** Two bundled builds merged and shipped in a single TestFlight cut — see `docs/superpowers/plans/2026-04-18-b121-copy-and-ux-sweep.md` and `docs/superpowers/plans/2026-04-18-b122-study-loop-and-leaderboard.md`. No explicit Wave 2 items were closed, but a substantial refinement bundle shipped: accuracy→confidence terminology audit, Dashboard auto-refresh, Take Quiz empty state, JLPT color legend, weighted 3/2/1/0 confidence scoring (API + client, fully verified via controlled DB test), mnemonic trigger narrowed to Again only, "Show mnemonic" button on Kanji details page, meaning/reading visual cue on study cards, dismissible invite-a-mate banner, leaderboard days-studied + remembered columns, onboarding motivational footer. 12 of 14 verification items passed; 4 new bugs logged (three still open: stale Session Complete state, daily goal hardcoded to 20, post-delete relational cascade confirmed); 3 new refinements logged (gesture mapping clarity, Session Complete breakdown, speak on sentences).
 
 **Late-evening same-day follow-up — 45s save-session latency fixed:** Root cause was the submit path running one transaction per review (~7 cross-region DB round-trips × 20 cards = ~145 RTTs). Shipped batched submit (commit `d137b9c`, App Runner deploy op `c8b9b0b466a7471b8c69f2f24befcd27`): single transaction with four bulk statements, O(1) round-trips regardless of session size. Expected ~12× speedup (~45s → ~4s). 8 unit tests cover the pure batching transformation. On-device confirmation pending next study-session save.
 
 ---
 
-## Phase 3 — Learning Engine (M effort, strengthens the FSRS core)
+## Wave 3 — Learning Engine (M effort, strengthens the FSRS core)
 *Make the study loop smarter and give users deeper insight into their progress.*
 *(Scheduler is FSRS-5 as of Spec 1.5 — earlier "SRS core" wording predates that.)*
 
@@ -118,7 +120,7 @@ shared dictionary (`d78ad1f`).
 | 13 | Milestones Panel Refactor | Med | No | ✅ Done — shipped B137, hot-fixed B138 (see "Recently shipped" above) |
 
 **Why grouped:**
-- Leech detection first — highest-impact SRS improvement, informs the AI study plan later (Phase 6)
+- Leech detection first — highest-impact SRS improvement, informs the AI study plan later (Wave 6)
 - Cram mode shares UI patterns with leech review (filtered study sessions without SRS updates)
 - Grade level equivalent adds a new progress dimension; pairs naturally with the retention graph as "analytics round 2"
 - Milestones refactor (#13) shares grade-set data with #11 — likely a single implementation pass.
@@ -162,7 +164,7 @@ shared dictionary (`d78ad1f`).
 
 ---
 
-## Phase 4 — Advanced Study & Data (L effort)
+## Wave 4 — Advanced Study & Data (L effort)
 *Deeper features for committed learners. Some require new data sources.*
 
 | # | Enhancement | Impact | Backend | Status |
@@ -174,14 +176,14 @@ shared dictionary (`d78ad1f`).
 | 16b | Speaking: Vocab Words Instead of Single Kanji Readings | Med | Yes | ✅ Done (Build 3-C / Plan C) |
 
 **Why grouped:**
-- Custom session builder is the natural extension of leech mode + cram mode from Phase 3 — all three share "filtered study session" infrastructure
-- Adaptive daily goal depends on having enough usage data and benefits from the analytics built in Phase 3
+- Custom session builder is the natural extension of leech mode + cram mode from Wave 3 — all three share "filtered study session" infrastructure
+- Adaptive daily goal depends on having enough usage data and benefits from the analytics built in Wave 3
 - Data export is independent but straightforward backend work, good to pair here
 - Pitch accent requires sourcing and importing a new dataset (Wadoku or similar), so it's its own mini-project
 
 ---
 
-## Phase 5 — Platform & Scale (M–L effort)
+## Wave 5 — Platform & Scale (M–L effort)
 *Infrastructure and multi-device reach. Do before user count demands it.*
 
 | # | Enhancement | Impact | Backend | Status |
@@ -272,7 +274,7 @@ Before shipping a general-availability release, close these items (all tracked i
 
 ---
 
-## Phase 6 — Moonshots (XL effort)
+## Wave 6 — Moonshots (XL effort)
 *High-ambition features that fundamentally expand what the app can do. Each is a project unto itself.*
 
 | # | Enhancement | Impact | Backend | Status |
@@ -285,7 +287,7 @@ Before shipping a general-availability release, close these items (all tracked i
 **Why last:**
 - Multiple decks is an architectural change (schema, SRS service, all UI) — highest risk
 - Reading passages are a new product surface, not an improvement to an existing one
-- AI study plan benefits from leech data (Phase 3) and session builder infrastructure (Phase 4)
+- AI study plan benefits from leech data (Wave 3) and session builder infrastructure (Wave 4)
 - ~~Three-Modality Loop requires reliable writing + voice evaluators (currently in early-polish stages), a cross-tab session state machine that doesn't exist today, and careful UX design around edge cases (partial completion, sparse vocab data, subway-friendly escape hatches). Needs its own brainstorm → spec → plan cycle; estimated 1–2 weeks once prerequisites are solid. See ENHANCEMENTS.md for the full entry.~~
 
 **#23 status note (2026-07-04):** the multi-modal core shipped in B134 as the **Practice Loop** (Plans A/B/C), in a different — arguably better — form than originally spec'd. Instead of a batch-level gate between sessions, every *new* kanji and every review graded *Again/Hard* routes **inline** through flashcard → writing leg → speaking leg within the same session (`review.store.ts` leg state machine); "maybe slipping" Good/Easy reviews get a quiz leg. The inline design dissolved the spec's hardest open questions (partial completion, escape hatches, cross-tab state machine) because a session never cuts off mid-path. Weak-spot/missed drills stay flashcard-only by design. **Not built:** the original batch-gate variant (locking further flashcard sessions until the previous batch clears writing AND speaking) — retained here as an open idea only if the inline loop proves insufficient.
@@ -310,7 +312,7 @@ Tracked in [BUGS.md](BUGS.md) — see that file for current open and recently-fi
 
 ## Summary
 
-| Phase | Items | Effort Range | Theme |
+| Wave | Items | Effort Range | Theme |
 |-------|-------|-------------|-------|
 | **0** | **2** | **M** | **🚨 Security — RLS & sensitive data** |
 | 1 | 4 | S | Polish & consistency |
