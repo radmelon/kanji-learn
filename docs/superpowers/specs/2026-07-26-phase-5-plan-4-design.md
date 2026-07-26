@@ -84,13 +84,21 @@ Both marked `@deprecated`, with a comment naming **B143** as the last build that
 
 ### 4.3 Order of operations
 
-1. **Stubs + API deploy** — production gains the Plan-2 surface; B143 unaffected.
-2. **Live DB** — safety dump → migration 0027 → destructive cleanup (runbook `2026-06-01-phase5-data-cleanup.md`). Migration 0026 + IDS backfill are already live (2026-07-05).
-3. **Merge `phase-5-cocreation-ui` → `main`** — now safe. **`main` becomes shippable for the first time since June.**
-4. **Build Plan 4 incrementally on `main`**, mobile typecheck green before every commit (SOP rule).
-5. **Cut EAS** when the loop is complete.
+> **Corrected 2026-07-26** after adversarial review. An earlier draft of this section deployed the API *before* applying migration 0027. That is a production outage, not a style preference — see the expand-first rule below.
 
-Steps 1–3 are a single short session. The old design held `main` frozen for all of Plan 4 and landed every integration risk on one day; this lands them on day one, separately, each independently revertible.
+1. **Safety dump + migration 0027 FIRST** — before any deploy. Migration 0026 + IDS backfill are already live (2026-07-05).
+2. **Stubs + API deploy** — production gains the Plan-2 surface; B143 unaffected.
+3. **Destructive cleanup** — per runbook `2026-06-01-phase5-data-cleanup.md`.
+4. **Merge `phase-5-cocreation-ui` → `main`** — now safe. **`main` becomes shippable for the first time since June.**
+5. **Build Plan 4 incrementally on `main`**, mobile typecheck green before every commit (SOP rule).
+6. **Second API deploy** once the server-side push fixes (§13) are written — they are authored after step 2 and would otherwise never reach production.
+7. **Cut EAS** when the loop is complete.
+
+**Expand first, then deploy — why the order is load-bearing.** `scripts/deploy-api.sh:31` sets `CONTEXT="."`, so the built image carries `packages/db/src/schema.ts` including the new columns. Drizzle's relational query builder emits an *explicit column list* from that schema, and several hot paths select no subset — `apps/api/src/routes/user.ts:10` does `db.query.userProfiles.findFirst({ where })` with no `columns` key, as do `notification.service.ts` and `learner-state.service.ts`. Deploying that image against a database lacking the columns makes `GET /v1/user/profile` — hit on every app launch — throw for the whole window. The App Runner health check is `/health`, which touches no columns, so the bad version passes its gate and swaps in cleanly.
+
+The reverse order is safe precisely because migration 0027 is purely additive (`ADD COLUMN IF NOT EXISTS` with defaults): the *old* running API neither knows nor cares that the columns exist.
+
+Steps 1–4 are a single short session. The old design held `main` frozen for all of Plan 4 and landed every integration risk on one day; this lands them on day one, separately, each independently revertible.
 
 **Expected observation, not a bug:** after step 2 the tester's Journal tab is empty and stays empty until they build their first co-created hook. Stock mnemonics are exactly what Phase 5 supersedes.
 
