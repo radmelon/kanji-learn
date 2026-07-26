@@ -254,16 +254,32 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   2. Wait until the configured hour on a day you haven't studied.
   3. No push notification arrives.
 
-  **Root cause:** The AWS Lambda (`kanji-learn-daily-reminders`) was deployed but had **no EventBridge rule attached**. The Lambda was never triggered, so `sendDailyReminders()` was never called. The in-process `node-cron` inside App Runner is unreliable because App Runner scales to zero instances between requests, killing the cron process.
+  **ROOT-CAUSED 2026-07-26** — three defects, two of which independently cause "no notification". The delivery chain (EventBridge → Lambda → `POST /internal/daily-reminders` → `sendDailyReminders` → `sendToUserTokens` → Expo) is **structurally correct end to end**; static tracing found no wiring break. The failures are data and observability.
 
-  **Fix attempted 2026-04-09:** Created EventBridge rule `kanji-learn-hourly-reminders` (rate: 1 hour), attached Lambda as target, granted invoke permission. Verified with a manual `aws lambda invoke` — returned `{"ok":true}`. However notifications are still not being received as of Build 103 — root cause not fully resolved.
+  **Root cause A — `timezone` is never captured. Affects every user.**
+  `user_profiles.timezone` is `text('timezone').notNull().default('UTC')` ([schema.ts:155](packages/db/src/schema.ts)) and **nothing ever writes it**. It exists in mobile only as a type declaration (`useProfile.ts:11`, `profile.tsx:35`) — never assigned, never sent. The API accepts it ([user-profile.schema.ts:7](apps/api/src/routes/user-profile.schema.ts)) but no client supplies it. Verified: all 5 live accounts read `timezone='UTC'`, including two known-Pacific users.
+  `reminderHour` is documented as "0-23, **in user's timezone**" (schema.ts:156) and the eligibility filter resolves local time from that column ([notification.service.ts:143-146](apps/api/src/services/notification.service.ts)). With everyone pinned to UTC, a 20:00 reminder fires at **20:00 UTC = 1pm PDT** — seven hours early. Buddy's `reminderHour=13` fires at 6am Pacific.
+
+  **Root cause B — the accounts under test have zero push tokens.**
+  Probe 2026-07-26: RAD (`7c707446`, the account builds are walked on) and the live tester (`602a09f3`) both have `notifications_enabled=true` and **0 rows** in `user_push_tokens`. `sendToUserTokens` returns early ([notification.service.ts:401](apps/api/src/services/notification.service.ts)) and the log guard at line 423 means it prints *nothing*. Silent zero-send; the endpoint still returns `ok:true`.
+  Mechanism: `signOut` deletes the device token ([auth.store.ts:194](apps/mobile/src/stores/auth.store.ts)); re-registration requires an `isAuthenticated` transition with permission already granted. A reinstall resets permission — and the dev client and TestFlight share a bundle ID, so installing one replaces the other.
+  Compounding: the Profile toggle writes `notifications_enabled` independently of token existence, so the UI shows notifications ON for an account that cannot receive them.
+
+  **Defect C — no receipt polling. This is why A and B stayed invisible for three months.**
+  `sendToUserTokens` returns `sent: tickets.length`. Expo tickets are *synchronous acceptance*, not delivery — real outcomes (`DeviceNotRegistered`, `MessageRateExceeded`, `InvalidCredentials`) only appear in receipts, fetched via `getPushNotificationReceiptsAsync`. **Nothing in this codebase ever polls receipts.** The code assumes otherwise: [auth.store.ts:190](apps/mobile/src/stores/auth.store.ts) says "Receipt pruning is the safety net if this call fails" — that safety net does not exist. Every layer reports success while nothing arrives.
+
+  **Superseded diagnosis (2026-04-09):** the Lambda had no EventBridge rule attached; rule `kanji-learn-hourly-reminders` (rate: 1 hour) was created and verified via manual `aws lambda invoke`. That was a real defect and the fix was correct — but it was not this bug, which is why the symptom persisted through Build 103.
+
+  **Fix (decided 2026-07-26, split by layer):**
+  - *Server-side, ships with the Plan 4 step-1 API deploy:* receipt polling + honest delivery accounting; log the zero-token path instead of returning silently.
+  - *Client-side, rides the Plan 4 EAS build:* send `Intl.DateTimeFormat().resolvedOptions().timeZone` on profile load/update; re-register the push token when permission is regained; surface real delivery state in Profile rather than a toggle that can lie.
 
   **Affected infrastructure:**
   - AWS EventBridge rule: `kanji-learn-hourly-reminders` (us-east-1)
   - Lambda: `kanji-learn-daily-reminders`
   - API route: `POST /internal/daily-reminders`
 
-  `[Effort: M]` `[Impact: High]` `[Status: 🐛 Active — regression confirmed Build 103]`
+  `[Effort: M]` `[Impact: High]` `[Status: 🐛 Root-caused 2026-07-26 — fix not yet implemented]`
 
 - [ ] **`TOTAL_JOUYOU_KANJI` constant is wrong — set to 2,294 instead of 2,136** — `packages/shared/src/constants.ts` exports `TOTAL_JOUYOU_KANJI = 2294`, but the official Jōyō kanji list contains 2,136 characters (2010 revision). The inflated value understates completion percentages on the Dashboard and anywhere else the constant is used.
 
