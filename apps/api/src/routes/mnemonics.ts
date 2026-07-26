@@ -67,6 +67,29 @@ export async function mnemonicRoutes(
 ) {
   const service = opts?.service ?? new MnemonicService(server.db)
 
+  // ─── DEPRECATED: B143-compatibility stubs ──────────────────────────────────
+  // Plan 2 retired the 30-day refresh nudge (parent spec §10.4), but shipped
+  // build B143 still calls both routes. They answer successfully and write
+  // nothing, so an old client can never 404 against a new API. This is what
+  // decouples the API deploy from the mobile release.
+  //
+  // Registered ABOVE the parametric routes on purpose: without a static
+  // /refresh, GET /v1/mnemonics/refresh falls through to GET /:kanjiId, which
+  // parses "refresh" as a kanji id and 400s.
+  //
+  // DO NOT DELETE until no build in the wild predates their removal.
+  // Last build that calls these: B143 (2026-07-05).
+  server.get('/refresh', { preHandler: [server.authenticate] }, async (_req, reply) =>
+    reply.send({ ok: true, data: [] }),
+  )
+
+  server.post<{ Params: { id: string } }>(
+    '/:id/refresh/dismiss',
+    { preHandler: [server.authenticate] },
+    async (_req, reply) => reply.send({ ok: true }),
+  )
+  // ─── end deprecated stubs ──────────────────────────────────────────────────
+
   // GET /v1/mnemonics/:kanjiId — system + user mnemonics for a kanji
   server.get<{ Params: { kanjiId: string } }>(
     '/:kanjiId',
