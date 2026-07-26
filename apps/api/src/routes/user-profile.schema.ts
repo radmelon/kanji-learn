@@ -10,4 +10,8 @@ export const updateProfileSchema = z.object({
   onboardingCompletedAt: z.coerce.date().optional(),
   showPitchAccent: z.boolean().optional(),
   attachLocationToMilestones: z.boolean().optional(),
+  // Plan 4. Distinct from attachLocationToMilestones by design (parent spec
+  // §11) — consenting to location on badges is not consent on hooks.
+  attachLocationToHooks: z.boolean().optional(),
+  mnemonicCoachingEnabled: z.boolean().optional(),
 })

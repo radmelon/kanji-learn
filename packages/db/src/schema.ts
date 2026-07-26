@@ -151,7 +151,18 @@ export const userProfiles = pgTable('user_profiles', {
   dailyGoal: smallint('daily_goal').notNull().default(15),
   notificationsEnabled: boolean('notifications_enabled').notNull().default(true),
   attachLocationToMilestones: boolean('attach_location_to_milestones').notNull().default(false),
+  // Separate from the milestones toggle above on purpose (parent spec §11): a
+  // user who shared location for badges has not consented to hook coordinates.
+  attachLocationToHooks: boolean('attach_location_to_hooks').notNull().default(false),
+  // Anti-nag OPT-OUT, so it defaults ON. Off suppresses automatic Buddy
+  // moments only — manual "Build a hook" stays available.
+  mnemonicCoachingEnabled: boolean('mnemonic_coaching_enabled').notNull().default(true),
+  // Server-side so the one-time in-flow location ask survives a reinstall.
+  hookLocationAskSeenAt: timestamp('hook_location_ask_seen_at', { withTimezone: true }),
   // pushToken removed — see user_push_tokens table below (multi-device support).
+  // NOTE: nothing has ever written `timezone` from a client, so every row still
+  // carries the 'UTC' default — the root cause of daily reminders firing at the
+  // wrong hour (BUGS.md, root-caused 2026-07-26). Plan 4 Task 17 fixes it.
   timezone: text('timezone').notNull().default('UTC'),
   reminderHour: smallint('reminder_hour').notNull().default(20),   // 0-23, in user's timezone
   restDay: smallint('rest_day'),                                    // 0=Sun…6=Sat, null=no rest day
@@ -203,6 +214,9 @@ export const userKanjiProgress = pgTable(
     totalReviews: integer('total_reviews').notNull().default(0),
     nextReviewAt: timestamp('next_review_at', { withTimezone: true }),
     lastReviewedAt: timestamp('last_reviewed_at', { withTimezone: true }),
+    // "Not now" on a Buddy moment silences THIS kanji for 7 days (parent spec
+    // §11). Per-kanji, so it lives here rather than on user_profiles.
+    buddyMomentSnoozedUntil: timestamp('buddy_moment_snoozed_until', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -263,6 +277,10 @@ export const reviewLogs = pgTable(
     nextDifficulty: real('next_difficulty'),
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull().defaultNow(),
     deviceType: deviceTypeEnum('device_type'),
+    // Did the learner pull the mnemonic hint on this review? A hinted card is
+    // capped at Hard (design spec §8.2). Recorded as an effectiveness signal;
+    // deliberately NOT yet fed into effectivenessScore.
+    hintUsed: boolean('hint_used').notNull().default(false),
   },
   (t) => ({
     userReviewIdx: index('review_log_user_idx').on(t.userId, t.reviewedAt),
