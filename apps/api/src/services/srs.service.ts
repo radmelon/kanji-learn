@@ -6,6 +6,7 @@ import {
   reviewLogs,
   userProfiles,
   learnerIdentity,
+  mnemonics,
 } from '@kanji-learn/db'
 import {
   calculateNextReview,
@@ -299,7 +300,52 @@ export class SrsService {
       ...burnedChecks.map(mapBurned),
     ]
 
+    // Attach recall-quiz due stamps (parent spec §8). Done as one follow-up
+    // read over the assembled queue rather than a join in each of the four
+    // source queries above — same result, one extra round-trip, and none of
+    // those projections need to change.
+    //
+    // The client needs this to decide whether a hooked kanji owes its
+    // story→kanji first-test; without it `isRecallQuizDue` has nothing to
+    // read and next-session insertion cannot work at all.
+    await this.attachQuizDueStamps(userId, queue)
+
     return queue
+  }
+
+  /**
+   * Populate `mnemonicQuizDueAt` on queue items that have a co-created hook
+   * awaiting its recall quiz. Mutates in place; silent on failure, because a
+   * missing quiz stamp must never cost the learner their whole session queue.
+   */
+  private async attachQuizDueStamps(userId: string, queue: ReviewQueueItem[]): Promise<void> {
+    if (queue.length === 0) return
+    try {
+      const kanjiIds = [...new Set(queue.map((q) => q.kanjiId))]
+      const rows = await this.db
+        .select({
+          kanjiId: mnemonics.kanjiId,
+          dueAt: sql<string | null>`${mnemonics.cocreationContext}->>'mnemonicQuizDueAt'`,
+        })
+        .from(mnemonics)
+        .where(
+          and(
+            eq(mnemonics.userId, userId),
+            eq(mnemonics.generationMethod, 'cocreated'),
+            inArray(mnemonics.kanjiId, kanjiIds),
+          ),
+        )
+
+      const byKanji = new Map<number, string>()
+      for (const r of rows) if (r.dueAt) byKanji.set(r.kanjiId, r.dueAt)
+      if (byKanji.size === 0) return
+      for (const item of queue) {
+        const due = byKanji.get(item.kanjiId)
+        if (due) item.mnemonicQuizDueAt = due
+      }
+    } catch {
+      // Best-effort enrichment only.
+    }
   }
 
   // ── Submit a batch of review results ───────────────────────────────────────

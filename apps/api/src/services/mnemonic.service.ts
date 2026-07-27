@@ -174,6 +174,24 @@ export class MnemonicService {
       .where(and(eq(mnemonics.id, mnemonicId), eq(mnemonics.userId, userId)))
     if (!existing) return null
 
+    // Parent spec §8: a CORRECT outcome clears the recall-quiz due stamp. A
+    // wrong one deliberately leaves it, so the kanji is re-tested next session.
+    //
+    // Surgical on purpose: strip only mnemonicQuizDueAt and carry the rest of
+    // the context through untouched. `layers` is the hook's entire history and
+    // §6.3 is emphatic that it is never discarded — a blanket overwrite here
+    // would silently destroy it.
+    //
+    // Without this clear, isRecallQuizDue stays true forever and the quiz
+    // re-fires at the start of every session containing the kanji.
+    const nextContext =
+      outcome === 1 && existing.cocreationContext
+        ? (() => {
+            const { mnemonicQuizDueAt: _cleared, ...rest } = existing.cocreationContext
+            return rest
+          })()
+        : existing.cocreationContext
+
     const [updated] = await this.db
       .update(mnemonics)
       .set({
@@ -181,6 +199,7 @@ export class MnemonicService {
         reinforcementCount: existing.reinforcementCount + 1,
         lastReinforcedAt: new Date(),
         updatedAt: new Date(),
+        cocreationContext: nextContext,
       })
       .where(and(eq(mnemonics.id, mnemonicId), eq(mnemonics.userId, userId)))
       .returning()

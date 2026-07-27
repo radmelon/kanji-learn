@@ -91,6 +91,11 @@ export interface ReviewQueueItem extends ReviewItem {
    *  grade (Practice Loop spec §2). Optional — set only by getReviewQueue;
    *  absent (falsy) on every other queue. */
   maybeSlipping?: boolean
+  /** ISO timestamp. Present when this kanji has a co-created hook awaiting its
+   *  story→kanji recall quiz (parent spec §8). Set only by getReviewQueue, and
+   *  cleared server-side by a correct answer — see MnemonicService.recordOutcome.
+   *  Absent means no hook, or the hook has already passed its first test. */
+  mnemonicQuizDueAt?: string
 }
 
 // ─── Voice prompt (reading-queue items) ───────────────────────────────────────
