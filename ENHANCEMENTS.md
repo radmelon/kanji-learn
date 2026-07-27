@@ -181,6 +181,16 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 🎨 UI & Experience
 
+- [ ] **"How studying works" is unreachable after first dismissal — add an ⓘ to reopen it** — The study-screen explainer (grading semantics, swipe directions, what Again/Hard/Good/Easy each do) is a **first-run overlay only**. It is gated on `showOnboarding` and dismissal writes `HELP_KEY = 'kl_has_seen_study_help'` to SecureStore ([study.tsx:55,263,769](apps/mobile/app/(tabs)/study.tsx)), after which nothing in the UI can bring it back. A learner who taps past it on day one — when the content means least, because they have not studied yet — never sees it again.
+
+  **The app already has the pattern.** The Progress tab surfaces the same kind of explainer on demand via `information-circle-outline` buttons over `InfoSection[]` arrays (`INFO_BREAKDOWN`, `INFO_CONFIDENCE`, `INFO_VELOCITY`, "How evaluation works", …) at [progress.tsx:679](apps/mobile/app/(tabs)/progress.tsx). The onboarding copy even teaches ⓘ as the convention — *"Tap ⓘ to understand how stroke-order scoring works"* ([onboarding-content.ts:44](apps/mobile/src/config/onboarding-content.ts)). Study is the outlier: its explainer is the one that is one-shot.
+
+  **Fix:** add an ⓘ button to the study screen header that sets `showOnboarding` to true, reusing the existing Modal verbatim — no new content, no new component, and dismissal keeps writing `HELP_KEY` so first-run behaviour is unchanged. Worth auditing whether any other first-run overlay is similarly stranded.
+
+  Found 2026-07-27 (owner, during the Plan 4 co-creation smoke test): *"the popup is useful and we should provide a UI mechanism for accessing it on demand — I am seeing it now while testing and had forgotten it was available."* Note the discovery path: the only reason it reappeared was a **fresh test account**, which is exactly the state a real new user is in and an existing user can never return to.
+
+  `[Effort: XS]` `[Impact: Med — grading semantics drive SRS quality; a learner who mis-grades gets a mis-tuned schedule]` `[Backend: No]` `[Status: 💡 Idea]`
+
 - [ ] **Dark / Light Theme Toggle** — Add a manual theme toggle (with system default option) for dark and light mode. Dark mode is especially useful for late-night study sessions and is a highly requested feature in language learning apps.
 
   **WCAG 2.1 AA requirement (added 2026-04-20):** every foreground / background pair must clear **4.5:1 for normal text**, **3:1 for large text or graphical UI**, in *both* themes. Same rule introduced after the B125 pitch-overlay contrast bug (see [`feedback_accessibility_wcag.md`](../../../.claude/projects/-Users-rdennis-Documents-projects-kanji-learn/memory/feedback_accessibility_wcag.md) in memory). Implementation consequence: theme tokens must be semantic (`colors.textPrimary`, `colors.bgCard`, etc.) and the exact hex for each token switches per theme — consumer components reference the semantic name and automatically remain compliant.
