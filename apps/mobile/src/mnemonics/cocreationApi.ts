@@ -26,3 +26,14 @@ export const recordOutcome = (mnemonicId: string, outcome: 0 | 1) =>
     `/v1/mnemonics/${mnemonicId}/outcome`,
     { outcome },
   )
+
+/**
+ * Append a layer to an existing hook (parent spec §6.3). Additive: the server
+ * replaces storyText and context wholesale, but the context we send already
+ * carries every previous layer, so nothing is lost. Resets effectivenessScore
+ * server-side — a deepened hook earns a fresh start.
+ */
+export const deepenHook = (
+  mnemonicId: string,
+  payload: { storyText: string; context: CoCreationContext },
+) => api.post<{ id: string }>(`/v1/mnemonics/${mnemonicId}/deepen`, payload)
