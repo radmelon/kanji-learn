@@ -14,10 +14,12 @@
 **Resume at Task 19 — cut the build.** It is operator-run, costs ~$2, and is the only remaining step.
 
 ```bash
-cd apps/mobile && eas build --platform ios --profile production --auto-submit
+cd apps/mobile && EXPO_NO_CAPABILITY_SYNC=1 npx eas build --platform ios --profile production --auto-submit
 ```
 
-**Never hand-bump `ios.buildNumber`** — `autoIncrement: true` does it. Commit the auto-written `app.json` afterwards. Then walk the Task 19 Step 3 checklist on device, and re-run the Step 4 push probe: every account should now show a real IANA timezone, and RAD should show `tokens >= 1`.
+**`EXPO_NO_CAPABILITY_SYNC=1` is not optional.** Without it EAS tries to switch **Sign in with Apple OFF on the live App Store bundle**; only Apple's refusal has prevented it, twice. The SOP entry originally scoped this to *development* builds — it hit the production cut too. See [`SOP.md`](SOP.md).
+
+**Never hand-bump `ios.buildNumber`** — `autoIncrement: true` does it. A capability-sync failure aborts *before* build creation, so `buildNumber` stays untouched and re-running skips nothing. Commit the auto-written `app.json` after a successful cut. Then walk the Task 19 Step 3 checklist on device, and re-run the Step 4 push probe: every account should now show a real IANA timezone, and RAD should show `tokens >= 1`.
 
 **Task 19 Step 1's gate is green as of session end:** shared 128 ✅ · mobile 114 ✅ · both typechecks 0 errors · API 326/329 (the three documented pre-existing failures).
 

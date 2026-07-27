@@ -35,13 +35,19 @@ The `Distribution: store` + `Status: finished` combination confirms the `.ipa` i
 4. **NEVER hand-bump `ios.buildNumber` — `eas.json` production has `autoIncrement: true`** (learned B143, 2026-07-05: a manual 141→142 bump got auto-incremented at build time, so "B142" never existed and the binary shipped as 143). EAS bumps and writes app.json itself; just commit the auto-written value after each cut ("record buildNumber N").
 5. **Stale-Metro-bundle trap (2026-07-05):** airplane-mode testing severs the dev client from Metro, and a later shake-reload can silently fail to fetch — the device then runs progressively older UI while you "fix" phantom bugs. Before debugging any on-device layout report, confirm bundle freshness against a known marker from the latest code; if reports contradict the code, reproduce in the iOS Simulator (`npx expo run:ios --port 8082`, throwaway Supabase admin-API user, `xcrun simctl openurl booted "kanjilearn://<route>"`) instead of patching blind.
 
-### 🛑 Always set `EXPO_NO_CAPABILITY_SYNC=1` for development builds (2026-07-27)
+### 🛑 Always set `EXPO_NO_CAPABILITY_SYNC=1` — for EVERY iOS build (2026-07-27)
 
-`eas build --profile development` tried to switch **`APPLE_ID_AUTH` OFF** on
+**This applies to every profile, not just `development`.** It was first hit on a
+development build and written up that way; the same failure then hit
+`--profile production` on the Task 19 cut hours later. There is nothing
+profile-specific about it — the capability sync runs against the bundle ID, and
+every profile uses the same one.
+
+`eas build` tried to switch **`APPLE_ID_AUTH` OFF** on
 `com.rdennis.kanjilearn2` — the bundle ID of the **live App Store app**. Apple
 refused (*"The bundle 'VYU8N3FTUT' cannot be deleted. Delete all the Apps
 related to this bundle to proceed"*), which is the only reason production Sign
-in with Apple survived.
+in with Apple survived. **Twice now.** Do not rely on a third refusal.
 
 **Why it happens:** EAS auto-syncs portal capabilities against `app.json`.
 Apple sign-in here is a **Supabase OAuth web redirect**
@@ -56,10 +62,25 @@ the native module — that would declare a capability the app does not use. Skip
 the sync instead:
 
 ```bash
+# Development
 EXPO_NO_CAPABILITY_SYNC=1 npx eas build --platform ios --profile development
+
+# Production / TestFlight — the env var is NOT optional here either
+EXPO_NO_CAPABILITY_SYNC=1 npx eas build --platform ios --profile production --auto-submit
 ```
 
-A development build must never mutate the production bundle's capabilities.
+**No build of any kind should mutate the production bundle's capabilities.**
+
+**Why this is not in `eas.json`:** the `env` block in a build profile is applied
+on the EAS *builder*, but capability syncing happens locally in the CLI during
+the credentials step — before anything is uploaded. Setting it there would look
+like a fix and change nothing. It has to be on the command line. If that ever
+stops being true, move it and delete this paragraph.
+
+**Failure mode to recognise:** the run dies at
+`✖ Failed to sync capabilities`, after `✔ Bundle identifier registered`. No
+build is created, so `autoIncrement` does **not** fire and `buildNumber` is
+untouched — re-running does not skip a number.
 
 ### Registering a physical device for a development build
 
