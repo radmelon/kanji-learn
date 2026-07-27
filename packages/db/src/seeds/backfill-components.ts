@@ -92,9 +92,17 @@ async function backfill(map: Map<string, string[]>): Promise<void> {
   for (const row of rows) {
     const components = map.get(row.character)
     if (!components) { missing++; continue }
+    // Pass the ARRAY, not a pre-stringified copy. packages/db/src/client.ts
+    // overrides PgJsonb.mapToDriverValue to a pass-through (the Phase 1'
+    // double-encoding fix, f1d111b), so postgres-js serialises the value
+    // itself. Pre-stringifying here made every row a jsonb *string* rather
+    // than an array — which is exactly what happened on the 2026-07-05 live
+    // backfill, and it broke co-creation until migration 0028 repaired it.
+    // The `as unknown as string[]` cast this replaced was silencing the type
+    // error that was correctly objecting to it.
     await db
       .update(kanji)
-      .set({ components: JSON.stringify(components) as unknown as string[] })
+      .set({ components })
       .where(eq(kanji.id, row.id))
     updated++
     if (updated % 100 === 0) process.stdout.write(`\r  ${updated}/${rows.length}…`)
