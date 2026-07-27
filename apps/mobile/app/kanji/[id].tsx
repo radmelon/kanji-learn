@@ -24,6 +24,7 @@ import { useMnemonics } from '../../src/hooks/useMnemonics'
 import { getBestVoice } from '../../src/utils/tts'
 import { useShowPitchAccent } from '../../src/hooks/useShowPitchAccent'
 import { PitchAccentReading } from '../../src/components/kanji/PitchAccentReading'
+import { CoCreationSheet } from '../../src/components/mnemonics/CoCreationSheet'
 
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.9 }
 
@@ -56,6 +57,7 @@ interface KanjiDetail {
   exampleVocab: VocabExample[]
   exampleSentences: { ja: string; en: string; vocab: string }[]
   radicals: string[]
+  components: string[]
   svgPath: string | null
   // Cross-reference codes
   jisCode: string | null
@@ -147,6 +149,13 @@ export default function KanjiDetail() {
     load: loadMnemonics,
     generate: generateMnemonic,
   } = useMnemonics(kanjiId)
+  const [showBuildHook, setShowBuildHook] = useState(false)
+  const hasCoCreatedHook = mnemonics.some((m) => m.generationMethod === 'cocreated')
+  // A co-created hook supersedes the old system/haiku mnemonics (spec §9), but
+  // getForKanji returns rows unordered so the March-era system row can sit at
+  // [0] — always surface the hook when one exists.
+  const displayedMnemonic =
+    mnemonics.find((m) => m.generationMethod === 'cocreated') ?? mnemonics[0]
 
   useEffect(() => {
     if (Number.isFinite(kanjiId)) loadMnemonics()
@@ -230,7 +239,14 @@ export default function KanjiDetail() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Back bar */}
       <View style={styles.bar}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={10} activeOpacity={0.7} style={styles.backBtn}>
+        {/* Deep-link entry (kanjilearn://kanji/N) lands here with an empty stack —
+            back() would throw GO_BACK-not-handled, so fall back to the tabs. */}
+        <TouchableOpacity
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+          hitSlop={10}
+          activeOpacity={0.7}
+          style={styles.backBtn}
+        >
           <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           <Text style={styles.backLabel}>Back</Text>
         </TouchableOpacity>
@@ -376,18 +392,23 @@ export default function KanjiDetail() {
               <ActivityIndicator color={colors.primary} />
             ) : mnemonics.length > 0 ? (
               <>
-                <Text style={styles.mnemonicText}>{mnemonics[0].storyText}</Text>
-                <TouchableOpacity
-                  style={styles.mnemonicSecondaryButton}
-                  onPress={() => generateMnemonic('haiku')}
-                  disabled={isGenerating}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="refresh" size={16} color={colors.primary} />
-                  <Text style={styles.mnemonicSecondaryButtonText}>
-                    {isGenerating ? 'Regenerating…' : 'Regenerate'}
-                  </Text>
-                </TouchableOpacity>
+                <Text style={styles.mnemonicText}>{displayedMnemonic.storyText}</Text>
+                {/* Regenerate only applies to the old haiku/system mnemonics —
+                    a co-created hook is reinforced/deepened (Plan 4), not
+                    regenerated, and a fresh haiku would not displace it. */}
+                {!hasCoCreatedHook && (
+                  <TouchableOpacity
+                    style={styles.mnemonicSecondaryButton}
+                    onPress={() => generateMnemonic('haiku')}
+                    disabled={isGenerating}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="refresh" size={16} color={colors.primary} />
+                    <Text style={styles.mnemonicSecondaryButtonText}>
+                      {isGenerating ? 'Regenerating…' : 'Regenerate'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </>
             ) : (
               <TouchableOpacity
@@ -400,6 +421,20 @@ export default function KanjiDetail() {
                 <Text style={styles.mnemonicPrimaryButtonText}>
                   {isGenerating ? 'Generating…' : 'Generate mnemonic'}
                 </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Manual co-creation entry (spec §9.1): cold-start safety net when
+                the kanji has no co-created hook yet. Full MnemonicCard refactor
+                + "Go deeper" entry is Plan 4 — this is only the create entry. */}
+            {!hasCoCreatedHook && (
+              <TouchableOpacity
+                style={styles.mnemonicSecondaryButton}
+                onPress={() => setShowBuildHook(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="hammer-outline" size={16} color={colors.primary} />
+                <Text style={styles.mnemonicSecondaryButtonText}>Build a hook</Text>
               </TouchableOpacity>
             )}
           </Card>
@@ -580,6 +615,28 @@ export default function KanjiDetail() {
           )}
         </ScrollView>
       ) : null}
+
+      {/* Manual "Build a hook" entry (spec §9.1) — cold-start safety net when
+          the kanji has no co-created hook. Conditionally MOUNTED (not just
+          visible-toggled) so every open gets a fresh useCoCreation reducer —
+          otherwise stage/draft state from a prior session leaks into the next
+          open. Refreshes the mnemonic list on save via the screen's existing
+          loadMnemonics path, and also on backdrop-close so a save followed by
+          tapping outside the sheet still refreshes the mnemonic view. */}
+      {showBuildHook && kanji && (
+        <CoCreationSheet
+          visible
+          kanji={kanji}
+          onClose={() => {
+            setShowBuildHook(false)
+            loadMnemonics()
+          }}
+          onSaved={() => {
+            setShowBuildHook(false)
+            loadMnemonics()
+          }}
+        />
+      )}
     </SafeAreaView>
   )
 }

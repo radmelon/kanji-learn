@@ -30,6 +30,9 @@ export interface Mnemonic {
   refreshPromptAt: string | null
   createdAt: string
   updatedAt: string
+  // Present on API responses (mnemonic.service.ts toRecord); optional here so
+  // older cached payloads without it still satisfy the type.
+  generationMethod?: 'system' | 'user' | 'cocreated'
 }
 
 async function getCoords(): Promise<{ latitude: number; longitude: number } | undefined> {
