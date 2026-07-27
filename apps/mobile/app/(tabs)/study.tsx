@@ -21,7 +21,7 @@
 
 import { useState, useEffect, useRef, useCallback, Component, type FC } from 'react'
 import type { ReviewResult } from '@kanji-learn/shared'
-import { pickBuddyMomentAction, type ReviewedCard } from '@kanji-learn/shared'
+import { pickBuddyMomentAction, snoozedKanjiIds, type ReviewedCard } from '@kanji-learn/shared'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Pressable,
   PanResponder, Animated, Alert,
@@ -427,6 +427,11 @@ function StudySession() {
     // too, but have goalMinutes 0 (the same convention the store's leg
     // routing uses to keep drills flashcard-only) — no Buddy moment there.
     if (sessionGoalMinutes <= 0) return
+    // The global anti-nag switch (parent spec §11), default ON. Off suppresses
+    // the automatic offer only — manual "Build a hook" on kanji detail still
+    // works, so a learner who dislikes the end-of-session interruption loses
+    // the interruption, not the feature.
+    if (profile?.mnemonicCoachingEnabled === false) return
     try {
       // Capture the generation before the await: if the user leaves Session
       // Complete (or starts a new session) while the context fetch is in
@@ -445,7 +450,9 @@ function StudySession() {
         lapses: c.lapses,
         hasHook: c.hasHook,
       }))
-      const action = pickBuddyMomentAction(cards) // cooldown set wired in Task 15
+      // The cooldown argument has been accepted since Plan 1 and never
+      // supplied. Without it "Not now" is written server-side and then ignored.
+      const action = pickBuddyMomentAction(cards, snoozedKanjiIds(ctx, new Date()))
       if (action.kind === 'create') {
         setBuddyMomentKanjiId(action.kanjiId) // renders CoCreationSheet once the kanji payload loads
       } else if (action.kind === 'reinforce') {

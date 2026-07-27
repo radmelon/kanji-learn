@@ -13,6 +13,13 @@ export type UserProfile = {
   restDay: number | null
   onboardingCompletedAt: string | null
   showPitchAccent: boolean
+  /** "Mnemonic coaching" — parent spec §11 specifies an opt-OUT, so this
+   *  defaults true server-side (migration 0027). Off suppresses automatic
+   *  Buddy moments only; manual "Build a hook" is unaffected. */
+  mnemonicCoachingEnabled: boolean
+  /** Whether co-created hooks may store GPS coordinates. Defaults FALSE —
+   *  hooks must not inherit consent from the milestones location toggle. */
+  attachLocationToHooks: boolean
   createdAt: string
   updatedAt: string
 }

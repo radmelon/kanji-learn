@@ -11,6 +11,7 @@ import { useAuthStore } from '../../src/stores/auth.store'
 import { api } from '../../src/lib/api'
 import { storage } from '../../src/lib/storage'
 import { useNetworkStatus } from '../../src/hooks/useNetworkStatus'
+import { useProfile } from '../../src/hooks/useProfile'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { useSocial } from '../../src/hooks/useSocial'
 import type { Friend, SearchResult } from '../../src/hooks/useSocial'
@@ -1215,6 +1216,12 @@ function Section({
 
 function StudyPreferencesSection() {
   const [showPitchAccent, setShowPitchAccent] = useShowPitchAccent()
+  const { profile, update } = useProfile()
+  // Optimistic: the Switch must move under the finger. update() reconciles
+  // from the server response, and a failure snaps it back.
+  const [coaching, setCoaching] = useState<boolean | null>(null)
+  const coachingOn = coaching ?? profile?.mnemonicCoachingEnabled ?? true
+
   return (
     <Section title="Study Preferences">
       <View style={styles.row}>
@@ -1228,6 +1235,32 @@ function StudyPreferencesSection() {
         <Switch
           value={showPitchAccent}
           onValueChange={(v) => { setShowPitchAccent(v) }}
+          trackColor={{ false: colors.border, true: colors.primary }}
+          thumbColor="#fff"
+        />
+      </View>
+
+      {/* Parent spec §11 — an opt-OUT, default on. The sub-label names exactly
+          what turning it off costs, so nobody has to discover that manual hook
+          building still works. */}
+      <View style={styles.row}>
+        <View style={styles.rowLeft}>
+          <Ionicons name="bulb-outline" size={20} color={colors.textSecondary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowLabel}>Mnemonic coaching</Text>
+            <Text style={styles.rowSub}>
+              Let Buddy offer to build or strengthen a hook after a session. You can
+              always build one yourself from a kanji’s page.
+            </Text>
+          </View>
+        </View>
+        <Switch
+          value={coachingOn}
+          onValueChange={async (v) => {
+            setCoaching(v)
+            const ok = await update({ mnemonicCoachingEnabled: v })
+            if (!ok) setCoaching(!v)
+          }}
           trackColor={{ false: colors.border, true: colors.primary }}
           thumbColor="#fff"
         />

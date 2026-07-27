@@ -37,6 +37,9 @@ export interface BuddyMomentCard {
   kanji: string
   lapses: number
   hasHook: boolean
+  /** ISO, or null. When in the future this kanji is inside its "Not now"
+   *  7-day cooldown (parent spec §11) and must not be offered again. */
+  buddyMomentSnoozedUntil: string | null
 }
 
 // ─── Mnemonic Service ─────────────────────────────────────────────────────────
@@ -237,20 +240,28 @@ export class MnemonicService {
     if (kanjiIds.length === 0) return []
     const [chars, progress, hooks] = await Promise.all([
       this.db.select({ id: kanji.id, character: kanji.character }).from(kanji).where(inArray(kanji.id, kanjiIds)),
-      this.db.select({ kanjiId: userKanjiProgress.kanjiId, lapses: userKanjiProgress.lapses })
+      this.db.select({
+        kanjiId: userKanjiProgress.kanjiId,
+        lapses: userKanjiProgress.lapses,
+        buddyMomentSnoozedUntil: userKanjiProgress.buddyMomentSnoozedUntil,
+      })
         .from(userKanjiProgress)
         .where(and(eq(userKanjiProgress.userId, userId), inArray(userKanjiProgress.kanjiId, kanjiIds))),
       this.db.select({ kanjiId: mnemonics.kanjiId })
         .from(mnemonics)
         .where(and(eq(mnemonics.userId, userId), inArray(mnemonics.kanjiId, kanjiIds), eq(mnemonics.generationMethod, 'cocreated'))),
     ])
-    const lapseBy = new Map(progress.map((p) => [p.kanjiId, p.lapses]))
+    const progressBy = new Map(progress.map((p) => [p.kanjiId, p]))
     const hookSet = new Set(hooks.map((h) => h.kanjiId))
     return chars.map((c) => ({
       kanjiId: c.id,
       kanji: c.character,
-      lapses: lapseBy.get(c.id) ?? 0,
+      lapses: progressBy.get(c.id)?.lapses ?? 0,
       hasHook: hookSet.has(c.id),
+      // Without this the client has nothing to pass to snoozedKanjiIds, and
+      // "Not now" is persisted server-side but never consulted.
+      buddyMomentSnoozedUntil:
+        progressBy.get(c.id)?.buddyMomentSnoozedUntil?.toISOString() ?? null,
     }))
   }
 

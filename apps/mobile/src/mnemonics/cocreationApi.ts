@@ -10,9 +10,25 @@ export const saveCoCreated = (
 ) => api.post<{ id: string }>(`/v1/mnemonics/${kanjiId}/cocreated`, payload)
 
 export const fetchBuddyMomentContext = (kanjiIds: number[]) =>
-  api.post<Array<Pick<ReviewedCard, 'kanjiId' | 'kanji' | 'lapses' | 'hasHook'>>>(
-    '/v1/mnemonics/buddy-moment-context',
-    { kanjiIds },
+  api.post<
+    Array<
+      Pick<ReviewedCard, 'kanjiId' | 'kanji' | 'lapses' | 'hasHook'> & {
+        buddyMomentSnoozedUntil: string | null
+      }
+    >
+  >('/v1/mnemonics/buddy-moment-context', { kanjiIds })
+
+/**
+ * "Not now" — suppress Buddy moments for THIS kanji for 7 days (parent spec
+ * §11). Plan 3b closed the sheet and forgot, so the same offer could return
+ * the very next session.
+ *
+ * `snoozed: false` clears it, which is what accepting an offer does.
+ */
+export const snoozeBuddyMoment = (kanjiId: number, snoozed = true) =>
+  api.patch<{ snoozedUntil: string | null }>(
+    `/v1/kanji/${kanjiId}/snooze-buddy-moment`,
+    { snoozed },
   )
 
 /**

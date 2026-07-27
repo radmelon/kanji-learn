@@ -64,4 +64,29 @@ describe('pickBuddyMomentAction', () => {
     const cards = [card({ kanjiId: 21, struggledToday: true, hasHook: false, lapses: 7 })]
     expect(pickBuddyMomentAction(cards, [21])).toEqual({ kind: 'none' })
   })
+
+  // The cooldown set was consulted only inside the create branch, while
+  // reinforce — which OUTRANKS create — ignored it entirely. So "Not now" on
+  // the highest-priority offer type did nothing, and that is exactly the offer
+  // most likely to repeat: a hook that keeps slipping keeps qualifying.
+  // Parent spec §11 draws no create/reinforce distinction.
+  it('honours the cooldown on the reinforce branch, not just create', () => {
+    const cards = [card({ kanjiId: 1, struggledToday: true, hasHook: true, lapses: 5 })]
+    expect(pickBuddyMomentAction(cards, [1])).toEqual({ kind: 'none' })
+  })
+
+  it('still reinforces a hooked kanji that is NOT snoozed', () => {
+    const cards = [card({ kanjiId: 1, struggledToday: true, hasHook: true, lapses: 5 })]
+    expect(pickBuddyMomentAction(cards, [99])).toEqual({ kind: 'reinforce', kanjiId: 1 })
+  })
+
+  it('falls through to create when the only reinforce candidate is snoozed', () => {
+    // Suppressing reinforce must not suppress the whole moment — a different
+    // kanji that qualifies on its own merits should still be offered.
+    const cards = [
+      card({ kanjiId: 1, struggledToday: true, hasHook: true, lapses: 5 }),
+      card({ kanjiId: 2, kanji: '待', struggledToday: true, hasHook: false, lapses: 9 }),
+    ]
+    expect(pickBuddyMomentAction(cards, [1])).toEqual({ kind: 'create', kanjiId: 2 })
+  })
 })

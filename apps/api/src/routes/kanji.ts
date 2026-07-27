@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { eq, and, ilike, sql, asc } from 'drizzle-orm'
 import { kanji, userKanjiProgress } from '@kanji-learn/db'
+import { snoozeUntil } from '@kanji-learn/shared'
 
 // Defensive array coercion. `?? []` only catches null/undefined, but a
 // jsonb column can hold a scalar (e.g. a corrupted string that was once an
@@ -126,6 +127,45 @@ export async function kanjiRoutes(server: FastifyInstance) {
         },
       })
     }
+  )
+
+  // PATCH /v1/kanji/:kanjiId/snooze-buddy-moment — the "Not now" cooldown.
+  //
+  // Lives here and not in mnemonics.ts, which does not serve /v1/kanji/*. It is
+  // this file's first non-GET route; the auth preHandler matches the write
+  // routes in mnemonics.ts.
+  //
+  // Registered ABOVE the parametric GET routes below. Fastify matches static
+  // segments first so it would be safe either way, but this file has already
+  // been bitten once by parametric shadowing (see SOP: /v1/mnemonics/refresh),
+  // and the intent should be obvious to the next reader.
+  server.patch<{ Params: { kanjiId: string }; Body: { snoozed?: boolean } }>(
+    '/:kanjiId/snooze-buddy-moment',
+    { preHandler: [server.authenticate] },
+    async (req, reply) => {
+      const kanjiId = Number(req.params.kanjiId)
+      if (!Number.isInteger(kanjiId) || kanjiId <= 0) {
+        return reply.code(400).send({ ok: false, error: 'Invalid kanji ID', code: 'VALIDATION_ERROR' })
+      }
+
+      // Accepting an offer clears the cooldown; declining sets it. Default true
+      // so a bare PATCH means "not now", which is the common case.
+      const snoozed = req.body?.snoozed ?? true
+      const until = snoozed ? snoozeUntil(new Date()) : null
+
+      await server.db
+        .update(userKanjiProgress)
+        .set({ buddyMomentSnoozedUntil: until })
+        .where(and(
+          eq(userKanjiProgress.userId, req.userId!),
+          eq(userKanjiProgress.kanjiId, kanjiId),
+        ))
+
+      return reply.send({
+        ok: true,
+        data: { snoozedUntil: until ? until.toISOString() : null },
+      })
+    },
   )
 
   // GET /v1/kanji/:id/related  — kanji sharing at least one radical, ordered by jlptOrder (most commonly seen first)

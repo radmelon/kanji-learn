@@ -10,7 +10,7 @@ import { lookupComponents } from '@kanji-learn/shared'
 import { useCoCreation } from '../../mnemonics/useCoCreation'
 import { getBestVoice } from '../../utils/tts'
 import type { KanjiForHook } from '../../mnemonics/buildSlots'
-import { fetchRelatedKanji, recordOutcome } from '../../mnemonics/cocreationApi'
+import { fetchRelatedKanji, recordOutcome, snoozeBuddyMoment } from '../../mnemonics/cocreationApi'
 import { buildRecallQuizFromRanked, type RecallQuizCardItem } from '../../mnemonics/recallQuiz'
 import { RecallQuizCard } from '../study/RecallQuizCard'
 import { colors, spacing, radius, typography } from '../../theme'
@@ -108,7 +108,21 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
     if (inferringTimeoutRef.current) clearTimeout(inferringTimeoutRef.current)
   }, [])
 
+  // "Not now" is a decision about THIS kanji, and it has to survive the sheet
+  // closing (parent spec §11). Plan 3b just closed and forgot, so the same
+  // offer could return the next session — the fastest way to make a helpful
+  // feature feel like nagging. Fire-and-forget: failing to record a decline
+  // must not trap the learner in a sheet they are trying to dismiss.
+  const handleNotNow = () => {
+    snoozeBuddyMoment(kanji.id).catch(() => {})
+    onClose()
+  }
+
   const handleAccept = async () => {
+    // Accepting clears any earlier decline — the learner changed their mind,
+    // and a stale cooldown would suppress the reinforce offers this hook is
+    // about to start earning.
+    snoozeBuddyMoment(kanji.id, false).catch(() => {})
     setInferring(true)
     if (inferringTimeoutRef.current) clearTimeout(inferringTimeoutRef.current)
     inferringTimeoutRef.current = setTimeout(() => setInferring(false), 4000)
@@ -260,7 +274,7 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
                   <TouchableOpacity style={styles.primaryBtn} onPress={handleAccept}>
                     <Text style={styles.primaryBtnText}>Let's do it</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.secondaryBtn} onPress={onClose}>
+                  <TouchableOpacity style={styles.secondaryBtn} onPress={handleNotNow}>
                     <Text style={styles.secondaryBtnText}>Not now</Text>
                   </TouchableOpacity>
                 </View>

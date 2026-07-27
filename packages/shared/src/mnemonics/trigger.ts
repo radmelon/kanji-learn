@@ -15,10 +15,18 @@ export function pickBuddyMomentAction(
   cards: ReviewedCard[],
   cooldownKanjiIds: number[] = [],
 ): BuddyMomentAction {
-  const reinforce = worstByLapses(cards.filter((c) => c.hasHook && c.struggledToday))
+  // Hoisted above BOTH branches. It used to be built after the reinforce
+  // lookup had already returned, so "Not now" on a reinforce offer did nothing
+  // — and reinforce outranks create, making that the offer most likely to
+  // repeat: a hook that keeps slipping keeps qualifying. Parent spec §11 draws
+  // no create/reinforce distinction, so neither does this.
+  const cooldown = new Set(cooldownKanjiIds)
+
+  const reinforce = worstByLapses(
+    cards.filter((c) => c.hasHook && c.struggledToday && !cooldown.has(c.kanjiId)),
+  )
   if (reinforce) return { kind: 'reinforce', kanjiId: reinforce.kanjiId }
 
-  const cooldown = new Set(cooldownKanjiIds)
   const create = worstByLapses(
     cards.filter(
       (c) =>
