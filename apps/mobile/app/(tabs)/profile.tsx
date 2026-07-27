@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Switch, ActivityIndicator, Alert, RefreshControl, Share,
-  FlatList, Modal,
+  FlatList, Modal, Linking,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -12,6 +12,7 @@ import { api } from '../../src/lib/api'
 import { storage } from '../../src/lib/storage'
 import { useNetworkStatus } from '../../src/hooks/useNetworkStatus'
 import { useProfile } from '../../src/hooks/useProfile'
+import { usePushNotifications } from '../../src/hooks/usePushNotifications'
 import { OfflineBanner } from '../../src/components/ui/OfflineBanner'
 import { useSocial } from '../../src/hooks/useSocial'
 import type { Friend, SearchResult } from '../../src/hooks/useSocial'
@@ -54,6 +55,9 @@ export default function ProfileScreen() {
   const [isSaving, setIsSaving] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const { isOnline, check: checkNetwork } = useNetworkStatus()
+  // Read-only here — the root layout owns registration. This instance shares
+  // the same hook state so the screen can tell the truth about delivery.
+  const push = usePushNotifications(true)
 
   // Editable fields — local state, saved on blur / toggle
   const [displayName, setDisplayName] = useState('')
@@ -465,6 +469,40 @@ export default function ProfileScreen() {
               thumbColor="#fff"
             />
           </View>
+          {/* Root cause B: notifications_enabled is written independently of
+              whether a token exists, so this screen cheerfully showed
+              notifications ON for an account that could not receive any. RAD
+              and the live tester were both in that state for three months.
+              Say so, and offer the fix. */}
+          {notificationsEnabled && push.checked && !push.hasToken && (
+            <View style={styles.pushWarning}>
+              <Ionicons name="warning-outline" size={16} color={colors.warning} />
+              <Text style={styles.pushWarningText}>
+                This device isn’t registered for notifications yet, so none will arrive.
+              </Text>
+              <TouchableOpacity
+                style={styles.pushFixBtn}
+                onPress={async () => {
+                  const ok = await push.retry()
+                  if (!ok) {
+                    // Registration can only fail here for one reason worth
+                    // acting on: the OS permission is denied, and only Settings
+                    // can change that.
+                    Alert.alert(
+                      'Notifications are off for KanjiBuddy',
+                      'Open Settings → Notifications → KanjiBuddy and allow notifications, then come back.',
+                      [
+                        { text: 'Not now', style: 'cancel' },
+                        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                      ],
+                    )
+                  }
+                }}
+              >
+                <Text style={styles.pushFixBtnText}>Fix</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           {notificationsEnabled && (
             <>
               <View style={styles.reminderTimeRow}>
@@ -1553,4 +1591,20 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontWeight: '600',
   },
+  pushWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.warning + '11',
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+  },
+  pushWarningText: { ...typography.caption, color: colors.warning, flex: 1 },
+  pushFixBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    backgroundColor: colors.warning + '22',
+    borderRadius: radius.full,
+  },
+  pushFixBtnText: { ...typography.caption, color: colors.warning, fontWeight: '600' },
 })
