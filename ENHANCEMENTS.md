@@ -191,6 +191,16 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   `[Effort: XS]` `[Impact: Med — grading semantics drive SRS quality; a learner who mis-grades gets a mis-tuned schedule]` `[Backend: No]` `[Status: 💡 Idea]`
 
+- [ ] **Review and reorder the Profile page sections — "About & Licences" is buried** — The Profile screen has eleven sections and their order looks accreted rather than decided. Owner (2026-07-27): *"I find myself often searching for the About & License page link and it is buried half way down the profile page, while Notifications and Privacy and Study Preferences are high up."*
+
+  **Current order** ([profile.tsx](apps/mobile/app/(tabs)/profile.tsx)): Display Name (424) → Daily Review Goal (438) → Notifications (456) → Privacy (552) → Study Preferences (595) → Apple Watch (598) → **App** (630) → Learning Profile (659) → Study Mates (743) → Share with Tutor (881) → Sign out / Delete account.
+
+  **Two problems, not one.** The obvious one is position: **About & Licences sits 7th of 11**. The subtler one is that its parent section, **"App", is a grab-bag** — it pairs *Placement Test* (an action that starts a study activity) with *About & Licences* (a static info link). Nothing about the heading predicts either, so scanning for "About" fails even once you are looking at the right region of the page.
+
+  **Worth deciding rather than nudging.** A principled ordering would group by *how often a setting is touched and why*: identity and goals first (Display Name, Daily Review Goal, Learning Profile), then things tuned occasionally (Notifications, Privacy, Study Preferences, Apple Watch), then social (Study Mates, Share with Tutor), then rarely-visited-but-must-be-findable (Placement Test, About & Licences), then destructive last (Sign out, Delete account). Note that under that rule About moves *down*, not up — the fix is a predictable home plus a heading that names it, not raising it above settings people actually change. Also worth asking whether an eleven-section scroll wants grouping headers or a search field at all.
+
+  `[Effort: S — reorder + rename sections; no new components]` `[Impact: Med — pure findability; the owner already hits this repeatedly]` `[Backend: No]` `[Status: 💡 Idea — ordering to be decided]`
+
 - [ ] **Dark / Light Theme Toggle** — Add a manual theme toggle (with system default option) for dark and light mode. Dark mode is especially useful for late-night study sessions and is a highly requested feature in language learning apps.
 
   **WCAG 2.1 AA requirement (added 2026-04-20):** every foreground / background pair must clear **4.5:1 for normal text**, **3:1 for large text or graphical UI**, in *both* themes. Same rule introduced after the B125 pitch-overlay contrast bug (see [`feedback_accessibility_wcag.md`](../../../.claude/projects/-Users-rdennis-Documents-projects-kanji-learn/memory/feedback_accessibility_wcag.md) in memory). Implementation consequence: theme tokens must be semantic (`colors.textPrimary`, `colors.bgCard`, etc.) and the exact hex for each token switches per theme — consumer components reference the semantic name and automatically remain compliant.
