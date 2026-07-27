@@ -1,26 +1,29 @@
 {
   "$comment": [
-    "Project-scoped MCP servers. Loads automatically for any session started in",
-    "this repo — no per-surface toggling, no claude.ai connector settings, no",
-    "remembering. This is the structural fix for 'Open Brain wasn't connected'.",
+    "Project-scoped MCP servers. Loads for any session started in this repo \u2014 no",
+    "claude.ai connector settings, no per-surface toggling, nothing to remember.",
     "",
-    "The access key is NEVER stored here. ${OPEN_BRAIN_KEY} is expanded from the",
-    "environment at load time. Set it in .claude/settings.local.json (gitignored)",
-    "or export it in your shell — see CLAUDE.md § Open Brain.",
+    "AUTH: this server accepts EITHER '?key=<key>' in the URL (Claude Desktop,",
+    "ChatGPT \u2014 clients that cannot send custom headers) OR the 'x-brain-key'",
+    "header. Claude Code uses the HEADER form, which is what is configured here.",
+    "Note it is x-brain-key \u2014 NOT Authorization/x-api-key/apikey, none of which",
+    "this server recognises.",
     "",
-    "If Claude reports this server failing to connect, probe it directly before",
-    "assuming it is a client problem:",
-    "  curl -s -o /dev/null -w '%{http_code}\\n' \"$URL?key=$KEY\"",
-    "A 401 {\"error\":\"Invalid or missing access key\"} means the key is stale —",
-    "the function is healthy and doing its own key check (verified 2026-07-27).",
+    "The key is never stored here. ${OPEN_BRAIN_KEY} expands from the environment;",
+    "set it in .claude/settings.local.json (gitignored). See CLAUDE.md \u00a7 Open Brain.",
     "",
-    "If 'http' fails to negotiate, try \"type\": \"sse\" — the endpoint is a Supabase",
-    "Edge Function and the transport it advertises may change."
+    "The expected value lives in the Supabase secret MCP_ACCESS_KEY on project",
+    "nscgwcepxnalchobgqhx. A 401 {\"error\":\"Invalid or missing access key\"} means",
+    "the two do not match \u2014 verified 2026-07-27 that the same 401 comes back for",
+    "the query-string form, the x-brain-key header, and no key at all."
   ],
   "mcpServers": {
     "open-brain": {
       "type": "http",
-      "url": "https://nscgwcepxnalchobgqhx.supabase.co/functions/v1/open-brain-mcp?key=${OPEN_BRAIN_KEY}"
+      "url": "https://nscgwcepxnalchobgqhx.supabase.co/functions/v1/open-brain-mcp",
+      "headers": {
+        "x-brain-key": "${OPEN_BRAIN_KEY}"
+      }
     }
   }
 }

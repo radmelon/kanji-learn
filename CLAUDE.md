@@ -57,6 +57,15 @@ became an `ENHANCEMENTS.md` entry; the user only learned OB was unreachable
 because it was mentioned in passing. A silent fallback is worse than a refusal:
 the thought does not land where they expect it and they find out much later.
 
+**Auth:** this server takes EITHER `?key=<key>` in the URL (Claude Desktop,
+ChatGPT — clients that cannot send custom headers) OR an **`x-brain-key`**
+header (Claude Code, mcp-remote). It is `x-brain-key` — *not*
+`Authorization`/`x-api-key`/`apikey`, none of which it recognises. `.mcp.json`
+uses the header form.
+
+**The expected key lives in the Supabase secret `MCP_ACCESS_KEY`** on project
+`nscgwcepxnalchobgqhx` — not in a keys table. `supabase secrets list` shows it.
+
 **Diagnosing a connection failure** — probe the endpoint before blaming the
 client:
 
@@ -66,13 +75,17 @@ curl -s -X POST -H 'Content-Type: application/json' \
   "https://nscgwcepxnalchobgqhx.supabase.co/functions/v1/open-brain-mcp?key=$OPEN_BRAIN_KEY"
 ```
 
-`401 {"error":"Invalid or missing access key"}` means the **key is stale** — the
-Edge Function is healthy and doing its own key check. Verified 2026-07-27 that
-the same 401 comes back for the key in the query string, `Authorization:
-Bearer`, `x-api-key`, `apikey`, and no key at all — so a 401 is never a
-placement problem, only a bad key. Fix by matching the function's secret in the
-Supabase dashboard (project `nscgwcepxnalchobgqhx` → Edge Functions →
-`open-brain-mcp`) and updating `OPEN_BRAIN_KEY`.
+`401 {"error":"Invalid or missing access key"}` means the value does not match
+`MCP_ACCESS_KEY`. The Edge Function is healthy and doing its own check.
+Verified 2026-07-27: the same 401 for the query-string form, the `x-brain-key`
+header, and no key at all — so a 401 is a **key mismatch**, never a placement
+problem.
+
+To regenerate: `openssl rand -hex 32` → `supabase secrets set
+MCP_ACCESS_KEY=<new> --project-ref nscgwcepxnalchobgqhx` → redeploy
+(`supabase functions deploy open-brain-mcp --no-verify-jwt`) → update
+`OPEN_BRAIN_KEY` locally and the connector URL in claude.ai. The two must match
+character-for-character.
 
 ## Verifying deploys — do not trust status codes
 
