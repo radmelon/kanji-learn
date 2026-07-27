@@ -14,3 +14,15 @@ export const fetchBuddyMomentContext = (kanjiIds: number[]) =>
     '/v1/mnemonics/buddy-moment-context',
     { kanjiIds },
   )
+
+/**
+ * Record a reinforcement or quiz outcome (parent spec §6.1). The server owns
+ * the EMA and returns the updated figures, so the deepen gate is evaluated on
+ * authoritative numbers rather than a local re-computation.
+ * outcome = 1 (👍 / quiz correct) or 0 (👎 / quiz wrong).
+ */
+export const recordOutcome = (mnemonicId: string, outcome: 0 | 1) =>
+  api.post<{ id: string; effectivenessScore: number; reinforcementCount: number }>(
+    `/v1/mnemonics/${mnemonicId}/outcome`,
+    { outcome },
+  )
