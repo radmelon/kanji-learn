@@ -23,6 +23,11 @@ export interface ReviewSubmissionInput {
   reviewType: 'meaning' | 'reading' | 'writing' | 'compound'
   quality: number // SM-2 0-5; quality >= 3 is "correct"
   responseTimeMs: number
+  /** Whether the learner pulled the mnemonic hint on this review (design spec
+   *  §8.2). Recorded only — deliberately NOT fed into effectivenessScore, so
+   *  the scoring model changes in one deliberate step rather than by side
+   *  effect. Absent from older clients; defaults false. */
+  hintUsed?: boolean
   prevStatus: SrsStatus
   prevInterval: number // back-compat — derived from prevStability
   prevStability: number // FSRS state at time of submission
@@ -53,6 +58,7 @@ export interface BatchedRowSets {
     reviewType: 'meaning' | 'reading' | 'writing' | 'compound'
     quality: number
     responseTimeMs: number
+    hintUsed: boolean
     prevStatus: SrsStatus
     nextStatus: SrsStatus
     prevInterval: number
@@ -126,6 +132,7 @@ export function buildBatchedRowSets(
       reviewType: input.reviewType,
       quality: input.quality,
       responseTimeMs: input.responseTimeMs,
+      hintUsed: input.hintUsed ?? false,
       prevStatus: input.prevStatus,
       nextStatus: input.progressAfter.status,
       prevInterval: input.prevInterval,
@@ -220,6 +227,7 @@ export class DualWriteService {
         reviewType: input.reviewType,
         quality: input.quality,
         responseTimeMs: input.responseTimeMs,
+        hintUsed: input.hintUsed ?? false,
         prevStatus: input.prevStatus,
         nextStatus: input.progressAfter.status,
         prevInterval: input.prevInterval,

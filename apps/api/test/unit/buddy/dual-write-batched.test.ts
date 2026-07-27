@@ -168,3 +168,31 @@ describe('buildBatchedRowSets', () => {
     ])
   })
 })
+
+// design spec §8.2 — the hint signal reaches review_logs.hint_used.
+describe('buildBatchedRowSets — hintUsed', () => {
+  it('carries a taken hint through to the review log row', () => {
+    const rows = buildBatchedRowSets([makeInput({ hintUsed: true })], now)
+    expect(rows.reviewLogs[0].hintUsed).toBe(true)
+  })
+
+  it('defaults to false when the client did not send it', () => {
+    // Builds predating the hint button omit the field entirely. The column is
+    // NOT NULL, so an undefined here would fail the insert for every older
+    // client in the wild.
+    const rows = buildBatchedRowSets([makeInput()], now)
+    expect(rows.reviewLogs[0].hintUsed).toBe(false)
+  })
+
+  it('records it per review, not per session', () => {
+    const rows = buildBatchedRowSets(
+      [
+        makeInput({ kanjiId: 1, hintUsed: true }),
+        makeInput({ kanjiId: 2, hintUsed: false }),
+        makeInput({ kanjiId: 3, hintUsed: true }),
+      ],
+      now,
+    )
+    expect(rows.reviewLogs.map((r) => r.hintUsed)).toEqual([true, false, true])
+  })
+})

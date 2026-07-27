@@ -15,6 +15,9 @@ const reviewResultSchema = z.object({
   ]),
   responseTimeMs: z.number().int().nonnegative(),
   reviewType: z.enum(['meaning', 'reading', 'writing', 'compound']),
+  /** Optional so builds predating the hint button keep submitting successfully
+   *  — an older client simply never sends it and the column defaults false. */
+  hintUsed: z.boolean().optional(),
 })
 
 const clientContextSchema = z.object({

@@ -124,6 +124,11 @@ export interface ReviewResult {
   quality: 0 | 1 | 2 | 3 | 4 | 5
   responseTimeMs: number
   reviewType: ReviewItem['reviewType']
+  /** Whether the learner pulled the mnemonic hint on this card (design spec
+   *  §8.2). Optional so older clients keep submitting successfully; the API
+   *  defaults it to false. Recorded to review_logs.hint_used — Plan 4 records
+   *  the signal but deliberately does not feed it into effectivenessScore. */
+  hintUsed?: boolean
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────

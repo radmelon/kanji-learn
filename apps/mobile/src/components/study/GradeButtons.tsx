@@ -2,17 +2,21 @@ import { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import { Ionicons } from '@expo/vector-icons'
+import { isGradeAllowedAfterHint } from '@kanji-learn/shared'
 import { colors, spacing, radius, typography } from '../../theme'
 
 interface Props {
   onGrade: (quality: 0 | 1 | 2 | 3 | 4 | 5) => void
+  /** When true, Good and Easy are disabled — a hinted recall is "recalled with
+   *  difficulty", which is exactly what Hard means (design spec §8.2). */
+  hintUsed?: boolean
 }
 
 const GRADES = [
-  { quality: 1 as const, label: 'Again', sublabel: 'Total blank', color: colors.error },
-  { quality: 3 as const, label: 'Hard', sublabel: 'Struggled', color: colors.warning },
-  { quality: 4 as const, label: 'Good', sublabel: 'Correct', color: colors.success },
-  { quality: 5 as const, label: 'Easy', sublabel: 'Perfect', color: colors.accent },
+  { quality: 1 as const, grade: 'again' as const, label: 'Again', sublabel: 'Total blank', color: colors.error },
+  { quality: 3 as const, grade: 'hard' as const, label: 'Hard', sublabel: 'Struggled', color: colors.warning },
+  { quality: 4 as const, grade: 'good' as const, label: 'Good', sublabel: 'Correct', color: colors.success },
+  { quality: 5 as const, grade: 'easy' as const, label: 'Easy', sublabel: 'Perfect', color: colors.accent },
 ]
 
 const GRADE_HELP = [
@@ -42,7 +46,7 @@ const GRADE_HELP = [
   },
 ]
 
-export function GradeButtons({ onGrade }: Props) {
+export function GradeButtons({ onGrade, hintUsed = false }: Props) {
   const [showHelp, setShowHelp] = useState(false)
 
   const handlePress = (quality: 0 | 1 | 2 | 3 | 4 | 5) => {
@@ -60,18 +64,24 @@ export function GradeButtons({ onGrade }: Props) {
     <>
       <View style={styles.wrapper}>
         <View style={styles.container}>
-          {GRADES.map(({ quality, label, sublabel, color }) => (
-            <TouchableOpacity
-              key={quality}
-              style={[styles.button, { borderColor: color + '55' }]}
-              onPress={() => handlePress(quality)}
-              activeOpacity={0.75}
-            >
-              <View style={[styles.indicator, { backgroundColor: color }]} />
-              <Text style={[styles.label, { color }]}>{label}</Text>
-              <Text style={styles.sublabel}>{sublabel}</Text>
-            </TouchableOpacity>
-          ))}
+          {GRADES.map(({ quality, grade, label, sublabel, color }) => {
+            const allowed = isGradeAllowedAfterHint(grade, hintUsed)
+            return (
+              <TouchableOpacity
+                key={quality}
+                style={[styles.button, { borderColor: color + '55' }, !allowed && styles.buttonDisabled]}
+                onPress={() => handlePress(quality)}
+                activeOpacity={0.75}
+                disabled={!allowed}
+              >
+                <View style={[styles.indicator, { backgroundColor: color }]} />
+                <Text style={[styles.label, { color }]}>{label}</Text>
+                {/* The sublabel carries the reason. A greyed button with no
+                    explanation reads as a bug, not a rule. */}
+                <Text style={styles.sublabel}>{allowed ? sublabel : 'Hint used'}</Text>
+              </TouchableOpacity>
+            )
+          })}
         </View>
         <TouchableOpacity style={styles.helpBtn} onPress={() => setShowHelp(true)} hitSlop={8}>
           <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
@@ -123,6 +133,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2,
   },
+  buttonDisabled: { opacity: 0.35 },
   indicator: { width: 24, height: 4, borderRadius: radius.full, marginBottom: 4 },
   label: { ...typography.bodySmall, fontWeight: '700' },
   sublabel: { ...typography.caption, color: colors.textMuted },

@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router'
 import { toRomaji } from 'wanakana'
 import { colors, spacing, radius, typography } from '../../theme'
 import type { ReviewQueueItem } from '@kanji-learn/shared'
+import { HINT_REVEAL_DELAY_MS } from '@kanji-learn/shared'
 import { PitchAccentReading } from '../kanji/PitchAccentReading'
 import { useShowPitchAccent } from '../../hooks/useShowPitchAccent'
 import { StrokeOrderAnimation } from '../writing/StrokeOrderAnimation'
@@ -52,12 +53,17 @@ interface Props {
   /** Called whenever the full-details drawer opens or closes — lets the parent
    *  PanResponder yield gestures while the drawer is visible. */
   onDetailsOpenChange?: (open: boolean) => void
+  /** The learner pulled the hint. Lifted to the parent because the grade cap
+   *  and the submitted result both live there. */
+  onHintUsed?: () => void
+  /** Whether the hint has already been taken for this card. */
+  hintUsed?: boolean
 }
 
 // Japanese TTS options — slightly slower rate aids learning
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.85 }
 
-export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRomaji, onDetailsOpenChange }: Props) {
+export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRomaji, onDetailsOpenChange, onHintUsed, hintUsed = false }: Props) {
   const router = useRouter()
   // Array.isArray() guards protect against non-array truthy values (e.g. a string
   // stored as jsonb in the DB). `?? []` only catches null/undefined — a string
@@ -110,6 +116,29 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       useNativeDriver: true,
     }).start()
   }, [isRevealed, iconOpacity])
+
+  // ── The hint (design spec §8.2) ─────────────────────────────────────────────
+  // Prompt side only, only for a kanji that has a hook, and only after the
+  // learner has sat with the card. The delay is the whole mechanism: it
+  // enforces an unaided retrieval attempt without a word of nagging copy.
+  const hasHook = Boolean(item.mnemonicStoryText)
+  const [hintOffered, setHintOffered] = useState(false)
+  const hintOpacity = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    setHintOffered(false)
+    hintOpacity.setValue(0)
+    if (!hasHook || isRevealed) return
+    const timer = setTimeout(() => {
+      setHintOffered(true)
+      Animated.timing(hintOpacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }).start()
+    }, HINT_REVEAL_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [item.kanjiId, hasHook, isRevealed, hintOpacity])
 
   const isMountedRef = useRef(true)
   // Holds the currently-running flip animation so we can stop it on unmount.
@@ -283,9 +312,32 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
       </View>
 
       {!isRevealed ? (
-        <TouchableOpacity style={styles.revealButton} onPress={handleReveal} activeOpacity={0.8}>
-          <Text style={styles.revealText}>Reveal answer</Text>
-        </TouchableOpacity>
+        <>
+          {/* Low-salience by design — it fades in beside the reveal button
+              rather than competing with it. Once taken, the story stays open
+              for the rest of the card. */}
+          {hintOffered && (
+            <Animated.View style={{ opacity: hintOpacity, width: '100%' }}>
+              {hintUsed ? (
+                <View style={styles.hintRevealed}>
+                  <Text style={styles.hintStory}>{item.mnemonicStoryText}</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.hintButton}
+                  onPress={onHintUsed}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="bulb-outline" size={14} color={colors.textMuted} />
+                  <Text style={styles.hintButtonText}>Need a hint?</Text>
+                </TouchableOpacity>
+              )}
+            </Animated.View>
+          )}
+          <TouchableOpacity style={styles.revealButton} onPress={handleReveal} activeOpacity={0.8}>
+            <Text style={styles.revealText}>Reveal answer</Text>
+          </TouchableOpacity>
+        </>
       ) : (
         /* Scrollable answer area so long content (readings + vocab + references) never gets clipped */
         <ScrollView
@@ -777,6 +829,27 @@ const styles = StyleSheet.create({
   },
   sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22 },
   sentenceEn: { ...typography.caption, color: colors.textMuted, lineHeight: 16 },
+
+  // The hint (prompt side only)
+  hintButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  hintButtonText: { ...typography.bodySmall, color: colors.textMuted },
+  hintRevealed: {
+    width: '100%',
+    backgroundColor: colors.primary + '11',
+    borderRadius: radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary + '66',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  hintStory: { ...typography.bodySmall, color: colors.textPrimary, lineHeight: 20 },
 
   // The learner's co-created hook (answer side only)
   hookBlock: {

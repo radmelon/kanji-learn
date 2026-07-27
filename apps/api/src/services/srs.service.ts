@@ -504,6 +504,7 @@ export class SrsService {
         reviewType: result.reviewType,
         quality: result.quality,
         responseTimeMs: result.responseTimeMs,
+        hintUsed: result.hintUsed ?? false,
         prevStatus: prevStatus,
         prevInterval: prevIntervalDays,
         prevStability: prevCard.stability,

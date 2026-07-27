@@ -65,6 +65,10 @@ function StudySession() {
   const dailyGoal = profile?.dailyGoal ?? 15
 
   const [isRevealed, setIsRevealed] = useState(false)
+  // Whether the learner pulled the mnemonic hint on the current card. Lives
+  // here rather than in KanjiCard because it caps the grade AND rides the
+  // submitted result (design spec §8.2).
+  const [hintUsed, setHintUsed] = useState(false)
   // The Study tab opens on the Ready screen ('ready'); Begin loads the queue
   // and switches to 'active'. A weak/missed drill loads its queue before
   // navigation, so it starts straight in 'active'.
@@ -283,6 +287,9 @@ function StudySession() {
     //   • activeFlipRef: stops the native flip animation before it can run on a
     //     destroyed native node (the real RCTFatal root cause in weak-spots mode)
     setIsRevealed(false)
+    // The hint is per-card: a new kanji starts unaided, whatever happened on
+    // the last one.
+    setHintUsed(false)
     cardStartMs.current = Date.now()
     swipeX.setValue(0)
     swipeY.setValue(0)
@@ -305,11 +312,17 @@ function StudySession() {
       try {
         const item = queue[currentIndex]
         if (!item) return
+        // Cap at Hard after a hint (design spec §8.2). Enforced HERE and not
+        // only in GradeButtons, because swipe-to-grade never touches those
+        // buttons — a learner could otherwise hint, swipe right, and push a
+        // card they could not recall out three weeks.
+        const capped: typeof quality = hintUsed && quality > 3 ? 3 : quality
         const result: ReviewResult = {
           kanjiId: item.kanjiId,
-          quality,
+          quality: capped,
           responseTimeMs: Date.now() - cardStartMs.current,
           reviewType: item.reviewType,
+          hintUsed,
         }
         // An Again grade used to interrupt here with "want me to generate a
         // mnemonic?". Parent spec §10.2 retires that: a story the learner had
@@ -323,7 +336,9 @@ function StudySession() {
         console.error('[handleGrade]', e)
       }
     },
-    [queue, currentIndex, submitResult]
+    // hintUsed is a real dependency: without it the swipe-to-grade path (which
+    // calls through handleGradeRef) would submit a stale false.
+    [queue, currentIndex, submitResult, hintUsed]
   )
 
   // Keep the ref in sync so the PanResponder closure is never stale
@@ -784,6 +799,8 @@ function StudySession() {
             showRomaji={showRomaji}
             onToggleRomaji={toggleRomaji}
             onDetailsOpenChange={(open) => { isDetailsOpenRef.current = open }}
+            hintUsed={hintUsed}
+            onHintUsed={() => setHintUsed(true)}
           />
         )}
       </Animated.View>
@@ -792,7 +809,7 @@ function StudySession() {
       <View style={styles.footer}>
         {isRevealed ? (
           <>
-            <GradeButtons onGrade={handleGrade} />
+            <GradeButtons onGrade={handleGrade} hintUsed={hintUsed} />
             <Text style={styles.swipeHint}>← Again · ↑ Good · ↓ Hard · → Easy</Text>
           </>
         ) : (
