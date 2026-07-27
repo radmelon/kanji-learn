@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-27 (Phase 5 deadlock broken; Plan 4 through Task 5 — **a deploy is owed**)
+# Session Handoff — 2026-07-27 (Plan 4 code-complete through Task 18 — **only the build remains**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -9,17 +9,33 @@
 
 ## START HERE — next session
 
-**State:** `main` is shippable. Production API is deployed but now **behind `main` by two commits** — the push fixes are committed and untested in production. Live DB is clean (`mnemonics` = 0). Working tree clean except untracked `.codex/` and `supabase/`.
+**State:** Plan 4 is **code-complete through Task 18**. Tasks 4/5 are deployed and verified in production. Everything else is committed and unbuilt. Live DB is clean (`mnemonics` = 0). Working tree clean except untracked `.codex/` and `supabase/`.
 
-**Resume at Plan 4 Task 5a — the deploy.** It is operator-run and it is the whole point of Tasks 4–5: the push fix does not reach the live tester without it. Steps in [`2026-07-26-phase-5-plan-4.md`](superpowers/plans/2026-07-26-phase-5-plan-4.md) §Task 5a. Then continue at Task 12.
+**Resume at Task 19 — cut the build.** It is operator-run, costs ~$2, and is the only remaining step.
 
 ```bash
-./scripts/deploy-api.sh
+cd apps/mobile && eas build --platform ios --profile production --auto-submit
 ```
 
-Verify per the SOP — an App Runner operation **dated today** plus response *content*, never a status code. Then watch the logs for the two new lines that only the new build can emit: `[Push] userId=… accepted=N delivered=N pruned=N` (or the zero-token warning) and `[Notifications] N/M users have no captured timezone`. Before Task 17 ships, **N should equal M**.
+**Never hand-bump `ios.buildNumber`** — `autoIncrement: true` does it. Commit the auto-written `app.json` afterwards. Then walk the Task 19 Step 3 checklist on device, and re-run the Step 4 push probe: every account should now show a real IANA timezone, and RAD should show `tokens >= 1`.
+
+**Task 19 Step 1's gate is green as of session end:** shared 128 ✅ · mobile 114 ✅ · both typechecks 0 errors · API 326/329 (the three documented pre-existing failures).
 
 **Before running the API suite:** rebuild the test DB per [`local-test-db.md`](local-test-db.md). A stale one inflates failures by ~5 and will send you chasing ghosts.
+
+### The push deploy is done — and both root causes confirmed themselves live
+
+`./scripts/deploy-api.sh` ran at **13:32:48, SUCCEEDED 13:36:42**. Verified by *content*, not status codes — Tasks 4/5 add no HTTP surface, so the usual `components` canary cannot distinguish this build. The proof is in the 13:54 cron logs, which only the new build can emit:
+
+```
+[Notifications] 5/5 users have no captured timezone — evaluated against UTC
+[Push] userId=f27fe3ca… accepted=1 delivered=0 pruned=0
+[Push] userId=7c707446… has NO registered push tokens — nothing sent
+```
+
+That last line is **RAD's account** — root cause B, in production, exactly as diagnosed. `delivered=0` is expected receipt latency, not failure. `Sent 2 daily reminders (UTC 20:00)` is the counter working on `accepted`; on `sent` it would have read 0 on a healthy run.
+
+**A deploy-script gotcha worth knowing:** running `deploy-api.sh` twice in quick succession makes the second run fail with `InvalidRequestException … isn't in RUNNING state`. That is the second invocation colliding with the first one's in-flight deployment, **not** a failed deploy. Check `list-operations` before re-running anything.
 
 **Verification strategy is decided and written into the plan:** no dev client. Tasks 4–18 are verified by tests + typecheck; all device testing batches into **one TestFlight cut at Task 19**. Do not re-litigate this — see "Lessons" below for what it cost to learn.
 
@@ -35,25 +51,43 @@ Verify per the SOP — an App Runner operation **dated today** plus response *co
 | 8 | Reinforce wired into Session Complete | ✅ |
 | 9, 10 | Quiz item builder + scheduling | ✅ |
 | 11 | Recall quiz — card, both hosts, queue leg | ✅ `045d394` |
-| 4, 5 | Push fixes (server) — receipts + timezone | ✅ `9c5a54d`, **committed, NOT deployed** |
-| **5a** | **The deploy that ships 4 and 5** | ⬜ 🔴 **resume here — operator-run** |
-| 12–18 | Surfacing, hint, consent, client push fixes | ⬜ |
-| 19 | EAS cut + the single on-device walkthrough | ⬜ |
+| 4, 5, **5a** | Push fixes (server) + **their deploy** | ✅ `9c5a54d` — **deployed + verified live** |
+| 12 | Layered hooks, "Go deeper", end of auto-generation | ✅ `c16da2e` |
+| 13 | Hook on the flashcard answer side | ✅ `5903373` |
+| 14 | Hint button, capped at Hard | ✅ `122fddd` |
+| 15 | Coaching toggle + 7-day "Not now" cooldown | ✅ `8d0c0f5` |
+| 16 | Hooks-location switch + one-time in-flow ask | ✅ `e29dd45` |
+| 17 | Capture the device timezone | ✅ `b5fe229` |
+| 18 | Resilient push token registration | ✅ `add3efb` |
+| **19** | **EAS cut + the on-device walkthrough** | ⬜ 🔴 **resume here — operator-run, ~$2** |
 
-**Suites:** shared 108 ✅ · mobile 104 ✅ · API 320/322 (2 known pre-existing: RLS `FORCE`, user-delete cascade — the third, `learner-state-refresh`, passed this run, confirming it is cross-test interference) · all typechecks clean.
+**Suites:** shared 128 ✅ · mobile 114 ✅ · API 326/329 (3 known pre-existing: RLS `FORCE`, user-delete cascade, `learner-state-refresh`) · all typechecks clean.
 
-**Task 5a is load-bearing.** Tasks 4–5 are authored *after* Task 3's deploy, so they need their own. Without it the push fix never reaches production and Task 19's verification cannot pass.
+> **`learner-state-refresh` now fails in isolation too**, contradicting the earlier note that it passes alone. Confirmed **not** a regression: stashing this session's work and re-running it at `HEAD` reproduces the failure. Something in the shared test DB's state makes it fail regardless of code. Worth a rebuilt test DB before anyone chases it.
 
 ### What landed this session
 
-**Task 11 (`045d394`)** — the recall quiz, both halves of it. `RecallQuizCard` is presentational and rendered by two hosts: the immediate quick-check inside `CoCreationSheet`'s commitment stage, and a new `'recall'` leg that runs *before* the flashcard at the start of the next session. Distractors come from the session queue in-loop (every card carries radicals + JLPT, no extra fetch) and from `GET /v1/kanji/:id/related` in the sheet (already ranked by shared component, so it is taken as given rather than re-ranked on radical data that endpoint does not return). All the decidable logic is in `apps/mobile/src/mnemonics/recallQuiz.ts` — 20 tests.
+Seven feature tasks plus the server deploy. Highlights, and the things a next session should not have to rediscover:
 
-**Tasks 4 + 5 (`9c5a54d`)** — receipts are polled, and the clock is read in the user's timezone. Three deviations, all argued in the commit message: receipt-level pruning is narrower than ticket-level (`InvalidCredentials` is a verdict about *our* APNs key — pruning on it would delete every push token in the system); `sendDailyReminders` counts on `accepted` not `sent`, because Expo generates receipts asynchronously and an immediate poll almost always finds none; and `sendRestDaySummaries` carried a **second copy** of the same broken `toLocaleString` idiom, which the plan does not mention — both paths now share one helper.
+- **Task 11** — the recall quiz. One presentational `RecallQuizCard`, two hosts: the immediate quick-check in `CoCreationSheet`, and a new `'recall'` leg that runs *before* the flashcard next session. Distractors come from the session queue in-loop and from `/v1/kanji/:id/related` in the sheet.
+- **Task 12** — also retired the **entire auto-generation UX** (§10.2), which **no task in the plan owned**. `MnemonicNudgeSheet` deleted, plus Generate/Regenerate and Quick/Rich. All three wrote old-style rows, so shipping them would have repopulated the clean slate Task 3 created. The plan's "Task 7 thread chooser" did not exist either — `DeepenSheet` is new.
+- **Task 14** — the grade cap is enforced in `handleGrade`, **not** only in `GradeButtons`, because swipe-to-grade never touches those buttons. Hint → swipe right → Easy would otherwise have sailed through.
+- **Task 15** — the review's cooldown finding was real: the cooldown set was built *after* the reinforce branch returned, so "Not now" on the highest-priority offer did nothing at all.
+- **Task 16** — the "reducer gap" was one line. `LOCATION_SET` set the place name *and* advanced the stage, so "Looks like you're near X" was unreachable for all of Plan 3b.
 
-**Two traps found on the way:**
+### Five traps found this session
 
-1. **`pnpm --filter @kanji-learn/mobile test` ran nothing and exited 0.** There was no `test` script in `apps/mobile/package.json` — jest was a devDependency invoked by hand. Every mobile task in this plan gives that exact command as its verification step. Script added in `045d394`; a mobile suite now actually runs when you ask for one.
-2. **ICU renders local midnight as hour `24`** under `hour12:false` on the current Node build (verified, not assumed). Any hour comparison without that guard means a learner who picks a midnight reminder never gets one.
+1. **`pnpm --filter @kanji-learn/mobile test` ran nothing and exited 0.** No `test` script existed in `apps/mobile/package.json`. Every mobile task in this plan names that exact command as its verification step. Fixed in `045d394`.
+2. **ICU renders local midnight as hour `24`** under `hour12:false` on this Node build (verified). Without the guard, a midnight reminder never fires.
+3. **`deploy-api.sh` run twice in a row** fails the second time with `isn't in RUNNING state` — a collision, not a failure. Check `list-operations` before re-running.
+4. **`onPress={handleAccept}`** passes the gesture event as the first argument. Once `handleAccept` took an optional boolean, every tap read as `true`. Caught by typecheck; the same shape will bite anywhere a handler grows a parameter.
+5. **A PATCH in flight is not a PATCH applied.** The first-time location ask had to pass its answer explicitly into `accept()`, or the very first hook would skip GPS despite the learner having just consented.
+
+### Not done, and not owned by any task
+
+**`DeepenSheet` is not wired into the reinforce branch.** Session Complete has neither the kanji payload nor the hook context that `useDeepen`'s slots need, so `onOfferDeepen` still closes cleanly. Only kanji detail hosts deepening. No plan task covers this; it wants a decision, not just an edit.
+
+**Ticket-level `DEAD_TOKEN_ERRORS` still prunes on `InvalidCredentials`.** Receipt-level pruning was deliberately narrowed (a bad APNs key would otherwise delete every token in the system), but the ticket path is pre-existing behaviour and was left alone. Same hazard, smaller blast radius.
 
 ---
 
