@@ -8,6 +8,16 @@ import type { BuddyNudge } from '@kanji-learn/shared'
 // Anything else (e.g. MessageRateExceeded) is transient — leave the row alone.
 const DEAD_TOKEN_ERRORS = new Set(['DeviceNotRegistered', 'InvalidCredentials', 'MessageTooBig'])
 
+// The receipt-level equivalent, and deliberately narrower.
+//
+// A receipt error is the push service's verdict, and only DeviceNotRegistered
+// is a verdict about the *token*. InvalidCredentials is a verdict about OUR
+// APNs/FCM key — pruning on it would delete every push token in the system the
+// first time a certificate expires, and nothing re-registers them short of a
+// reinstall. Root cause B was already "the accounts under test have no tokens";
+// this is how that becomes permanent and global.
+const DEAD_TOKEN_RECEIPT_ERRORS = new Set(['DeviceNotRegistered'])
+
 // Module-level frequency cap for study-mate alerts.
 // Key: "${submitterId}:${recipientId}" → last-sent timestamp (ms).
 // Lives for process lifetime; restarts reset it (acceptable for the current cap).
@@ -106,6 +116,65 @@ function buildRestDayMessage(stats: { reviewed: number; burned: number; streakDa
   return { title, body }
 }
 
+// ─── Reminder eligibility ─────────────────────────────────────────────────────
+
+export interface ReminderPrefs {
+  timezone: string | null
+  reminderHour: number | null
+  restDay: number | null
+}
+
+/**
+ * Local hour (0–23) and weekday (0=Sun … 6=Sat) for a timezone.
+ *
+ * Uses `Intl` parts rather than the old `toLocaleString` → `new Date`
+ * round-trip, which depends on the host locale producing a string that `Date`
+ * can parse back. That worked on this machine and is guaranteed nowhere.
+ *
+ * Falls back to UTC on an unknown timezone string: one bad row must not take
+ * the hourly cron down for everybody.
+ */
+export function localHourAndWeekday(
+  nowUtc: Date,
+  timezone: string | null,
+): { hour: number; weekday: number } {
+  let hour: number
+  let weekday: number
+
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone ?? 'UTC',
+      hour: 'numeric',
+      hour12: false,
+      weekday: 'short',
+    }).formatToParts(nowUtc)
+
+    hour = Number(parts.find((p) => p.type === 'hour')?.value ?? NaN)
+    const wd = parts.find((p) => p.type === 'weekday')?.value ?? ''
+    weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd)
+    if (Number.isNaN(hour) || weekday < 0) throw new Error('unparseable')
+  } catch {
+    hour = nowUtc.getUTCHours()
+    weekday = nowUtc.getUTCDay()
+  }
+
+  // ICU renders local midnight as 24 under hour12:false (verified on the
+  // current Node build). Untreated, anyone who picks midnight never fires.
+  return { hour: hour === 24 ? 0 : hour, weekday }
+}
+
+/**
+ * Whether a user should receive their daily reminder at this instant.
+ *
+ * Extracted and exported so it can be tested against real timezones without a
+ * database — it is the whole of root cause A (BUGS.md, 2026-07-26).
+ */
+export function isEligibleNow(nowUtc: Date, prefs: ReminderPrefs): boolean {
+  const { hour, weekday } = localHourAndWeekday(nowUtc, prefs.timezone)
+  if (prefs.restDay != null && weekday === prefs.restDay) return false
+  return hour === (prefs.reminderHour ?? 20)
+}
+
 // ─── Notification Service ─────────────────────────────────────────────────────
 
 export class NotificationService {
@@ -136,20 +205,30 @@ export class NotificationService {
       )
       .where(eq(userProfiles.notificationsEnabled, true))
 
-    // Filter to only users whose local hour matches their reminderHour, skipping rest days
     const utcHour = nowUtc.getUTCHours()
-    const eligibleUsers = users.filter((u) => {
-      try {
-        const localDate = new Date(nowUtc.toLocaleString('en-US', { timeZone: u.timezone ?? 'UTC' }))
-        // Skip if today is the user's designated rest day (0=Sun … 6=Sat)
-        if (u.restDay != null && localDate.getDay() === u.restDay) return false
-        return localDate.getHours() === (u.reminderHour ?? 20)
-      } catch {
-        // Invalid timezone — fall back to UTC
-        if (u.restDay != null && nowUtc.getUTCDay() === u.restDay) return false
-        return utcHour === (u.reminderHour ?? 20)
-      }
-    })
+
+    // Root cause A (BUGS.md, 2026-07-26): nothing has ever written
+    // user_profiles.timezone, so every row keeps its 'UTC' default and
+    // reminderHour — documented as being in the user's timezone — is evaluated
+    // against UTC. A 20:00 reminder arrives at 1pm PDT. The client fix is Plan
+    // 4 Task 17; until it has rolled out, say so on every run rather than
+    // silently treating an uncaptured timezone as a deliberate choice.
+    const uncaptured = users.filter((u) => !u.timezone || u.timezone === 'UTC').length
+    if (uncaptured > 0) {
+      console.warn(
+        `[Notifications] ${uncaptured}/${users.length} users have no captured timezone — ` +
+          `their reminderHour is being evaluated against UTC`,
+      )
+    }
+
+    // Filter to only users whose local hour matches their reminderHour, skipping rest days
+    const eligibleUsers = users.filter((u) =>
+      isEligibleNow(nowUtc, {
+        timezone: u.timezone,
+        reminderHour: u.reminderHour,
+        restDay: u.restDay,
+      }),
+    )
 
     if (eligibleUsers.length === 0) return
 
@@ -165,7 +244,11 @@ export class NotificationService {
         sound: 'default',
         data: { type: 'daily_reminder' },
       })
-      if (result.sent > 0) sent++
+      // Counted on `accepted`, not `sent`. `sent` now means "a receipt came
+      // back confirming delivery", and receipts are asynchronous — an
+      // immediate poll almost always finds none, so counting on it would make
+      // this line read "Sent 0 daily reminders" on a perfectly healthy run.
+      if (result.accepted > 0) sent++
     }
 
     if (sent > 0) {
@@ -288,22 +371,13 @@ export class NotificationService {
         )
       )
 
-    const utcHour = nowUtc.getUTCHours()
-
     for (const user of users) {
       if (user.restDay == null) continue
 
-      // Determine local hour and weekday for this user
-      let localHour: number
-      let localWeekday: number
-      try {
-        const localDate = new Date(nowUtc.toLocaleString('en-US', { timeZone: user.timezone ?? 'UTC' }))
-        localHour    = localDate.getHours()
-        localWeekday = localDate.getDay() // 0=Sun … 6=Sat
-      } catch {
-        localHour    = utcHour
-        localWeekday = nowUtc.getUTCDay()
-      }
+      // Same root cause A as sendDailyReminders, and it was the same broken
+      // idiom here — a second copy of the toLocaleString round-trip, with the
+      // same missing midnight guard. Both now read the clock the same way.
+      const { hour: localHour, weekday: localWeekday } = localHourAndWeekday(nowUtc, user.timezone)
 
       // Only fire at reminderHour on restDay
       if (localWeekday !== user.restDay) continue
@@ -383,13 +457,29 @@ export class NotificationService {
     }
   }
 
-  // Fan out a single notification payload to every push token this user has
-  // registered (multi-device). Synchronously prunes tokens that ticket with a
-  // terminal error so the next send doesn't re-hit dead devices.
+  /**
+   * Fan out a single notification payload to every push token this user has
+   * registered (multi-device), then ask Expo what actually happened.
+   *
+   * Three numbers, because they are three different things and conflating them
+   * is what hid the daily-reminder failure for three months (BUGS.md, root
+   * cause C):
+   *
+   *   accepted — Expo took the message. A *ticket*, i.e. synchronous
+   *              acceptance. This is what the old `sent` really counted.
+   *   sent     — a *receipt* came back confirming delivery to APNs/FCM.
+   *   pruned   — tokens deleted because they are dead.
+   *
+   * `sent` is a floor, not a total: Expo generates receipts asynchronously, so
+   * an immediate poll usually finds none and healthy sends legitimately report
+   * `delivered=0`. Judge health by `accepted` and by the absence of receipt
+   * errors. The durable fix is to persist ticket ids and poll them minutes
+   * later; this is the cheap version that makes the failures visible at all.
+   */
   async sendToUserTokens(
     userId: string,
     message: Omit<ExpoPushMessage, 'to'>,
-  ): Promise<{ sent: number; pruned: number }> {
+  ): Promise<{ sent: number; pruned: number; accepted: number }> {
     // Cap at 100 rows — Expo's batch API hard limit. At ~2 devices/user today
     // this can't trip, but it's cheap defense against sticky-token leaks.
     const rows = await this.db
@@ -399,18 +489,55 @@ export class NotificationService {
       .limit(100)
 
     if (rows.length === 0) {
-      return { sent: 0, pruned: 0 }
+      // Loud on purpose. A user with notificationsEnabled=true and zero tokens
+      // cannot receive anything, and this path used to return in total silence
+      // — which is precisely why root cause B read as "notifications never
+      // work" instead of "this account has no device registered".
+      console.warn(`[Push] userId=${userId} has NO registered push tokens — nothing sent`)
+      return { sent: 0, pruned: 0, accepted: 0 }
     }
 
     const messages: ExpoPushMessage[] = rows.map((r) => ({ ...message, to: r.token }))
     const tickets = await expo.sendPushNotificationsAsync(messages)
 
     const dead: string[] = []
+    const receiptIdToToken = new Map<string, string>()
+    let accepted = 0
+
     tickets.forEach((ticket, i) => {
-      if (ticket.status === 'error' && DEAD_TOKEN_ERRORS.has(ticket.details?.error ?? '')) {
-        dead.push(rows[i].token)
+      if (ticket.status === 'error') {
+        const error = ticket.details?.error ?? 'unknown'
+        console.error(`[Push] ticket error userId=${userId} error=${error}`)
+        if (DEAD_TOKEN_ERRORS.has(error)) dead.push(rows[i].token)
+        return
       }
+      accepted++
+      if (ticket.id) receiptIdToToken.set(ticket.id, rows[i].token)
     })
+
+    // Tickets are acceptance, not delivery. Poll receipts for the real outcome.
+    let delivered = 0
+    const receiptIds = [...receiptIdToToken.keys()]
+    for (const chunk of expo.chunkPushNotificationReceiptIds(receiptIds)) {
+      let receipts: Record<string, { status: string; details?: { error?: string } }>
+      try {
+        receipts = await expo.getPushNotificationReceiptsAsync(chunk)
+      } catch (err) {
+        // Receipts are diagnostics; losing them must not fail the send. An
+        // unfetched receipt is unknown, never delivered.
+        console.warn(`[Push] receipt fetch failed for ${chunk.length} ids:`, err)
+        continue
+      }
+      for (const [id, receipt] of Object.entries(receipts)) {
+        if (receipt.status === 'ok') { delivered++; continue }
+        const error = receipt.details?.error ?? 'unknown'
+        console.error(`[Push] receipt error userId=${userId} error=${error}`)
+        if (DEAD_TOKEN_RECEIPT_ERRORS.has(error)) {
+          const token = receiptIdToToken.get(id)
+          if (token) dead.push(token)
+        }
+      }
+    }
 
     if (dead.length > 0) {
       await this.db
@@ -418,12 +545,10 @@ export class NotificationService {
         .where(and(eq(userPushTokens.userId, userId), inArray(userPushTokens.token, dead)))
     }
 
-    // Only log when something observable happened — avoids log spam from the
-    // common zero-activity path.
-    if (tickets.length > 0 || dead.length > 0) {
-      console.log(`[Push] userId=${userId} sent=${tickets.length} pruned=${dead.length}`)
-    }
-    return { sent: tickets.length, pruned: dead.length }
+    console.log(
+      `[Push] userId=${userId} accepted=${accepted} delivered=${delivered} pruned=${dead.length}`,
+    )
+    return { sent: delivered, pruned: dead.length, accepted }
   }
 
   /**

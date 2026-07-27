@@ -15,15 +15,18 @@ import { userPushTokens, userProfiles, friendships } from '@kanji-learn/db'
 // module-level `new Expo()` will pick up this fake class. `vi.hoisted` is
 // required because `vi.mock` factories are hoisted above top-level `const`s,
 // so a plain `const mockFn = vi.fn()` would be TDZ-accessed by the factory.
-const { mockSendPushNotificationsAsync } = vi.hoisted(() => ({
+const { mockSendPushNotificationsAsync, mockGetPushNotificationReceiptsAsync } = vi.hoisted(() => ({
   mockSendPushNotificationsAsync: vi.fn(),
+  mockGetPushNotificationReceiptsAsync: vi.fn(),
 }))
 vi.mock('expo-server-sdk', () => ({
   Expo: class {
     sendPushNotificationsAsync = mockSendPushNotificationsAsync
+    getPushNotificationReceiptsAsync = mockGetPushNotificationReceiptsAsync
     // The real SDK chunks into groups of 100; our tests stay well under that
     // limit, so identity-chunking keeps the assertions on call count simple.
     chunkPushNotifications = (messages: unknown[]) => [messages]
+    chunkPushNotificationReceiptIds = (ids: string[]) => (ids.length > 0 ? [ids] : [])
     static isExpoPushToken = (t: string) => /^ExponentPushToken\[.+\]$/.test(t)
   },
 }))
@@ -44,6 +47,11 @@ const RECIPIENT = '00000000-0000-0000-0000-0000000000f3'
 
 beforeEach(async () => {
   mockSendPushNotificationsAsync.mockReset()
+  // Default: no receipts are ready yet. That is the honest production default —
+  // Expo generates receipts asynchronously — so a test that wants `delivered`
+  // counted has to say so explicitly.
+  mockGetPushNotificationReceiptsAsync.mockReset()
+  mockGetPushNotificationReceiptsAsync.mockResolvedValue({})
   await db.execute(sql`DELETE FROM user_push_tokens WHERE user_id = ${USER}`)
   await db.execute(sql`DELETE FROM user_profiles WHERE id = ${USER}`)
   await db.insert(userProfiles).values({ id: USER, displayName: 'F', timezone: 'UTC' })
@@ -57,8 +65,11 @@ describe('sendToUserTokens', () => {
       { userId: USER, token: TOKEN_C, platform: 'android' },
     ])
     mockSendPushNotificationsAsync.mockResolvedValue([
-      { status: 'ok' }, { status: 'ok' }, { status: 'ok' },
+      { status: 'ok', id: 'r1' }, { status: 'ok', id: 'r2' }, { status: 'ok', id: 'r3' },
     ])
+    mockGetPushNotificationReceiptsAsync.mockResolvedValue({
+      r1: { status: 'ok' }, r2: { status: 'ok' }, r3: { status: 'ok' },
+    })
 
     const result = await service.sendToUserTokens(USER, { title: 't', body: 'b', sound: 'default' })
 
@@ -67,13 +78,13 @@ describe('sendToUserTokens', () => {
     expect(args).toHaveLength(3)
     expect(args.map((m: any) => m.to)).toEqual(expect.arrayContaining([TOKEN_A, TOKEN_B, TOKEN_C]))
     expect(args.every((m: any) => m.title === 't' && m.body === 'b')).toBe(true)
-    expect(result).toEqual({ sent: 3, pruned: 0 })
+    expect(result).toEqual({ sent: 3, pruned: 0, accepted: 3 })
   })
 
-  it('returns { sent: 0, pruned: 0 } and skips the Expo call when the user has no tokens', async () => {
+  it('returns zeroes and skips the Expo call when the user has no tokens', async () => {
     const result = await service.sendToUserTokens(USER, { title: 't', body: 'b' })
     expect(mockSendPushNotificationsAsync).not.toHaveBeenCalled()
-    expect(result).toEqual({ sent: 0, pruned: 0 })
+    expect(result).toEqual({ sent: 0, pruned: 0, accepted: 0 })
   })
 
   it('prunes rows that ticket with DeviceNotRegistered', async () => {
@@ -82,13 +93,14 @@ describe('sendToUserTokens', () => {
       { userId: USER, token: TOKEN_B, platform: 'ios' },
     ])
     mockSendPushNotificationsAsync.mockResolvedValue([
-      { status: 'ok' },
+      { status: 'ok', id: 'r1' },
       { status: 'error', details: { error: 'DeviceNotRegistered' } },
     ])
+    mockGetPushNotificationReceiptsAsync.mockResolvedValue({ r1: { status: 'ok' } })
 
     const result = await service.sendToUserTokens(USER, { title: 't', body: 'b' })
 
-    expect(result).toEqual({ sent: 2, pruned: 1 })
+    expect(result).toEqual({ sent: 1, pruned: 1, accepted: 1 })
     const remaining = await db.select().from(userPushTokens).where(eq(userPushTokens.userId, USER))
     expect(remaining).toHaveLength(1)
     expect(remaining[0].token).toBe(TOKEN_A)
@@ -120,6 +132,103 @@ describe('sendToUserTokens', () => {
     expect(result.pruned).toBe(0)
     const remaining = await db.select().from(userPushTokens).where(eq(userPushTokens.userId, USER))
     expect(remaining).toHaveLength(1)
+  })
+})
+
+// ─── Receipt polling (BUGS.md root cause C, 2026-07-26) ──────────────────────
+//
+// A ticket is Expo's synchronous *acceptance*, not delivery. The real outcome —
+// InvalidCredentials, DeviceNotRegistered, MessageRateExceeded — only ever
+// appears in a receipt, and nothing polled for one. That is why two live bugs
+// stayed invisible for three months behind a log line reading "sent=1".
+describe('sendToUserTokens — receipt polling', () => {
+  beforeEach(async () => {
+    await db.insert(userPushTokens).values({ userId: USER, token: TOKEN_A, platform: 'ios' })
+  })
+
+  it('does NOT count a message as sent when the receipt says the credentials are bad', async () => {
+    // The exact shape of the shipped bug: a ticket-only implementation
+    // reported sent=1 here while nothing reached the device.
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok', id: 'r1' }])
+    mockGetPushNotificationReceiptsAsync.mockResolvedValue({
+      r1: { status: 'error', details: { error: 'InvalidCredentials' } },
+    })
+
+    const result = await service.sendToUserTokens(USER, { title: 't', body: 'b' })
+
+    expect(result.accepted).toBe(1)
+    expect(result.sent).toBe(0)
+  })
+
+  it('keeps the token when the receipt blames OUR credentials, not the device', async () => {
+    // InvalidCredentials means our APNs/FCM key is wrong. Pruning on it would
+    // delete every push token in the system the first time a certificate
+    // expires — and only a reinstall re-registers them.
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok', id: 'r1' }])
+    mockGetPushNotificationReceiptsAsync.mockResolvedValue({
+      r1: { status: 'error', details: { error: 'InvalidCredentials' } },
+    })
+
+    const result = await service.sendToUserTokens(USER, { title: 't', body: 'b' })
+
+    expect(result.pruned).toBe(0)
+    const remaining = await db.select().from(userPushTokens).where(eq(userPushTokens.userId, USER))
+    expect(remaining).toHaveLength(1)
+  })
+
+  it('counts a delivered receipt as sent', async () => {
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok', id: 'r2' }])
+    mockGetPushNotificationReceiptsAsync.mockResolvedValue({ r2: { status: 'ok' } })
+
+    const result = await service.sendToUserTokens(USER, { title: 't', body: 'b' })
+
+    expect(result.sent).toBe(1)
+  })
+
+  it('prunes a token whose receipt says DeviceNotRegistered', async () => {
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok', id: 'r3' }])
+    mockGetPushNotificationReceiptsAsync.mockResolvedValue({
+      r3: { status: 'error', details: { error: 'DeviceNotRegistered' } },
+    })
+
+    const result = await service.sendToUserTokens(USER, { title: 't', body: 'b' })
+
+    expect(result.pruned).toBe(1)
+    const remaining = await db.select().from(userPushTokens).where(eq(userPushTokens.userId, USER))
+    expect(remaining).toHaveLength(0)
+  })
+
+  it('still reports accepted when the receipt is not ready yet', async () => {
+    // Expo generates receipts asynchronously — an immediate poll usually
+    // returns nothing. "Not yet known" must read as accepted-but-unconfirmed,
+    // never as a failure, or every healthy send would look broken.
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok', id: 'r4' }])
+    mockGetPushNotificationReceiptsAsync.mockResolvedValue({})
+
+    const result = await service.sendToUserTokens(USER, { title: 't', body: 'b' })
+
+    expect(result).toEqual({ sent: 0, pruned: 0, accepted: 1 })
+  })
+
+  it('survives a receipt fetch that throws', async () => {
+    // Receipts are diagnostics. Losing them must never turn a successful send
+    // into a thrown request.
+    mockSendPushNotificationsAsync.mockResolvedValue([{ status: 'ok', id: 'r5' }])
+    mockGetPushNotificationReceiptsAsync.mockRejectedValue(new Error('502 from Expo'))
+
+    const result = await service.sendToUserTokens(USER, { title: 't', body: 'b' })
+
+    expect(result).toEqual({ sent: 0, pruned: 0, accepted: 1 })
+  })
+
+  it('does not ask for receipts when no ticket carried an id', async () => {
+    mockSendPushNotificationsAsync.mockResolvedValue([
+      { status: 'error', details: { error: 'MessageRateExceeded' } },
+    ])
+
+    await service.sendToUserTokens(USER, { title: 't', body: 'b' })
+
+    expect(mockGetPushNotificationReceiptsAsync).not.toHaveBeenCalled()
   })
 })
 
