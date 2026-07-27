@@ -11,7 +11,7 @@
 
 **State:** Plan 4 is **code-complete through Task 18**. Tasks 4/5 are deployed and verified in production. Everything else is committed and unbuilt. Live DB is clean (`mnemonics` = 0). Working tree clean except untracked `.codex/` and `supabase/`.
 
-**Resume at Task 19 — cut the build.** It is operator-run, costs ~$2, and is the only remaining step.
+**Resume at Task 19 — cut the build.** It is the only remaining step. Builds are **included in the monthly EAS allowance**; the ~$2 quoted elsewhere is the overage price once that allowance is used up, not a per-build charge (operator, 2026-07-27).
 
 ```bash
 cd apps/mobile && EXPO_NO_CAPABILITY_SYNC=1 npx eas build --platform ios --profile production --auto-submit
@@ -19,7 +19,25 @@ cd apps/mobile && EXPO_NO_CAPABILITY_SYNC=1 npx eas build --platform ios --profi
 
 **`EXPO_NO_CAPABILITY_SYNC=1` is not optional.** Without it EAS tries to switch **Sign in with Apple OFF on the live App Store bundle**; only Apple's refusal has prevented it, twice. The SOP entry originally scoped this to *development* builds — it hit the production cut too. See [`SOP.md`](SOP.md).
 
-**Never hand-bump `ios.buildNumber`** — `autoIncrement: true` does it. A capability-sync failure aborts *before* build creation, so `buildNumber` stays untouched and re-running skips nothing. Commit the auto-written `app.json` after a successful cut. Then walk the Task 19 Step 3 checklist on device, and re-run the Step 4 push probe: every account should now show a real IANA timezone, and RAD should show `tokens >= 1`.
+**Never hand-bump `ios.buildNumber`** — `autoIncrement: true` does it. A capability-sync failure aborts *before* build creation, so `buildNumber` stays untouched and re-running skips nothing. Commit the auto-written `app.json` after a successful cut.
+
+### B144 — cut 2026-07-27, awaiting Apple processing
+
+| | |
+|---|---|
+| Build ID | `60b4704f-63eb-481c-9019-0772a8d8d25f` |
+| Version | 1.0.0 (**144**) — `app.json` auto-bumped 143 → 144 |
+| Submission | `ce6622f5-8f3b-4202-ba7c-89858ef35a47` — queued **server-side** by `--auto-submit` |
+
+The submission is queued on EAS, not run by the local CLI afterwards (`Submission details:` prints *before* `Waiting for build to complete`). Killing the CLI does not skip it.
+
+**App Store Connect prerequisites are already done** (operator, 2026-07-27): the app is renamed to KanjiBuddy, and the external tester is on the group. No ASC setup is owed for this build.
+
+**Still owed: the Task 19 Step 3 walkthrough**, and it is the only thing that can close the push bug in `BUGS.md`. Two items carry the weight:
+- a reminder arriving at the correct **local** time (root cause A — the server has been logging `5/5 users have no captured timezone` since today's deploy; Task 17 should drive that to 0/5 once this build runs once)
+- the Profile warning appearing when a device has notifications on but no registered token (root cause B — RAD's account is in exactly that state right now)
+
+Also re-run Step 4's probe: every account should show a real IANA timezone, and RAD should show `tokens >= 1`. Then walk the Task 19 Step 3 checklist on device, and re-run the Step 4 push probe: every account should now show a real IANA timezone, and RAD should show `tokens >= 1`.
 
 **Task 19 Step 1's gate is green as of session end:** shared 128 ✅ · mobile 114 ✅ · both typechecks 0 errors · API 326/329 (the three documented pre-existing failures).
 
@@ -61,7 +79,7 @@ That last line is **RAD's account** — root cause B, in production, exactly as 
 | 16 | Hooks-location switch + one-time in-flow ask | ✅ `e29dd45` |
 | 17 | Capture the device timezone | ✅ `b5fe229` |
 | 18 | Resilient push token registration | ✅ `add3efb` |
-| **19** | **EAS cut + the on-device walkthrough** | ⬜ 🔴 **resume here — operator-run, ~$2** |
+| **19** | **EAS cut + the on-device walkthrough** | 🚧 **B144 building + auto-submitted** |
 
 **Suites:** shared 128 ✅ · mobile 114 ✅ · API 326/329 (3 known pre-existing: RLS `FORCE`, user-delete cascade, `learner-state-refresh`) · all typechecks clean.
 
