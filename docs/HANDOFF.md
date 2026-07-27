@@ -1,3 +1,59 @@
+# Session Handoff — 2026-07-27 (Phase 5 DEADLOCK BROKEN — 0027 live, API deployed, mnemonics cleaned, 3b UI merged; `main` shippable again)
+
+## TL;DR (2026-07-27)
+
+**The June deadlock is over. `main` is shippable for the first time since Phase 5 began.**
+
+1. **Plan 4 spec + implementation plan written, adversarially reviewed, corrected.** Spec `docs/superpowers/specs/2026-07-26-phase-5-plan-4-design.md`; plan `docs/superpowers/plans/2026-07-26-phase-5-plan-4.md` (20 tasks, 7 phases). A 3-model Ringer review swarm found **10 confirmed defects** in the plan its author had already self-reviewed — including a **production-outage-grade ordering bug** (deploy-before-migrate) and the fact that the push fixes, as sequenced, **would never have deployed**. Both fixed in `c9c2b74`. Full run: `~/.ringer/artifacts/live/plan-4-review.html`.
+2. **The deadlock was structural, and the fix was ~10 lines.** Plan 2 deleted two refresh routes B143 still calls, which forced Phase 5 into one all-or-nothing cut. Task 1 (`9fe649a`) restored them as **deprecated no-op stubs** — the API and the EAS build are now independent. The runbook's "do NOT deploy the API alone" warning is obsolete and marked so (`a7ad463`).
+3. **Task 3 rollout executed by the operator, verified by agent.** Migration 0027 applied **before** the deploy (the corrected order), API deployed, destructive cleanup run. Verified live: all five columns present with correct defaults (`mnemonic_coaching_enabled` = **true**), `mnemonics` = **0 rows**, `/health` 200, `/v1/mnemonics/refresh` **401 not 404** (B143 protected), `/v1/user/profile` **401 not 500** (ordering held), `/v1/mnemonics/assemble` 401 (Plan 2 surface live).
+4. **`phase-5-cocreation-ui` MERGED** (`0f27a40`). One trivial BUGS.md conflict (stale TTS status), resolved in favour of `main`. Mobile typecheck 0 errors, mobile 67/67, shared 87/87.
+5. **Daily push notifications ROOT-CAUSED** after three months (`a42e63b`). Not one bug but three — see BUGS.md. The April EventBridge fix was correct but addressed a different problem.
+6. **The API test suite runs again.** It was completely unrunnable on this machine; now **290/293**. See `docs/local-test-db.md`.
+
+### The push notification root cause (BUGS.md, full detail there)
+
+- **A — `timezone` is never captured.** Nothing has ever written `user_profiles.timezone`, so every row keeps its `'UTC'` default and `reminderHour` — documented as being in the user's timezone — is evaluated against UTC. A 20:00 reminder fires at **1pm PDT**. Client fix = Plan 4 Task 17.
+- **B — the accounts under test have zero push tokens.** RAD and the live tester both had `notifications_enabled=true` and **0 rows** in `user_push_tokens`. `sendToUserTokens` returned early and logged *nothing*. This is why the symptom read as "never," which masked A entirely.
+- **C — receipts are never polled.** Expo tickets were treated as delivery, so `InvalidCredentials` / `DeviceNotRegistered` were invisible. `auth.store.ts:190` calls receipt pruning "the safety net" — it does not exist. This is why A and B survived three months and one confident fix.
+
+### Test database — was unrunnable, now documented
+
+`apps/api` integration tests could not run at all: 21 of 26 migrations abort without Supabase's `auth` schema, and **there are two parallel migration histories** (`packages/db/supabase/migrations/` 26 files, `packages/db/drizzle/` 14 files) — `friendships`, `learner_profiles`, `learner_identity` and `buddy_nudges` exist **only** in the drizzle set, so neither builds a working DB alone. Recipe + findings in [`docs/local-test-db.md`](local-test-db.md); shim at `docker/postgres-init/02-auth-shim.sql`.
+
+**Two open questions surfaced, deliberately not fixed:**
+- **Migration 0018 contains zero occurrences of `FORCE`**, yet `rls-coverage.test.ts` demands ENABLE *and* FORCE. Either live has drift the migrations don't capture, or that test has never passed against a migration-built DB. Adding FORCE changes production security semantics — operator decision.
+- **The dual migration history** should probably collapse to one system.
+
+### Residual API test failures (2, both pre-existing)
+
+`rls-coverage` (the FORCE question above) and `user-delete` cascade. A third, `learner-state-refresh`, passes in isolation and fails in the full run — cross-test interference on the shared DB. **None are merge-related: the merge changed zero files under `apps/api`, `packages/db` or `packages/shared`.** Note that a stale test DB inflates these to 6–7; rebuild it per the doc before judging.
+
+### Credentials
+
+`scripts/with-live-db.sh` runs any command with the live `DATABASE_URL` loaded into the child process only — never printed, never in shell history. Task 3's commands all route through it. Verified facts: `DATABASE_URL` is a **postgres connection string** (not the project URL), on the Supabase **pooler at port 5432 — session mode**, which `pg_dump` supports (6543 is transaction mode and would break it).
+
+**Still outstanding:** rotate the Supabase DB password (open since 2026-06-03 — it was once printed to a transcript in plaintext), and move App Runner secrets to SSM Parameter Store. Both written up in ROADMAP.
+
+### Code shipped this session (not yet deployed / not yet built)
+
+| Task | What | State |
+|---|---|---|
+| 1 | Deprecated no-op stubs | ✅ **deployed** |
+| 2 | Migration 0027 + schema | ✅ **applied live** |
+| 6 | Reinforce: pure reducer + hook + `ReinforceSheet` | committed, unbuilt |
+
+**Plan deviation worth knowing:** the plan's tests assumed `renderHook`, but `apps/mobile` has **no `@testing-library/react-native`** and jest runs in a `node` env. Followed the repo's existing pattern instead — pure reducer beside a thin hook, mirroring `useCoCreation.reducer`. Same class of gap as the plan's reference to `test/helpers/auth.ts`, which also doesn't exist. **Check what exists before trusting a plan's test scaffolding.**
+
+### Next session
+
+1. **Task 5a is now load-bearing.** Tasks 4–5 (receipt polling, timezone predicate) are written *after* Task 3's deploy, so they need their **own** API deploy. Without it the push fix never reaches production and Task 19's verification cannot pass.
+2. Phase 2 continues at **Task 7** (`useDeepen`) — now unblocked, since `CoCreationSheet` and `assembleStory` are both on `main`.
+3. `main` is **23 commits ahead of origin** and unpushed.
+4. Operator smoke still owed: create one co-created hook on RAD and confirm `generation_method='cocreated'`.
+
+---
+
 # Session Handoff — 2026-07-05 (Plan 3b walkthrough COMPLETE; migration 0026 LIVE; KanjiBuddy rebrand; B143 cut for first outside tester)
 
 ## TL;DR (2026-07-05)
