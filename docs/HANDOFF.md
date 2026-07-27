@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-27 (Phase 5 deadlock broken; Plan 4 through Task 11-API; `main` shippable and PUSHED)
+# Session Handoff — 2026-07-27 (Phase 5 deadlock broken; Plan 4 through Task 5 — **a deploy is owed**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -9,9 +9,15 @@
 
 ## START HERE — next session
 
-**State:** `main` is shippable and **pushed** — `origin/main` == `main` at `08fa8a8`. Production API is deployed and current. Live DB is clean (`mnemonics` = 0). Working tree clean except untracked `.codex/`.
+**State:** `main` is shippable. Production API is deployed but now **behind `main` by two commits** — the push fixes are committed and untested in production. Live DB is clean (`mnemonics` = 0). Working tree clean except untracked `.codex/` and `supabase/`.
 
-**Resume at Plan 4 Task 11 (mobile half)** — `RecallQuizCard`, the immediate quick-check after `commitment`, and the `review.store` queue insertion. Plan: [`2026-07-26-phase-5-plan-4.md`](superpowers/plans/2026-07-26-phase-5-plan-4.md).
+**Resume at Plan 4 Task 5a — the deploy.** It is operator-run and it is the whole point of Tasks 4–5: the push fix does not reach the live tester without it. Steps in [`2026-07-26-phase-5-plan-4.md`](superpowers/plans/2026-07-26-phase-5-plan-4.md) §Task 5a. Then continue at Task 12.
+
+```bash
+./scripts/deploy-api.sh
+```
+
+Verify per the SOP — an App Runner operation **dated today** plus response *content*, never a status code. Then watch the logs for the two new lines that only the new build can emit: `[Push] userId=… accepted=N delivered=N pruned=N` (or the zero-token warning) and `[Notifications] N/M users have no captured timezone`. Before Task 17 ships, **N should equal M**.
 
 **Before running the API suite:** rebuild the test DB per [`local-test-db.md`](local-test-db.md). A stale one inflates failures by ~5 and will send you chasing ghosts.
 
@@ -28,14 +34,26 @@
 | 7 | Deepen: `buildDeepenedContext`, `useDeepen` | ✅ |
 | 8 | Reinforce wired into Session Complete | ✅ |
 | 9, 10 | Quiz item builder + scheduling | ✅ |
-| 11 | Recall quiz — **API half done**, mobile half TODO | 🚧 **resume here** |
-| 4, 5, **5a** | Push fixes (server) + **their own deploy** | ⬜ |
+| 11 | Recall quiz — card, both hosts, queue leg | ✅ `045d394` |
+| 4, 5 | Push fixes (server) — receipts + timezone | ✅ `9c5a54d`, **committed, NOT deployed** |
+| **5a** | **The deploy that ships 4 and 5** | ⬜ 🔴 **resume here — operator-run** |
 | 12–18 | Surfacing, hint, consent, client push fixes | ⬜ |
 | 19 | EAS cut + the single on-device walkthrough | ⬜ |
 
-**Suites:** shared 108 ✅ · mobile 84 ✅ · API 300/303 (3 known pre-existing: RLS `FORCE`, user-delete cascade, one cross-test interference that passes in isolation) · all typechecks clean.
+**Suites:** shared 108 ✅ · mobile 104 ✅ · API 320/322 (2 known pre-existing: RLS `FORCE`, user-delete cascade — the third, `learner-state-refresh`, passed this run, confirming it is cross-test interference) · all typechecks clean.
 
-**Task 5a is load-bearing.** Tasks 4–5 are authored *after* Task 3's deploy, so they need their own. Without it the push fix never reaches production.
+**Task 5a is load-bearing.** Tasks 4–5 are authored *after* Task 3's deploy, so they need their own. Without it the push fix never reaches production and Task 19's verification cannot pass.
+
+### What landed this session
+
+**Task 11 (`045d394`)** — the recall quiz, both halves of it. `RecallQuizCard` is presentational and rendered by two hosts: the immediate quick-check inside `CoCreationSheet`'s commitment stage, and a new `'recall'` leg that runs *before* the flashcard at the start of the next session. Distractors come from the session queue in-loop (every card carries radicals + JLPT, no extra fetch) and from `GET /v1/kanji/:id/related` in the sheet (already ranked by shared component, so it is taken as given rather than re-ranked on radical data that endpoint does not return). All the decidable logic is in `apps/mobile/src/mnemonics/recallQuiz.ts` — 20 tests.
+
+**Tasks 4 + 5 (`9c5a54d`)** — receipts are polled, and the clock is read in the user's timezone. Three deviations, all argued in the commit message: receipt-level pruning is narrower than ticket-level (`InvalidCredentials` is a verdict about *our* APNs key — pruning on it would delete every push token in the system); `sendDailyReminders` counts on `accepted` not `sent`, because Expo generates receipts asynchronously and an immediate poll almost always finds none; and `sendRestDaySummaries` carried a **second copy** of the same broken `toLocaleString` idiom, which the plan does not mention — both paths now share one helper.
+
+**Two traps found on the way:**
+
+1. **`pnpm --filter @kanji-learn/mobile test` ran nothing and exited 0.** There was no `test` script in `apps/mobile/package.json` — jest was a devDependency invoked by hand. Every mobile task in this plan gives that exact command as its verification step. Script added in `045d394`; a mobile suite now actually runs when you ask for one.
+2. **ICU renders local midnight as hour `24`** under `hour12:false` on the current Node build (verified, not assumed). Any hour comparison without that guard means a learner who picks a midnight reminder never gets one.
 
 ---
 
