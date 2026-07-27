@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
+import { deviceTimezone, shouldSyncTimezone } from '../lib/timezone'
 import { useAuthStore } from '../stores/auth.store'
 
 export type UserProfile = {
@@ -42,6 +43,32 @@ export function clearProfileCache() {
   notifyListeners(null)
 }
 
+/**
+ * Push the device's timezone up when it differs from what's stored.
+ *
+ * Root cause A's client half. Nothing has ever written this column, so every
+ * account still carries the 'UTC' default and daily reminders fire against UTC
+ * — verified live on 2026-07-27, where the server logged "5/5 users have no
+ * captured timezone". Syncing on profile load self-heals every existing
+ * account on first launch of a build carrying this; no backfill migration is
+ * possible, because only the device knows its own zone.
+ *
+ * Fire-and-forget, and silent on failure: a timezone that fails to sync is
+ * yesterday's behaviour, not a reason to disrupt a profile load. It retries on
+ * the next launch.
+ */
+function syncTimezone(profile: UserProfile) {
+  const device = deviceTimezone()
+  if (!shouldSyncTimezone(profile.timezone, device)) return
+  api
+    .patch<UserProfile>('/v1/user/profile', { timezone: device })
+    .then((updated) => {
+      _cache = updated
+      notifyListeners(updated)
+    })
+    .catch(() => {})
+}
+
 export function useProfile() {
   // Subscribe to the access token so this hook re-runs its fetch effect whenever
   // the session changes (sign-in, sign-out, token refresh). Without this the
@@ -79,6 +106,7 @@ export function useProfile() {
       .then((data) => {
         _cache = data
         notifyListeners(data)
+        syncTimezone(data)
       })
       .catch(() => {/* swallow — next session change will retry */})
       .finally(() => {
