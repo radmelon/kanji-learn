@@ -28,6 +28,25 @@ export const recordOutcome = (mnemonicId: string, outcome: 0 | 1) =>
   )
 
 /**
+ * The co-created hook for a kanji, or null if there isn't one.
+ *
+ * `buddy-moment-context` reports `hasHook` but not which mnemonic it is, so
+ * the reinforce path needs this second read to get the id and story text.
+ * Reuses the existing kanji-scoped list endpoint — no new API surface.
+ * `generationMethod === 'cocreated'` is the same discriminator kanji detail
+ * uses, so the two screens can never disagree about what counts as a hook.
+ */
+export const fetchCoCreatedHook = async (
+  kanjiId: number,
+): Promise<{ id: string; storyText: string } | null> => {
+  const rows = await api.get<Array<{ id: string; storyText: string; generationMethod?: string }>>(
+    `/v1/mnemonics/${kanjiId}`,
+  )
+  const hook = rows.find((m) => m.generationMethod === 'cocreated')
+  return hook ? { id: hook.id, storyText: hook.storyText } : null
+}
+
+/**
  * Append a layer to an existing hook (parent spec §6.3). Additive: the server
  * replaces storyText and context wholesale, but the context we send already
  * carries every previous layer, so nothing is lost. Resets effectivenessScore

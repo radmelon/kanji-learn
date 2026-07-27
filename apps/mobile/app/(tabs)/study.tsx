@@ -44,11 +44,12 @@ import { GradeButtons } from '../../src/components/study/GradeButtons'
 import { SessionComplete } from '../../src/components/study/SessionComplete'
 import { MnemonicNudgeSheet } from '../../src/components/study/MnemonicNudgeSheet'
 import { CoCreationSheet } from '../../src/components/mnemonics/CoCreationSheet'
+import { ReinforceSheet } from '../../src/components/mnemonics/ReinforceSheet'
 import { WritingLeg } from '../../src/components/study/WritingLeg'
 import { SpeakingLeg } from '../../src/components/study/SpeakingLeg'
 import { QuizLeg } from '../../src/components/study/QuizLeg'
 import { ReadyScreen } from '../../src/components/study/ReadyScreen'
-import { fetchBuddyMomentContext } from '../../src/mnemonics/cocreationApi'
+import { fetchBuddyMomentContext, fetchCoCreatedHook } from '../../src/mnemonics/cocreationApi'
 import type { KanjiForHook } from '../../src/mnemonics/buildSlots'
 import { colors, spacing, radius, typography } from '../../src/theme'
 
@@ -91,6 +92,15 @@ function StudySession() {
   // lazily once we know which kanji (if any) the trigger picked.
   const [buddyMomentKanjiId, setBuddyMomentKanjiId] = useState<number | null>(null)
   const [buddyMomentKanji, setBuddyMomentKanji] = useState<(KanjiForHook & { id: number }) | null>(null)
+  // The reinforce branch (parent spec §4.3). Mutually exclusive with the create
+  // branch above — pickBuddyMomentAction returns at most one action, and
+  // reinforce outranks create, so both can never be set in the same session.
+  const [reinforceTarget, setReinforceTarget] = useState<{
+    mnemonicId: string
+    storyText: string
+    character: string
+    kanjiId: number
+  } | null>(null)
   // Generation guard for the Buddy moment (same ref-guard idiom as
   // finishCalledRef below): clearBuddyMoment bumps the generation, and any
   // buddy-moment fetch still in flight from an earlier session compares its
@@ -102,6 +112,7 @@ function StudySession() {
     buddyMomentGenRef.current += 1
     setBuddyMomentKanjiId(null)
     setBuddyMomentKanji(null)
+    setReinforceTarget(null)
   }, [])
   // Dev-only: force the current card's reviewType to exercise all four modes
   // without waiting for SRS to surface them. Visible when either __DEV__ is
@@ -441,11 +452,29 @@ function StudySession() {
         lapses: c.lapses,
         hasHook: c.hasHook,
       }))
-      const action = pickBuddyMomentAction(cards) // cooldown set wired in Plan 4
+      const action = pickBuddyMomentAction(cards) // cooldown set wired in Task 15
       if (action.kind === 'create') {
         setBuddyMomentKanjiId(action.kanjiId) // renders CoCreationSheet once the kanji payload loads
+      } else if (action.kind === 'reinforce') {
+        // The hooked kanji that slipped today. buddy-moment-context tells us a
+        // hook exists but not which one, so fetch it for the id + story text.
+        // Guarded by the same generation check: a slow read must not surface a
+        // sheet after the user has moved on.
+        const card = cards.find((c) => c.kanjiId === action.kanjiId)
+        const hook = await fetchCoCreatedHook(action.kanjiId)
+        if (gen !== buddyMomentGenRef.current) return
+        if (hook && card) {
+          setReinforceTarget({
+            mnemonicId: hook.id,
+            storyText: hook.storyText,
+            character: card.kanji,
+            kanjiId: action.kanjiId,
+          })
+        }
+        // No hook found (deleted between the two reads) → no moment. Silent by
+        // design; a missing sheet is better than a broken one.
       }
-      // action.kind === 'reinforce' | 'none' → no-op in Plan 3b
+      // action.kind === 'none' → nothing to offer this session
     } catch {
       // A Buddy moment is best-effort; never surface this to the user.
     }
@@ -572,6 +601,23 @@ function StudySession() {
             visible
             kanji={buddyMomentKanji}
             onClose={clearBuddyMoment}
+          />
+        )}
+        {/* Reinforce branch (spec §4.3) — the hooked kanji that slipped today.
+            Mutually exclusive with CoCreationSheet above: pickBuddyMomentAction
+            returns at most one action per session. */}
+        {reinforceTarget && (
+          <ReinforceSheet
+            visible
+            mnemonicId={reinforceTarget.mnemonicId}
+            kanjiCharacter={reinforceTarget.character}
+            storyText={reinforceTarget.storyText}
+            onClose={clearBuddyMoment}
+            onOfferDeepen={() => {
+              // Deepen UI is Task 12's kanji-detail entry point; from here we
+              // close cleanly rather than half-open a flow that has no host yet.
+              clearBuddyMoment()
+            }}
           />
         )}
       </>

@@ -14,7 +14,10 @@ interface Props {
   /** The hook being tested. */
   mnemonicId: string
   kanjiCharacter: string
-  meaning: string
+  /** Optional: the reinforce trigger knows the character but not the meaning
+   *  (buddy-moment-context returns neither), and a blank line reads as broken.
+   *  Omitted → the subtitle is not rendered at all. */
+  meaning?: string
   storyText: string
   onClose: () => void
   /** Fired when the deepen gate trips — the caller opens the deepen flow. */
@@ -76,7 +79,9 @@ export function ReinforceSheet({
               </View>
               <View style={styles.headerText}>
                 <Text style={styles.title}>Let&apos;s test your hook</Text>
-                <Text style={styles.meaning} numberOfLines={1}>{meaning}</Text>
+                {meaning ? (
+                  <Text style={styles.meaning} numberOfLines={1}>{meaning}</Text>
+                ) : null}
               </View>
               <TouchableOpacity onPress={onClose} hitSlop={8}>
                 <Ionicons name="close" size={20} color={colors.textMuted} />
