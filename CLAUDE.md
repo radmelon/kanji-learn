@@ -36,6 +36,44 @@ on anyone remembering this rule.
 
 Canonical: https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
 
+## Open Brain
+
+Defined in `.mcp.json` at the repo root, so it loads for **any session started
+in this repo** — not via claude.ai connector settings, which are per-surface and
+were the reason it silently went missing on 2026-07-27.
+
+**The access key is never committed.** `.mcp.json` references
+`${OPEN_BRAIN_KEY}`; supply it in `.claude/settings.local.json` (gitignored):
+
+```json
+{ "env": { "OPEN_BRAIN_KEY": "<key from claude.ai → Settings → Connectors>" } }
+```
+
+…or `export OPEN_BRAIN_KEY=…` in your shell.
+
+**If Open Brain tools are absent, say so immediately — do not silently
+substitute a file.** On 2026-07-27 a "capture this to OB" request quietly
+became an `ENHANCEMENTS.md` entry; the user only learned OB was unreachable
+because it was mentioned in passing. A silent fallback is worse than a refusal:
+the thought does not land where they expect it and they find out much later.
+
+**Diagnosing a connection failure** — probe the endpoint before blaming the
+client:
+
+```bash
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  "https://nscgwcepxnalchobgqhx.supabase.co/functions/v1/open-brain-mcp?key=$OPEN_BRAIN_KEY"
+```
+
+`401 {"error":"Invalid or missing access key"}` means the **key is stale** — the
+Edge Function is healthy and doing its own key check. Verified 2026-07-27 that
+the same 401 comes back for the key in the query string, `Authorization:
+Bearer`, `x-api-key`, `apikey`, and no key at all — so a 401 is never a
+placement problem, only a bad key. Fix by matching the function's secret in the
+Supabase dashboard (project `nscgwcepxnalchobgqhx` → Edge Functions →
+`open-brain-mcp`) and updating `OPEN_BRAIN_KEY`.
+
 ## Verifying deploys — do not trust status codes
 
 `apps/api/src/routes/mnemonics.ts` has parametric `GET/POST /:kanjiId`, which

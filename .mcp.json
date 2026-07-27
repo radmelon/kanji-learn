@@ -1,0 +1,26 @@
+{
+  "$comment": [
+    "Project-scoped MCP servers. Loads automatically for any session started in",
+    "this repo — no per-surface toggling, no claude.ai connector settings, no",
+    "remembering. This is the structural fix for 'Open Brain wasn't connected'.",
+    "",
+    "The access key is NEVER stored here. ${OPEN_BRAIN_KEY} is expanded from the",
+    "environment at load time. Set it in .claude/settings.local.json (gitignored)",
+    "or export it in your shell — see CLAUDE.md § Open Brain.",
+    "",
+    "If Claude reports this server failing to connect, probe it directly before",
+    "assuming it is a client problem:",
+    "  curl -s -o /dev/null -w '%{http_code}\\n' \"$URL?key=$KEY\"",
+    "A 401 {\"error\":\"Invalid or missing access key\"} means the key is stale —",
+    "the function is healthy and doing its own key check (verified 2026-07-27).",
+    "",
+    "If 'http' fails to negotiate, try \"type\": \"sse\" — the endpoint is a Supabase",
+    "Edge Function and the transport it advertises may change."
+  ],
+  "mcpServers": {
+    "open-brain": {
+      "type": "http",
+      "url": "https://nscgwcepxnalchobgqhx.supabase.co/functions/v1/open-brain-mcp?key=${OPEN_BRAIN_KEY}"
+    }
+  }
+}

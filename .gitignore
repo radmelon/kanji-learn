@@ -7,6 +7,9 @@ node_modules/
 
 # ── Claude Code worktrees (isolated scratch checkouts) ────────────────────────
 .claude/worktrees/
+# Holds the OPEN_BRAIN_KEY env block — never commit.
+# (Also covered by the machine-global gitignore, but that does not travel.)
+.claude/settings.local.json
 
 # ── Build outputs ─────────────────────────────────────────────────────────────
 dist/
