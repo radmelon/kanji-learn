@@ -300,31 +300,34 @@ export class SrsService {
       ...burnedChecks.map(mapBurned),
     ]
 
-    // Attach recall-quiz due stamps (parent spec §8). Done as one follow-up
-    // read over the assembled queue rather than a join in each of the four
-    // source queries above — same result, one extra round-trip, and none of
-    // those projections need to change.
+    // Attach co-created hook data (parent spec §8, design spec §8.1–8.2). Done
+    // as one follow-up read over the assembled queue rather than a join in each
+    // of the four source queries above — same result, one extra round-trip, and
+    // none of those projections need to change.
     //
-    // The client needs this to decide whether a hooked kanji owes its
-    // story→kanji first-test; without it `isRecallQuizDue` has nothing to
-    // read and next-session insertion cannot work at all.
-    await this.attachQuizDueStamps(userId, queue)
+    // The client needs the due stamp to decide whether a hooked kanji owes its
+    // story→kanji first-test; without it `isRecallQuizDue` has nothing to read
+    // and next-session insertion cannot work at all. It needs the story itself
+    // for the flashcard answer side and the hint button.
+    await this.attachHookData(userId, queue)
 
     return queue
   }
 
   /**
-   * Populate `mnemonicQuizDueAt` on queue items that have a co-created hook
-   * awaiting its recall quiz. Mutates in place; silent on failure, because a
-   * missing quiz stamp must never cost the learner their whole session queue.
+   * Populate `mnemonicQuizDueAt` and `mnemonicStoryText` on queue items that
+   * have a co-created hook. Mutates in place; silent on failure, because
+   * missing hook data must never cost the learner their whole session queue —
+   * a card without its story is still a perfectly good card.
    */
-  private async attachQuizDueStamps(userId: string, queue: ReviewQueueItem[]): Promise<void> {
+  private async attachHookData(userId: string, queue: ReviewQueueItem[]): Promise<void> {
     if (queue.length === 0) return
     try {
       const kanjiIds = [...new Set(queue.map((q) => q.kanjiId))]
       const rows = await this.db
         .select({
           kanjiId: mnemonics.kanjiId,
+          storyText: mnemonics.storyText,
           dueAt: sql<string | null>`${mnemonics.cocreationContext}->>'mnemonicQuizDueAt'`,
         })
         .from(mnemonics)
@@ -335,13 +338,15 @@ export class SrsService {
             inArray(mnemonics.kanjiId, kanjiIds),
           ),
         )
+      if (rows.length === 0) return
 
-      const byKanji = new Map<number, string>()
-      for (const r of rows) if (r.dueAt) byKanji.set(r.kanjiId, r.dueAt)
-      if (byKanji.size === 0) return
+      const byKanji = new Map<number, { storyText: string; dueAt: string | null }>()
+      for (const r of rows) byKanji.set(r.kanjiId, { storyText: r.storyText, dueAt: r.dueAt })
       for (const item of queue) {
-        const due = byKanji.get(item.kanjiId)
-        if (due) item.mnemonicQuizDueAt = due
+        const hook = byKanji.get(item.kanjiId)
+        if (!hook) continue
+        item.mnemonicStoryText = hook.storyText
+        if (hook.dueAt) item.mnemonicQuizDueAt = hook.dueAt
       }
     } catch {
       // Best-effort enrichment only.

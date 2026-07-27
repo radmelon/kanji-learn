@@ -374,6 +374,21 @@ export function KanjiCard({ item, onReveal, isRevealed, showRomaji, onToggleRoma
             </View>
           )}
 
+          {/* The learner's own hook (design spec §8.1). Answer side only —
+              parent spec §9 protects retrieval, so nothing about the hook may
+              appear on the prompt face. Kanji without one show nothing: the
+              stock mnemonics that used to fill this space were deleted, and a
+              generic story here would undo the point of building your own. */}
+          {item.mnemonicStoryText && (
+            <View style={styles.hookBlock}>
+              <View style={styles.hookHeader}>
+                <Ionicons name="link" size={12} color={colors.primary} />
+                <Text style={styles.hookLabel}>Your hook</Text>
+              </View>
+              <Text style={styles.hookStory}>{item.mnemonicStoryText}</Text>
+            </View>
+          )}
+
         </ScrollView>
       )}
 
@@ -762,6 +777,27 @@ const styles = StyleSheet.create({
   },
   sentenceJa: { fontSize: 15, color: colors.textPrimary, lineHeight: 22 },
   sentenceEn: { ...typography.caption, color: colors.textMuted, lineHeight: 16 },
+
+  // The learner's co-created hook (answer side only)
+  hookBlock: {
+    width: '100%',
+    gap: spacing.xs,
+    backgroundColor: colors.primary + '11',
+    borderRadius: radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary + '66',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  hookHeader: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  hookLabel: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  hookStory: { ...typography.bodySmall, color: colors.textPrimary, lineHeight: 20 },
 
   // Vocab examples
   vocab: { gap: 6, width: '100%' },

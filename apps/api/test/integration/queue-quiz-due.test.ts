@@ -118,3 +118,59 @@ describe('review queue carries mnemonicQuizDueAt', () => {
     await expect(srs().getReviewQueue(USER, 0)).resolves.toBeDefined()
   })
 })
+
+// The flashcard answer side (design spec §8.1) and the hint button (§8.2) both
+// need the story itself. It rides the same read as the due stamp — a fetch per
+// card would put the network on the critical path of every single reveal.
+describe('review queue carries mnemonicStoryText', () => {
+  it('attaches the hook story to a hooked kanji', async () => {
+    const [k] = await db.select({ id: kanji.id }).from(kanji).limit(1)
+    await seedDueCard(k.id)
+    await db.insert(mnemonics).values({
+      kanjiId: k.id, userId: USER, type: 'user', generationMethod: 'cocreated',
+      storyText: 'the yellow vending machine hums', cocreationContext: ctx(DUE),
+    })
+
+    const queue = await srs().getReviewQueue(USER, 20)
+    expect(queue.find((q) => q.kanjiId === k.id)?.mnemonicStoryText)
+      .toBe('the yellow vending machine hums')
+  })
+
+  it('attaches the story even after the quiz stamp is cleared', async () => {
+    // The stamp is spent after the first correct recall; the story is not.
+    // Conflating the two would blank the answer side the moment a hook passed
+    // its quiz — precisely when it has proven worth showing.
+    const [k] = await db.select({ id: kanji.id }).from(kanji).limit(1)
+    await seedDueCard(k.id)
+    await db.insert(mnemonics).values({
+      kanjiId: k.id, userId: USER, type: 'user', generationMethod: 'cocreated',
+      storyText: 'still here', cocreationContext: ctx(),
+    })
+
+    const queue = await srs().getReviewQueue(USER, 20)
+    const item = queue.find((q) => q.kanjiId === k.id)
+    expect(item?.mnemonicQuizDueAt).toBeUndefined()
+    expect(item?.mnemonicStoryText).toBe('still here')
+  })
+
+  it('never attaches a non-cocreated story', async () => {
+    // Stock mnemonics were deleted in the Phase 5 cleanup; if one lingers it
+    // must not reappear on the flashcard as "your hook".
+    const [k] = await db.select({ id: kanji.id }).from(kanji).limit(1)
+    await seedDueCard(k.id)
+    await db.insert(mnemonics).values({
+      kanjiId: k.id, userId: USER, type: 'user', generationMethod: 'system',
+      storyText: 'old style', cocreationContext: ctx(),
+    })
+
+    const queue = await srs().getReviewQueue(USER, 20)
+    expect(queue.find((q) => q.kanjiId === k.id)?.mnemonicStoryText).toBeUndefined()
+  })
+
+  it('leaves hookless kanji without a story', async () => {
+    const [k] = await db.select({ id: kanji.id }).from(kanji).limit(1)
+    await seedDueCard(k.id)
+    const queue = await srs().getReviewQueue(USER, 20)
+    expect(queue.find((q) => q.kanjiId === k.id)?.mnemonicStoryText).toBeUndefined()
+  })
+})

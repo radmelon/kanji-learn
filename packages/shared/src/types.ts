@@ -96,6 +96,11 @@ export interface ReviewQueueItem extends ReviewItem {
    *  cleared server-side by a correct answer — see MnemonicService.recordOutcome.
    *  Absent means no hook, or the hook has already passed its first test. */
   mnemonicQuizDueAt?: string
+  /** The co-created hook's story, when this kanji has one. Carried on the queue
+   *  rather than fetched per card: the flashcard answer side (design spec §8.1)
+   *  and the hint button (§8.2) both need it, and a fetch per reveal would put
+   *  the network on the critical path of every single card. */
+  mnemonicStoryText?: string
 }
 
 // ─── Voice prompt (reading-queue items) ───────────────────────────────────────
