@@ -33,6 +33,7 @@ interface UserProfile {
   dailyGoal: number
   notificationsEnabled: boolean
   attachLocationToMilestones: boolean
+  attachLocationToHooks: boolean
   timezone: string
   reminderHour: number
   restDay: number | null  // 0=Sun … 6=Sat, null=no rest day
@@ -59,6 +60,7 @@ export default function ProfileScreen() {
   const [dailyGoal, setDailyGoal] = useState(15)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [attachLocationToMilestones, setAttachLocationToMilestones] = useState(false)
+  const [attachLocationToHooks, setAttachLocationToHooks] = useState(false)
   const [reminderHour, setReminderHour] = useState(20)
   const [restDay, setRestDay] = useState<number | null>(null)
 
@@ -143,6 +145,7 @@ export default function ProfileScreen() {
     setDailyGoal(data.dailyGoal)
     setNotificationsEnabled(data.notificationsEnabled)
     setAttachLocationToMilestones(data.attachLocationToMilestones ?? false)
+    setAttachLocationToHooks(data.attachLocationToHooks ?? false)
     setReminderHour(data.reminderHour ?? 20)
     setRestDay(data.restDay ?? null)
   }, [])
@@ -197,6 +200,7 @@ export default function ProfileScreen() {
     dailyGoal: number
     notificationsEnabled: boolean
     attachLocationToMilestones: boolean
+    attachLocationToHooks: boolean
     reminderHour: number
     restDay: number | null
   }>) => {
@@ -247,6 +251,15 @@ export default function ProfileScreen() {
     }
     setAttachLocationToMilestones(value)
     save({ attachLocationToMilestones: value })
+  }, [save])
+
+  // No OS permission prompt here. Turning the switch ON only grants *consent*;
+  // the actual permission is requested in-flow at the moment a hook is being
+  // built, where the ask is explainable. Prompting from a settings screen asks
+  // for GPS with no context and gets denied.
+  const handleAttachLocationToHooksToggle = useCallback((value: boolean) => {
+    setAttachLocationToHooks(value)
+    save({ attachLocationToHooks: value })
   }, [save])
 
   const handleReminderHour = useCallback((hour: number) => {
@@ -510,6 +523,30 @@ export default function ProfileScreen() {
             <Switch
               value={attachLocationToMilestones}
               onValueChange={handleAttachLocationToggle}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          {/* Deliberately a SEPARATE consent from the milestones switch above
+              (parent spec §11). They sound alike, so the sub-labels have to do
+              the work: one is about where you earned a badge, this one about
+              where you built a hook. Before this, granting the first silently
+              opted you into the second. Defaults OFF. */}
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Ionicons name="pin-outline" size={20} color={colors.textSecondary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowLabel}>Remember where you built a hook</Text>
+                <Text style={styles.rowSub}>
+                  When on, a hook stores the spot you made it — “built at Beppu Station”.
+                  Off, Buddy just asks you to type where you are.
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={attachLocationToHooks}
+              onValueChange={handleAttachLocationToHooksToggle}
               trackColor={{ false: colors.border, true: colors.primary }}
               thumbColor="#fff"
             />

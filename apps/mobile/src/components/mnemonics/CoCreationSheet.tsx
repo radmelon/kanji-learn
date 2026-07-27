@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, StyleSheet, Modal, Pressable, TouchableOpacity,
   ScrollView, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
@@ -7,7 +7,8 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Speech from 'expo-speech'
 import { lookupComponents } from '@kanji-learn/shared'
-import { useCoCreation } from '../../mnemonics/useCoCreation'
+import { useCoCreation, defaultCoCreationDeps } from '../../mnemonics/useCoCreation'
+import { useProfile } from '../../hooks/useProfile'
 import { getBestVoice } from '../../utils/tts'
 import type { KanjiForHook } from '../../mnemonics/buildSlots'
 import { fetchRelatedKanji, recordOutcome, snoozeBuddyMoment } from '../../mnemonics/cocreationApi'
@@ -43,12 +44,23 @@ function teachingBeat(kanji: KanjiForHook): string {
 }
 
 export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
-  const { state, accept, setLocationText, submitAnchor, commit } = useCoCreation(kanji, kanji.id)
+  const { profile, update: updateProfile } = useProfile()
+  // The privacy switch governs absolutely (design spec §9). Passed as a dep so
+  // the hook can skip GPS without the sheet knowing how location works.
+  const coCreationDeps = useMemo(
+    () => ({ ...defaultCoCreationDeps, attachLocationToHooks: profile?.attachLocationToHooks ?? false }),
+    [profile?.attachLocationToHooks],
+  )
+  const { state, accept, setLocationText, confirmLocation, submitAnchor, commit } =
+    useCoCreation(kanji, kanji.id, coCreationDeps)
   // The sheet is pinned to the physical screen bottom (Modal ignores SafeAreaView),
   // so the home-indicator zone eats into the footer without this.
   const insets = useSafeAreaInsets()
 
   const [locationInput, setLocationInput] = useState('')
+  /** "Somewhere else" — the inferred place was wrong, so show the text input
+   *  even though state.locationName is populated. */
+  const [rejectedInferred, setRejectedInferred] = useState(false)
   const [anchorInput, setAnchorInput] = useState('')
   const [stickier, setStickier] = useState(false)
   const [personalDetailInput, setPersonalDetailInput] = useState('')
@@ -73,12 +85,10 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
     submitAnchor(state.anchor, { personalDetail: trimmedDetail, readingPlay: trimmedPlay })
   }
 
-  // Auto-advance out of location_inference once a name is inferred (e.g. from GPS).
-  useEffect(() => {
-    if (state.stage === 'location_inference' && state.locationName) {
-      setLocationText(state.locationName)
-    }
-  }, [state.stage, state.locationName, setLocationText])
+  // The auto-advance that used to live here is gone. It fired the moment a
+  // place name arrived, so "Looks like you're near X" — the whole point of the
+  // grant path — was never on screen long enough to be seen. The learner now
+  // confirms it, which is also how they say "somewhere else".
 
   // "Inferring location" feedback: accept() kicks off GPS + permission dialog +
   // reverse geocode, which can take seconds. Without this, the manual location
@@ -118,7 +128,28 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
     onClose()
   }
 
-  const handleAccept = async () => {
+  // Only ask when we actually know the answer is missing. `profile` is null
+  // while loading, and asking on a maybe would re-ask people who already said
+  // no — the one thing a "we'll only ask once" promise cannot do.
+  const [askAnswered, setAskAnswered] = useState(false)
+  const needsLocationAsk =
+    !askAnswered && profile != null && profile.hookLocationAskSeenAt == null
+
+  const answerLocationAsk = async (allow: boolean) => {
+    // Optimistic: the flow continues immediately either way. A failed PATCH
+    // means the ask returns next time, which is the safe direction to fail —
+    // far better than silently treating an unrecorded answer as consent.
+    setAskAnswered(true)
+    updateProfile({
+      attachLocationToHooks: allow,
+      hookLocationAskSeenAt: new Date().toISOString(),
+    } as never)
+    // Pass the answer explicitly — the PATCH above has not landed yet, so the
+    // profile still says whatever it said before they answered.
+    await handleAccept(allow)
+  }
+
+  const handleAccept = async (allowLocation?: boolean) => {
     // Accepting clears any earlier decline — the learner changed their mind,
     // and a stale cooldown would suppress the reinforce offers this hook is
     // about to start earning.
@@ -127,7 +158,7 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
     if (inferringTimeoutRef.current) clearTimeout(inferringTimeoutRef.current)
     inferringTimeoutRef.current = setTimeout(() => setInferring(false), 4000)
     try {
-      await accept()
+      await accept(allowLocation)
     } finally {
       // accept() has settled either way (place found or getPlace() returned
       // null) — the location_inference effect above already flips `inferring`
@@ -270,21 +301,69 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
                 {beat !== '' && (
                   <Text style={styles.teachingBeat}>{beat}</Text>
                 )}
-                <View style={styles.actionRow}>
-                  <TouchableOpacity style={styles.primaryBtn} onPress={handleAccept}>
-                    <Text style={styles.primaryBtnText}>Let's do it</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.secondaryBtn} onPress={handleNotNow}>
-                    <Text style={styles.secondaryBtnText}>Not now</Text>
-                  </TouchableOpacity>
-                </View>
+                {/* The one-time location ask (design spec §9). Asked HERE, in
+                    flow, rather than buried in Profile — this is the only
+                    moment where "should this hook remember where you are?" is
+                    a question with visible stakes. Answered once, either way,
+                    and never asked again; the stamp is server-side so a
+                    reinstall does not re-ask. */}
+                {needsLocationAsk ? (
+                  <View style={styles.stageBox}>
+                    <Text style={styles.subPrompt}>
+                      One thing first — hooks stick better when they’re tied to a
+                      real place. Want Buddy to remember where you build them?
+                    </Text>
+                    <Text style={styles.teachingBeat}>
+                      Just the place name and rough coordinates, stored with the hook.
+                      You can change this any time in Profile → Privacy.
+                    </Text>
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity
+                        style={styles.primaryBtn}
+                        onPress={() => answerLocationAsk(true)}
+                      >
+                        <Text style={styles.primaryBtnText}>Yes, remember it</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.secondaryBtn}
+                        onPress={() => answerLocationAsk(false)}
+                      >
+                        <Text style={styles.secondaryBtnText}>No thanks</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.actionRow}>
+                    {/* Wrapped, not passed directly: onPress hands the gesture
+                        event to the first argument, and a truthy event would
+                        read as "location allowed" on every tap. */}
+                    <TouchableOpacity style={styles.primaryBtn} onPress={() => handleAccept()}>
+                      <Text style={styles.primaryBtnText}>Let's do it</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.secondaryBtn} onPress={handleNotNow}>
+                      <Text style={styles.secondaryBtnText}>Not now</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             )}
 
             {state.stage === 'location_inference' && (
               <View style={styles.stageBox}>
-                {state.locationName ? (
-                  <Text style={styles.prompt}>Looks like you're near {state.locationName}.</Text>
+                {state.locationName && !rejectedInferred ? (
+                  <>
+                    <Text style={styles.prompt}>Looks like you're near {state.locationName}.</Text>
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity style={styles.primaryBtn} onPress={confirmLocation}>
+                        <Text style={styles.primaryBtnText}>That's right</Text>
+                      </TouchableOpacity>
+                      {/* Falls through to the typed input below; LOCATION_TEXT
+                          then discards the coordinates they just rejected. */}
+                      <TouchableOpacity style={styles.secondaryBtn} onPress={() => setRejectedInferred(true)}>
+                        <Text style={styles.secondaryBtnText}>Somewhere else</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
                 ) : inferring ? (
                   <View style={styles.inferringRow}>
                     <ActivityIndicator color={colors.primary} />

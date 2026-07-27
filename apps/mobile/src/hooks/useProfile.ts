@@ -20,6 +20,9 @@ export type UserProfile = {
   /** Whether co-created hooks may store GPS coordinates. Defaults FALSE —
    *  hooks must not inherit consent from the milestones location toggle. */
   attachLocationToHooks: boolean
+  /** ISO, or null when the one-time in-flow location ask has never been
+   *  answered. Server-side so a reinstall does not re-ask. */
+  hookLocationAskSeenAt: string | null
   createdAt: string
   updatedAt: string
 }

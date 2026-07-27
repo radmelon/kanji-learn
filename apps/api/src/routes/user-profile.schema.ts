@@ -14,4 +14,7 @@ export const updateProfileSchema = z.object({
   // §11) — consenting to location on badges is not consent on hooks.
   attachLocationToHooks: z.boolean().optional(),
   mnemonicCoachingEnabled: z.boolean().optional(),
+  // Stamped when the one-time in-flow location ask has been answered. Lives
+  // server-side so a reinstall does not re-ask (design spec §9).
+  hookLocationAskSeenAt: z.coerce.date().optional(),
 })
