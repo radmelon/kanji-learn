@@ -1,5 +1,12 @@
 # Session Handoff — 2026-07-27 (Phase 5 deadlock broken; Plan 4 through Task 11-API; `main` shippable and PUSHED)
 
+> **Canonical URL — hand this to a new session:**
+> https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
+>
+> *(This line is deliberately part of the artifact. A handoff that cannot state
+> its own address makes every reader reassemble it from a bare path. Carry it
+> forward into each new handoff section.)*
+
 ## START HERE — next session
 
 **State:** `main` is shippable and **pushed** — `origin/main` == `main` at `08fa8a8`. Production API is deployed and current. Live DB is clean (`mnemonics` = 0). Working tree clean except untracked `.codex/`.
