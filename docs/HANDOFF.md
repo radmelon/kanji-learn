@@ -1,4 +1,69 @@
-# Session Handoff — 2026-07-27 (Phase 5 DEADLOCK BROKEN — 0027 live, API deployed, mnemonics cleaned, 3b UI merged; `main` shippable again)
+# Session Handoff — 2026-07-27 (Phase 5 deadlock broken; Plan 4 through Task 11-API; `main` shippable, 33 commits unpushed)
+
+## START HERE — next session
+
+**State:** `main` is shippable. Production API is deployed and current. Live DB is clean (`mnemonics` = 0). **`main` is 33 commits ahead of `origin` and unpushed.** Working tree clean except untracked `.codex/`.
+
+**Resume at Plan 4 Task 11 (mobile half)** — `RecallQuizCard`, the immediate quick-check after `commitment`, and the `review.store` queue insertion. Plan: [`2026-07-26-phase-5-plan-4.md`](superpowers/plans/2026-07-26-phase-5-plan-4.md).
+
+**Before running the API suite:** rebuild the test DB per [`local-test-db.md`](local-test-db.md). A stale one inflates failures by ~5 and will send you chasing ghosts.
+
+**Verification strategy is decided and written into the plan:** no dev client. Tasks 4–18 are verified by tests + typecheck; all device testing batches into **one TestFlight cut at Task 19**. Do not re-litigate this — see "Lessons" below for what it cost to learn.
+
+### Plan 4 progress
+
+| Task | What | State |
+|---|---|---|
+| 1 | Deprecated no-op stubs | ✅ deployed |
+| 2 | Migration 0027 | ✅ applied live |
+| 3 | Rollout (migrate→deploy→clean→merge) | ✅ done + verified |
+| 6 | Reinforce: reducer, hook, `ReinforceSheet` | ✅ |
+| 7 | Deepen: `buildDeepenedContext`, `useDeepen` | ✅ |
+| 8 | Reinforce wired into Session Complete | ✅ |
+| 9, 10 | Quiz item builder + scheduling | ✅ |
+| 11 | Recall quiz — **API half done**, mobile half TODO | 🚧 **resume here** |
+| 4, 5, **5a** | Push fixes (server) + **their own deploy** | ⬜ |
+| 12–18 | Surfacing, hint, consent, client push fixes | ⬜ |
+| 19 | EAS cut + the single on-device walkthrough | ⬜ |
+
+**Suites:** shared 108 ✅ · mobile 84 ✅ · API 300/303 (3 known pre-existing: RLS `FORCE`, user-delete cascade, one cross-test interference that passes in isolation) · all typechecks clean.
+
+**Task 5a is load-bearing.** Tasks 4–5 are authored *after* Task 3's deploy, so they need their own. Without it the push fix never reaches production.
+
+---
+
+## Lessons from this session (read before repeating them)
+
+**1. "401 not 404" is not a deploy gate — it cost a false "verified".**
+`mnemonics.ts` has parametric `GET/POST /:kanjiId`, which swallow `/refresh`, `/assemble` and `/buddy-moment-context` on *any* build. I reported the Task 3 rollout verified on that signal while App Runner was still serving a **May 30th image** — Plan 2 had never deployed at all. Verify with an App Runner operation **dated today** plus **response content** (the `components` key is the Phase 5 canary). Now in [`SOP.md`](SOP.md).
+
+**2. `deploy-api.sh` fails quietly.** It opens with `docker build`, which dies if the Docker daemon is down, and ECR login dies on a stale keychain entry (`-25299`; neither `DOCKER_CONFIG=` nor `docker --config` avoids it — delete the keychain item). Read the output to the end.
+
+**3. The jsonb double-encoding bug came back.** `backfill-components.ts` called `JSON.stringify()` itself and cast with `as unknown as string[]`, defeating the global `mapToDriverValue` pass-through from Phase 1'. All 2,294 `kanji.components` rows were jsonb **strings**, so the API returned `components: null` and co-creation was broken in production from 2026-07-05. Repaired by migration 0028; script fixed.
+**The 2026-07-05 check missed it because it asked whether the value *contained* 扌 and 寺 — which a double-encoded string does.** Check `jsonb_typeof`, never appearance.
+
+**4. Plans confidently reference infrastructure that does not exist.** The Plan 4 tasks assumed `renderHook` (there is **no** `@testing-library/react-native`; jest runs in a node env) and `test/helpers/auth.ts` (only `test-app.ts` exists; auth is a bare `x-test-user-id` header). **Check what exists before trusting a plan's test scaffolding.** The repo's real mobile pattern is a pure reducer beside a thin hook — mirror `useCoCreation.reducer`.
+
+**5. The adversarial plan review paid for itself many times over.** A 3-model Ringer swarm found **10 confirmed defects** in a plan I had already self-reviewed — including a **production-outage-grade ordering bug** (deploy-before-migrate) and the fact that the push fixes, as sequenced, **would never have deployed**. Both were mine. Run it on any plan of this size. GLM 5.2 produced 6 findings for 83k tokens; Codex 3 for 305k.
+
+**6. Device testing is a trap mid-plan.** Standing up a dev client burned an hour for zero verification: the picker offered only simulators (physical devices were all offline), `xcodebuild` hit error 65 (no Apple ID in Xcode), and `eas build` tried to **disable Apple sign-in on the production bundle** (use `EXPO_NO_CAPABILITY_SYNC=1`). Only Apple's refusal prevented it. Batch to TestFlight.
+
+**7. A stale test DB inflates failures.** Same commit read 7 failures dirty, 3 clean. Rebuild before judging, and before blaming a merge.
+
+**8. Verify agent and tool claims against the source.** A failing `/assemble` looked like a real bug; it was my own probe sending `meaning` instead of `kanjiMeaning`. And a "stale EAS snapshot" concern evaporated once I checked the commit actually contained the merge.
+
+---
+
+## Reference
+
+- **Live DB:** use `./scripts/with-live-db.sh <cmd>` — loads `DATABASE_URL` into the child process only, never printed or in shell history. `DATABASE_URL` is a **postgres connection string** (not the project URL), on the Supabase **pooler at port 5432 = session mode**, which `pg_dump` supports (6543 would break it).
+- **Prod API:** `https://73x3fcaaze.us-east-1.awsapprunner.com` · App Runner ARN `arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654`
+- **Still outstanding:** rotate the Supabase DB password (open since 2026-06-03; it was once printed to a transcript) and move App Runner secrets to SSM. Both in ROADMAP pre-launch.
+- **Two open questions left deliberately unfixed:** migration 0018 contains **zero** `FORCE` statements yet `rls-coverage.test.ts` demands ENABLE *and* FORCE — either live has drift or that test has never passed against a migration-built DB. And there are **two parallel migration histories** (`supabase/migrations` 26 files, `drizzle/` 14) where four tables exist only in the drizzle set; they should probably collapse to one.
+- **Shipped builds still create old-style mnemonics.** B143's nudge sheet can still hit the old generate path, so the clean slate will repopulate until Task 12 retires that UI (spec §10.2).
+- **Roadmap naming:** `ROADMAP.md` groups are now **Waves** 0–6. Unqualified "Phase N" always means a Buddy product phase.
+
+---
 
 ## TL;DR (2026-07-27)
 
