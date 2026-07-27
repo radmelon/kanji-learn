@@ -6,7 +6,7 @@
 //   speakingGroupRef guard sequential-speech callbacks so they do not fire after
 //   the user navigates away and the screen unmounts.
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Linking,
@@ -25,6 +25,9 @@ import { getBestVoice } from '../../src/utils/tts'
 import { useShowPitchAccent } from '../../src/hooks/useShowPitchAccent'
 import { PitchAccentReading } from '../../src/components/kanji/PitchAccentReading'
 import { CoCreationSheet } from '../../src/components/mnemonics/CoCreationSheet'
+import { DeepenSheet } from '../../src/components/mnemonics/DeepenSheet'
+import { MnemonicCard } from '../../src/components/mnemonics/MnemonicCard'
+import { buildSlots } from '../../src/mnemonics/buildSlots'
 
 const SPEECH_OPTS: Speech.SpeechOptions = { language: 'ja-JP', rate: 0.9 }
 
@@ -145,17 +148,31 @@ export default function KanjiDetail() {
   const {
     mnemonics,
     isLoading: mnemonicLoading,
-    isGenerating,
     load: loadMnemonics,
-    generate: generateMnemonic,
   } = useMnemonics(kanjiId)
   const [showBuildHook, setShowBuildHook] = useState(false)
-  const hasCoCreatedHook = mnemonics.some((m) => m.generationMethod === 'cocreated')
+  const [showDeepen, setShowDeepen] = useState(false)
   // A co-created hook supersedes the old system/haiku mnemonics (spec §9), but
   // getForKanji returns rows unordered so the March-era system row can sit at
   // [0] — always surface the hook when one exists.
-  const displayedMnemonic =
-    mnemonics.find((m) => m.generationMethod === 'cocreated') ?? mnemonics[0]
+  const coCreatedHook = mnemonics.find((m) => m.generationMethod === 'cocreated')
+  const hasCoCreatedHook = coCreatedHook !== undefined
+  const displayedMnemonic = coCreatedHook ?? mnemonics[0]
+  // Deepening rewrites the context, so it needs one to start from. A hook
+  // without stored context can still be read — it just cannot grow.
+  const deepenContext = coCreatedHook?.cocreationContext ?? null
+  // The anchor is replaced per-answer inside useDeepen; everything else in the
+  // slots is fixed by the kanji and where the hook was born.
+  const deepenSlots = useMemo(
+    () =>
+      kanji && deepenContext
+        ? buildSlots(kanji, {
+            anchor: '',
+            locationName: deepenContext.locationName ?? 'where you are',
+          })
+        : null,
+    [kanji, deepenContext],
+  )
 
   useEffect(() => {
     if (Number.isFinite(kanjiId)) loadMnemonics()
@@ -391,50 +408,36 @@ export default function KanjiDetail() {
             {mnemonicLoading && mnemonics.length === 0 ? (
               <ActivityIndicator color={colors.primary} />
             ) : mnemonics.length > 0 ? (
-              <>
-                <Text style={styles.mnemonicText}>{displayedMnemonic.storyText}</Text>
-                {/* Regenerate only applies to the old haiku/system mnemonics —
-                    a co-created hook is reinforced/deepened (Plan 4), not
-                    regenerated, and a fresh haiku would not displace it. */}
-                {!hasCoCreatedHook && (
-                  <TouchableOpacity
-                    style={styles.mnemonicSecondaryButton}
-                    onPress={() => generateMnemonic('haiku')}
-                    disabled={isGenerating}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="refresh" size={16} color={colors.primary} />
-                    <Text style={styles.mnemonicSecondaryButtonText}>
-                      {isGenerating ? 'Regenerating…' : 'Regenerate'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </>
+              <MnemonicCard mnemonic={displayedMnemonic} />
+            ) : (
+              <Text style={styles.mnemonicEmpty}>
+                No hook yet. Build one and this kanji gets a story only you could
+                have written.
+              </Text>
+            )}
+
+            {/* One entry, two states (design spec §8.1). A hooked kanji is
+                deepened — never regenerated — so "Go deeper" replaces both the
+                old Regenerate button and the 3b stopgap that simply hid it. */}
+            {hasCoCreatedHook ? (
+              deepenContext && (
+                <TouchableOpacity
+                  style={styles.mnemonicSecondaryButton}
+                  onPress={() => setShowDeepen(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="git-branch-outline" size={16} color={colors.primary} />
+                  <Text style={styles.mnemonicSecondaryButtonText}>Go deeper</Text>
+                </TouchableOpacity>
+              )
             ) : (
               <TouchableOpacity
                 style={styles.mnemonicPrimaryButton}
-                onPress={() => generateMnemonic('haiku')}
-                disabled={isGenerating}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="sparkles" size={16} color="#fff" />
-                <Text style={styles.mnemonicPrimaryButtonText}>
-                  {isGenerating ? 'Generating…' : 'Generate mnemonic'}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Manual co-creation entry (spec §9.1): cold-start safety net when
-                the kanji has no co-created hook yet. Full MnemonicCard refactor
-                + "Go deeper" entry is Plan 4 — this is only the create entry. */}
-            {!hasCoCreatedHook && (
-              <TouchableOpacity
-                style={styles.mnemonicSecondaryButton}
                 onPress={() => setShowBuildHook(true)}
                 activeOpacity={0.7}
               >
-                <Ionicons name="hammer-outline" size={16} color={colors.primary} />
-                <Text style={styles.mnemonicSecondaryButtonText}>Build a hook</Text>
+                <Ionicons name="hammer-outline" size={16} color="#fff" />
+                <Text style={styles.mnemonicPrimaryButtonText}>Build a hook</Text>
               </TouchableOpacity>
             )}
           </Card>
@@ -635,6 +638,21 @@ export default function KanjiDetail() {
             setShowBuildHook(false)
             loadMnemonics()
           }}
+        />
+      )}
+
+      {/* "Go deeper" (spec §6.3). Conditionally MOUNTED for the same reason as
+          CoCreationSheet above — a fresh useDeepen per open, so a thread chosen
+          last time doesn't preselect itself. */}
+      {showDeepen && kanji && coCreatedHook && deepenContext && deepenSlots && (
+        <DeepenSheet
+          visible
+          mnemonicId={coCreatedHook.id}
+          kanjiCharacter={kanji.character}
+          context={deepenContext}
+          slots={deepenSlots}
+          onClose={() => setShowDeepen(false)}
+          onDeepened={loadMnemonics}
         />
       )}
     </SafeAreaView>
@@ -851,6 +869,12 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     lineHeight: 22,
+    marginBottom: spacing.sm,
+  },
+  mnemonicEmpty: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    lineHeight: 20,
     marginBottom: spacing.sm,
   },
   mnemonicPrimaryButton: {

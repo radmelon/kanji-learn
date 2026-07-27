@@ -42,7 +42,6 @@ import { KanjiCard } from '../../src/components/study/KanjiCard'
 import { CompoundCard } from '../../src/components/study/CompoundCard'
 import { GradeButtons } from '../../src/components/study/GradeButtons'
 import { SessionComplete } from '../../src/components/study/SessionComplete'
-import { MnemonicNudgeSheet } from '../../src/components/study/MnemonicNudgeSheet'
 import { CoCreationSheet } from '../../src/components/mnemonics/CoCreationSheet'
 import { ReinforceSheet } from '../../src/components/mnemonics/ReinforceSheet'
 import { WritingLeg } from '../../src/components/study/WritingLeg'
@@ -76,17 +75,12 @@ function StudySession() {
   // Romaji toggle persists for the whole session — user sets it once and it sticks across cards
   const [showRomaji, setShowRomaji] = useState(false)
   const toggleRomaji = useCallback(() => setShowRomaji((v) => !v), [])
-  // Holds the grade result when we need to show the mnemonic nudge first.
-  // submitResult (which advances the card) is deferred until nudge is dismissed,
-  // so the correct kanji stays visible behind the sheet.
-  const [pendingResult, setPendingResult] = useState<ReviewResult | null>(null)
   const [sessionSummary, setSessionSummary] = useState<{
     totalItems: number; correctItems: number; confidencePct: number; newLearned: number; burned: number; studyTimeMs: number
     dailyGoal: number
     modalityCounts: ModalityCounts
   } | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [nudgeItem, setNudgeItem] = useState<{ kanjiId: number; character: string; meaning: string } | null>(null)
   // Post-session Buddy moment (spec §4.1): at most one CoCreationSheet offer
   // per session, rendered modally over Session Complete. Set from handleFinish
   // once the session summary is computed; the full kanji payload is fetched
@@ -317,18 +311,11 @@ function StudySession() {
           responseTimeMs: Date.now() - cardStartMs.current,
           reviewType: item.reviewType,
         }
-        if (quality === 1 && item.reviewType !== 'compound') {
-          // Show mnemonic nudge — defer submitResult so the card doesn't advance
-          // until the user dismisses the sheet (fixes "wrong kanji underneath" bug)
-          setPendingResult(result)
-          setNudgeItem({
-            kanjiId: item.kanjiId,
-            character: item.character,
-            meaning: ((item.meanings as string[] | null) ?? [])[0] ?? '',
-          })
-        } else {
-          submitResult(result)
-        }
+        // An Again grade used to interrupt here with "want me to generate a
+        // mnemonic?". Parent spec §10.2 retires that: a story the learner had
+        // no hand in is what Phase 5 replaces, and the co-creation offer now
+        // arrives once at Session Complete instead of mid-card (§4.1).
+        submitResult(result)
       } catch (e: any) {
         // Event handler errors bypass the React error boundary — surface them here
         // so we can identify the root cause. Remove this Alert before final release.
@@ -342,22 +329,12 @@ function StudySession() {
   // Keep the ref in sync so the PanResponder closure is never stale
   useEffect(() => { handleGradeRef.current = handleGrade }, [handleGrade])
 
-  const handleNudgeDismiss = useCallback(() => {
-    if (pendingResult) {
-      submitResult(pendingResult)
-      setPendingResult(null)
-    }
-    setNudgeItem(null)
-  }, [pendingResult, submitResult])
-
   const handleUndo = useCallback(() => {
     const ok = undoLastResult()
     if (ok) {
       setIsRevealed(false)
       isRevealedRef.current = false
       swipeX.setValue(0)
-      setPendingResult(null)
-      setNudgeItem(null)
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     }
   }, [undoLastResult])
@@ -615,8 +592,12 @@ function StudySession() {
             storyText={reinforceTarget.storyText}
             onClose={clearBuddyMoment}
             onOfferDeepen={() => {
-              // Deepen UI is Task 12's kanji-detail entry point; from here we
-              // close cleanly rather than half-open a flow that has no host yet.
+              // DeepenSheet now exists, but only kanji detail hosts it — that
+              // screen already has the kanji payload and the hook's context,
+              // which the slots need. Offering it from here would mean a second
+              // fetch mid-Session-Complete for state this screen never loads.
+              // No plan task owns that wiring; until one does, closing cleanly
+              // beats half-opening a flow whose inputs aren't here.
               clearBuddyMoment()
             }}
           />
@@ -820,15 +801,6 @@ function StudySession() {
           </View>
         )}
       </View>
-
-      {/* Mnemonic nudge sheet (Again / Hard) */}
-      <MnemonicNudgeSheet
-        visible={!!nudgeItem}
-        kanjiId={nudgeItem?.kanjiId ?? 0}
-        character={nudgeItem?.character ?? ''}
-        meaning={nudgeItem?.meaning ?? ''}
-        onDismiss={handleNudgeDismiss}
-      />
 
       {/* First-run onboarding overlay */}
       <Modal visible={showOnboarding} transparent animationType="fade" onRequestClose={dismissOnboarding}>

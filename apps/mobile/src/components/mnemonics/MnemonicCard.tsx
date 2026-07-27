@@ -11,8 +11,6 @@ interface Props {
   onUpdate?: (id: string, text: string) => Promise<void>
   onUpdatePhoto?: (id: string, imageUrl: string | null) => Promise<void>
   onDelete?: (id: string) => Promise<void>
-  onDismissRefresh?: (id: string) => Promise<void>
-  showRefreshPrompt?: boolean
 }
 
 export function MnemonicCard({
@@ -20,8 +18,6 @@ export function MnemonicCard({
   onUpdate,
   onUpdatePhoto,
   onDelete,
-  onDismissRefresh,
-  showRefreshPrompt,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(mnemonic.storyText)
@@ -73,10 +69,16 @@ export function MnemonicCard({
   }
 
   const isSystem = mnemonic.type === 'system'
-  const needsRefresh =
-    showRefreshPrompt &&
-    mnemonic.refreshPromptAt &&
-    new Date(mnemonic.refreshPromptAt) <= new Date()
+  const isHook = mnemonic.generationMethod === 'cocreated'
+  const context = mnemonic.cocreationContext ?? null
+  // Layer 0 is the original scene; anything after it was added by "Go deeper".
+  // The stack is the point — §6.3 is emphatic that a hook only accumulates, so
+  // showing just the latest story would hide the history it was built from.
+  const addedLayers = context?.layers?.slice(1) ?? []
+  // "built at Beppu Station" — where the hook was born. Falls back to the
+  // reverse-geocoded coordinate label for pre-Phase-5 rows that have coords
+  // but no context.
+  const builtAt = context?.locationName ?? locationLabel
 
   const handleSave = async () => {
     if (!editText.trim() || editText === mnemonic.storyText) {
@@ -112,24 +114,33 @@ export function MnemonicCard({
   }
 
   return (
-    <View style={[styles.card, needsRefresh && styles.refreshCard]}>
+    <View style={[styles.card, isHook && styles.hookCard]}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={[styles.typeBadge, isSystem ? styles.systemBadge : styles.userBadge]}>
+        <View style={[styles.typeBadge, isHook ? styles.hookBadge : isSystem ? styles.systemBadge : styles.userBadge]}>
           <Ionicons
-            name={isSystem ? 'sparkles' : 'person'}
+            name={isHook ? 'link' : isSystem ? 'sparkles' : 'person'}
             size={10}
-            color={isSystem ? colors.accent : colors.primary}
+            color={isHook ? colors.primary : isSystem ? colors.accent : colors.primary}
           />
-          <Text style={[styles.typeLabel, isSystem ? styles.systemLabel : styles.userLabel]}>
-            {isSystem ? 'AI' : 'Mine'}
+          <Text style={[styles.typeLabel, isHook ? styles.userLabel : isSystem ? styles.systemLabel : styles.userLabel]}>
+            {isHook ? 'Hook' : isSystem ? 'AI' : 'Mine'}
           </Text>
         </View>
 
-        {locationLabel && (
+        {/* Depth, not a count of taps — "3 layers" is the hook's history. */}
+        {context && context.layerCount > 1 && (
+          <View style={styles.depthBadge}>
+            <Text style={styles.depthText}>{context.layerCount} layers</Text>
+          </View>
+        )}
+
+        {builtAt && (
           <View style={styles.locationBadge}>
             <Ionicons name="location-outline" size={10} color={colors.textMuted} />
-            <Text style={styles.locationText}>{locationLabel}</Text>
+            <Text style={styles.locationText} numberOfLines={1}>
+              {isHook ? `built at ${builtAt}` : builtAt}
+            </Text>
           </View>
         )}
 
@@ -182,6 +193,25 @@ export function MnemonicCard({
         <Text style={styles.story}>{mnemonic.storyText}</Text>
       )}
 
+      {/* The threads added since. The assembled story above already weaves them
+          in, so these are shown as what the learner actually said — the raw
+          material, in the order they added it. */}
+      {!isEditing && addedLayers.length > 0 && (
+        <View style={styles.layerStack}>
+          {addedLayers.map((layer, i) => (
+            <View key={i} style={styles.layer}>
+              <View style={styles.layerRail} />
+              <View style={styles.layerBody}>
+                <Text style={styles.layerSource}>
+                  {layer.source === 'known_knowledge' ? 'Connected to' : 'Added detail'}
+                </Text>
+                <Text style={styles.layerAnswer}>{layer.answers.join(' · ')}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Edit controls */}
       {isEditing && (
         <View style={styles.editControls}>
@@ -201,19 +231,6 @@ export function MnemonicCard({
         </View>
       )}
 
-      {/* Refresh prompt */}
-      {needsRefresh && !isEditing && (
-        <View style={styles.refreshBanner}>
-          <Ionicons name="time-outline" size={14} color={colors.warning} />
-          <Text style={styles.refreshText}>Still working for you?</Text>
-          <TouchableOpacity
-            onPress={() => onDismissRefresh?.(mnemonic.id)}
-            style={styles.refreshBtn}
-          >
-            <Text style={styles.refreshBtnText}>Yes, keep it</Text>
-          </TouchableOpacity>
-        </View>
-      )}
     </View>
   )
 }
@@ -227,8 +244,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  refreshCard: { borderColor: colors.warning + '55' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  hookCard: { borderColor: colors.primary + '55' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.xs },
   typeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -239,11 +256,19 @@ const styles = StyleSheet.create({
   },
   systemBadge: { backgroundColor: colors.accent + '22' },
   userBadge: { backgroundColor: colors.primary + '22' },
+  hookBadge: { backgroundColor: colors.primary + '22' },
   typeLabel: { ...typography.caption, fontWeight: '700' },
   systemLabel: { color: colors.accent },
   userLabel: { color: colors.primary },
-  locationBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  locationText: { ...typography.caption, color: colors.textMuted },
+  depthBadge: {
+    backgroundColor: colors.bgSurface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+  },
+  depthText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
+  locationBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
+  locationText: { ...typography.caption, color: colors.textMuted, flexShrink: 1 },
   actions: { flexDirection: 'row', gap: spacing.xs },
   iconBtn: { padding: spacing.xs },
   story: { ...typography.body, color: colors.textPrimary, lineHeight: 24 },
@@ -269,22 +294,19 @@ const styles = StyleSheet.create({
   },
   saveText: { ...typography.bodySmall, color: '#fff', fontWeight: '600' },
   disabled: { opacity: 0.5 },
-  refreshBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.warning + '11',
-    borderRadius: radius.sm,
-    padding: spacing.sm,
+  layerStack: { gap: spacing.sm },
+  layer: { flexDirection: 'row', gap: spacing.sm },
+  // A rail rather than a bullet: the layers are one continuing thread, not a
+  // list of separate items.
+  layerRail: { width: 2, borderRadius: 1, backgroundColor: colors.primary + '44' },
+  layerBody: { flex: 1, gap: 2 },
+  layerSource: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  refreshText: { ...typography.caption, color: colors.warning, flex: 1 },
-  refreshBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    backgroundColor: colors.warning + '22',
-    borderRadius: radius.full,
-  },
-  refreshBtnText: { ...typography.caption, color: colors.warning, fontWeight: '600' },
+  layerAnswer: { ...typography.bodySmall, color: colors.textSecondary, lineHeight: 20 },
   photoContainer: { position: 'relative', borderRadius: radius.md, overflow: 'hidden' },
   photo: { width: '100%', height: 180, borderRadius: radius.md },
   removePhotoBtn: { position: 'absolute', top: spacing.xs, right: spacing.xs },

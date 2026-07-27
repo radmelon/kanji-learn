@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import * as Location from 'expo-location'
+import type { CoCreationContext } from '@kanji-learn/shared'
 import { api } from '../lib/api'
 import { storage } from '../lib/storage'
 
@@ -27,12 +28,14 @@ export interface Mnemonic {
   imageUrl: string | null
   latitude: number | null
   longitude: number | null
-  refreshPromptAt: string | null
   createdAt: string
   updatedAt: string
   // Present on API responses (mnemonic.service.ts toRecord); optional here so
-  // older cached payloads without it still satisfy the type.
+  // older cached payloads without them still satisfy the type.
   generationMethod?: 'system' | 'user' | 'cocreated'
+  /** The hook's whole history — every layer, where it was built, which tier
+   *  assembled it. Null for anything not co-created. */
+  cocreationContext?: CoCreationContext | null
 }
 
 async function getCoords(): Promise<{ latitude: number; longitude: number } | undefined> {
@@ -49,7 +52,6 @@ async function getCoords(): Promise<{ latitude: number; longitude: number } | un
 export function useMnemonics(kanjiId: number) {
   const [mnemonics, setMnemonics] = useState<Mnemonic[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -69,21 +71,11 @@ export function useMnemonics(kanjiId: number) {
     }
   }, [kanjiId])
 
-  const generate = useCallback(async (model: 'haiku' | 'sonnet' = 'haiku') => {
-    setIsGenerating(true)
-    try {
-      const coords = await getCoords()
-      const data = await api.post<Mnemonic>(`/v1/mnemonics/${kanjiId}/generate`, { model, ...coords })
-      setMnemonics((prev) => {
-        const updated = [data, ...prev]
-        writeCache(kanjiId, updated)
-        return updated
-      })
-      return data
-    } finally {
-      setIsGenerating(false)
-    }
-  }, [kanjiId])
+  // `generate` is gone — parent spec §10.2 retires the cloud-LLM *auto*-generation
+  // UX. The capability is not lost, it moved: the same models now assemble from
+  // co-creation slots via `assembleCloud` (cocreationApi.ts), where the learner's
+  // own anchor is the raw material. A button that produces a story about a kanji
+  // the learner had no hand in is exactly what Phase 5 replaces.
 
   const save = useCallback(async (storyText: string) => {
     const coords = await getCoords()
@@ -111,30 +103,5 @@ export function useMnemonics(kanjiId: number) {
     setMnemonics((prev) => prev.filter((m) => m.id !== mnemonicId))
   }, [])
 
-  const dismissRefresh = useCallback(async (mnemonicId: string) => {
-    await api.post(`/v1/mnemonics/${mnemonicId}/refresh/dismiss`)
-    setMnemonics((prev) =>
-      prev.map((m) => (m.id === mnemonicId ? { ...m, refreshPromptAt: null } : m))
-    )
-  }, [])
-
-  return { mnemonics, isLoading, isGenerating, load, generate, save, update, updatePhoto, remove, dismissRefresh }
-}
-
-export function useRefreshDue() {
-  const [due, setDue] = useState<Mnemonic[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-
-  const load = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const data = await api.get<Mnemonic[]>('/v1/mnemonics/refresh')
-      setDue(data)
-    } catch {
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  return { due, isLoading, load }
+  return { mnemonics, isLoading, load, save, update, updatePhoto, remove }
 }
