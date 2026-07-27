@@ -1,8 +1,8 @@
-# Session Handoff — 2026-07-27 (Phase 5 deadlock broken; Plan 4 through Task 11-API; `main` shippable, 33 commits unpushed)
+# Session Handoff — 2026-07-27 (Phase 5 deadlock broken; Plan 4 through Task 11-API; `main` shippable and PUSHED)
 
 ## START HERE — next session
 
-**State:** `main` is shippable. Production API is deployed and current. Live DB is clean (`mnemonics` = 0). **`main` is 33 commits ahead of `origin` and unpushed.** Working tree clean except untracked `.codex/`.
+**State:** `main` is shippable and **pushed** — `origin/main` == `main` at `08fa8a8`. Production API is deployed and current. Live DB is clean (`mnemonics` = 0). Working tree clean except untracked `.codex/`.
 
 **Resume at Plan 4 Task 11 (mobile half)** — `RecallQuizCard`, the immediate quick-check after `commitment`, and the `review.store` queue insertion. Plan: [`2026-07-26-phase-5-plan-4.md`](superpowers/plans/2026-07-26-phase-5-plan-4.md).
 
