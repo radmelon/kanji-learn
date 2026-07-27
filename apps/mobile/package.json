@@ -9,6 +9,7 @@
     "ios": "expo run:ios",
     "build": "expo export",
     "typecheck": "tsc --noEmit",
+    "test": "jest",
     "lint": "eslint app"
   },
   "dependencies": {

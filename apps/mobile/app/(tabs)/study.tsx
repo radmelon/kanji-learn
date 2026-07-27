@@ -48,6 +48,7 @@ import { ReinforceSheet } from '../../src/components/mnemonics/ReinforceSheet'
 import { WritingLeg } from '../../src/components/study/WritingLeg'
 import { SpeakingLeg } from '../../src/components/study/SpeakingLeg'
 import { QuizLeg } from '../../src/components/study/QuizLeg'
+import { RecallQuizLeg } from '../../src/components/study/RecallQuizLeg'
 import { ReadyScreen } from '../../src/components/study/ReadyScreen'
 import { fetchBuddyMomentContext, fetchCoCreatedHook } from '../../src/mnemonics/cocreationApi'
 import type { KanjiForHook } from '../../src/mnemonics/buildSlots'
@@ -57,7 +58,7 @@ const HELP_KEY = 'kl_has_seen_study_help'
 
 function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset, studyStartMs, goalMinutes, leg, completeWritingLeg, completeSpeakingLeg, passQuizLeg, failQuizLeg } =
+  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset, studyStartMs, goalMinutes, leg, recallKanjiId, completeWritingLeg, completeSpeakingLeg, passQuizLeg, failQuizLeg, completeRecallLeg } =
     useReviewStore()
   // Respect the user's onboarding choice (5/10/15/20/30 minutes). Falls back
   // to 15 until the profile finishes loading on first mount.
@@ -640,6 +641,24 @@ function StudySession() {
   // writing and speaking legs (review.store: leg state). leg === 'flashcard'
   // falls through to the flashcard UI below.
   const legItem = queue[currentIndex]
+  // The recall quiz runs BEFORE the flashcard, and only for the one kanji the
+  // store front-loaded (parent spec §8). The kanjiId guard keeps the leg from
+  // surviving onto a different card if anything ever reorders the queue
+  // mid-session.
+  if (legItem && leg === 'recall' && legItem.kanjiId === recallKanjiId) {
+    return (
+      <RecallQuizLeg
+        key={`recall-${legItem.kanjiId}`}
+        item={legItem}
+        pool={queue}
+        sessionIndex={currentIndex + 1}
+        sessionTotal={queue.length}
+        minutesLeft={minutesLeft}
+        onClose={() => router.back()}
+        onComplete={completeRecallLeg}
+      />
+    )
+  }
   if (legItem && leg === 'writing') {
     return (
       <WritingLeg

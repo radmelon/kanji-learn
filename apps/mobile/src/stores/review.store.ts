@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { api } from '../lib/api'
 import { storage } from '../lib/storage'
+import { planRecallQuiz } from '../mnemonics/recallQuiz'
 import type { ReviewQueueItem, ReviewResult } from '@kanji-learn/shared'
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
@@ -42,8 +43,10 @@ interface PendingSession {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
-/** The current kanji's position within the Practice Loop. */
-export type LegName = 'flashcard' | 'writing' | 'speaking' | 'quiz'
+/** The current kanji's position within the Practice Loop. 'recall' runs BEFORE
+ *  the flashcard, and only for a kanji whose co-created hook owes its
+ *  story→kanji check (parent spec §8). */
+export type LegName = 'flashcard' | 'writing' | 'speaking' | 'quiz' | 'recall'
 
 /** Per-modality rep counts for the current session — shown on Session Complete. */
 export interface ModalityCounts {
@@ -71,6 +74,9 @@ interface ReviewState {
    *  → writing → speaking; Good/Easy review kanji stay on 'flashcard' unless
    *  flagged 'maybe slipping', which routes them to 'quiz'. */
   leg: LegName
+  /** The kanji owing a recall quiz this session, or null. At most one per
+   *  session — set by loadQueue, cleared once the check is done. */
+  recallKanjiId: number | null
   /** Per-modality rep counts for the current session (Session Complete §5). */
   modalityCounts: ModalityCounts
 
@@ -93,6 +99,8 @@ interface ReviewState {
   passQuizLeg: () => void
   /** Quiz failed → downgrade the flashcard grade to a lapse and route to writing. */
   failQuizLeg: () => void
+  /** Recall quiz answered (or skipped) → fall through to the normal path. */
+  completeRecallLeg: () => void
 }
 
 export const useReviewStore = create<ReviewState>((set, get) => ({
@@ -111,33 +119,56 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   isWeakDrill: false,
   goalMinutes: 0,
   leg: 'flashcard',
+  recallKanjiId: null,
   modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 },
 
   loadQueue: async (goalMinutes) => {
-    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false, goalMinutes, leg: 'flashcard', modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
+    set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false, goalMinutes, leg: 'flashcard', recallKanjiId: null, modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
 
     // Check for pending sessions immediately (fire-and-forget)
     const pending = await storage.getItem<PendingSession[]>(KEY_PENDING)
     if (pending && pending.length > 0) set({ hasPendingSessions: true })
 
     try {
-      const queue = await api.get<ReviewQueueItem[]>(`/v1/review/queue?limit=${SESSION_QUEUE_SIZE}`)
+      const fetched = await api.get<ReviewQueueItem[]>(`/v1/review/queue?limit=${SESSION_QUEUE_SIZE}`)
       const now = Date.now()
-
-      // Cache for offline use
-      const cached: CachedQueue = { userId: 'current', savedAt: now, queue, currentIndex: 0, studyStartMs: now }
-      await storage.setItem(KEY_QUEUE, cached)
 
       // Restore in-progress position if we have results for the same queue
       const inProgress = await storage.getItem<InProgressResults>(KEY_PROGRESS)
-      const resumeIndex = inProgress && inProgress.results.length > 0 && inProgress.results.length < queue.length
+      const resumeIndex = inProgress && inProgress.results.length > 0 && inProgress.results.length < fetched.length
         ? inProgress.results.length
         : 0
       const resumeResults = resumeIndex > 0 && inProgress ? inProgress.results : []
 
-      set({ queue, studyStartMs: now, currentIndex: resumeIndex, results: resumeResults })
+      // Front-load a kanji whose hook owes its recall quiz (parent spec §8) —
+      // fresh starts only. Resuming reads the position back as
+      // `results.length`, so reordering a queue mid-session would point the
+      // learner at the wrong card.
+      const plan = resumeIndex === 0
+        ? planRecallQuiz(fetched, new Date(now))
+        : { queue: fetched, recallKanjiId: null }
+
+      // Cache for offline use — the planned order, so a resume and a reload
+      // agree about which card is where.
+      const cached: CachedQueue = { userId: 'current', savedAt: now, queue: plan.queue, currentIndex: 0, studyStartMs: now }
+      await storage.setItem(KEY_QUEUE, cached)
+
+      set({
+        queue: plan.queue,
+        studyStartMs: now,
+        currentIndex: resumeIndex,
+        results: resumeResults,
+        recallKanjiId: plan.recallKanjiId,
+        leg: plan.recallKanjiId !== null ? 'recall' : 'flashcard',
+      })
     } catch {
-      // Offline fallback — load cached queue
+      // Offline fallback — load cached queue.
+      //
+      // Deliberately no recall quiz here. The stamp is cleared server-side by a
+      // correct answer, so a cached queue can carry a stamp that is already
+      // spent — and the outcome POST would fail offline anyway, leaving it
+      // spent-but-still-stamped. Better to skip the check than to re-ask it
+      // every offline session.
       const cached = await storage.getItem<CachedQueue>(KEY_QUEUE)
       if (cached && cached.queue.length > 0) {
         const isStale = Date.now() - cached.savedAt > QUEUE_TTL_MS
@@ -174,7 +205,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         set({ isLoading: false })
         return false
       }
-      set({ queue, studyStartMs: now, currentIndex: 0, results: [], isWeakDrill: true, goalMinutes: 0, leg: 'flashcard', modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
+      // No recall quiz on a drill: it is a count-bounded re-drill of weak
+      // kanji, not a session, and the Buddy moment belongs to the main loop.
+      set({ queue, studyStartMs: now, currentIndex: 0, results: [], isWeakDrill: true, goalMinutes: 0, leg: 'flashcard', recallKanjiId: null, modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
       return true
     } catch (err: any) {
       set({ error: err?.message ?? 'Could not load weak kanji queue.' })
@@ -266,6 +299,16 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       modalityCounts: { ...modalityCounts, quiz: modalityCounts.quiz + 1 },
     })
     storage.setItem(KEY_PROGRESS, { userId: 'current', results: downgraded, studyStartMs })
+  },
+
+  completeRecallLeg: () => {
+    // The recall quiz tests the hook, not the kanji: its outcome feeds the
+    // effectiveness EMA (recorded by RecallQuizLeg), never the SRS grade. The
+    // kanji now runs its normal path starting at the flashcard.
+    //
+    // recallKanjiId is cleared so a queue that happens to carry this kanji
+    // twice cannot ask the same question again in one session.
+    set({ leg: 'flashcard', recallKanjiId: null })
   },
 
   undoLastResult: () => {
@@ -385,12 +428,12 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       .map((card) => ({ ...card, reviewType: 'meaning' as const })) // reset to meaning for the re-drill
     if (missedCards.length === 0) return false
     storage.removeItem(KEY_PROGRESS)
-    set({ queue: missedCards, currentIndex: 0, results: [], isComplete: false, studyStartMs: Date.now(), error: null, goalMinutes: 0, leg: 'flashcard', modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
+    set({ queue: missedCards, currentIndex: 0, results: [], isComplete: false, studyStartMs: Date.now(), error: null, goalMinutes: 0, leg: 'flashcard', recallKanjiId: null, modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
     return true
   },
 
   reset: () => {
     storage.removeItem(KEY_PROGRESS)
-    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false, goalMinutes: 0, leg: 'flashcard', modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
+    set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false, goalMinutes: 0, leg: 'flashcard', recallKanjiId: null, modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
   },
 }))

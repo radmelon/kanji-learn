@@ -10,6 +10,9 @@ import { lookupComponents } from '@kanji-learn/shared'
 import { useCoCreation } from '../../mnemonics/useCoCreation'
 import { getBestVoice } from '../../utils/tts'
 import type { KanjiForHook } from '../../mnemonics/buildSlots'
+import { fetchRelatedKanji, recordOutcome } from '../../mnemonics/cocreationApi'
+import { buildRecallQuizFromRanked, type RecallQuizCardItem } from '../../mnemonics/recallQuiz'
+import { RecallQuizCard } from '../study/RecallQuizCard'
 import { colors, spacing, radius, typography } from '../../theme'
 
 interface Props {
@@ -153,6 +156,48 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
       onStopped: () => setSpeakingHook(false),
       onError: () => setSpeakingHook(false),
     })
+  }
+
+  // ── The immediate quick-check (parent spec §8) ──────────────────────────────
+  // A hook is only worth having if it can be walked backwards, so the first
+  // test happens seconds after saving, while the room is still the room.
+  // Best-effort: a kanji with no component relatives, or a failed fetch, just
+  // goes straight to Done — the check is a bonus beat, never a gate on saving.
+  const [quickCheck, setQuickCheck] = useState<RecallQuizCardItem | null>(null)
+  const [quickCheckDone, setQuickCheckDone] = useState(false)
+  // Fetch once per sheet. Without this, a kanji with no component relatives
+  // builds nothing, leaves both flags untouched, and the effect re-fires on
+  // every render — an endless fetch loop behind a friendly "Saved" screen.
+  const quickCheckRequestedRef = useRef(false)
+
+  useEffect(() => {
+    if (state.stage !== 'commitment' || !state.draft || quickCheckRequestedRef.current) return
+    quickCheckRequestedRef.current = true
+    const storyText = state.draft
+    let cancelled = false
+    fetchRelatedKanji(kanji.id)
+      .then((related) => {
+        if (cancelled) return
+        const built = buildRecallQuizFromRanked({
+          storyText,
+          target: { kanjiId: kanji.id, character: kanji.character },
+          ranked: related.map((r) => ({ kanjiId: r.id, character: r.character })),
+        })
+        // Nothing to ask with — skip straight to Done. The due stamp survives
+        // server-side, so the next session's check still happens.
+        if (built) setQuickCheck(built)
+        else setQuickCheckDone(true)
+      })
+      .catch(() => { if (!cancelled) setQuickCheckDone(true) })
+    return () => { cancelled = true }
+  }, [state.stage, state.draft, kanji.id, kanji.character])
+
+  const handleQuickCheckAnswered = (correct: boolean) => {
+    // Fire-and-forget. A correct answer clears the due stamp server-side, so a
+    // failed POST simply means the check is re-offered next session — the
+    // exact fallback the next-session path exists for.
+    if (state.mnemonicId) recordOutcome(state.mnemonicId, correct ? 1 : 0).catch(() => {})
+    setQuickCheckDone(true)
   }
 
   const meaning = kanji.meanings[0] ?? ''
@@ -344,16 +389,33 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
 
             {state.stage === 'commitment' && (
               <View style={styles.stageBox}>
-                <Text style={styles.prompt}>Saved. We'll quick-check it in a moment.</Text>
-                <TouchableOpacity
-                  style={styles.primaryBtn}
-                  onPress={() => {
-                    if (state.mnemonicId) onSaved?.(state.mnemonicId)
-                    onClose()
-                  }}
-                >
-                  <Text style={styles.primaryBtnText}>Done</Text>
-                </TouchableOpacity>
+                {quickCheck && !quickCheckDone ? (
+                  <>
+                    <Text style={styles.prompt}>Saved. Quick check —</Text>
+                    <RecallQuizCard
+                      item={quickCheck}
+                      onAnswered={handleQuickCheckAnswered}
+                      prompt="Which kanji does this hook belong to?"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.prompt}>
+                      {quickCheckDone
+                        ? "Saved. We'll test it again next session."
+                        : "Saved. We'll quick-check it in a moment."}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.primaryBtn}
+                      onPress={() => {
+                        if (state.mnemonicId) onSaved?.(state.mnemonicId)
+                        onClose()
+                      }}
+                    >
+                      <Text style={styles.primaryBtnText}>Done</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             )}
           </ScrollView>
