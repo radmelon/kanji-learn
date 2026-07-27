@@ -48,6 +48,36 @@ Use local builds for active crash debugging. Only submit a production EAS build 
 
 ## API Deployment
 
+### 🛑 Verify the deploy actually happened — status codes will lie to you (2026-07-27)
+
+A full Phase 5 rollout was reported "verified" while App Runner was still serving a **May 30th image**. Two traps, both worth internalising:
+
+1. **`deploy-api.sh` can fail early and quietly.** It starts with `docker build`, which dies outright if the Docker daemon is not running, and ECR login fails on a stale keychain entry (below). If you do not read the output to the end, nothing tells you the deploy never ran.
+2. **"401 not 404" is NOT proof a route deployed.** `mnemonics.ts` has parametric `GET /:kanjiId` and `POST /:kanjiId`, so `/v1/mnemonics/refresh`, `/assemble` and `/buddy-moment-context` all match the parametric route on **any** version of the code and return 401 unauthenticated. The check passes identically against a build predating the feature.
+
+**Verify these two things instead:**
+
+```bash
+# (a) An actual deployment dated today
+aws apprunner list-operations \
+  --service-arn arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654 \
+  --region us-east-1 --query 'OperationSummaryList[0].[Type,Status,StartedAt]' --output text
+```
+
+**(b) Response CONTENT, using a field only the new code returns.** For Phase 5 the canary is `components` on `GET /v1/kanji/:id` (landed in `d621542`) — a key that cannot be faked by route shadowing. Pick an equivalent canary for whatever you are shipping.
+
+### ECR login fails: `The specified item already exists in the keychain. (-25299)`
+
+`docker login` uses `docker-credential-osxkeychain`, which tries to **add** rather than update and fails when a stale entry exists. **Neither `DOCKER_CONFIG=` nor `docker --config <dir>` avoids it** — the helper runs regardless. Delete the one stale item; `docker login` recreates it:
+
+```bash
+security delete-internet-password -s 087656010655.dkr.ecr.us-east-1.amazonaws.com
+aws ecr get-login-password --region us-east-1 \
+  | docker login --username AWS --password-stdin 087656010655.dkr.ecr.us-east-1.amazonaws.com
+```
+
+Expect `Login Succeeded`. Safe: it is a short-lived registry credential, not an account password.
+
 ### Quick deploy (source-based App Runner)
 ```bash
 # From monorepo root — build TypeScript, push to git, trigger App Runner
