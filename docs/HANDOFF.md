@@ -11,7 +11,13 @@
 
 **State:** Plan 4 is **code-complete through Task 18**. Tasks 4/5 are deployed and verified in production. Everything else is committed and unbuilt. Live DB is clean (`mnemonics` = 0). Working tree clean except untracked `.codex/` and `supabase/`.
 
-**Resume at Task 19 — cut the build.** It is the only remaining step. Builds are **included in the monthly EAS allowance**; the ~$2 quoted elsewhere is the overage price once that allowance is used up, not a per-build charge (operator, 2026-07-27).
+**Resume at Task 19 — the on-device walkthrough.** B144 is built and submitted; the walkthrough is what remains.
+
+> 🔴 **BUILD BUDGET IS NEARLY SPENT — batch ruthlessly.** EAS credit usage as of 2026-07-27: **$38 of $45 (~84%)**, resetting **2026-08-04**. That is roughly **2–3 iOS medium builds** before every further build costs ~$2.
+>
+> Practical consequence: **run the FULL walkthrough on B144 before cutting anything.** A quick test of one feature already produced three defects (B-211/212/213), none of which were on the Task 19 checklist. Cutting a build per fix is the expensive mistake — a build cut to verify a fix that then needs another fix costs two.
+>
+> This is also the real reason Plan 4 batches device verification into a single cut: build *count* discipline, not per-build price.
 
 ```bash
 cd apps/mobile && EXPO_NO_CAPABILITY_SYNC=1 npx eas build --platform ios --profile production --auto-submit
