@@ -22,6 +22,28 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: 🐛 Active — found in B144]`
 
+- [ ] **(B-219) "Reveal the reading" reveals nothing — ReinforceSheet is never given the readings** — Found on-device in **B144** (owner, 2026-07-28): *"There was a reveal reading button that once clicked didn't reveal anything related to reading."*
+
+  **Not a rendering bug — missing data through the interface.** `ReinforceSheet`'s props are `visible, mnemonicId, kanjiCharacter, meaning, storyText, onClose, onOfferDeepen`. **There is no readings prop.** Step 2 asks *"Good. So — how do you read 費?"* and offers **Reveal the reading**; tapping it advances the reducer to `self_report`, which unmounts the button, and the reading is never rendered at any step. The control promises a reveal, consumes the tap, and shows nothing.
+
+  The two-step recall — scene, then reading — is parent spec §4.3's design, and half of it has never worked. It is the step that ties the hook to the actual pronunciation, which is the point of anchoring a reading in a story.
+
+  **Fix:** pass the kanji's readings into the sheet (`study.tsx` already holds the queue item, which carries `kunReadings` / `onReadings`), and render them on reveal. Consider whether the reading should be *spoken* as well as shown — the hook flow already teaches "read it aloud", and B-212's segmentation work is adjacent.
+
+  **Affected files:** `apps/mobile/src/components/mnemonics/ReinforceSheet.tsx`, `apps/mobile/app/(tabs)/study.tsx` (the `reinforceTarget` payload, which today carries only `mnemonicId`, `storyText`, `character`, `kanjiId`).
+
+  `[Effort: S]` `[Impact: Med-High — half of the reinforce challenge is inert, and the learner taps a button that does nothing]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+
+- [ ] **(B-220) ReinforceSheet's footer button is clipped by the time the flow reaches "done"** — Found on-device in **B144** (owner, 2026-07-28): *"the next screen had a button at the bottom that was cut off and so the label was missing. I could not scroll on that page."*
+
+  **Why it accumulates.** Every step of the reinforce flow *adds* content without removing the previous one — by the `done` step the sheet holds the story card, the reading prompt, the self-report block and the done message. The sheet is `maxHeight: '80%'` and its ScrollView is `{ flexGrow: 0, flexShrink: 1 }`; the footer is pinned outside the ScrollView, but `flexShrink` shrinks only the scroll child, not the sheet, so on a tall stack the footer is pushed past the 80% boundary and clipped. That it appeared **cut off with the label missing** — rather than absent — fits: the container renders partly outside the clipped region.
+
+  **Third instance of the same family today** (see B-215, and B-218's unreachable tiles): content grows past a fixed cap and the thing the learner needs is what falls off. Worth fixing as one pattern rather than three one-offs — every one of these sheets caps at 80% and pins a footer.
+
+  **Affected files:** `apps/mobile/src/components/mnemonics/ReinforceSheet.tsx` (`sheet`, `scroll`, `footer` styles), and the same pattern in `CoCreationSheet.tsx` / `DeepenSheet.tsx`.
+
+  `[Effort: S — likely one shared fix]` `[Impact: Med — the only way forward from the reinforce flow is a button you cannot fully see]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+
 - [ ] **(B-217) The teaching beat prints the literal placeholder "this part" for 99% of kanji** — Found on-device in **B144** (owner, 2026-07-28): *"説 is 言 (speech) beside this part. What does '...this part.' reference? Is this a fragment?"* It is not a fragment — it is a fallback string leaking to the learner.
 
   **Mechanism.** `teachingBeat` ([CoCreationSheet.tsx](apps/mobile/src/components/mnemonics/CoCreationSheet.tsx)) maps each component through `lookupComponents` and substitutes the literal `'this part'` when a component is absent from the radical dictionary. 説's components are `["言","兑"]`; 言 resolves to *speech*, 兑 does not resolve, so the sentence renders *"説 is 言 (speech) beside this part."*
