@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-27 (Plan 4 code-complete through Task 18 — **only the build remains**)
+# Session Handoff — 2026-07-28 (**B145 submitted** — ten defects fixed; walkthrough owed)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,91 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — next session
+## START HERE — 2026-07-28
+
+> ## 🟢 B145 is submitted. Walk it, then do the SSM migration.
+>
+> **The Task 19 device walkthrough is the only thing owed on Plan 4.** Nothing
+> in B145 has been verified on a device — every fix is backed by pure-logic
+> tests and typecheck only. The layout fixes (B-215/220 and the new
+> `sessionLost` screen) are *unverifiable* off-device by construction.
+>
+> | | |
+> |---|---|
+> | Build ID | `aca10b1e-2332-4273-8436-4c2bed9d30b8` |
+> | Version | 1.0.0 (**145**) — `app.json` auto-bumped 144 → 145 |
+> | Submission | `cd0e0ba7-44e8-4fb6-bf80-31a5622d3aaf` — uploaded to ASC |
+> | API | deployed **2026-07-28 10:37–10:42**, `3fddc1fc…`, verified by content |
+>
+> **The B-214 gap did not repeat.** The API was deployed *before* the cut and
+> verified with a discriminating canary: `GET /v1/mnemonics` returns 401 while
+> a nonexistent route returns 404. A status code alone would have proved
+> nothing — that is the SOP lesson.
+>
+> **Watch for these three on device**, because they are the ones a test cannot
+> reach: the B-216 "Session interrupted" screen (deliberately hard to trigger
+> now — building a hook at Session Complete was the reproducer), whether the
+> three sheets scroll to their footers on a long hook (暗, 510 chars, is the
+> known worst case), and whether hook TTS now speaks the Japanese.
+>
+> **Then: the SSM Parameter Store migration**, which is blocked on the operator
+> creating seven parameters — an agent must never see the values. Full runbook,
+> including the `INTERNAL_SECRET` two-sided trap that would silently break
+> daily reminders: [`secrets-rotation.md`](secrets-rotation.md).
+>
+> **Do NOT rotate the Supabase credentials.** Supabase has no in-place region
+> change, so the `us-east-1` migration issues a new project — new ref, new
+> keys, new JWT secret, new DB password. Four of the seven rotate for free,
+> including the database password open since 2026-06-03.
+>
+> **The region migration needs an EAS build** (`EXPO_PUBLIC_*` are inlined at
+> build time), and the budget is nearly spent until **2026-08-04**. Do it after
+> the reset, and do *not* combine it with a defect build.
+
+### What landed 2026-07-28
+
+**Ten defects closed** — B-211, B-212(a,c), B-213, B-215, B-216, B-217, B-218,
+B-219, B-220, B-222 — plus two owner decisions (reinforce freshness guard;
+recall quiz no longer double-tests). Suites: shared **136/136**, mobile
+**136/136**, API unit **207/207**, all three typechecks clean.
+
+Three diagnoses came out sharper than their tickets:
+
+- **B-216's second trigger was identifiable after all.** The ticket said not to
+  guess at it; no guessing was needed. `reset()` was the cleanup of an effect
+  keyed `[profile]`, and `useProfile.update()` notifies with a fresh object on
+  every PATCH — so `CoCreationSheet.tsx:141`'s one-time location ask, which
+  runs *while the learner builds a hook over Session Complete*, wiped the
+  queue. And because the empty-queue branch rendered **above** Session
+  Complete, whose `onDone` holds the only `setPhase('ready')` in the file, it
+  unmounted the sole exit from the `'active'` phase. That is why it was a
+  lockout rather than a cosmetic glitch.
+- **B-215/220 was not only `flexShrink`.** Yoga gives flex items
+  `minHeight: auto`, so a child will not shrink below its content's intrinsic
+  height no matter what `flexShrink` says. `minHeight: 0` was the missing half.
+- **B-212 never "skipped" the Japanese.** It was being asked to read it in an
+  en-US voice. `speakMixed` segments ja/en runs and switches voice per run.
+
+**Two bugs found by log inspection, not by testing:** B-221 (the EventBridge
+rule was `rate(1 hour)`, which had drifted to HH:54 — every learner's reminder
+arrived up to 59 minutes late, and a delay past HH:59 would silently skip an
+entire hour's cohort; **fixed**, now `cron(0 * * * ? *)`) and B-222.
+
+**A repo constraint worth internalising:** jest runs in a node environment with
+no JSX transform *and* cannot load ESM. Anything imported from a `.tsx`, or
+from a module importing `expo-speech`, is untestable here. This forced three
+extractions this session — `study-screen.ts`, `teaching-beat.ts`,
+`script-segments.ts`. Write pure logic in `src/lib/` from the start.
+
+---
+
+# Previous session — 2026-07-27 (Plan 4 code-complete through Task 18)
+
+> **Superseded 2026-07-28.** Everything the block below asks for is done: all
+> eight defects are fixed, the two cheap decisions are made, the API is
+> deployed and B145 is submitted. Kept for the diagnoses and the traps.
+
+
 
 > ## 🔴 B144 device testing found EIGHT defects. Fix them, then cut B145.
 >
