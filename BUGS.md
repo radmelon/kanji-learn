@@ -22,6 +22,23 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: 🐛 Active — found in B144]`
 
+- [ ] **(B-214) The one-time hook-location ask never records that it was asked** — Found by live-DB inspection during B144 testing (2026-07-27). `user_profiles.hook_location_ask_seen_at` is **still null** after two hooks were built, while `attach_location_to_hooks` is true and both hooks stored `locationName: 'Calabasas'` **with coordinates**.
+
+  **Why that combination is diagnostic:** GPS only runs when the sheet reads `attachLocationToHooks: true` off the loaded profile, so the profile *was* present. `needsLocationAsk` is `profile != null && profile.hookLocationAskSeenAt == null`, which should therefore have been true and rendered the ask.
+
+  **The API is not at fault.** `PATCH /v1/user/profile` is a pass-through — `.set({ ...body.data, updatedAt })` ([user.ts](apps/api/src/routes/user.ts)) — and `hookLocationAskSeenAt: z.coerce.date().optional()` is in `updateProfileSchema`. A sent value would persist. The field is never sent.
+
+  **Two candidate causes, one discriminating question** (did the learner ever see the *"Want Buddy to remember where you build them?"* step):
+
+  1. **Render race (favoured).** `useProfile` resolves asynchronously; on a cold sheet open `profile` is `null`, so `needsLocationAsk` is false and the normal consent buttons render. By the time the learner taps "Let's do it" the profile has arrived, so GPS runs. The ask loses the race; the location switch does not. Fix: hold the consent stage until the profile resolves, or treat "profile not yet loaded" as *not yet decidable* rather than as *no ask needed*.
+  2. **Save failure.** The ask renders, `answerLocationAsk` fires, but the PATCH is rejected or dropped. Less likely given the route is a pass-through, but it is fire-and-forget by design so a failure would be invisible.
+
+  **User-visible consequence is the same either way and is worse than it looks:** the flag stays null permanently, so the "we will only ask once" promise (design spec §9, and the reason the stamp is server-side at all) is broken. Once whatever suppresses the ask stops applying, it would re-ask on **every** hook.
+
+  **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (the `needsLocationAsk` guard and `answerLocationAsk`), `apps/mobile/src/hooks/useProfile.ts` (load timing).
+
+  `[Effort: S]` `[Impact: Med — a consent ask that never records consent; re-asks forever once unmasked]` `[Backend: No — API verified correct]` `[Status: 🐛 Active — found in B144, root cause pending one device answer]`
+
 - [ ] **(B-213) "Speak it" exists only at the moment a hook is created, not where hooks are read** — Found on-device in **B144** (owner, 2026-07-27): *"The Speak it icon is only available just after the mnemonic is built and not on the Kanji details where the Mnemonic is displayed."*
 
   **Coverage today.** The hook can be heard in exactly two moments: `CoCreationSheet` (immediately after building) and `ReinforceSheet` (during a reinforce challenge). Every surface that displays a hook **for reference** is silent:
