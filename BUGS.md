@@ -22,6 +22,21 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: 🐛 Active — found in B144]`
 
+- [ ] **(B-215) The co-creation commitment page clips a long hook instead of scrolling** — Found on-device in **B144** (owner, 2026-07-28): *"the confirmation page did not support scrolling to see the entire vignette."*
+
+  **Repro:** build a hook whose story runs long. The 暗 hook that surfaced this is **510 characters** — the longest of four built so far (両 258, 互 387, 暗 510), so shorter stories mask it.
+
+  **Where to look.** The sheet caps at `maxHeight: '80%'` and its ScrollView is `{ flexGrow: 0, flexShrink: 1 }` with **`showsVerticalScrollIndicator={false}`**. In the `commitment` stage the quick-check `RecallQuizCard` renders below the story — story text, then four kanji tiles — so a long story plus tiles is the first content tall enough to exceed the cap. Two candidates, and they are not exclusive:
+
+  1. The content genuinely does not scroll (a height or flex constraint on `stageBox` / `storyCard` defeating the parent scroll).
+  2. It scrolls, but with the indicator suppressed and no edge fade there is **no affordance**, so it reads as clipped. This repo has shipped that exact failure before — see B-207, where horizontal badge rows scrolled with no cue and the owner found a badge only by chance.
+
+  Resolve by observation, not by guessing which — the fix differs.
+
+  **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (`scroll` / `stageBox` styles, `commitment` stage), `apps/mobile/src/components/study/RecallQuizCard.tsx`.
+
+  `[Effort: XS–S]` `[Impact: Med — the learner cannot re-read the hook they just wrote, at the one moment the app asks them to]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+
 - [x] **(B-214) B144 shipped against an API that was four commits behind it** — Surfaced 2026-07-27 as "the one-time location ask never records that it was asked", but that was a symptom. **Root cause: a deploy gap, not a client bug.**
 
   **How it presented.** `user_profiles.hook_location_ask_seen_at` was still null after two hooks, while `attach_location_to_hooks` was true and both hooks had stored `locationName: 'Calabasas'` with coordinates. The operator confirmed they *did* see the ask and answered "yes" — and both fields go up in a **single PATCH**, so one landing and the other not is impossible from client code.

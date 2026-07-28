@@ -191,6 +191,26 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   `[Effort: XS]` `[Impact: Med — grading semantics drive SRS quality; a learner who mis-grades gets a mis-tuned schedule]` `[Backend: No]` `[Status: 💡 Idea]`
 
+- [ ] **The recall quiz tests a kanji immediately before its own flashcard — decide what a "test" means here** — Found on-device in **B144** (owner, 2026-07-28), while confirming the recall-quiz loop works: *"Do we want the mnemonic challenges as part of the normal flashcard study session?"*
+
+  **The redundancy.** `insertRecallQuizFirst` front-loads the freshly-hooked kanji, and the recall leg runs before that kanji's flashcard. So the learner reads their story, picks 暗 from four tiles — and is then immediately shown 暗's flashcard. **The second test is primed by the first**, seconds earlier, so whatever grade they give is inflated. That quietly corrupts the FSRS signal for precisely the kanji they care most about.
+
+  Parent spec §8 asks for the test "early, while fresh". It does not ask for it to be adjacent to the same kanji's flashcard; that is an artefact of front-loading, not a design decision.
+
+  **Three ways out** (owner leaning toward 2, 2026-07-28):
+
+  1. Move the recall quiz to the **end** of the session — still fresh, no longer adjacent.
+  2. **Keep it first and skip that kanji's flashcard for the session.** The recall quiz *is* a retrieval test; a second test of the same item in the same minute is redundant regardless of ordering.
+  3. Keep both but **separate them** in the queue.
+
+  **Option 2 costs less than it first appears.** The recall quiz tests story→kanji recognition; the flashcard tests meaning or reading recall. Only the latter is what FSRS schedules on. So the honest reading is that the kanji **simply was not reviewed that day** — record no grade, touch no schedule, leave it due, let it return on normal rotation. No SRS consequence at all.
+
+  **Should these move into "Take a Quiz" instead? No — not as a replacement.** `/test` is **elective**: the learner chooses to enter it, it pulls 10 questions and submits as `exit_quiz`. The recall quiz is **scheduled** — its due stamp is set at hook creation and its whole value is proximity to creation. Move it somewhere the learner must opt into and a hook may go untested for weeks, or forever; the stamp becomes decorative. The study session is the only place they reliably appear.
+
+  **But worth adding there separately.** `mnemonic_recall` already persists as a `testType` (verified Plan 4 Task 11 Step 1, no migration needed) and `/v1/tests/questions` already accepts `types=`. A "drill my hooks" option in Take a Quiz is a small addition for deliberate practice — elective repetition on top of a guaranteed first test, not instead of it.
+
+  `[Effort: S (option 2) / S (Take a Quiz type)]` `[Impact: Med — inflated grades on hooked kanji feed bad scheduling]` `[Backend: No for option 2]` `[Status: 💡 Decision needed — akin to B-210, a "what should a test mean" question rather than a defect]`
+
 - [ ] **Review and reorder the Profile page sections — "About & Licences" is buried** — The Profile screen has eleven sections and their order looks accreted rather than decided. Owner (2026-07-27): *"I find myself often searching for the About & License page link and it is buried half way down the profile page, while Notifications and Privacy and Study Preferences are high up."*
 
   **Current order** ([profile.tsx](apps/mobile/app/(tabs)/profile.tsx)): Display Name (424) → Daily Review Goal (438) → Notifications (456) → Privacy (552) → Study Preferences (595) → Apple Watch (598) → **App** (630) → Learning Profile (659) → Study Mates (743) → Share with Tutor (881) → Sign out / Delete account.
