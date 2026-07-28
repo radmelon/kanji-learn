@@ -9,6 +9,22 @@
 
 ## START HERE — next session
 
+> ## 🔴 B144 device testing found EIGHT defects. Fix them, then cut B145.
+>
+> **Do not cut a build first.** Budget as of 2026-07-27: **$38 of $45**, resetting **2026-08-04** — roughly 2–3 builds. All eight fixes are code-only and batch into one cut.
+>
+> **Blocker first — [B-216].** The Study tab shows *"All caught up!"* with 280 cards due and no way back but a force-quit. Hit twice, by two different routes (mid-session abandonment **and** a completed session), so **the trigger is not known** — fix the dead end, not a guessed trigger. Everything else is secondary; this is total loss of the app's core function.
+>
+> **Then, in rough value order:** [B-217] "this part" renders on 99% of kanji · [B-211] Journal cannot list hooks · [B-219] "Reveal the reading" has no reading · [B-215]/[B-220] sheet clipping (**one shared fix** — all three sheets cap at `maxHeight: 80%` and pin a footer) · [B-212] TTS drops the Japanese · [B-213] Speak-it coverage (blocked on B-212).
+>
+> **Three decisions are yours, in `ENHANCEMENTS.md`:** the recall-quiz redundancy, the reinforce freshness guard, and the Profile panel taxonomy (spec written, awaiting your review). Plus **B-210**, which you asked to give its own brainstorming session.
+>
+> **Before cutting anything, run the pre-build check now in [`SOP.md`](SOP.md)** — B144 shipped against an API four commits behind it and four features were silently inert until a second deploy.
+>
+> **What is already verified in production and needs no retest:** timezone capture (server warning `5/5` → `3/5`), push token registration (**RAD self-healed** — the account behind the three-month bug now has a token and a real timezone), the next-session recall quiz (暗: stamp cleared, `reinforcement_count` 1, effectiveness 0.5 → 0.7), and *"Looks like you're near Calabasas"* — a line that had never rendered since Plan 3b.
+>
+> **One question still unanswered:** whether the hook appears on the flashcard's **prompt** face or only after reveal. Code says answer-side only; the owner's report was ambiguous and 暗 (rank 2, due) has not come up since. If it is prompt-side, that is a §9 retrieval-protection violation and outranks everything above.
+
 **State:** Plan 4 is **code-complete through Task 18**. Tasks 4/5 are deployed and verified in production. Everything else is committed and unbuilt. Live DB is clean (`mnemonics` = 0). Working tree clean except untracked `.codex/` and `supabase/`.
 
 **Resume at Task 19 — the on-device walkthrough.** B144 is built and submitted; the walkthrough is what remains.

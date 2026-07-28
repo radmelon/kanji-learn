@@ -191,6 +191,18 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   `[Effort: XS]` `[Impact: Med — grading semantics drive SRS quality; a learner who mis-grades gets a mis-tuned schedule]` `[Backend: No]` `[Status: 💡 Idea]`
 
+- [ ] **A hook can be reinforce-challenged in the same session it was created — add a freshness guard** — Observed on-device in **B144** (2026-07-28): the owner built a hook mid-session, and the reinforce challenge fired on that same hook at Session Complete minutes later.
+
+  **Mechanism.** `pickBuddyMomentAction` selects `reinforce` for any kanji where `hasHook && struggledToday`, with **no check on when the hook was created** ([trigger.ts](packages/shared/src/mnemonics/trigger.ts)). Building a hook for a kanji you just graded Again makes it instantly eligible for its own reinforce challenge — asking a learner to recall a story they wrote four minutes ago.
+
+  **Same class of flaw as the immediate quick-check deleted the same day (B-218):** a test with no failure mode, run so soon after creation that it measures nothing, and whose result nonetheless feeds `effectivenessScore`. A 👍 there inflates the EMA for a hook that has never actually been retained; a 👎 penalises one that has never been tested.
+
+  **Fix direction:** require some minimum age (or at least one intervening session) before a hook is reinforce-eligible. `mnemonics.created_at` is already available to `getBuddyMomentContext`, which is where the other Buddy-moment fields are assembled.
+
+  **Related:** the recall-quiz redundancy entry below, and B-218. All three are the same question — *what is the earliest moment at which testing a hook actually measures anything?* — and would be better answered once than three times.
+
+  `[Effort: S]` `[Impact: Med — inflates effectivenessScore, which drives the deepen gate]` `[Backend: Yes — one extra column in the context projection]` `[Status: 💡 Decision needed]`
+
 - [ ] **The recall quiz tests a kanji immediately before its own flashcard — decide what a "test" means here** — Found on-device in **B144** (owner, 2026-07-28), while confirming the recall-quiz loop works: *"Do we want the mnemonic challenges as part of the normal flashcard study session?"*
 
   **The redundancy.** `insertRecallQuizFirst` front-loads the freshly-hooked kanji, and the recall leg runs before that kanji's flashcard. So the learner reads their story, picks 暗 from four tiles — and is then immediately shown 暗's flashcard. **The second test is primed by the first**, seconds earlier, so whatever grade they give is inflated. That quietly corrupts the FSRS signal for precisely the kanji they care most about.
