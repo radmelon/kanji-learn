@@ -30,7 +30,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: XS]` `[Impact: High — every reminder for every user, plus a silent-skip failure mode]` `[Backend: infra only]` `[Status: ✅ Fixed 2026-07-28 — awaiting one on-the-hour run as confirmation]`
 
-- [ ] **(B-222) Streak copy under-counts by one for learners who already studied today** — Found alongside B-221 (2026-07-28). Buddy studied on 07-27 **and** 07-28, yet the 8:54am push read *"✅ Nice work today! — 7 kanji done"* (the `streakDays < 2` branch) instead of *"⚡ Nice — 2 days in a row"*.
+- [x] **(B-222) Streak copy under-counts by one for learners who already studied today** — Found alongside B-221 (2026-07-28). Buddy studied on 07-27 **and** 07-28, yet the 8:54am push read *"✅ Nice work today! — 7 kanji done"* (the `streakDays < 2` branch) instead of *"⚡ Nice — 2 days in a row"*.
 
   **Root cause:** `getUserStreak` starts counting at **yesterday**, with the comment *"(they haven't studied today yet)"*. That assumption held when the daily cron only messaged people who had **not** studied. Plan 4 added the `reviewedToday > 0` encouragement branch to `buildMessage`, so the same streak number now feeds copy that explicitly acknowledges today — the message congratulates you on today's 7 kanji while the streak behind it pretends today has not happened.
 
@@ -38,9 +38,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/api/src/services/notification.service.ts` (`getUserStreak` ~L401, `buildMessage` ~L34).
 
-  `[Effort: XS]` `[Impact: Low — copy only, but it undercuts the streak feature's whole point]` `[Backend: Yes]` `[Status: 🐛 Active]`
+  `[Effort: XS]` `[Impact: Low — copy only, but it undercuts the streak feature's whole point]` `[Backend: Yes]` `[Status: ✅ Fixed 2026-07-28 — computeStreak counts today]`
 
-- [ ] **(B-211) Journal cannot list your hooks — no API exists to fetch them** — Found on-device in **B144** (owner, 2026-07-27): *"after building it shouldn't I be able to find it under Journal?"* Yes, and today you cannot.
+- [x] **(B-211) Journal cannot list your hooks — no API exists to fetch them** — Found on-device in **B144** (owner, 2026-07-27): *"after building it shouldn't I be able to find it under Journal?"* Yes, and today you cannot.
 
   **Symptom:** build a hook, open Journal, see nothing. The only way to view a hook is to search its exact kanji, or open that kanji's detail page.
 
@@ -54,9 +54,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/api/src/routes/mnemonics.ts` (new route), `apps/api/src/services/mnemonic.service.ts`, `apps/mobile/src/hooks/useMnemonics.ts`, `apps/mobile/app/(tabs)/journal.tsx`.
 
-  `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: 🐛 Active — found in B144]`
+  `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: ✅ Fixed 2026-07-28 — GET /v1/mnemonics + Journal default list. NEEDS API DEPLOY before B145]`
 
-- [ ] **(B-219) "Reveal the reading" reveals nothing — ReinforceSheet is never given the readings** — Found on-device in **B144** (owner, 2026-07-28): *"There was a reveal reading button that once clicked didn't reveal anything related to reading."*
+- [x] **(B-219) "Reveal the reading" reveals nothing — ReinforceSheet is never given the readings** — Found on-device in **B144** (owner, 2026-07-28): *"There was a reveal reading button that once clicked didn't reveal anything related to reading."*
 
   **Not a rendering bug — missing data through the interface.** `ReinforceSheet`'s props are `visible, mnemonicId, kanjiCharacter, meaning, storyText, onClose, onOfferDeepen`. **There is no readings prop.** Step 2 asks *"Good. So — how do you read 費?"* and offers **Reveal the reading**; tapping it advances the reducer to `self_report`, which unmounts the button, and the reading is never rendered at any step. The control promises a reveal, consumes the tap, and shows nothing.
 
@@ -66,9 +66,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/src/components/mnemonics/ReinforceSheet.tsx`, `apps/mobile/app/(tabs)/study.tsx` (the `reinforceTarget` payload, which today carries only `mnemonicId`, `storyText`, `character`, `kanjiId`).
 
-  `[Effort: S]` `[Impact: Med-High — half of the reinforce challenge is inert, and the learner taps a button that does nothing]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+  `[Effort: S]` `[Impact: Med-High — half of the reinforce challenge is inert, and the learner taps a button that does nothing]` `[Backend: No]` `[Status: ✅ Fixed 2026-07-28 — readings plumbed from the session queue]`
 
-- [ ] **(B-220) ReinforceSheet's footer button is clipped by the time the flow reaches "done"** — Found on-device in **B144** (owner, 2026-07-28): *"the next screen had a button at the bottom that was cut off and so the label was missing. I could not scroll on that page."*
+- [x] **(B-220) ReinforceSheet's footer button is clipped by the time the flow reaches "done"** — Found on-device in **B144** (owner, 2026-07-28): *"the next screen had a button at the bottom that was cut off and so the label was missing. I could not scroll on that page."*
 
   **Why it accumulates.** Every step of the reinforce flow *adds* content without removing the previous one — by the `done` step the sheet holds the story card, the reading prompt, the self-report block and the done message. The sheet is `maxHeight: '80%'` and its ScrollView is `{ flexGrow: 0, flexShrink: 1 }`; the footer is pinned outside the ScrollView, but `flexShrink` shrinks only the scroll child, not the sheet, so on a tall stack the footer is pushed past the 80% boundary and clipped. That it appeared **cut off with the label missing** — rather than absent — fits: the container renders partly outside the clipped region.
 
@@ -76,9 +76,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/src/components/mnemonics/ReinforceSheet.tsx` (`sheet`, `scroll`, `footer` styles), and the same pattern in `CoCreationSheet.tsx` / `DeepenSheet.tsx`.
 
-  `[Effort: S — likely one shared fix]` `[Impact: Med — the only way forward from the reinforce flow is a button you cannot fully see]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+  `[Effort: S — likely one shared fix]` `[Impact: Med — the only way forward from the reinforce flow is a button you cannot fully see]` `[Backend: No]` `[Status: ✅ Fixed 2026-07-28 — same shared fix as B-215]`
 
-- [ ] **(B-217) The teaching beat prints the literal placeholder "this part" for 99% of kanji** — Found on-device in **B144** (owner, 2026-07-28): *"説 is 言 (speech) beside this part. What does '...this part.' reference? Is this a fragment?"* It is not a fragment — it is a fallback string leaking to the learner.
+- [x] **(B-217) The teaching beat prints the literal placeholder "this part" for 99% of kanji** — Found on-device in **B144** (owner, 2026-07-28): *"説 is 言 (speech) beside this part. What does '...this part.' reference? Is this a fragment?"* It is not a fragment — it is a fallback string leaking to the learner.
 
   **Mechanism.** `teachingBeat` ([CoCreationSheet.tsx](apps/mobile/src/components/mnemonics/CoCreationSheet.tsx)) maps each component through `lookupComponents` and substitutes the literal `'this part'` when a component is absent from the radical dictionary. 説's components are `["言","兑"]`; 言 resolves to *speech*, 兑 does not resolve, so the sentence renders *"説 is 言 (speech) beside this part."*
 
@@ -94,9 +94,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (`teachingBeat`), `packages/shared/src/mnemonics/radical-dictionary.ts` (coverage).
 
-  `[Effort: XS for the fallback / M to expand coverage]` `[Impact: Med-High — visible broken-looking copy on essentially every hook built]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+  `[Effort: XS for the fallback / M to expand coverage]` `[Impact: Med-High — visible broken-looking copy on essentially every hook built]` `[Backend: No]` `[Status: ✅ Fixed 2026-07-28 — falls back to the component glyph]`
 
-- [ ] **(B-218) The immediate quick-check is a dead end that shows its own answer** — Found on-device in **B144** (owner, 2026-07-28): *"It displayed 'Quick check. Which Kanji does this hook belong to?' There is no action on this page and the Kanji the hook relates to is in the top left corner… the only way to dismiss this page is the close X or tapping outside. Felt like a misplaced vestige or dead end."*
+- [x] **(B-218) The immediate quick-check is a dead end that shows its own answer** — Found on-device in **B144** (owner, 2026-07-28): *"It displayed 'Quick check. Which Kanji does this hook belong to?' There is no action on this page and the Kanji the hook relates to is in the top left corner… the only way to dismiss this page is the close X or tapping outside. Felt like a misplaced vestige or dead end."*
 
   **Three faults stacked in one screen.**
 
@@ -110,9 +110,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (`commitment` stage, header), `apps/mobile/src/components/study/RecallQuizCard.tsx`.
 
-  `[Effort: XS to delete / S to fix in place]` `[Impact: Med — a dead end at the end of the app's flagship flow]` `[Backend: No]` `[Status: 🐛 Active — found in B144; overlaps B-215]`
+  `[Effort: XS to delete / S to fix in place]` `[Impact: Med — a dead end at the end of the app's flagship flow]` `[Backend: No]` `[Status: ✅ Fixed 2026-07-28 (08a8602) — immediate quick-check deleted]`
 
-- [ ] **(B-216) The Study tab locks you out with a false "All caught up!" whenever the queue empties** — Found on-device in **B144** (owner, 2026-07-28), twice, by two different routes.
+- [x] **(B-216) The Study tab locks you out with a false "All caught up!" whenever the queue empties** — Found on-device in **B144** (owner, 2026-07-28), twice, by two different routes.
 
   **First report — abandonment:** *"I stopped midway through the meaning→writing→speaking progression, and when I jumped out of the study session the app won't let me back in. It reports 'All caught up!'"* — with **281 cards due**.
 
@@ -144,9 +144,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/app/(tabs)/study.tsx` (lines ~232-248 effect + cleanup, ~499 phase gate, ~528 empty branch), `apps/mobile/src/stores/review.store.ts` (`reset`), `apps/mobile/src/hooks/useProfile.ts` (listener notification on every update).
 
-  `[Effort: S]` `[Impact: HIGH — total loss of the app's core function until a force-quit, with copy that tells the learner nothing is wrong]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+  `[Effort: S]` `[Impact: HIGH — total loss of the app's core function until a force-quit, with copy that tells the learner nothing is wrong]` `[Backend: No]` `[Status: ✅ Fixed 2026-07-28 — trigger identified, dead end removed, copy corrected]`
 
-- [ ] **(B-215) The co-creation commitment page clips a long hook instead of scrolling** — Found on-device in **B144** (owner, 2026-07-28): *"the confirmation page did not support scrolling to see the entire vignette."*
+- [x] **(B-215) The co-creation commitment page clips a long hook instead of scrolling** — Found on-device in **B144** (owner, 2026-07-28): *"the confirmation page did not support scrolling to see the entire vignette."*
 
   **Repro:** build a hook whose story runs long. The 暗 hook that surfaced this is **510 characters** — the longest of four built so far (両 258, 互 387, 暗 510), so shorter stories mask it.
 
@@ -159,7 +159,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (`scroll` / `stageBox` styles, `commitment` stage), `apps/mobile/src/components/study/RecallQuizCard.tsx`.
 
-  `[Effort: XS–S]` `[Impact: Med — the learner cannot re-read the hook they just wrote, at the one moment the app asks them to]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+  `[Effort: XS–S]` `[Impact: Med — the learner cannot re-read the hook they just wrote, at the one moment the app asks them to]` `[Backend: No]` `[Status: ✅ Fixed 2026-07-28 — shared minHeight:0 / flexShrink:0 fix + scroll indicator restored]`
 
 - [x] **(B-214) B144 shipped against an API that was four commits behind it** — Surfaced 2026-07-27 as "the one-time location ask never records that it was asked", but that was a symptom. **Root cause: a deploy gap, not a client bug.**
 
@@ -189,7 +189,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: —]` `[Impact: High — four shipped features silently inert, and a consent answer half-discarded]` `[Backend: Deploy only]` `[Status: ✅ Fixed by redeploy — no code change]`
 
-- [ ] **(B-213) "Speak it" exists only at the moment a hook is created, not where hooks are read** — Found on-device in **B144** (owner, 2026-07-27): *"The Speak it icon is only available just after the mnemonic is built and not on the Kanji details where the Mnemonic is displayed."*
+- [x] **(B-213) "Speak it" exists only at the moment a hook is created, not where hooks are read** — Found on-device in **B144** (owner, 2026-07-27): *"The Speak it icon is only available just after the mnemonic is built and not on the Kanji details where the Mnemonic is displayed."*
 
   **Coverage today.** The hook can be heard in exactly two moments: `CoCreationSheet` (immediately after building) and `ReinforceSheet` (during a reinforce challenge). Every surface that displays a hook **for reference** is silent:
 
@@ -209,9 +209,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/src/components/mnemonics/MnemonicCard.tsx`, optionally `apps/mobile/src/components/study/KanjiCard.tsx`.
 
-  `[Effort: XS once B-212's utility exists]` `[Impact: Med — reading aloud is taught as part of the method, then unavailable where hooks are actually revisited]` `[Backend: No]` `[Status: 🐛 Active — found in B144, blocked on B-212]`
+  `[Effort: XS once B-212's utility exists]` `[Impact: Med — reading aloud is taught as part of the method, then unavailable where hooks are actually revisited]` `[Backend: No]` `[Status: ✅ Fixed 2026-07-28 — Speak-it added to MnemonicCard, which is every read surface]`
 
-- [ ] **(B-212) Hook TTS speaks English only and silently drops the Japanese** — Found on-device in **B144** (owner, 2026-07-27): *"the TTS of the mnemonic was poor quality and skipped any hiragana or Kanji characters that were present in the passage."*
+- [x] **(B-212) Hook TTS speaks English only and silently drops the Japanese** — Found on-device in **B144** (owner, 2026-07-27): *"the TTS of the mnemonic was poor quality and skipped any hiragana or Kanji characters that were present in the passage."*
 
   **Two defects behind one symptom.**
 
@@ -227,7 +227,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx`, `apps/mobile/src/components/mnemonics/ReinforceSheet.tsx`, `apps/mobile/src/utils/tts.ts`.
 
-  `[Effort: M — segmentation utility + adoption]` `[Impact: Med-High — the reading is half the hook, and it is the half being dropped]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+  `[Effort: M — segmentation utility + adoption]` `[Impact: Med-High — the reading is half the hook, and it is the half being dropped]` `[Backend: No]` `[Status: ✅ Partly fixed 2026-07-28 — (a) speakMixed and (c) voice cache done; (b) awaiting owner re-test with Enhanced voices]`
 
 - [ ] **(B-210) Retaking the placement test destroys FSRS state on in-progress kanji** — Found 2026-07-27 while designing the Profile page reorganisation (owner asked whether retakes are supported and whether results are kept). Nothing has hit this yet because nobody retakes — but the Profile page has an **unguarded** `router.push('/placement')` row ([profile.tsx:633](apps/mobile/app/(tabs)/profile.tsx)) and `POST /v1/placement/complete` has no "already placed" check, so any learner can trigger it at any time.
 
