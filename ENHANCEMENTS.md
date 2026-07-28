@@ -95,6 +95,15 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 📊 Analytics & Progress
 
+> **Worse than recorded, 2026-07-28.** The owner now reads *"All 2294 Jouyou kanji: Jul 2053"* — the date has slipped from **Nov 2034 to Jul 2053**, and the count has changed from 2254 to 2294. Their words: *"Tells me that I will be 96 years old before I get the monkey off my back. This is not good motivational material, and it is based on a weak linear extrapolation that is difficult to defend."*
+>
+> Two separate faults, and the second is the one to fix first:
+>
+> 1. **The projection is indefensible, not just discouraging.** A linear extrapolation from recent pace swings by two decades between sessions — a number that unstable should not be presented as a date at all. Slowing down for a fortnight should not cost you nineteen years.
+> 2. **The string is also factually wrong** — those are not all Jōyō kanji. See the re-scoped count entry in `BUGS.md`; the deck holds 2,294 (Jōyō 2,136 + 158 Jinmeiyō), and three different totals are in circulation.
+>
+> The cheapest honest improvement is to stop projecting a completion date for the full deck at all, and lead with the nearest milestone as the entry below already proposes. A wrong date removed beats a wrong date explained.
+
 - [ ] **Rework Velocity estimate: near-term milestones + goal calculator** — The Dashboard Velocity section projects the FULL Jōyō horizon ("All 2254 Jōyō Kanji: Nov 2034" for the owner) — a decade-out date that reads as discouraging rather than motivating. Three-part rework: (1) **lead with the nearest milestone** — next JLPT level, next 100 kanji, next Kyōiku grade — full-Jōyō becomes a secondary line, if shown at all; (2) **explain the estimate** — surface how it's calculated (current pace, review load) and make explicit that more effort shortens it; (3) **goal calculator** — learner picks a target ("N2 by July 2027") and the app computes the required pace: new kanji/day, minutes/day, vs their current pace. Framing principle: velocity should feel like a lever the learner controls, not a sentence being served. Same discouragement dynamic as the shipped Journey-bar fix above (a 2% sliver vs a 2034 date — both "the mountain is too big" signals). The calculator is arguably the lightweight first slice of the AI-Powered Personalized Study Plan idea (Future/Big Ideas).
 
   Captured 2026-07-05 (owner: "Nov 2034 — I find that a little discouraging"). Also in Open Brain.
@@ -178,6 +187,75 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
   `[Effort: XS]` `[Impact: Med]` `[Backend: No]` `[Status: ✅ Shipped]`
 
 ---
+
+## 🌱 New Learner Experience
+
+> Four observations from the owner, 2026-07-28, after B145 device testing. Recorded
+> together because they are one theme: **the app collects and computes a great deal
+> about a new learner and gives almost none of it back to them.**
+
+- [ ] **Onboarding collects interests and goals, then never uses them** — Owner (2026-07-28): *"We collect data from a new user regarding focus and interests. We don't make good use of these data. If a new user indicates that s/he is interested in the JLPT exam, we should check the upcoming exam dates for the user's location and Buddy should use that data to help motivate and schedule study effort and encouragement."*
+
+  **Confirmed.** `learner_profiles.interests` and `.goals` are written by onboarding and read in exactly two places: the profile CRUD route that echoes them back, and `tutor-report.service.ts`, which surfaces them to a *tutor*. **Nothing in the learner's own experience consults either.** A questionnaire that shapes nothing is worse than no questionnaire — it sets an expectation of personalisation and then quietly discards the answer.
+
+  **The JLPT hook is the sharpest instance.** Exams run twice yearly (first Sunday of July and December) but **not every site offers both sittings**, so "the next exam" genuinely depends on where the learner is — which is why the ask is location-aware rather than a lookup table. `user_profiles.timezone` now carries a real IANA zone for every active account (Task 17), which is a usable first approximation without asking again.
+
+  What it unlocks, roughly in order of cheapness:
+  - A **countdown** — "N3 is 94 days away" — which turns an abstract goal into a deadline.
+  - A **required pace**, computed backwards from the exam date against the learner's N-level gap. This is the goal calculator in the Velocity entry below, with the date supplied rather than invented.
+  - **Reminder copy that knows the season** — encouragement in month one, urgency in the final fortnight.
+  - **Deck weighting** toward the target level, which is a bigger change and wants its own thinking.
+
+  **Design caution:** a countdown to a date the learner will not be ready for is demotivating, which is the exact failure mode of the Velocity estimate below. The calculator must be able to say *"N3 by December is not reachable at this pace; N4 is"* — a lever, not a verdict.
+
+  **Open:** where exam dates come from. Hard-coding two dates a year is trivial and stale by definition; scraping JLPT sites is fragile. A small seeded table with a yearly manual refresh is probably the honest answer.
+
+  `[Effort: M]` `[Impact: High — the data is already collected; this is unrealised value, not new capture]` `[Backend: Yes]` `[Status: 💡 Idea]`
+
+- [ ] **The placement test ends without analysis — its results are the best diagnostic we will ever have and we discard them** — Owner (2026-07-28): *"New users are encouraged to complete the placement test first thing. We don't really provide much analysis or diagnostics at the conclusion of the test. This is an underdeveloped opportunity."*
+
+  **The one moment a learner volunteers a full diagnostic.** A new user takes the placement test before they have any reason to trust the app, and gets back a starting position and nothing else. No reading of where they are strong, no shape of what comes next, no sense that the effort bought them anything.
+
+  **What the results could produce, at the moment they are freshest:**
+  - **A read on the learner**, not a score — which JLPT level they sit at, which grades are solid, where the boundary is ragged.
+  - **A suggested study plan** — daily goal and horizon derived from measured performance, rather than the 15/day default everyone gets regardless.
+  - **Near milestones**, deliberately close. "Finish N5: 34 kanji away" is a week; "All Jōyō" is decades. Milestones already exist (Wave 3 #13) but are earned passively rather than *set* here.
+  - **A first Buddy moment with something to say** — the tour in the entry below has a natural opening if it starts from the learner's own results.
+
+  **Ties directly to the Velocity rework below**, which is the same failure at the other end of the journey: a number computed and presented without the framing that makes it useful.
+
+  **Note B-210 first.** Retaking the placement test currently destroys FSRS state on in-progress kanji, and any work that makes the test more attractive raises the odds of a retake. Fix that before inviting people back to it.
+
+  `[Effort: M]` `[Impact: High — first impression, and the only structured diagnostic we ever collect]` `[Backend: Yes]` `[Status: 💡 Idea]`
+
+- [ ] **Explanatory content exists but is never brought to the learner — Buddy should tour, then keep teaching** — Owner (2026-07-28): *"I feel like we have lots of explanatory text in different places, but we don't bring it forward to help a new user. Perhaps Buddy can do an initial guided tour of the most important aspects of the app and the UI. And then periodically, Buddy can add more details to different areas of the app and the UI and tie in some motivational therapy. For example, once the user hits the first milestone, Buddy can congratulate and then go through a short tour of the one or two panels under progress."*
+
+  **The content is already written.** The Progress tab has `InfoSection[]` arrays behind ⓘ buttons (`INFO_BREAKDOWN`, `INFO_CONFIDENCE`, `INFO_VELOCITY`, "How evaluation works"), the Study tab has its grading explainer, onboarding has its own copy. All of it waits to be *asked for* — by a learner who does not yet know the question.
+
+  **Progressive disclosure tied to milestones is the right shape**, and better than a front-loaded tour, because a tour given on day one explains panels the learner has no data in yet. Earning the first milestone is the ideal moment to explain the Progress tab: they now have something to look at, and they have just done something worth congratulating.
+
+  **Buddy is already the right voice.** The nudge system (Phase 1') and Buddy moments (Phase 5) exist; this is new *content and triggers* on shipped machinery, not a new subsystem.
+
+  **Design constraints, from this project's own history:**
+  - **Dismissible, and re-openable.** The study explainer is a first-run overlay that writes `kl_has_seen_study_help` and can never be summoned again — see the ⓘ entry below. Do not build a second one of those.
+  - **Respect the anti-nag switch.** `mnemonicCoachingEnabled` is an opt-out that exists because interruption is a real cost. A tour system needs the same escape.
+  - **Never during a session.** Interrupting retrieval to explain a panel damages the thing being explained.
+
+  **Related:** the ⓘ-to-reopen entry below is the smallest slice of this idea and could ship first.
+
+  `[Effort: M–L]` `[Impact: High — content that already exists, reaching people who need it]` `[Backend: No, unless tour state is server-side]` `[Status: 💡 Idea]`
+
+- [ ] **What is the Journal actually for? — the Study Log vision exists but was never built** — Owner (2026-07-28): *"I will likely have more input on this section. Not sure of its utility at this point. Don't we have a plan to repurpose this section for Buddy the tutor?"*
+
+  **Yes — and the recollection is right.** [`2026-04-09-kanji-buddy-design.md`](superpowers/specs/2026-04-09-kanji-buddy-design.md) §153 reimagines the Journal as the **Study Log**: *"a personal record of each learner's memory journey, not just a list of mnemonics."* The same spec names the Journal as Buddy's Stage 2 (**Anchor**) destination — where Buddy takes a learner whose kanji is not sticking — and lists it among the *"disconnected functional areas… the Journal sits as a personal scrapbook, disconnected from the learning loop."*
+
+  **B-211 built the floor of that vision, not the vision.** The tab can now list what the learner has written, which it could never do before. The spec asks for more: entries as a record of *when and where* something was learned, effectiveness surfaced per hook, and opt-in sharing so friends can adopt a hook that demonstrably works, with attribution.
+
+  **The honest question underneath the owner's is whether the Journal should be a destination at all.** If Buddy routes learners there when a kanji fails, it is a *workspace* reached in flow, not a tab browsed on purpose. Those imply different designs, and the current tab is neither.
+
+  **Do not design this in isolation** — it is one of the seven tabs the parent design says do not talk to each other, and the Study Log is the piece meant to connect the study loop to the memory record.
+
+  `[Effort: L — spec exists, needs re-grounding against what shipped]` `[Impact: Med-High — an entire tab whose purpose is unsettled]` `[Backend: Yes]` `[Status: 💡 Idea — revisit the 2026-04-09 spec before designing]`
 
 ## 🎨 UI & Experience
 

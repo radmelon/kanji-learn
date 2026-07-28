@@ -6,6 +6,22 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-227) The Journal shows a blank screen while it loads, so it reads as broken** — Found on-device in **B145** (owner, 2026-07-28): *"I was about to ask 'When will the Journal section be ready for testing?' because every time I go to that section I saw nothing. I now realize that it takes a few moments for the UI to pull data and populate."*
+
+  **The learner concluded the feature was unbuilt.** That is the cost measured precisely: not a cosmetic wait, but a working feature read as absent.
+
+  **Introduced by B-211's fix, and by being careful in only one direction.** `showEmptyState` is gated on `hooksLoaded` so the tab cannot flash *"No hooks yet"* at someone who has plenty — correct, and it removed the false negative. But nothing was put in its place for the loading window, so the screen renders **nothing at all**: no empty state, no list, no spinner. The `RefreshControl` only appears on pull-to-refresh, never on first load.
+
+  Aggravated by the cross-region round trip to Supabase in `ap-southeast-2` (B-208) — the same latency that makes the Progress tab take 10–15s.
+
+  **Fix:** render a spinner while `!hooksLoaded`, mirroring the Study tab's *"Loading reviews…"* pattern. The cached list should still paint immediately when there is one — `useUserHooks` already reads cache before the network — so the spinner is only for a genuine cold load.
+
+  **Worth auditing the same shape elsewhere:** any screen where a "don't show the empty state until loaded" guard was added without a corresponding loading state has this bug latent.
+
+  **Affected files:** `apps/mobile/app/(tabs)/journal.tsx`, `apps/mobile/src/hooks/useMnemonics.ts` (`useUserHooks`).
+
+  `[Effort: XS]` `[Impact: Med — a shipped feature reads as unbuilt]` `[Backend: No]` `[Status: 🐛 Active — found in B145]`
+
 - [ ] **(B-223) The teaching beat always says "beside", even when a component sits above or inside another** — Found on-device in **B145** (owner, 2026-07-28): *"The statement explaining a kanji's radicals or components seems to always use the preposition 'beside' when often above or under would be more appropriate."*
 
   **Correct for 説 (言 to the left of 兑); wrong for 歯, where 止 sits on top.** `teachingBeat` ([teaching-beat.ts](apps/mobile/src/lib/teaching-beat.ts)) hardcodes the joiner: `` `${head} beside ${last}` ``. B-217 fixed *what* the parts are called and left *how they relate* untouched — half a fix, and the half that remains states something false about most kanji.
@@ -603,11 +619,31 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Root cause:** Constant was set to 2,294 (Jōyō 2,136 + Jinmeiyō 158) instead of Jōyō-only. The README, sign-in screen subtitle, and DB migration comment all correctly say 2,136.
 
-  **Affected files:**
-  - `packages/shared/src/constants.ts` — change `2294` → `2136`
-  - Downstream consumers (`analytics.service.ts`, `SrsStatusBar.tsx`) import the constant and need no change once it's fixed.
+  > ### ⚠️ Re-scoped 2026-07-28 — "change 2294 → 2136" is the wrong fix
+  >
+  > Owner asked for a consistency sweep after seeing *"All 2294 Jouyou kanji"* on the Dashboard. Checking it turned up **three** numbers in circulation, and the prescribed one-line fix would make the app lie in a different direction.
+  >
+  > | Number | What it actually is | Where |
+  > |---|---|---|
+  > | **2294** | rows in `kanji` — **verified live 2026-07-28** | `TOTAL_JOUYOU_KANJI`, Velocity copy, Journey bar |
+  > | **2254** | unexplained | Velocity copy as recorded in ENHANCEMENTS |
+  > | **2136** | the real Jōyō list (2010) | README, sign-in subtitle, migration comment |
+  >
+  > **The deck genuinely contains 2,294 kanji** — Jōyō plus 158 Jinmeiyō. So simply setting the constant to 2,136 would make completion exceed 100% for anyone who learns a Jinmeiyō character, and would misstate how much work the app is actually asking for. Both numbers are true; they answer different questions.
+  >
+  > **The defect is naming, not arithmetic.** A constant called `TOTAL_JOUYOU_KANJI` holding 2,294 is wrong whatever it is used for, and the Dashboard string *"All 2294 Jouyou kanji"* is flatly false — those are not all Jōyō kanji.
+  >
+  > **Fix:** two honestly-named constants — `TOTAL_JOUYOU_KANJI = 2136` and `TOTAL_DECK_KANJI = 2294` — then audit **every** consumer and decide, per call site, which question it is answering. Progress toward Jōyō is a curriculum claim; progress through the deck is a workload claim. Copy must stop saying "Jōyō" where it means "the deck".
+  >
+  > **2254 must be run to ground** rather than assumed to be a typo. A third number implies a third source.
+  >
+  > Sweep both the code and the user-facing strings; the count appears in Dashboard copy, the Journey bar, Velocity, the sign-in subtitle and the README.
 
-  `[Effort: XS]` `[Impact: Medium]` `[Status: 🐛 Active]`
+  **Affected files:**
+  - `packages/shared/src/constants.ts` — split into two named constants
+  - `analytics.service.ts`, `SrsStatusBar.tsx`, Dashboard Journey bar + Velocity copy, sign-in subtitle, README — each call site chosen deliberately
+
+  `[Effort: S — the sweep, not the constant]` `[Impact: Medium — a visible false claim on the Dashboard]` `[Status: 🐛 Active — re-scoped 2026-07-28]`
 
 - [x] **Dashboard doesn't refresh after a study session** — ~~FIXED~~ in B121 (commit `d03cfad`). Verified by user on 2026-04-18: returning to the Dashboard tab after a study session now auto-refreshes all metrics (remembered count, JLPT bars, streak, daily goal) without needing pull-to-refresh. Fix: `useFocusEffect` on the Dashboard calls `refresh()` across all 5 data hooks (`useAnalytics`, `useProfile`, `useQuizAnalytics`, `useInterventions`, and `loadAll` on `useSocial`) whenever the tab regains focus. Cached data keeps rendering during the refetch — no loading flash. Pull-to-refresh still works as before.
 
