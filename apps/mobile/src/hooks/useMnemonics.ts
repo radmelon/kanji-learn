@@ -38,6 +38,53 @@ export interface Mnemonic {
   cocreationContext?: CoCreationContext | null
 }
 
+/** A hook plus the kanji identity needed to render it in a mixed list. */
+export interface UserHook extends Mnemonic {
+  kanjiCharacter: string
+  kanjiMeanings: string[]
+  layerCount: number
+}
+
+const HOOKS_CACHE_KEY = 'kl:user_hooks_cache'
+
+/**
+ * Every hook the learner has co-created, newest first — the Journal's default.
+ *
+ * B-211: `/v1/mnemonics` had no list route, so the Journal could only ever show
+ * one kanji at a time via search. Its default view was fed by the 30-day
+ * refresh queue, which Plan 2 retired, so the tab named for the learner's own
+ * writing has been empty since.
+ *
+ * Cached like the per-kanji read so the list paints instantly on re-entry and
+ * survives being offline; a failed refresh leaves the cached list on screen
+ * rather than blanking it.
+ */
+export function useUserHooks() {
+  const [hooks, setHooks] = useState<UserHook[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [hasLoaded, setHasLoaded] = useState(false)
+
+  const load = useCallback(async () => {
+    setIsLoading(true)
+    const cached = await storage.getItem<UserHook[]>(HOOKS_CACHE_KEY)
+    if (cached) setHooks(cached)
+
+    try {
+      const data = await api.get<UserHook[]>('/v1/mnemonics')
+      setHooks(data)
+      await storage.setItem(HOOKS_CACHE_KEY, data)
+    } catch {
+      // Cached list stays on screen. An empty Journal because the network
+      // blipped is the exact failure this tab already had for months.
+    } finally {
+      setIsLoading(false)
+      setHasLoaded(true)
+    }
+  }, [])
+
+  return { hooks, isLoading, hasLoaded, load }
+}
+
 async function getCoords(): Promise<{ latitude: number; longitude: number } | undefined> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync()

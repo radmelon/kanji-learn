@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { mnemonics, kanji, userKanjiProgress } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import { updateEffectiveness, EFFECTIVENESS_DEFAULT, COCREATION_SYSTEM_PROMPT, buildAssemblyPrompt } from '@kanji-learn/shared'
@@ -25,6 +25,13 @@ export interface MnemonicRecord {
   lastReinforcedAt: Date | null
   createdAt: Date
   updatedAt: Date
+}
+
+/** A co-created hook plus the kanji identity the Journal needs to render it. */
+export interface UserHookRecord extends MnemonicRecord {
+  kanjiCharacter: string
+  kanjiMeanings: string[]
+  layerCount: number
 }
 
 export interface GeneratedMnemonic {
@@ -79,6 +86,48 @@ export class MnemonicService {
     return rows
       .filter((m) => m.type === 'system' || m.userId === userId)
       .map(this.toRecord)
+  }
+
+  // ── List the caller's own hooks (B-211) ────────────────────────────────────
+
+  /**
+   * Every hook this learner has co-created, newest first.
+   *
+   * B-211: there has never been a "list my mnemonics" route. `/v1/mnemonics`
+   * exposed only `/refresh` — a deprecated no-op returning `[]` — and
+   * `/:kanjiId`, one kanji at a time. The Journal tab's default view was
+   * populated solely by the refresh-due list, so it has been effectively empty
+   * since the Plan 2 retirement and completely empty since the Phase 5 cleanup.
+   * The tab is named Journal and could not list what the learner had written.
+   *
+   * Scoped to `generation_method = 'cocreated'` deliberately: system mnemonics
+   * are not the learner's, and the pre-Phase-5 'user' rows were wiped by Task
+   * 3's cleanup. This is "things I wrote", not "everything attached to me".
+   *
+   * The kanji join supplies the character and meanings — the Journal shows a
+   * list of hooks, and a hook without its kanji on screen is unidentifiable.
+   */
+  async listUserHooks(userId: string, limit = 200): Promise<UserHookRecord[]> {
+    const rows = await this.db
+      .select({
+        mnemonic: mnemonics,
+        character: kanji.character,
+        meanings: kanji.meanings,
+      })
+      .from(mnemonics)
+      .innerJoin(kanji, eq(kanji.id, mnemonics.kanjiId))
+      .where(and(eq(mnemonics.userId, userId), eq(mnemonics.generationMethod, 'cocreated')))
+      .orderBy(desc(mnemonics.createdAt))
+      .limit(limit)
+
+    return rows.map((r) => ({
+      ...this.toRecord(r.mnemonic),
+      kanjiCharacter: r.character,
+      kanjiMeanings: r.meanings ?? [],
+      // Surfaced so the Journal can show "3 layers" without a second read;
+      // buildDeepenedContext appends and never replaces, so this only grows.
+      layerCount: r.mnemonic.cocreationContext?.layerCount ?? 1,
+    }))
   }
 
   // ── Cloud-tier assembly from co-creation slots (spec §7.3) ────────────────

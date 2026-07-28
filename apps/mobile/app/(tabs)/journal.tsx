@@ -6,7 +6,8 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
-import { useMnemonics } from '../../src/hooks/useMnemonics'
+import { useMnemonics, useUserHooks } from '../../src/hooks/useMnemonics'
+import type { Mnemonic, UserHook } from '../../src/hooks/useMnemonics'
 import { api } from '../../src/lib/api'
 import { MnemonicCard } from '../../src/components/mnemonics/MnemonicCard'
 import { colors, spacing, radius, typography } from '../../src/theme'
@@ -28,6 +29,10 @@ const INFO_JOURNAL = [
 ]
 
 const INFO_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 }
+
+/** The all-hooks list carries the kanji identity; the per-kanji search does
+ *  not (the character is already in the search box). */
+const isUserHook = (m: Mnemonic | UserHook): m is UserHook => 'kanjiCharacter' in m
 
 export default function Journal() {
   const [selectedKanjiId, setSelectedKanjiId] = useState<number | null>(null)
@@ -54,9 +59,17 @@ export default function Journal() {
     remove,
   } = useMnemonics(selectedKanjiId ?? 0)
 
+  // B-211: the Journal's default is now every hook the learner has written,
+  // newest first. Search narrows to one kanji; it is a filter, not the only way in.
+  const { hooks, isLoading: hooksLoading, hasLoaded: hooksLoaded, load: loadHooks } = useUserHooks()
+
   useEffect(() => {
     if (selectedKanjiId) load()
   }, [selectedKanjiId])
+
+  useEffect(() => {
+    loadHooks()
+  }, [loadHooks])
 
   const handleSave = useCallback(async () => {
     if (!composeText.trim() || !selectedKanjiId) return
@@ -72,7 +85,12 @@ export default function Journal() {
     }
   }, [composeText, selectedKanjiId, save])
 
-  const displayItems = selectedKanjiId ? mnemonics : []
+  const displayItems = selectedKanjiId ? mnemonics : hooks
+  const listLoading = selectedKanjiId ? isLoading : hooksLoading
+  const refreshList = selectedKanjiId ? load : loadHooks
+  // Only claim the Journal is empty once a load has actually completed —
+  // otherwise the tab flashes "no hooks yet" at a learner who has plenty.
+  const showEmptyState = !selectedKanjiId && hooksLoaded && hooks.length === 0
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -148,13 +166,14 @@ export default function Journal() {
         <Text style={styles.searchError}>{searchError}</Text>
       )}
 
-      {/* Nothing selected — the tab is a lookup, so say what to look up. */}
-      {!selectedKanjiId && (
+      {/* Genuinely no hooks yet — not "nothing selected". The old copy said
+          "Search a kanji" because listing them was impossible (B-211). */}
+      {showEmptyState && (
         <View style={styles.emptyState}>
           <Ionicons name="journal-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>Search a kanji</Text>
+          <Text style={styles.emptyTitle}>No hooks yet</Text>
           <Text style={styles.emptySubtitle}>
-            Look up any kanji to see the hook you built for it
+            Build one from a kanji you keep forgetting and it will appear here
           </Text>
         </View>
       )}
@@ -166,21 +185,42 @@ export default function Journal() {
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl
-            refreshing={isLoading}
-            onRefresh={load}
+            refreshing={listLoading}
+            onRefresh={refreshList}
             tintColor={colors.primary}
           />
         }
-        renderItem={({ item }) => (
-          <MnemonicCard
-            mnemonic={item}
-            onUpdate={update}
-            onUpdatePhoto={updatePhoto}
-            onDelete={remove}
-          />
-        )}
+        renderItem={({ item }) => {
+          // In the all-hooks list every card is a different kanji, and
+          // MnemonicCard renders only the story — so without this the list is
+          // a wall of prose with nothing saying what each entry is for.
+          const hook = isUserHook(item) ? item : null
+          return (
+            <View style={styles.hookGroup}>
+              {hook && (
+                <View style={styles.hookHeading}>
+                  <Text style={styles.hookKanji}>{hook.kanjiCharacter}</Text>
+                  <View style={styles.hookHeadingText}>
+                    <Text style={styles.hookMeaning} numberOfLines={1}>
+                      {hook.kanjiMeanings.slice(0, 3).join(', ')}
+                    </Text>
+                    {hook.layerCount > 1 && (
+                      <Text style={styles.hookLayers}>{hook.layerCount} layers</Text>
+                    )}
+                  </View>
+                </View>
+              )}
+              <MnemonicCard
+                mnemonic={item}
+                onUpdate={update}
+                onUpdatePhoto={updatePhoto}
+                onDelete={remove}
+              />
+            </View>
+          )
+        }}
         ListEmptyComponent={
-          isLoading || !selectedKanjiId ? null : (
+          listLoading || !selectedKanjiId ? null : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>No hook yet</Text>
               <Text style={styles.emptySubtitle}>
@@ -245,6 +285,12 @@ const styles = StyleSheet.create({
   genBtnText: { ...typography.bodySmall, color: colors.accent },
   sectionTitle: { ...typography.bodySmall, color: colors.textMuted, paddingHorizontal: spacing.md, paddingBottom: spacing.xs, fontWeight: '600' },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl },
+  hookGroup: { gap: spacing.xs, marginBottom: spacing.md },
+  hookHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  hookKanji: { fontSize: 32, color: colors.textPrimary },
+  hookHeadingText: { flex: 1 },
+  hookMeaning: { ...typography.bodySmall, color: colors.textSecondary },
+  hookLayers: { ...typography.caption, color: colors.textMuted },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl, gap: spacing.md },
   emptyTitle: { ...typography.h3, color: colors.textSecondary },
   emptySubtitle: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.xl },

@@ -90,6 +90,18 @@ export async function mnemonicRoutes(
   )
   // ─── end deprecated stubs ──────────────────────────────────────────────────
 
+  // GET /v1/mnemonics — every hook the caller has co-created, newest first.
+  //
+  // B-211: the Journal tab is named for listing what the learner has written
+  // and had no endpoint that could do it. Registered above the parametric
+  // routes for the same reason /refresh is — a bare '/' does not collide with
+  // '/:kanjiId' in Fastify, but keeping every static path above the parametric
+  // block is the convention this file already relies on to stay safe.
+  server.get('/', { preHandler: [server.authenticate] }, async (req, reply) => {
+    const data = await service.listUserHooks(req.userId!)
+    return reply.send({ ok: true, data })
+  })
+
   // GET /v1/mnemonics/:kanjiId — system + user mnemonics for a kanji
   server.get<{ Params: { kanjiId: string } }>(
     '/:kanjiId',
