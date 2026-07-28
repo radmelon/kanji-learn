@@ -19,6 +19,14 @@ interface Props {
    *  Omitted → the subtitle is not rendered at all. */
   meaning?: string
   storyText: string
+  /** B-219: step 2 asks "how do you read this?" and offers "Reveal the
+   *  reading" — but the sheet was never given any readings, so the reveal
+   *  consumed the tap and showed nothing. The reinforce target is always a
+   *  kanji reviewed this session, so the caller reads these off the session
+   *  queue; no API change is needed. Empty arrays render an honest fallback
+   *  rather than a blank card. */
+  onReadings?: string[]
+  kunReadings?: string[]
   onClose: () => void
   /** Fired when the deepen gate trips — the caller opens the deepen flow. */
   onOfferDeepen?: (mnemonicId: string) => void
@@ -43,6 +51,8 @@ export function ReinforceSheet({
   kanjiCharacter,
   meaning,
   storyText,
+  onReadings = [],
+  kunReadings = [],
   onClose,
   onOfferDeepen,
 }: Props) {
@@ -91,7 +101,11 @@ export function ReinforceSheet({
             <ScrollView
               style={styles.scroll}
               contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
+              /* B-215: suppressing the indicator removed the only cue that
+                 there was more to read. This repo has shipped that failure
+                 before — B-207, where a badge row scrolled with no affordance
+                 and was found by chance. */
+              showsVerticalScrollIndicator
               keyboardShouldPersistTaps="handled"
             >
               {/* Step 1 — recall the scene. The story stays hidden until the
@@ -121,10 +135,34 @@ export function ReinforceSheet({
               {(state.step === 'reading' || state.step === 'self_report' || state.step === 'done') && (
                 <View style={styles.stageBox}>
                   <Text style={styles.prompt}>Good. So — how do you read {kanjiCharacter}?</Text>
-                  {state.step === 'reading' && (
+                  {state.step === 'reading' ? (
                     <TouchableOpacity style={styles.secondaryBtn} onPress={reveal}>
                       <Text style={styles.secondaryBtnText}>Reveal the reading</Text>
                     </TouchableOpacity>
+                  ) : (
+                    /* B-219: this is what "Reveal the reading" reveals. Before
+                       this the button advanced the reducer, unmounted itself,
+                       and showed nothing — the half of the two-step recall that
+                       ties the hook to the actual pronunciation never worked. */
+                    <View style={styles.readingCard}>
+                      {onReadings.length > 0 && (
+                        <View style={styles.readingRow}>
+                          <Text style={styles.readingLabel}>On</Text>
+                          <Text style={styles.readingValue}>{onReadings.join('、')}</Text>
+                        </View>
+                      )}
+                      {kunReadings.length > 0 && (
+                        <View style={styles.readingRow}>
+                          <Text style={styles.readingLabel}>Kun</Text>
+                          <Text style={styles.readingValue}>{kunReadings.join('、')}</Text>
+                        </View>
+                      )}
+                      {onReadings.length === 0 && kunReadings.length === 0 && (
+                        <Text style={styles.readingValue}>
+                          No readings recorded for {kanjiCharacter}.
+                        </Text>
+                      )}
+                    </View>
                   )}
                 </View>
               )}
@@ -233,7 +271,13 @@ const styles = StyleSheet.create({
   meaning: { ...typography.caption, color: colors.textMuted },
   // flexShrink is required: RN defaults it to 0, so a long story would push
   // the pinned footer past the sheet's maxHeight instead of scrolling.
-  scroll: { flexGrow: 0, flexShrink: 1 },
+  // B-220. `flexShrink: 1` alone is not enough: Yoga gives flex items
+  // `minHeight: auto`, so a child will not shrink below its own content's
+  // intrinsic height. The ScrollView therefore stayed as tall as its content,
+  // the sheet hit its 80% cap, and the footer was pushed past the boundary and
+  // clipped — the learner saw a button with no label and could not scroll.
+  // `minHeight: 0` is the half that was missing.
+  scroll: { flexGrow: 0, flexShrink: 1, minHeight: 0 },
   scrollContent: { gap: spacing.md, paddingBottom: spacing.md },
   stageBox: { gap: spacing.sm },
   prompt: { ...typography.body, color: colors.textPrimary },
@@ -266,9 +310,25 @@ const styles = StyleSheet.create({
   textBtn: { alignItems: 'center', paddingVertical: spacing.xs },
   textBtnText: { ...typography.caption, color: colors.textMuted },
   footer: {
+    // Never let the footer be the thing that shrinks — it carries the only way
+    // forward. The ScrollView above absorbs the overflow instead (B-220).
+    flexShrink: 0,
     gap: spacing.sm,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
+  readingCard: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  readingRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+  readingLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    minWidth: 32,
+  },
+  readingValue: { ...typography.body, color: colors.textPrimary, flex: 1 },
 })

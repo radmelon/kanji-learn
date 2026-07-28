@@ -223,7 +223,7 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
           <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator
             keyboardShouldPersistTaps="handled"
           >
             {state.error && (
@@ -538,7 +538,11 @@ const styles = StyleSheet.create({
   meaning: { ...typography.bodySmall, color: colors.textSecondary },
   // flexShrink is required: RN defaults it to 0, so a long draft would push the
   // pinned footer past the sheet's maxHeight instead of scrolling.
-  scroll: { flexGrow: 0, flexShrink: 1 },
+  // B-215/B-220: and flexShrink alone is not enough — Yoga gives flex items
+  // `minHeight: auto`, so this would not shrink below its content's intrinsic
+  // height and the overflow went to the footer anyway. The 510-character 暗
+  // hook was the first story tall enough to expose it.
+  scroll: { flexGrow: 0, flexShrink: 1, minHeight: 0 },
   scrollContent: { gap: spacing.md, paddingBottom: spacing.md },
   stageBox: { gap: spacing.md },
   inferringRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -598,6 +602,8 @@ const styles = StyleSheet.create({
   speakBtnText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
   stickierBox: { gap: spacing.sm },
   footer: {
+    // Never the thing that shrinks — it carries the only way forward (B-215).
+    flexShrink: 0,
     gap: spacing.sm,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,

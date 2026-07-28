@@ -24,7 +24,7 @@ import type { ReviewResult } from '@kanji-learn/shared'
 import { pickBuddyMomentAction, snoozedKanjiIds, type ReviewedCard } from '@kanji-learn/shared'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Pressable,
-  PanResponder, Animated, Alert,
+  PanResponder, Animated, Alert, ScrollView,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
@@ -104,6 +104,13 @@ function StudySession() {
     storyText: string
     character: string
     kanjiId: number
+    /** B-219. buddy-moment-context returns neither readings nor meaning, so
+     *  the sheet's "Reveal the reading" had nothing to reveal. The target is
+     *  always a kanji reviewed this session, so these come off the session
+     *  queue — no API change, and nothing new to deploy. */
+    onReadings: string[]
+    kunReadings: string[]
+    meaning?: string
   } | null>(null)
   // Generation guard for the Buddy moment (same ref-guard idiom as
   // finishCalledRef below): clearBuddyMoment bumps the generation, and any
@@ -501,11 +508,20 @@ function StudySession() {
         const hook = await fetchCoCreatedHook(action.kanjiId)
         if (gen !== buddyMomentGenRef.current) return
         if (hook && card) {
+          // Readings for step 2 of the reinforce flow (B-219). Read from the
+          // store rather than the render closure, for the same reason the rest
+          // of handleFinish does: this callback's deps don't include the queue.
+          const queued = useReviewStore
+            .getState()
+            .queue.find((q) => q.kanjiId === action.kanjiId)
           setReinforceTarget({
             mnemonicId: hook.id,
             storyText: hook.storyText,
             character: card.kanji,
             kanjiId: action.kanjiId,
+            onReadings: queued?.onReadings ?? [],
+            kunReadings: queued?.kunReadings ?? [],
+            meaning: queued?.meanings?.[0],
           })
         }
         // No hook found (deleted between the two reads) → no moment. Silent by
@@ -586,19 +602,24 @@ function StudySession() {
 
   if (screen === 'sessionLost') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <Ionicons name="refresh-circle" size={64} color={colors.primary} />
-        <Text style={styles.emptyTitle}>Session interrupted</Text>
-        <Text style={styles.emptySubtitle}>
-          We lost track of that session. Your finished cards were saved — start
-          a new one to pick up where you left off.
-        </Text>
-        <TouchableOpacity style={styles.backButton} onPress={handleBegin}>
-          <Text style={styles.backText}>Start a session</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.backButton} onPress={() => setPhase('ready')}>
-          <Text style={styles.backText}>Back to Study</Text>
-        </TouchableOpacity>
+      <SafeAreaView style={styles.safeScroll}>
+        <ScrollView
+          contentContainerStyle={styles.centeredScrollContent}
+          showsVerticalScrollIndicator
+        >
+          <Ionicons name="refresh-circle" size={64} color={colors.primary} />
+          <Text style={styles.emptyTitle}>Session interrupted</Text>
+          <Text style={styles.emptySubtitle}>
+            We lost track of that session. Your finished cards were saved — start
+            a new one to pick up where you left off.
+          </Text>
+          <TouchableOpacity style={styles.backButton} onPress={handleBegin}>
+            <Text style={styles.backText}>Start a session</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setPhase('ready')}>
+            <Text style={styles.secondaryButtonText}>Back to Study</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </SafeAreaView>
     )
   }
@@ -693,7 +714,10 @@ function StudySession() {
             visible
             mnemonicId={reinforceTarget.mnemonicId}
             kanjiCharacter={reinforceTarget.character}
+            meaning={reinforceTarget.meaning}
             storyText={reinforceTarget.storyText}
+            onReadings={reinforceTarget.onReadings}
+            kunReadings={reinforceTarget.kunReadings}
             onClose={clearBuddyMoment}
             onOfferDeepen={() => {
               // DeepenSheet now exists, but only kanji detail hosts it — that
@@ -1080,6 +1104,27 @@ const styles = StyleSheet.create({
   emptySubtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: spacing.xl },
   backButton: { backgroundColor: colors.primary, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: radius.lg, marginTop: spacing.md },
   backText: { ...typography.h3, color: '#fff' },
+  // Same family as B-215/B-220: a fixed-height centred container clips its own
+  // content on a short screen. `flexGrow: 1` + `justifyContent: 'center'`
+  // centres while the content fits and scrolls the moment it doesn't, so the
+  // second button can never become unreachable on an SE-sized device.
+  safeScroll: { flex: 1, backgroundColor: colors.bg },
+  centeredScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+  },
+  secondaryButton: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  secondaryButtonText: { ...typography.h3, color: colors.textSecondary },
 })
 
 // ─── Error boundary ───────────────────────────────────────────────────────────

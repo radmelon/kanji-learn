@@ -92,7 +92,7 @@ export function DeepenSheet({
             <ScrollView
               style={styles.scroll}
               contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator
               keyboardShouldPersistTaps="handled"
             >
               {error && (
@@ -193,7 +193,10 @@ const styles = StyleSheet.create({
   subtitle: { ...typography.bodySmall, color: colors.textSecondary },
   // flexShrink is required: RN defaults it to 0, so long content would push
   // the pinned footer past the sheet's maxHeight instead of scrolling.
-  scroll: { flexGrow: 0, flexShrink: 1 },
+  // B-215/B-220: flexShrink alone is not enough — Yoga gives flex items
+  // `minHeight: auto`, so this would not shrink below its content's intrinsic
+  // height and the overflow went to the footer anyway.
+  scroll: { flexGrow: 0, flexShrink: 1, minHeight: 0 },
   scrollContent: { gap: spacing.md, paddingBottom: spacing.md },
   prompt: { ...typography.body, color: colors.textPrimary, lineHeight: 22 },
   threadBtn: {
@@ -215,6 +218,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   footer: {
+    // Never the thing that shrinks — it carries the only way forward (B-220).
+    flexShrink: 0,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
