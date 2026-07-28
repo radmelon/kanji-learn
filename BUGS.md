@@ -22,6 +22,40 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: 🐛 Active — found in B144]`
 
+- [ ] **(B-217) The teaching beat prints the literal placeholder "this part" for 99% of kanji** — Found on-device in **B144** (owner, 2026-07-28): *"説 is 言 (speech) beside this part. What does '...this part.' reference? Is this a fragment?"* It is not a fragment — it is a fallback string leaking to the learner.
+
+  **Mechanism.** `teachingBeat` ([CoCreationSheet.tsx](apps/mobile/src/components/mnemonics/CoCreationSheet.tsx)) maps each component through `lookupComponents` and substitutes the literal `'this part'` when a component is absent from the radical dictionary. 説's components are `["言","兑"]`; 言 resolves to *speech*, 兑 does not resolve, so the sentence renders *"説 is 言 (speech) beside this part."*
+
+  **Scale — this is the default, not an edge case.** `radical-dictionary.ts` holds **20 entries** (人 亻 扌 手 寺 水 氵 木 火 日 月 口 心 忄 土 女 子 目 糸 言). Measured against live data: of **2,187** kanji with components, **2,166 — 99% —** have at least one component outside the dictionary and would therefore emit "this part". The phrasing reads worst when the unmapped component is last, because "beside this part" then has no referent at all.
+
+  **Fix is nearly free and strictly better:** fall back to the **character itself** rather than a vague phrase. We do not know 兑's meaning, but we know the glyph, and the learner is looking straight at it — discarding it loses information we already have.
+
+  ```
+  return entry ? `${entry.char} (${entry.meaning})` : c   // "説 is 言 (speech) beside 兑."
+  ```
+
+  **Separately worth deciding:** whether a 20-entry dictionary is adequate for a feature whose whole purpose is component-based teaching. Expanding it is additive and independent of this fix.
+
+  **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (`teachingBeat`), `packages/shared/src/mnemonics/radical-dictionary.ts` (coverage).
+
+  `[Effort: XS for the fallback / M to expand coverage]` `[Impact: Med-High — visible broken-looking copy on essentially every hook built]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+
+- [ ] **(B-218) The immediate quick-check is a dead end that shows its own answer** — Found on-device in **B144** (owner, 2026-07-28): *"It displayed 'Quick check. Which Kanji does this hook belong to?' There is no action on this page and the Kanji the hook relates to is in the top left corner… the only way to dismiss this page is the close X or tapping outside. Felt like a misplaced vestige or dead end."*
+
+  **Three faults stacked in one screen.**
+
+  1. **The answer is displayed above the question.** `CoCreationSheet`'s header always renders the kanji in a pill at top-left. A story→kanji quiz placed inside that sheet is trivially answerable by looking up. Introduced in Plan 4 Task 11 Step 4 without noticing the sheet necessarily displays the subject.
+  2. **The tiles are unreachable** — almost certainly **B-215**. The choice tiles render *below* the story; a long story plus the 80%-height cap clips them off-screen. "No action on this page" is not a missing action, it is an action that cannot be scrolled to.
+  3. **No escape hatch while the quiz shows.** The **Done** button only renders when the quiz is answered or absent, so with the tiles unreachable the X and backdrop really are the only exits.
+
+  **The deeper question: what does this test measure?** Seconds after writing the story, with the kanji on screen, *"which kanji is this for?"* has no failure mode. The **next-session** recall quiz is the one that measures retention, and it is verified working (暗, 2026-07-28: stamp cleared, `reinforcement_count` 1, effectiveness 0.5 → 0.7).
+
+  **Options:** (1) hide the header kanji during the check — fixes the giveaway, keeps a test that cannot be failed; (2) move it outside the sheet — more work, same weak question; (3) **drop the immediate check**, keep the due-stamp and the next-session quiz — removes a dead end, a giveaway and a clipped layout in one deletion. Option 3 is a deviation from parent spec §8, which does ask for an immediate check, so it is an owner decision.
+
+  **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (`commitment` stage, header), `apps/mobile/src/components/study/RecallQuizCard.tsx`.
+
+  `[Effort: XS to delete / S to fix in place]` `[Impact: Med — a dead end at the end of the app's flagship flow]` `[Backend: No]` `[Status: 🐛 Active — found in B144; overlaps B-215]`
+
 - [ ] **(B-216) Abandoning a session mid-way locks you out of studying with a false "All caught up!"** — Found on-device in **B144** (owner, 2026-07-28): *"I stopped midway through the meaning→writing→speaking progression, and when I jumped out of the study session the app won't let me back in. It reports 'All caught up!'"* The account had **281 cards due** at the time.
 
   **Workaround:** force-quit and relaunch. That remounts the screen, `phase` re-initialises to `'ready'`, and the Begin button returns.
