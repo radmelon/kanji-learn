@@ -6,6 +6,30 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-210) Retaking the placement test destroys FSRS state on in-progress kanji** — Found 2026-07-27 while designing the Profile page reorganisation (owner asked whether retakes are supported and whether results are kept). Nothing has hit this yet because nobody retakes — but the Profile page has an **unguarded** `router.push('/placement')` row ([profile.tsx:633](apps/mobile/app/(tabs)/profile.tsx)) and `POST /v1/placement/complete` has no "already placed" check, so any learner can trigger it at any time.
+
+  **Symptom:** a learner who has been studying for months retakes the placement test. For every kanji they pass, `applyPlacementResults` ([placement.service.ts:220-247](apps/api/src/services/placement.service.ts)) branches on existing progress:
+
+  | Existing status | Behaviour |
+  |---|---|
+  | none | insert as `remembered`, stability 21 — correct |
+  | `remembered` / `burned` | **skipped** — correctly protected |
+  | **`learning` / `reviewing`** | **overwritten** |
+
+  On that third branch the row is forced to `status: 'remembered'`, `stability: 21`, **`difficulty: 5`**, **`totalReviews: 1`**, `nextReviewAt: now + 21 days`. So FSRS's learned estimate of how hard that kanji is *for this learner* is discarded, review history is zeroed, and the card disappears from the review queue for three weeks. (`lapses` and `readingStage` do survive.)
+
+  **Why it matters:** the cards on that branch are precisely the ones carrying the most FSRS signal — actively-scheduled kanji with real difficulty estimates earned over many reviews. The guard that exists protects *mastered* cards, which are the ones that would lose least. The protection is inverted relative to the value at risk.
+
+  **Not a data-recovery situation but close to one:** the overwrite is silent, immediate, and there is no undo. The only reason it has not bitten is that the retake path is undiscoverable — which the Profile redesign was about to change by promoting it into "How I learn" with a *retake* affordance.
+
+  **Fix direction (needs its own brainstorm — do not fix inline):** at minimum, do not downgrade `learning`/`reviewing` rows, or preserve `difficulty` + `totalReviews` when re-placing. The larger question is what a retake *should mean* for someone with existing progress — re-baseline everything, apply only to unseen kanji, or record the new level without touching the schedule at all. That is a product decision, not a patch.
+
+  **Related:** every attempt is already persisted in full (`placement_sessions` one row per attempt, indexed `(user_id, started_at)`; `placement_results` one row per kanji per attempt), and nothing overwrites it — but **no route ever reads it back**, so the diagnostic history is write-only today. Surfacing it is folded into the Profile reorganisation spec (2026-07-27).
+
+  **Affected files:** `apps/api/src/services/placement.service.ts` (merge semantics), `apps/api/src/routes/placement.ts` (no read path), `apps/mobile/app/(tabs)/profile.tsx:633` (unguarded entry point).
+
+  `[Effort: M — needs a design decision first]` `[Impact: High — silent, irreversible loss of months of scheduling state]` `[Backend: Yes]` `[Status: 🐛 Active — brainstorm owed before any fix]`
+
 - [x] **(B-206) Milestones panel blank ~10–15s on entering Progress, then fills** — Found during B138 testing (2026-05-30, owner report). Root cause: `MilestonesSection` gated render on `if (isLoading || !summary)`, defeating `useAnalytics`'s immediate cache paint while the slow `/v1/analytics/summary` round-trip (B-208) completed.
 
   **Fixed** in `6487f38` (guard is now `if (!summary) return null`), shipped in **B139**, and **verified on-device during the B139 walkthrough** ("much faster, badges appeared instantly"). This entry was stale — closed 2026-07-04 during the B141 triage.
