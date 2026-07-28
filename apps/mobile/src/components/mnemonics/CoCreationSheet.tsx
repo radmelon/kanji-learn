@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Speech from 'expo-speech'
-import { lookupComponents } from '@kanji-learn/shared'
+import { teachingBeat } from '../../lib/teaching-beat'
 import { useCoCreation, defaultCoCreationDeps } from '../../mnemonics/useCoCreation'
 import { useProfile } from '../../hooks/useProfile'
 import { getBestVoice } from '../../utils/tts'
@@ -27,18 +27,6 @@ const GENERATED_BY_LABELS: Record<string, string> = {
   cloud: 'Buddy cloud',
   on_device: 'On-device',
   template: 'Template',
-}
-
-/** "扌 (hand) beside 寺 (temple)" style teaching beat; degrades to "this part" for unmapped components. */
-function teachingBeat(kanji: KanjiForHook): string {
-  const mapped = lookupComponents(kanji.components)
-  const parts = kanji.components.map((c) => {
-    const entry = mapped.find((m) => m.char === c)
-    return entry ? `${entry.char} (${entry.meaning})` : 'this part'
-  })
-  if (parts.length === 0) return ''
-  if (parts.length === 1) return `${kanji.character} is ${parts[0]}.`
-  return `${kanji.character} is ${parts.slice(0, -1).join(', ')} beside ${parts[parts.length - 1]}.`
 }
 
 export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
