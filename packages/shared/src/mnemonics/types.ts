@@ -48,10 +48,34 @@ export interface ReviewedCard {
   lapses: number
   /** Whether a co-created hook already exists for this kanji. */
   hasHook: boolean
+  /** ISO timestamp the hook was created, when there is one.
+   *
+   *  Used only by the reinforce freshness guard. Absent (on an older client,
+   *  or a card with no hook) means "unknown age", which the guard treats as
+   *  old enough — failing toward the previous behaviour rather than silently
+   *  suppressing every reinforce offer. */
+  hookCreatedAt?: string
 }
 
 /** Minimum lifetime lapses to count as "chronically lapsing". */
 export const CHRONIC_LAPSE_THRESHOLD = 3
+
+/**
+ * How old a hook must be before it can be reinforce-challenged.
+ *
+ * Owner decision, 2026-07-28. Building a hook for a kanji you just graded
+ * Again made it instantly eligible for its own reinforce challenge, so the
+ * app could ask a learner to recall a story they wrote four minutes earlier.
+ * That is the same flaw as the immediate quick-check deleted the same day
+ * (B-218): a test with no failure mode, run so soon after creation that it
+ * measures nothing — and whose result still feeds effectivenessScore, where a
+ * 👍 inflates the EMA for a hook that has never actually been retained.
+ *
+ * A calendar day is the smallest interval that guarantees at least one
+ * intervening sleep, which is what makes the retrieval real rather than a
+ * read-back of working memory.
+ */
+export const HOOK_REINFORCE_MIN_AGE_MS = 24 * 60 * 60 * 1000
 
 /** The single action the post-session Buddy moment should take. */
 export type BuddyMomentAction =

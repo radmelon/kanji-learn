@@ -99,7 +99,8 @@ interface ReviewState {
   passQuizLeg: () => void
   /** Quiz failed → downgrade the flashcard grade to a lapse and route to writing. */
   failQuizLeg: () => void
-  /** Recall quiz answered (or skipped) → fall through to the normal path. */
+  /** Recall quiz answered (or skipped) → advance past this kanji entirely.
+   *  It is deliberately NOT graded this session — see the implementation. */
   completeRecallLeg: () => void
 }
 
@@ -303,12 +304,26 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   completeRecallLeg: () => {
     // The recall quiz tests the hook, not the kanji: its outcome feeds the
-    // effectiveness EMA (recorded by RecallQuizLeg), never the SRS grade. The
-    // kanji now runs its normal path starting at the flashcard.
+    // effectiveness EMA (recorded by RecallQuizLeg), never the SRS grade.
+    //
+    // Owner decision, 2026-07-28 — the kanji is now SKIPPED for this session
+    // rather than falling through to its own flashcard. insertRecallQuizFirst
+    // front-loads the quizzed kanji, so the flashcard used to run seconds
+    // after the learner had just picked that same kanji out of four tiles.
+    // The second test is primed by the first, and whatever grade they give is
+    // inflated — which corrupts the FSRS signal for precisely the kanji they
+    // care most about.
+    //
+    // Skipping costs less than it appears: the recall quiz tests story→kanji
+    // recognition, the flashcard tests meaning or reading recall, and only the
+    // latter is what FSRS schedules on. So the honest reading is that this
+    // kanji simply was not reviewed today — no grade recorded, no schedule
+    // touched, still due, back on normal rotation tomorrow.
     //
     // recallKanjiId is cleared so a queue that happens to carry this kanji
     // twice cannot ask the same question again in one session.
-    set({ leg: 'flashcard', recallKanjiId: null })
+    set({ recallKanjiId: null })
+    get().endKanji()
   },
 
   undoLastResult: () => {

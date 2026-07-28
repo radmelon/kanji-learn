@@ -14,6 +14,9 @@ export const fetchBuddyMomentContext = (kanjiIds: number[]) =>
     Array<
       Pick<ReviewedCard, 'kanjiId' | 'kanji' | 'lapses' | 'hasHook'> & {
         buddyMomentSnoozedUntil: string | null
+        /** Null on an API that predates the reinforce freshness guard, which
+         *  the guard reads as "old enough" — the previous behaviour. */
+        hookCreatedAt?: string | null
       }
     >
   >('/v1/mnemonics/buddy-moment-context', { kanjiIds })

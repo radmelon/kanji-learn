@@ -47,6 +47,10 @@ export interface BuddyMomentCard {
   /** ISO, or null. When in the future this kanji is inside its "Not now"
    *  7-day cooldown (parent spec §11) and must not be offered again. */
   buddyMomentSnoozedUntil: string | null
+  /** ISO creation time of the hook, or null when there is none. Feeds the
+   *  reinforce freshness guard — a hook built minutes ago cannot meaningfully
+   *  be recall-tested, and testing it anyway corrupts effectivenessScore. */
+  hookCreatedAt: string | null
 }
 
 // ─── Mnemonic Service ─────────────────────────────────────────────────────────
@@ -296,17 +300,25 @@ export class MnemonicService {
       })
         .from(userKanjiProgress)
         .where(and(eq(userKanjiProgress.userId, userId), inArray(userKanjiProgress.kanjiId, kanjiIds))),
-      this.db.select({ kanjiId: mnemonics.kanjiId })
+      this.db.select({ kanjiId: mnemonics.kanjiId, createdAt: mnemonics.createdAt })
         .from(mnemonics)
         .where(and(eq(mnemonics.userId, userId), inArray(mnemonics.kanjiId, kanjiIds), eq(mnemonics.generationMethod, 'cocreated'))),
     ])
     const progressBy = new Map(progress.map((p) => [p.kanjiId, p]))
     const hookSet = new Set(hooks.map((h) => h.kanjiId))
+    // Oldest hook wins if a kanji somehow has several — the freshness guard
+    // asks "has any hook here had time to settle", not "is the newest fresh".
+    const hookCreatedBy = new Map<number, Date>()
+    for (const h of hooks) {
+      const existing = hookCreatedBy.get(h.kanjiId)
+      if (!existing || h.createdAt < existing) hookCreatedBy.set(h.kanjiId, h.createdAt)
+    }
     return chars.map((c) => ({
       kanjiId: c.id,
       kanji: c.character,
       lapses: progressBy.get(c.id)?.lapses ?? 0,
       hasHook: hookSet.has(c.id),
+      hookCreatedAt: hookCreatedBy.get(c.id)?.toISOString() ?? null,
       // Without this the client has nothing to pass to snoozedKanjiIds, and
       // "Not now" is persisted server-side but never consulted.
       buddyMomentSnoozedUntil:

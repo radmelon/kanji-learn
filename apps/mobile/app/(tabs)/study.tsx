@@ -493,6 +493,9 @@ function StudySession() {
         struggledToday: struggledById.get(c.kanjiId) ?? false,
         lapses: c.lapses,
         hasHook: c.hasHook,
+        // Feeds the reinforce freshness guard — a hook built this session
+        // cannot meaningfully be recall-tested minutes later.
+        hookCreatedAt: c.hookCreatedAt ?? undefined,
       }))
       // The cooldown argument has been accepted since Plan 1 and never
       // supplied. Without it "Not now" is written server-side and then ignored.
