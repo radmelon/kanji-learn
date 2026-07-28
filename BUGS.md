@@ -22,6 +22,28 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: 🐛 Active — found in B144]`
 
+- [ ] **(B-213) "Speak it" exists only at the moment a hook is created, not where hooks are read** — Found on-device in **B144** (owner, 2026-07-27): *"The Speak it icon is only available just after the mnemonic is built and not on the Kanji details where the Mnemonic is displayed."*
+
+  **Coverage today.** The hook can be heard in exactly two moments: `CoCreationSheet` (immediately after building) and `ReinforceSheet` (during a reinforce challenge). Every surface that displays a hook **for reference** is silent:
+
+  | Surface | Renders the hook | Can speak it |
+  |---|---|---|
+  | CoCreationSheet (just built) | ✅ | ✅ |
+  | ReinforceSheet | ✅ | ✅ |
+  | Kanji detail (`MnemonicCard`) | ✅ | ❌ |
+  | Journal (`MnemonicCard`) | ✅ (after B-211) | ❌ |
+  | Flashcard answer side (`KanjiCard`) | ✅ | ❌ |
+
+  **Why this is an oversight and not a scoping decision:** the co-creation sheet's own footer microcopy reads *"Read it aloud — even a whisper."* Reading the hook aloud is part of the method the app explicitly teaches (parent spec §7 encoding). The feature that does it for the learner then disappears the moment the hook is saved — precisely when repetition would help, and precisely where a learner returns to revisit a hook they have half-forgotten.
+
+  **One fix covers two surfaces.** Plan 4 Task 12 made `MnemonicCard` the single renderer for hooks, used by both kanji detail ([kanji/[id].tsx:411](apps/mobile/app/kanji/[id].tsx)) and Journal ([journal.tsx:175](apps/mobile/app/(tabs)/journal.tsx)). Adding the control there serves both. `KanjiCard`'s answer-side hook block (Task 13) is a separate, optional third.
+
+  **Ship with B-212, not before it.** Adding a speak control to more surfaces while it still drops the kanji and kana would propagate a known defect rather than deliver the feature. The shared TTS utility B-212 needs is also what this should call.
+
+  **Affected files:** `apps/mobile/src/components/mnemonics/MnemonicCard.tsx`, optionally `apps/mobile/src/components/study/KanjiCard.tsx`.
+
+  `[Effort: XS once B-212's utility exists]` `[Impact: Med — reading aloud is taught as part of the method, then unavailable where hooks are actually revisited]` `[Backend: No]` `[Status: 🐛 Active — found in B144, blocked on B-212]`
+
 - [ ] **(B-212) Hook TTS speaks English only and silently drops the Japanese** — Found on-device in **B144** (owner, 2026-07-27): *"the TTS of the mnemonic was poor quality and skipped any hiragana or Kanji characters that were present in the passage."*
 
   **Two defects behind one symptom.**
