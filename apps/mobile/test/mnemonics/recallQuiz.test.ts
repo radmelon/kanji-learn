@@ -2,7 +2,6 @@ import type { ReviewQueueItem } from '@kanji-learn/shared'
 import {
   planRecallQuiz,
   buildRecallQuizFromQueue,
-  buildRecallQuizFromRanked,
   shuffleChoices,
 } from '../../src/mnemonics/recallQuiz'
 
@@ -161,40 +160,6 @@ describe('buildRecallQuizFromQueue', () => {
 
     expect(built!.choices).toHaveLength(2)
     expect(built!.choices.map((c) => c.kanjiId)).toContain(1)
-  })
-})
-
-describe('buildRecallQuizFromRanked', () => {
-  const target = { kanjiId: 1, character: '持' }
-  const ranked = [
-    { kanjiId: 2, character: '待' },
-    { kanjiId: 3, character: '侍' },
-    { kanjiId: 4, character: '特' },
-    { kanjiId: 5, character: '時' },
-  ]
-
-  it('takes the first N in the order the server ranked them', () => {
-    const built = buildRecallQuizFromRanked({ storyText: 's', target, ranked })
-
-    expect(built!.choices.map((c) => c.kanjiId)).toEqual([1, 2, 3, 4])
-  })
-
-  it('filters the target back out if the server included it', () => {
-    const built = buildRecallQuizFromRanked({
-      storyText: 's',
-      target,
-      ranked: [{ kanjiId: 1, character: '持' }, ...ranked],
-    })
-
-    const ids = built!.choices.map((c) => c.kanjiId)
-    expect(new Set(ids).size).toBe(ids.length)
-    expect(ids[0]).toBe(1)
-  })
-
-  it('returns null when the server had nothing related to offer', () => {
-    // The immediate quick-check is a nicety; a kanji with no component
-    // relatives must not strand the learner on a broken card.
-    expect(buildRecallQuizFromRanked({ storyText: 's', target, ranked: [] })).toBeNull()
   })
 })
 

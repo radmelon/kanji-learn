@@ -63,18 +63,6 @@ export const fetchCoCreatedHook = async (
 }
 
 /**
- * Kanji sharing a component with this one, most-commonly-seen first.
- *
- * The distractor pool for the immediate quick-check (parent spec §8). The
- * co-creation sheet has no session queue to draw on, and this endpoint already
- * ranks over the whole kanji table by exactly the property `selectDistractors`
- * prefers — a shared component. Wrong answers that look nothing like the
- * target test nothing.
- */
-export const fetchRelatedKanji = (kanjiId: number) =>
-  api.get<Array<{ id: number; character: string }>>(`/v1/kanji/${kanjiId}/related`)
-
-/**
  * Append a layer to an existing hook (parent spec §6.3). Additive: the server
  * replaces storyText and context wholesale, but the context we send already
  * carries every previous layer, so nothing is lost. Resets effectivenessScore

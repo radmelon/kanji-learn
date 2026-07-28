@@ -112,29 +112,6 @@ export function buildRecallQuizFromQueue(args: {
 }
 
 /**
- * Build the quiz from a list the server has already ranked (the immediate
- * quick-check right after a hook is saved).
- *
- * `GET /v1/kanji/:id/related` returns only kanji sharing a component with the
- * target, ordered most-commonly-seen first — that is `selectDistractors`'
- * top tier, computed over the whole kanji table instead of whatever happens to
- * be in this session. Re-ranking it here would mean inventing radical data the
- * endpoint does not return, so this takes the first `count` as given.
- */
-export function buildRecallQuizFromRanked(args: {
-  storyText: string
-  target: RecallQuizChoice
-  ranked: RecallQuizChoice[]
-  count?: number
-}): RecallQuizCardItem | null {
-  const distractors = args.ranked
-    .filter((k) => k.kanjiId !== args.target.kanjiId)
-    .slice(0, args.count ?? DEFAULT_COUNT)
-
-  return toCardItem(args.storyText, args.target, distractors)
-}
-
-/**
  * Fisher–Yates over a copy. The correct answer arrives first by design, so a
  * card that skipped this would silently always highlight tile one.
  *
