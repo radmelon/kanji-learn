@@ -27,6 +27,16 @@ cd apps/mobile && EXPO_NO_CAPABILITY_SYNC=1 npx eas build --platform ios --profi
 
 **Never hand-bump `ios.buildNumber`** — `autoIncrement: true` does it. A capability-sync failure aborts *before* build creation, so `buildNumber` stays untouched and re-running skips nothing. Commit the auto-written `app.json` after a successful cut.
 
+### ⚠️ SECOND API deploy, 2026-07-27 20:21 — B144 shipped against an API four commits behind it
+
+`START_DEPLOYMENT` **SUCCEEDED 20:21:16 → 20:25:04**. Verified by content: `PATCH /v1/kanji/:id/snooze-buddy-moment` went **404 → 401** (no other PATCH route under `/v1/kanji` can shadow it), `/health` 200, `/v1/user/profile` 401-not-500.
+
+**Why it was needed.** The first deploy was 13:32. Four commits carrying API changes landed *after* it — `5903373` (`mnemonicStoryText` on the queue), `122fddd` (`hintUsed`), `8d0c0f5` (snooze route + `buddyMomentSnoozedUntil`), `e29dd45` (`hookLocationAskSeenAt`) — and B144 was cut at 16:27 depending on all four. **Zod strips unknown keys instead of erroring**, so requests succeeded and silently dropped the new fields.
+
+Four B144 features were inert until this deploy: the answer-side hook, the hint button (both gated on `mnemonicStoryText`), the "Not now" cooldown (404 swallowed by a `.catch`), and `hint_used`. **No client change was needed — the mobile code was correct throughout.** Logged and closed as **B-214**.
+
+**The durable fix is a command, now in [`SOP.md`](SOP.md):** before cutting any build, check whether `apps/api` or `packages/shared` has commits newer than the last successful deploy. The prose version of this warning already existed in Plan 4 Task 5a *and* in this file, and was walked past four times in one session.
+
 ### B144 — cut 2026-07-27, awaiting Apple processing
 
 | | |
@@ -38,6 +48,18 @@ cd apps/mobile && EXPO_NO_CAPABILITY_SYNC=1 npx eas build --platform ios --profi
 The submission is queued on EAS, not run by the local CLI afterwards (`Submission details:` prints *before* `Waiting for build to complete`). Killing the CLI does not skip it.
 
 **App Store Connect prerequisites are already done** (operator, 2026-07-27): the app is renamed to KanjiBuddy, and the external tester is on the group. No ASC setup is owed for this build.
+
+### What B144 testing found so far (2026-07-27 evening)
+
+**Verified working in production:**
+- **Task 17 (timezone)** — server warning went `5/5` → `4/5` → `3/5` as accounts ran B144. Buddy and RAD both now read `America/Los_Angeles`.
+- **Task 18 (push tokens)** — **RAD self-healed**: the account that spent three months with `notifications_enabled=true` and **zero** tokens registered one on sign-in. Both push root causes confirmed fixed on the account that exhibited them.
+- **Task 11 immediate quick-check** — 値 has `reinforcement_count: 1` and a cleared quiz stamp, so the post-save quiz ran and recorded its outcome.
+- **Task 16 reducer fix** — *"Looks like you're near Calabasas"* rendered. That line had never once displayed since Plan 3b.
+
+**Open bugs from testing:** B-211 (Journal cannot list hooks — missing endpoint), B-212 (hook TTS drops the Japanese; three sub-defects), B-213 (Speak-it missing everywhere hooks are read). All three are real and unaffected by the deploy. B-214 is closed.
+
+**Not yet tested** — now unblocked by the 20:21 deploy: the next-session recall quiz (互 is due and carries a pending stamp, so it should lead the queue), the hint button, reinforce/deepen, the coaching toggle, and the "Not now" cooldown.
 
 **Still owed: the Task 19 Step 3 walkthrough**, and it is the only thing that can close the push bug in `BUGS.md`. Two items carry the weight:
 - a reminder arriving at the correct **local** time (root cause A — the server has been logging `5/5 users have no captured timezone` since today's deploy; Task 17 should drive that to 0/5 once this build runs once)
