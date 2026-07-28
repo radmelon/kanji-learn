@@ -56,7 +56,15 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: XS to delete / S to fix in place]` `[Impact: Med — a dead end at the end of the app's flagship flow]` `[Backend: No]` `[Status: 🐛 Active — found in B144; overlaps B-215]`
 
-- [ ] **(B-216) Abandoning a session mid-way locks you out of studying with a false "All caught up!"** — Found on-device in **B144** (owner, 2026-07-28): *"I stopped midway through the meaning→writing→speaking progression, and when I jumped out of the study session the app won't let me back in. It reports 'All caught up!'"* The account had **281 cards due** at the time.
+- [ ] **(B-216) The Study tab locks you out with a false "All caught up!" whenever the queue empties** — Found on-device in **B144** (owner, 2026-07-28), twice, by two different routes.
+
+  **First report — abandonment:** *"I stopped midway through the meaning→writing→speaking progression, and when I jumped out of the study session the app won't let me back in. It reports 'All caught up!'"* — with **281 cards due**.
+
+  **Second report — after a COMPLETED session**, which widens the bug: the owner finished and saved a session (7 reviews confirmed in `review_logs` at 15:31 and 15:37), saw Session Complete say *"Nice work… there are ~241 kanji waiting"*, and was then locked out by "All caught up!" — with **280 actually due**.
+
+  **The app contradicted itself on two screens within a minute.** That is the clearest statement of the defect: this is not a message about the deck, it is a message about an empty in-memory queue, presented as if it were about the deck.
+
+  > ⚠️ **The trigger is not abandonment.** The first framing of this entry said it was, and the second report disproves it. It is **any** path that empties the store while `phase` is stuck at `'active'`. A fix aimed at one trigger will miss the others — the specific path that emptied the queue in the second case has **not** been identified, and should not be guessed at.
 
   **Workaround:** force-quit and relaunch. That remounts the screen, `phase` re-initialises to `'ready'`, and the Begin button returns.
 
@@ -72,7 +80,11 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **The deeper fault is the copy, not the reset.** "All caught up!" is shown for a state that actually means *we lost your session*. With 281 cards due it is simply false, and it offers no action. An empty queue reached this way is an **unknown** state, not a finished one, and should offer a way to start again.
 
-  **Fix directions (pick deliberately):** stop keying the store reset on `profile` identity; and/or drop `phase` back to `'ready'` whenever the queue empties while active; and/or give the empty-queue branch a "Start a session" action so it can never be a dead end. The last one is the cheap safety net and worth doing regardless of the others.
+  **Fix the dead end first — it is the only fix that covers every trigger.** Give the empty-queue branch a "Start a session" action and/or drop `phase` back to `'ready'` whenever the queue empties while active. Then no future path that empties the store can strand the learner; the worst case becomes a redundant button.
+
+  **Then, separately, the copy.** "All caught up!" should render only when the deck is genuinely exhausted — verifiable, since the client already knows the queue was non-empty moments earlier and Session Complete is simultaneously quoting a waiting count. An empty queue reached any other way is an *unknown* state and must say something else.
+
+  **Only then chase triggers.** Candidates: the store reset is the cleanup of an effect keyed `[profile]`, so it fires on any profile-identity change; Plan 4 made those far more frequent (timezone sync, coaching toggle, location ask all call `useProfile.update()`, each notifying with a fresh object). But the second report's trigger is unconfirmed, and fixing a guessed trigger while leaving the dead end in place would close the ticket without fixing the failure.
 
   **Affected files:** `apps/mobile/app/(tabs)/study.tsx` (lines ~232-248 effect + cleanup, ~499 phase gate, ~528 empty branch), `apps/mobile/src/stores/review.store.ts` (`reset`), `apps/mobile/src/hooks/useProfile.ts` (listener notification on every update).
 
