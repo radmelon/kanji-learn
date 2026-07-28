@@ -58,27 +58,46 @@ Verified 2026-07-28: `kanji-learn-daily-reminders` has exactly two environment
 variables, `API_BASE_URL` and `INTERNAL_SECRET`. It uses that secret to
 authenticate `POST /internal/daily-reminders` on the hourly EventBridge tick.
 
-**Rotating it on App Runner alone silently breaks every daily reminder.** The
-Lambda would start getting 401s; nothing in the app would say so, and the
-symptom — reminders stop arriving — is indistinguishable from the three-month
-bug closed earlier today (root causes A/B/C in `BUGS.md`, plus B-221).
+**Changing it on one side alone silently breaks every daily reminder.** The
+Lambda starts getting 401s; nothing in the app says so, and the symptom —
+reminders stop arriving — is indistinguishable from the three-month bug closed
+on 2026-07-28 (root causes A/B/C in `BUGS.md`, plus B-221).
 
-Rotate it in this order, and expect a window of up to one hour where a tick
-could fail:
+The two sides cannot change atomically, so the goal is the shortest possible
+mismatch window. **App Runner first, Lambda immediately after:**
 
-1. `put-parameter` the new value.
-2. Update the Lambda's `INTERNAL_SECRET` **first** (it is the caller).
-3. Deploy App Runner pointing at the new parameter.
-4. Confirm within the hour: a `[Internal] Daily reminder job triggered by
-   EventBridge` line at `HH:00:0x` in the App Runner application log, and
+1. `put-parameter` the new value. Nothing reads it yet; production is unchanged.
+2. Deploy App Runner pointing at the new parameter. This takes **~4 minutes**,
+   and throughout it the old container is still serving with the old secret, so
+   the Lambda keeps working.
+3. The moment that deploy reports SUCCEEDED, update the Lambda —
+   **~1 second**. That is the entire mismatch window.
+4. Confirm on the next tick: `[Internal] Daily reminder job triggered by
+   EventBridge` at `HH:00:0x` in the App Runner application log, and
    `Success (200)` in `/aws/lambda/kanji-learn-daily-reminders`.
 
-If you would rather not risk a missed reminder, do this step immediately after
-an hourly tick, which gives ~59 minutes of margin.
+> **Corrected 2026-07-28.** An earlier version of this file said to update the
+> Lambda *first*, on the reasoning that it is the caller. That is wrong on
+> timing: it makes the mismatch window the whole four-minute App Runner deploy
+> instead of the one second a Lambda update takes. Slow side first, fast side
+> catches up.
+
+Do the cutover just after an hourly tick and even a bungled window costs
+nothing — there is ~59 minutes of margin before the next one.
 
 ---
 
 ## Step 1 — rotate the four independent keys (you, in your own terminal)
+
+> **2026-07-28: this step was run once and must be run again.** The first
+> attempt used an agent-authored template file, and saving it fed all four
+> values back into the agent session (see Chat hygiene, below). Those four keys
+> are burned. They were written to SSM but never read by anything — App Runner
+> was never switched over — so there is no production impact, and overwriting
+> the same four parameters with fresh values is the whole remedy.
+>
+> The three Supabase parameters were copied from App Runner by the script
+> without ever being displayed, and are fine as they are.
 
 In each provider console, issue a new key and revoke the old one:
 
@@ -218,6 +237,26 @@ parameters are free under the AWS-managed `aws/ssm` key.
 ---
 
 ## Chat hygiene — the rules that would have prevented this list
+
+- **An agent must never create the file a human will paste secrets into.**
+  Learned the hard way on 2026-07-28: the agent wrote a `rotate-*.env` template
+  with blanks to fill. Authoring it put the file under the harness's change
+  tracking, so saving it with real values echoed the whole diff — values
+  included — straight back into the agent session. Four freshly-issued keys
+  were burned before they were ever used.
+
+  The distinction is precise: *reading* a secrets file on request is not what
+  did the damage. *Authorship* is, because authorship is what subscribes the
+  agent to every later change. If a file must exist, the human creates it.
+  Better still, avoid the file — `read -rs` at a prompt puts nothing on disk,
+  nothing in shell history, and nothing in a transcript.
+
+- **Don't put `$VAR` next to a multibyte character in a shell script.** The
+  first `load-to-ssm.sh` had `echo "Updating $LAMBDA…"`. `LANG` and `LC_ALL`
+  are unset on this machine, so bash runs in the C locale, absorbs the
+  ellipsis bytes into the variable name, and `set -u` aborts with
+  `LAMBDA?: unbound variable`. Brace them: `${LAMBDA}`.
+
 
 - Never run `describe-service`, `get-parameter`, `env` or `eas env:list`
   without scoping output to **names**. On 2026-04-20 a `describe-service`
