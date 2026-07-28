@@ -22,22 +22,33 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: 🐛 Active — found in B144]`
 
-- [ ] **(B-214) The one-time hook-location ask never records that it was asked** — Found by live-DB inspection during B144 testing (2026-07-27). `user_profiles.hook_location_ask_seen_at` is **still null** after two hooks were built, while `attach_location_to_hooks` is true and both hooks stored `locationName: 'Calabasas'` **with coordinates**.
+- [x] **(B-214) B144 shipped against an API that was four commits behind it** — Surfaced 2026-07-27 as "the one-time location ask never records that it was asked", but that was a symptom. **Root cause: a deploy gap, not a client bug.**
 
-  **Why that combination is diagnostic:** GPS only runs when the sheet reads `attachLocationToHooks: true` off the loaded profile, so the profile *was* present. `needsLocationAsk` is `profile != null && profile.hookLocationAskSeenAt == null`, which should therefore have been true and rendered the ask.
+  **How it presented.** `user_profiles.hook_location_ask_seen_at` was still null after two hooks, while `attach_location_to_hooks` was true and both hooks had stored `locationName: 'Calabasas'` with coordinates. The operator confirmed they *did* see the ask and answered "yes" — and both fields go up in a **single PATCH**, so one landing and the other not is impossible from client code.
 
-  **The API is not at fault.** `PATCH /v1/user/profile` is a pass-through — `.set({ ...body.data, updatedAt })` ([user.ts](apps/api/src/routes/user.ts)) — and `hookLocationAskSeenAt: z.coerce.date().optional()` is in `updateProfileSchema`. A sent value would persist. The field is never sent.
+  **What actually happened.** The API was deployed at **13:32**. Four commits containing API changes landed after it:
 
-  **Two candidate causes, one discriminating question** (did the learner ever see the *"Want Buddy to remember where you build them?"* step):
+  | commit | time | API surface added |
+  |---|---|---|
+  | `5903373` | 13:51 | `srs.service.ts` — `mnemonicStoryText` on the review queue |
+  | `122fddd` | 13:58 | `review.ts`, `dual-write.service.ts` — `hintUsed` |
+  | `8d0c0f5` | 14:04 | `routes/kanji.ts` — the snooze route; `buddyMomentSnoozedUntil` in buddy-moment-context |
+  | `e29dd45` | 14:09 | `user-profile.schema.ts` — `hookLocationAskSeenAt` |
 
-  1. **Render race (favoured).** `useProfile` resolves asynchronously; on a cold sheet open `profile` is `null`, so `needsLocationAsk` is false and the normal consent buttons render. By the time the learner taps "Let's do it" the profile has arrived, so GPS runs. The ask loses the race; the location switch does not. Fix: hold the consent stage until the profile resolves, or treat "profile not yet loaded" as *not yet decidable* rather than as *no ask needed*.
-  2. **Save failure.** The ask renders, `answerLocationAsk` fires, but the PATCH is rejected or dropped. Less likely given the route is a pass-through, but it is fire-and-forget by design so a failure would be invisible.
+  B144 was cut at 16:27 from mobile code depending on all four. **Zod's `z.object()` strips unknown keys rather than erroring**, so the PATCH succeeded, wrote the field the deployed schema knew about, and silently discarded the one it did not. Half an answer saved, no error anywhere.
 
-  **User-visible consequence is the same either way and is worse than it looks:** the flag stays null permanently, so the "we will only ask once" promise (design spec §9, and the reason the stamp is server-side at all) is broken. Once whatever suppresses the ask stops applying, it would re-ask on **every** hook.
+  **Everything else in B144 that was silently dead for the same reason:**
 
-  **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (the `needsLocationAsk` guard and `answerLocationAsk`), `apps/mobile/src/hooks/useProfile.ts` (load timing).
+  - Hook on the flashcard answer side (Task 13) — needs `mnemonicStoryText`; field absent, block never renders
+  - The hint button (Task 14) — gated on that same field, so it could never appear at all
+  - "Not now" 7-day cooldown (Task 15) — snooze route 404s, swallowed by `.catch(() => {})`
+  - `review_logs.hint_used` — stripped from the submit body
 
-  `[Effort: S]` `[Impact: Med — a consent ask that never records consent; re-asks forever once unmasked]` `[Backend: No — API verified correct]` `[Status: 🐛 Active — found in B144, root cause pending one device answer]`
+  **This is the exact failure Plan 4 Task 5a exists to prevent** — *"these fixes are authored AFTER the deploy, so they need their own"* — written into the plan, repeated in the 2026-07-27 handoff, and then walked into four more times in the same session. The lesson is not "remember to deploy"; it is that **a mobile build must never be cut without checking whether `apps/api` or `packages/shared` changed since the last deploy**. See the SOP entry added alongside this fix.
+
+  **Resolution:** API redeployed 2026-07-27 (see HANDOFF). No client change was needed — the mobile code was correct throughout.
+
+  `[Effort: —]` `[Impact: High — four shipped features silently inert, and a consent answer half-discarded]` `[Backend: Deploy only]` `[Status: ✅ Fixed by redeploy — no code change]`
 
 - [ ] **(B-213) "Speak it" exists only at the moment a hook is created, not where hooks are read** — Found on-device in **B144** (owner, 2026-07-27): *"The Speak it icon is only available just after the mnemonic is built and not on the Kanji details where the Mnemonic is displayed."*
 
