@@ -35,6 +35,40 @@ The `Distribution: store` + `Status: finished` combination confirms the `.ipa` i
 4. **NEVER hand-bump `ios.buildNumber` — `eas.json` production has `autoIncrement: true`** (learned B143, 2026-07-05: a manual 141→142 bump got auto-incremented at build time, so "B142" never existed and the binary shipped as 143). EAS bumps and writes app.json itself; just commit the auto-written value after each cut ("record buildNumber N").
 5. **Stale-Metro-bundle trap (2026-07-05):** airplane-mode testing severs the dev client from Metro, and a later shake-reload can silently fail to fetch — the device then runs progressively older UI while you "fix" phantom bugs. Before debugging any on-device layout report, confirm bundle freshness against a known marker from the latest code; if reports contradict the code, reproduce in the iOS Simulator (`npx expo run:ios --port 8082`, throwaway Supabase admin-API user, `xcrun simctl openurl booted "kanjilearn://<route>"`) instead of patching blind.
 
+### 🛑 Before cutting a mobile build, check whether the API is behind it (2026-07-27)
+
+**A mobile build must never be cut without checking whether `apps/api` or
+`packages/shared` changed since the last API deploy.** B144 was cut from mobile
+code depending on four API commits that were never deployed. Four shipped
+features were silently inert (B-214): the hook on the flashcard answer side and
+the hint button (both gated on a queue field the deployed API did not return),
+the "Not now" cooldown (route 404, swallowed by a `.catch`), and `hint_used`
+persistence — plus a consent answer half-discarded, because **Zod's `z.object()`
+strips unknown keys rather than erroring**, so an older schema drops new fields
+in silence and returns 200.
+
+Nothing warns you. The build succeeds, the app runs, the features just do
+nothing.
+
+Run this before every cut:
+
+```bash
+ARN=arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654
+LAST=$(aws apprunner list-operations --service-arn "$ARN" --region us-east-1 \
+  --query 'OperationSummaryList[?Status==`SUCCEEDED`]|[0].StartedAt' --output text)
+echo "API last deployed: $LAST"
+git log --since="$LAST" --oneline -- apps/api packages/shared
+```
+
+**Any output from that `git log` means deploy before you build.** `packages/shared`
+counts because it carries the wire types both sides compile against — a field
+added there is a promise the API has not yet made.
+
+This is the same failure Plan 4 Task 5a exists to prevent (*"these fixes are
+authored AFTER the deploy, so they need their own"*). That warning was in the
+plan and repeated in the handoff, and it was still walked into four more times
+in one session — which is why the fix here is a command, not a reminder.
+
 ### 🛑 Always set `EXPO_NO_CAPABILITY_SYNC=1` — for EVERY iOS build (2026-07-27)
 
 **This applies to every profile, not just `development`.** It was first hit on a
