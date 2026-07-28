@@ -164,6 +164,49 @@ export function localHourAndWeekday(
 }
 
 /**
+ * Consecutive days studied, counting back from `today` (an ISO yyyy-mm-dd).
+ *
+ * `dates` must be the distinct days with at least one review, newest first.
+ *
+ * B-222: this used to begin counting at *yesterday*, on the reasoning that
+ * "they haven't studied today yet" — true when the daily cron only messaged
+ * people who had not studied. Plan 4 added `buildMessage`'s `reviewedToday > 0`
+ * branch, so the same number now feeds copy that explicitly thanks the learner
+ * for today's reviews. Buddy studied on 07-27 and 07-28 and was told *"Nice
+ * work today! — 7 kanji done"* rather than *"2 days in a row"*: the message
+ * congratulated them on a day the streak behind it was pretending had not
+ * happened.
+ *
+ * Counting starts at today when today is present and falls back to yesterday
+ * when it is not, so a streak that is merely *not yet continued* still counts.
+ *
+ * Dates are compared on the UTC calendar day, matching `sendDailyReminders`'s
+ * `dailyStats` join. A learner whose local day differs from UTC can therefore
+ * see a streak roll over at the wrong hour — real, separate, and not this fix.
+ *
+ * Extracted and exported for the same reason as `isEligibleNow` below: it is
+ * pure, and testing it should not require a database.
+ */
+export function computeStreak(dates: string[], today: string): number {
+  if (dates.length === 0) return 0
+
+  const dayBefore = (iso: string): string => {
+    const d = new Date(`${iso}T00:00:00Z`)
+    d.setUTCDate(d.getUTCDate() - 1)
+    return d.toISOString().slice(0, 10)
+  }
+
+  let expected = dates[0] === today ? today : dayBefore(today)
+  let streak = 0
+  for (const date of dates) {
+    if (date !== expected) break
+    streak++
+    expected = dayBefore(expected)
+  }
+  return streak
+}
+
+/**
  * Whether a user should receive their daily reminder at this instant.
  *
  * Extracted and exported so it can be tested against real timezones without a
@@ -406,21 +449,10 @@ export class NotificationService {
       .orderBy(sql`date DESC`)
       .limit(365)
 
-    if (rows.length === 0) return 0
-    let streak = 0
-    const d = new Date()
-    d.setDate(d.getDate() - 1) // yesterday (they haven't studied today yet)
-    let expected = d.toISOString().slice(0, 10)
-
-    for (const row of rows) {
-      if (row.date === expected) {
-        streak++
-        const next = new Date(expected)
-        next.setDate(next.getDate() - 1)
-        expected = next.toISOString().slice(0, 10)
-      } else break
-    }
-    return streak
+    return computeStreak(
+      rows.map((r) => r.date),
+      new Date().toISOString().slice(0, 10),
+    )
   }
 
   private async getDueCount(userId: string): Promise<number> {
