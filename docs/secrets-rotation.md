@@ -87,56 +87,79 @@ nothing — there is ~59 minutes of margin before the next one.
 
 ---
 
-## Step 1 — rotate the four independent keys (you, in your own terminal)
+## 📅 Next rotation due: **2026-10-26**
 
-> **2026-07-28: this step was run once and must be run again.** The first
-> attempt used an agent-authored template file, and saving it fed all four
-> values back into the agent session (see Chat hygiene, below). Those four keys
-> are burned. They were written to SSM but never read by anything — App Runner
-> was never switched over — so there is no production impact, and overwriting
-> the same four parameters with fresh values is the whole remedy.
->
-> The three Supabase parameters were copied from App Runner by the script
-> without ever being displayed, and are fine as they are.
+**The three LLM keys expire 90 days after issue.** Issued 2026-07-28 →
+**expire 2026-10-26** (Anthropic, Groq, Gemini). This is not optional
+housekeeping: when they lapse, hook assembly fails at all three tiers and
+co-creation stops working in production, with the client falling back through
+a cascade that has nowhere left to go.
 
-In each provider console, issue a new key and revoke the old one:
+`INTERNAL_SECRET` has no expiry — rotate it on the same cadence anyway, since
+it is free to regenerate and the whole point of a quarterly rhythm is not
+having to remember which of them expires.
 
-- **Anthropic** — console.anthropic.com → API keys
-- **Groq** — console.groq.com → API keys
-- **Gemini** — aistudio.google.com → API keys
-- **`INTERNAL_SECRET`** — no console; generate one:
+**This document is written to be re-run, not read once.** Steps 1–5 below are
+the whole procedure; nothing in them is specific to the first rotation. The
+only thing that changes each time is which secrets are in scope — see the
+table above.
+
+| Rotation | Date | Notes |
+|---|---|---|
+| 1st | 2026-07-28 | Initial rotation + SSM migration. Four keys burned mid-run and reissued — see Chat hygiene. |
+| 2nd | **2026-10-26** | LLM keys expire. Supabase four may already be rotated by the `us-east-1` migration; check before including them. |
+
+---
+
+## Step 1 — issue the new keys (you, in your own terminal)
+
+Create the new keys but **do not revoke the old ones yet** — revoke after Step 5
+verification passes, or you break production in the gap between rotating and
+deploying.
+
+Issue a new key in each console. Keep each one on your clipboard just long
+enough to paste it in Step 2 — **do not save them to a file.**
+
+| Secret | Where |
+|---|---|
+| `ANTHROPIC_API_KEY` | https://console.anthropic.com/settings/keys |
+| `GROQ_API_KEY` | https://console.groq.com/keys |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey |
+| `INTERNAL_SECRET` | no console — `openssl rand -hex 32` |
+
+## Step 2 — write them to Parameter Store (you)
 
 ```bash
-openssl rand -hex 32 > ~/tmp/internal-secret.txt
+./scripts/rotate-secrets.sh
 ```
 
-Write each new value to its own file under a directory only you can read:
+Prompts for each value with `read -rs`: input is hidden, and nothing is written
+to disk, to shell history, or to any transcript. It reports a character count
+so you can confirm a paste landed, and the resulting parameter **version** so
+you can confirm the write happened — version incrementing is the proof.
+
+> **Pasting is invisible on purpose.** `read -rs` disables terminal echo, like
+> a `sudo` prompt. Cmd-V works; you just see nothing. Paste, press Return, and
+> read the character count. If your clipboard carries a trailing newline the
+> prompt appears to skip ahead by itself — that is a successful submit, not a
+> skipped field.
+
+**Never** create a file for the human to paste into, and never ask an agent to
+create one. See Chat hygiene below for what that cost on 2026-07-28.
+
+First run only — the three Supabase parameters must also exist before Step 4
+can remove the plaintext copies. They are not rotated, so copy the live values
+across without displaying them:
 
 ```bash
-mkdir -p ~/tmp/kl-secrets && chmod 700 ~/tmp/kl-secrets
+./scripts/rotate-secrets.sh --copy-supabase-from-apprunner
 ```
 
-One file per secret, no trailing newline concerns — `put-parameter` below
-handles that.
-
-## Step 2 — create the SSM parameters (you)
-
-Values are read from files, so they never appear in a command line, shell
-history, or any tool output. Run for all seven — the three Supabase ones take
-their *current* values for now.
+Confirm names and versions only — never `get-parameter --with-decryption` in a
+shared session:
 
 ```bash
-for k in anthropic-api-key groq-api-key gemini-api-key internal-secret \
-         database-url supabase-jwt-secret supabase-service-role-key; do
-  aws ssm put-parameter --name "/kanji-learn/prod/$k" --type SecureString \
-    --value "$(cat ~/tmp/kl-secrets/$k)" --region us-east-1 --overwrite
-done
-```
-
-Confirm names only — never `get-parameter` with decryption in a shared session:
-
-```bash
-aws ssm describe-parameters --parameter-filters "Key=Name,Option=BeginsWith,Values=/kanji-learn" --query 'Parameters[].Name' --output table
+aws ssm describe-parameters --parameter-filters "Key=Name,Option=BeginsWith,Values=/kanji-learn" --query 'sort_by(Parameters,&Name)[].{Name:Name,Version:Version}' --output table
 ```
 
 ## Step 3 — IAM read policy (agent-safe, ARNs only)
