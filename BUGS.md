@@ -6,6 +6,77 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-223) The teaching beat always says "beside", even when a component sits above or inside another** — Found on-device in **B145** (owner, 2026-07-28): *"The statement explaining a kanji's radicals or components seems to always use the preposition 'beside' when often above or under would be more appropriate."*
+
+  **Correct for 説 (言 to the left of 兑); wrong for 歯, where 止 sits on top.** `teachingBeat` ([teaching-beat.ts](apps/mobile/src/lib/teaching-beat.ts)) hardcodes the joiner: `` `${head} beside ${last}` ``. B-217 fixed *what* the parts are called and left *how they relate* untouched — half a fix, and the half that remains states something false about most kanji.
+
+  **The data to fix it was thrown away at backfill time.** The IDS source encodes structure in a leading Ideographic Description Character — `⿰扌寺` is left-right, `⿱` is above-below, `⿴` is enclosure (U+2FF0–U+2FFF). `backfill-components.ts` parses that operator, uses it to split the string, and then stores **only the components**. `kanji.components` is a flat `string[]`; the relationship never reaches the database.
+
+  **Decision (owner, 2026-07-28): do the deep fix, not the cheap one.** The cheap option — drop the preposition entirely, *"歯 is 止, 凵 and 米."* — stops making a false claim but also discards a genuinely useful teaching signal. Component *position* is part of how kanji are actually learned.
+
+  **Fix:**
+  1. Migration: add `kanji.ids_operator` (text, nullable) — or store the raw IDS string, which keeps nested structure like `⿱止⿶凵米` available for later.
+  2. Re-run `backfill-components.ts`, capturing the operator it already parses. ⚠️ **Check `jsonb_typeof`, never appearance** — the double-encoding bug bit this exact script twice (see the 2026-07-27 lesson in HANDOFF).
+  3. Surface it on the queue/kanji payload, and map operator → preposition in `teachingBeat`: ⿰⿲ → "beside", ⿱⿳ → "above", ⿴⿵⿶⿷⿸⿹⿺ → "around"/"inside". Nested IDS should degrade to a comma list rather than guess.
+
+  **Affected files:** `packages/db/src/schema.ts`, a new migration, `packages/db/src/seeds/backfill-components.ts`, `apps/api/src/services/srs.service.ts` (queue projection), `apps/mobile/src/lib/teaching-beat.ts`.
+
+  `[Effort: M — migration + backfill + plumbing]` `[Impact: Med — visible on every hook built; states something false about most kanji]` `[Backend: Yes]` `[Status: 🐛 Active — found in B145]`
+
+- [ ] **(B-224) A hook whose components are all outside the radical dictionary never gets a recall-quiz stamp** — Found on-device in **B145** (owner, 2026-07-28), who noticed the *symptom* before the data: *"For 説 I got a confirmation page that I didn't get for 歯 — 'Saved. We'll test it next session.'"*
+
+  **The missing screen and the missing stamp are the same defect.** Of nine co-created hooks on the live account, 歯 is the **only** one with `cocreation_context->components = []`, and the **only** one with no `mnemonicQuizDueAt`. 歯's components are 止, 凵, 米 — none of which are among the radical dictionary's 20 entries, so `lookupComponents` returns empty.
+
+  | kanji | stored components | quiz stamp |
+  |---|---|---|
+  | 歯 | `[]` | **absent** |
+  | 説 | `[{言, speech}]` | present |
+  | 負 | (non-empty) | present |
+
+  **Consequence: that hook is never tested.** The recall quiz is the only thing that measures whether a hook was retained, and its outcome drives `effectiveness_score`, which drives the deepen gate. A hook that can never be quizzed is invisible to the entire reinforcement loop — and the learner is told nothing, because the "Saved. We'll test it next session." confirmation never renders either.
+
+  **Not yet root-caused, and deliberately not guessed at.** `buildContext` ([buildSlots.ts:54](apps/mobile/src/mnemonics/buildSlots.ts)) sets `mnemonicQuizDueAt: quizDueAtIso` **unconditionally** from `deps.nowIso()`, which cannot return undefined; `saveCoCreatedMnemonic` is the only write path and stores the context verbatim; and the API's `contextSchema` would 400 the whole request on an invalid timestamp rather than strip it. So the code as read does not explain the observation. Something upstream of `commit()` is diverging.
+
+  **Reproduce it before fixing it:** build a hook on another kanji whose components are *all* unmapped (any kanji with no 人 亻 扌 手 寺 水 氵 木 火 日 月 口 心 忄 土 女 子 目 糸 言 among its parts) and check whether `mnemonicQuizDueAt` is written. If it reproduces, the correlation is causal and the empty-components path is the place to look.
+
+  **Also worth deciding:** whether the recall quiz *should* require mapped components at all. Its distractors come from components and `/related`, so a kanji with none may have been deliberately excluded somewhere — in which case the bug is the silence, not the skip.
+
+  **Affected files:** `apps/mobile/src/mnemonics/buildSlots.ts`, `apps/mobile/src/mnemonics/useCoCreation.ts`, `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (`commitment` stage).
+
+  `[Effort: S once reproduced]` `[Impact: Med-High — silently removes a hook from the entire reinforcement loop]` `[Backend: No]` `[Status: 🐛 Active — found in B145, not yet root-caused]`
+
+- [ ] **(B-225) Mixed-language hook narration switches voice abruptly** — Found on-device in **B145** (owner, 2026-07-28): *"the speak it function did invoke the japanese voice to read the character 歯. However the quality difference between the english default and the very brief 'ha' was abrupt."*
+
+  **A consequence of the B-212 fix, not a regression against it.** Before, the Japanese was silently dropped; now it is spoken, which is strictly better. But `speakMixed` ([tts.ts](apps/mobile/src/utils/tts.ts)) issues **one `Speech.speak` per language run** and chains them on `onDone`, so a story with a single embedded kanji produces three utterances — English, a very short Japanese fragment, English — with an audible gap and a timbre change at each seam. The shorter the Japanese run, the more jarring the switch.
+
+  **Options, none obviously right:**
+  1. **Accept it.** Correct pronunciation of the reading is the point; smoothness is secondary.
+  2. **Match the voices better** — prefer an Enhanced voice on *both* sides, or fall back to compact on both, so timbre does not jump mid-sentence.
+  3. **Speak only the substantial Japanese runs** in Japanese and let single characters ride in the English voice. Loses the correct reading, which is the thing B-212 existed to restore.
+  4. **Pre-render** the whole line as one utterance via a Japanese voice with English fallback — not available through `expo-speech`.
+
+  Owner's ear is the only instrument here. Worth re-testing once B-212(b) is settled, since Enhanced voices on both sides may narrow the gap on their own.
+
+  **Affected files:** `apps/mobile/src/utils/tts.ts`, `apps/mobile/src/lib/script-segments.ts`.
+
+  `[Effort: S–M depending on option]` `[Impact: Low-Med — quality, not correctness]` `[Backend: No]` `[Status: 🐛 Active — found in B145]`
+
+- [ ] **(B-226) Session Complete persists when you leave by tapping another tab — "Start Today's Reviews" then reopens it** — Found on-device in **B145** (owner, 2026-07-28): *"Start Today's Review takes me to the Session Complete page with options to keep studying, Drill, go back to dashboard."*
+
+  **This is a re-opening of a bug marked fixed in B123** ("Session Complete screen persists after returning to Study tab", verified 2026-04-19 — see Fixed Bugs below). That fix made `onDone` clear `sessionSummary`, call `reset()` and set `phase` to `'ready'` before navigating. It works — **for the exits that run `onDone`.**
+
+  **It does not cover leaving by tab.** Expo Router tabs stay mounted, so tapping the Dashboard tab from Session Complete leaves `sessionSummary` set and `phase` at `'active'`. `handleStudy` on the Dashboard is only `router.push('/(tabs)/study')` ([index.tsx:209](apps/mobile/app/(tabs)/index.tsx)) — it clears nothing and loads nothing. So a button that promises to *start* a session re-renders a *finished* one.
+
+  **Not caused by the B-216 render reorder.** Verified by tracing both orderings against this state (`sessionSummary` set, `phase: 'active'`, queue non-empty, not loading): the old sequence fell through `phase` → `isLoading` → `error` → `queue.length === 0` → `isSaving` and landed on the summary branch; the new one selects `sessionComplete` directly. Same screen, different route to it.
+
+  **Distinct from B-216, and much milder** — the learner is not stranded, because all three Session Complete actions still work. It is wrong, not fatal.
+
+  **Fix:** make the Dashboard's "Start Today's Reviews" mean what it says — clear `sessionSummary`, `reset()`, and set `phase` to `'ready'` before navigating, exactly as `onDone` does. Better still, hoist that teardown into one function both call, so the next exit route added does not have to remember.
+
+  **Affected files:** `apps/mobile/app/(tabs)/index.tsx` (`handleStudy`), `apps/mobile/app/(tabs)/study.tsx` (`onDone` teardown, worth extracting).
+
+  `[Effort: S]` `[Impact: Med — the app's primary call to action shows a stale screen]` `[Backend: No]` `[Status: 🐛 Active — found in B145; re-opens a B123 fix]`
+
 - [x] **(B-221) Daily reminders fired at :54 past the hour, not on the hour — and an hour could be skipped entirely** — Found by log inspection (owner, 2026-07-28): *"I was expecting to see a daily reminder today at 8am, but didn't get one."* It did fire — at **8:54am**.
 
   **Symptom:** every learner's daily reminder arrives up to 59 minutes after the hour they chose. A learner who sets 8:00 gets it at 8:54. Nothing in the app or the API is wrong; the skew is entirely in the EventBridge schedule.
