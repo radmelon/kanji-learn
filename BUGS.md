@@ -22,6 +22,28 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: 🐛 Active — found in B144]`
 
+- [ ] **(B-216) Abandoning a session mid-way locks you out of studying with a false "All caught up!"** — Found on-device in **B144** (owner, 2026-07-28): *"I stopped midway through the meaning→writing→speaking progression, and when I jumped out of the study session the app won't let me back in. It reports 'All caught up!'"* The account had **281 cards due** at the time.
+
+  **Workaround:** force-quit and relaunch. That remounts the screen, `phase` re-initialises to `'ready'`, and the Begin button returns.
+
+  **Three things combine.**
+
+  1. **The Study tab never unmounts** — stated in its own comment ([study.tsx:242](apps/mobile/app/(tabs)/study.tsx)): *"The Study tab stays mounted across tab switches."* So `phase` (component state) stays `'active'` after you leave mid-session.
+  2. **Something resets the store.** [study.tsx:239](apps/mobile/app/(tabs)/study.tsx) is `return () => reset()` as the cleanup of an effect keyed `[profile]` — it fires on any change of profile *identity*, not only on unmount. `reset()` sets `queue: []` and **does not touch `isLoading`**, which is already `false` from the completed load.
+  3. **The empty-queue branch is terminal.** Render order is `phase==='ready'` → `isLoading` → `error` → `queue.length === 0`. With `phase` stuck at `'active'`, the Ready screen — the only thing carrying the **Begin** button — is unreachable. Nothing restores `phase` except finishing a session, which is impossible without a queue.
+
+  Empty queue + `phase: 'active'` = permanent lockout until the process restarts.
+
+  **Made materially more likely by Plan 4.** Task 17's timezone sync, Task 15's coaching toggle and Task 16's location ask all call `useProfile.update()`, and each notifies listeners with a **new object**, firing that cleanup. Sign-out also nulls the cache. A reset that was previously rare is now easy to trigger mid-session.
+
+  **The deeper fault is the copy, not the reset.** "All caught up!" is shown for a state that actually means *we lost your session*. With 281 cards due it is simply false, and it offers no action. An empty queue reached this way is an **unknown** state, not a finished one, and should offer a way to start again.
+
+  **Fix directions (pick deliberately):** stop keying the store reset on `profile` identity; and/or drop `phase` back to `'ready'` whenever the queue empties while active; and/or give the empty-queue branch a "Start a session" action so it can never be a dead end. The last one is the cheap safety net and worth doing regardless of the others.
+
+  **Affected files:** `apps/mobile/app/(tabs)/study.tsx` (lines ~232-248 effect + cleanup, ~499 phase gate, ~528 empty branch), `apps/mobile/src/stores/review.store.ts` (`reset`), `apps/mobile/src/hooks/useProfile.ts` (listener notification on every update).
+
+  `[Effort: S]` `[Impact: HIGH — total loss of the app's core function until a force-quit, with copy that tells the learner nothing is wrong]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+
 - [ ] **(B-215) The co-creation commitment page clips a long hook instead of scrolling** — Found on-device in **B144** (owner, 2026-07-28): *"the confirmation page did not support scrolling to see the entire vignette."*
 
   **Repro:** build a hook whose story runs long. The 暗 hook that surfaced this is **510 characters** — the longest of four built so far (両 258, 互 387, 暗 510), so shorter stories mask it.
