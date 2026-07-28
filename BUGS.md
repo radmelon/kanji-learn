@@ -6,6 +6,36 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-211) Journal cannot list your hooks — no API exists to fetch them** — Found on-device in **B144** (owner, 2026-07-27): *"after building it shouldn't I be able to find it under Journal?"* Yes, and today you cannot.
+
+  **Symptom:** build a hook, open Journal, see nothing. The only way to view a hook is to search its exact kanji, or open that kanji's detail page.
+
+  **Root cause is an absent endpoint, not a UI bug.** `/v1/mnemonics` exposes exactly two GETs: `/refresh` — which Task 1 turned into a deprecated no-op returning `[]` — and `/:kanjiId`, one kanji at a time. **There has never been a "list this user's mnemonics" route.** Journal's default view was populated solely by the refresh-due list, so it has been effectively empty since the Plan 2 retirement, and completely empty since the Phase 5 data cleanup.
+
+  **Made honest, not fixed, by Plan 4 Task 12** (`c16da2e`). That task removed the dead `useRefreshDue` call and replaced the silently-empty default with an explicit "Search a kanji" empty state. The plan specified *"the tab becomes a searchable list by kanji character only"* and that is what was built — without questioning why a screen named **Journal** should not list what the learner has written. The emptiness became visible; the gap did not close.
+
+  **Decision (owner, 2026-07-27):** Journal becomes **all my hooks, newest first** — kanji, story, where it was built, layer count — with the existing search retained as a filter.
+
+  **Fix:** add `GET /v1/mnemonics` returning the caller's `generation_method='cocreated'` rows newest-first (the per-kanji read and the queue enrichment already prove the query shape), then render it as the Journal default. `MnemonicCard` already renders exactly this content after Task 12, so the mobile side is largely wiring.
+
+  **Affected files:** `apps/api/src/routes/mnemonics.ts` (new route), `apps/api/src/services/mnemonic.service.ts`, `apps/mobile/src/hooks/useMnemonics.ts`, `apps/mobile/app/(tabs)/journal.tsx`.
+
+  `[Effort: S]` `[Impact: High — the tab's stated purpose is unmet; first thing an outside tester tried]` `[Backend: Yes — one new route]` `[Status: 🐛 Active — found in B144]`
+
+- [ ] **(B-212) Hook TTS speaks English only and silently drops the Japanese** — Found on-device in **B144** (owner, 2026-07-27): *"the TTS of the mnemonic was poor quality and skipped any hiragana or Kanji characters that were present in the passage."*
+
+  **Two defects behind one symptom.**
+
+  **(a) Mixed-script passages lose their Japanese.** `CoCreationSheet`'s Speak-it calls `Speech.speak(state.draft, { language: 'en-US', voice: getBestVoice('en-US') })`. A co-created story is English prose that embeds the kanji and its kana reading — exactly the parts worth hearing — and an en-US voice drops them. `ReinforceSheet` has the identical call and the identical defect. This is the **`speakMixed` ja/en segmentation** item previously parked in ENHANCEMENTS as a nice-to-have; it is a shipped user-visible defect, not an enhancement.
+
+  **(b) Quality degrades silently to the compact voice.** `getBestVoice` ([tts.ts:17](apps/mobile/src/utils/tts.ts)) returns `undefined` unless an **Enhanced**-quality voice for that language is installed, and `Speech.speak` then falls back to the compact system voice with no signal. On iOS, Enhanced voices are a user-initiated download (Settings → Accessibility → Spoken Content → Voices), so a device that has never downloaded one always gets the poor voice. **Needs a device check before coding:** confirm whether an Enhanced en-US voice is installed on the reporting device — that distinguishes a selection bug from a missing OS asset.
+
+  **Fix direction:** segment the story into ja / en runs and speak them sequentially with the appropriate voice per run, as a shared utility (both sheets and any future hook-reading surface use it). Consider a one-time prompt when no Enhanced voice is installed, since silent degradation is the reason (b) went unnoticed.
+
+  **Affected files:** `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx`, `apps/mobile/src/components/mnemonics/ReinforceSheet.tsx`, `apps/mobile/src/utils/tts.ts`.
+
+  `[Effort: M — segmentation utility + adoption]` `[Impact: Med-High — the reading is half the hook, and it is the half being dropped]` `[Backend: No]` `[Status: 🐛 Active — found in B144]`
+
 - [ ] **(B-210) Retaking the placement test destroys FSRS state on in-progress kanji** — Found 2026-07-27 while designing the Profile page reorganisation (owner asked whether retakes are supported and whether results are kept). Nothing has hit this yet because nobody retakes — but the Profile page has an **unguarded** `router.push('/placement')` row ([profile.tsx:633](apps/mobile/app/(tabs)/profile.tsx)) and `POST /v1/placement/complete` has no "already placed" check, so any learner can trigger it at any time.
 
   **Symptom:** a learner who has been studying for months retakes the placement test. For every kanji they pass, `applyPlacementResults` ([placement.service.ts:220-247](apps/api/src/services/placement.service.ts)) branches on existing progress:
