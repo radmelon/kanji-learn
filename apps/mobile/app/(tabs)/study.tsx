@@ -42,6 +42,7 @@ import { KanjiCard } from '../../src/components/study/KanjiCard'
 import { CompoundCard } from '../../src/components/study/CompoundCard'
 import { GradeButtons } from '../../src/components/study/GradeButtons'
 import { SessionComplete } from '../../src/components/study/SessionComplete'
+import { selectStudyScreen } from '../../src/lib/study-screen'
 import { CoCreationSheet } from '../../src/components/mnemonics/CoCreationSheet'
 import { ReinforceSheet } from '../../src/components/mnemonics/ReinforceSheet'
 import { WritingLeg } from '../../src/components/study/WritingLeg'
@@ -76,6 +77,10 @@ function StudySession() {
     () => (useReviewStore.getState().isWeakDrill ? 'active' : 'ready')
   )
   const [isSaving, setIsSaving] = useState(false)
+  // B-216: an empty queue is ambiguous on its own. If it never held cards the
+  // deck really is clear; if it held cards and then did not, we lost the
+  // session and must offer a way back instead of congratulating the learner.
+  const [queueEverPopulated, setQueueEverPopulated] = useState(false)
   // Romaji toggle persists for the whole session — user sets it once and it sticks across cards
   const [showRomaji, setShowRomaji] = useState(false)
   const toggleRomaji = useCallback(() => setShowRomaji((v) => !v), [])
@@ -232,12 +237,41 @@ function StudySession() {
     // app whose profile cache was evicted loads a 20-card queue for users
     // whose actual dailyGoal is smaller.
     if (!profile) return
-    syncPendingSessions()
     // The queue is loaded on demand — a normal session loads it from the
     // Ready screen's Begin action; weak/missed drills load it before
     // navigation (and start in the 'active' phase).
-    return () => reset()
+    syncPendingSessions()
   }, [profile])
+
+  // B-216 root cause. `reset()` used to be the cleanup of the effect above,
+  // keyed [profile] — so it fired on any change of profile *identity*, not on
+  // unmount. `useProfile.update()` notifies listeners with a fresh object on
+  // every PATCH, and Plan 4 added three that can land mid-session: the
+  // timezone sync, the coaching toggle, and the one-time location ask in
+  // CoCreationSheet — which runs while the learner is building a hook over
+  // Session Complete, i.e. inside the very branch the reset then unmounted.
+  //
+  // Sign-out must still clear the queue (clearProfileCache notifies with
+  // null), so reset on the transition to null and on a genuine unmount —
+  // never on a PATCH that merely changed the object's identity.
+  const hadProfileRef = useRef(false)
+  useEffect(() => {
+    if (profile) {
+      hadProfileRef.current = true
+      return
+    }
+    if (hadProfileRef.current) {
+      hadProfileRef.current = false
+      reset()
+    }
+  }, [profile])
+
+  useEffect(() => () => reset(), [])
+
+  // Only meaningful once the queue is empty again — see selectStudyScreen.
+  useEffect(() => {
+    if (queue.length > 0) setQueueEverPopulated(true)
+  }, [queue.length])
 
   // A weak/missed drill loads its queue before navigation and sets isWeakDrill.
   // The Study tab stays mounted across tab switches, so the phase lazy
@@ -355,6 +389,9 @@ function StudySession() {
   }, [undoLastResult])
 
   const handleBegin = useCallback(() => {
+    // Clear the "this session held cards" mark so a Begin that legitimately
+    // finds nothing due still reads as an exhausted deck, not a lost session.
+    setQueueEverPopulated(false)
     setPhase('active')
     loadQueue(dailyGoal)
   }, [loadQueue, dailyGoal])
@@ -493,15 +530,32 @@ function StudySession() {
     return () => { cancelled = true }
   }, [buddyMomentKanjiId])
 
+  // ── Screen selection ──────────────────────────────────────────────────────
+  // Computed once, so which branch wins is decided by selectStudyScreen (and
+  // its tests) rather than by where a return statement happens to sit in this
+  // file. That ordering was the whole of B-216: the empty-queue branch sat
+  // above Session Complete, whose onDone holds the only setPhase('ready').
+
+  const screen = selectStudyScreen({
+    phase,
+    isLoading,
+    error,
+    queueLength: queue.length,
+    hasSessionSummary: sessionSummary !== null,
+    queueEverPopulated,
+    isSaving,
+    isComplete,
+  })
+
   // ── Ready screen ──────────────────────────────────────────────────────────
 
-  if (phase === 'ready') {
+  if (screen === 'ready') {
     return <ReadyScreen goalMinutes={dailyGoal} onBegin={handleBegin} />
   }
 
   // ── Loading ──────────────────────────────────────────────────────────────
 
-  if (isLoading) {
+  if (screen === 'loading') {
     return (
       <SafeAreaView style={styles.safe}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -510,9 +564,9 @@ function StudySession() {
     )
   }
 
-  // ── Empty queue ───────────────────────────────────────────────────────────
+  // ── Error ─────────────────────────────────────────────────────────────────
 
-  if (!isLoading && error) {
+  if (screen === 'error') {
     return (
       <SafeAreaView style={styles.safe}>
         <Ionicons name="alert-circle" size={64} color={colors.error} />
@@ -525,7 +579,35 @@ function StudySession() {
     )
   }
 
-  if (!isLoading && queue.length === 0) {
+  // ── Session lost ──────────────────────────────────────────────────────────
+  // The queue held cards and then did not. We do not claim to know why — the
+  // point of this screen is that no trigger, known or not, can strand the
+  // learner again. Worst case it is a redundant button.
+
+  if (screen === 'sessionLost') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <Ionicons name="refresh-circle" size={64} color={colors.primary} />
+        <Text style={styles.emptyTitle}>Session interrupted</Text>
+        <Text style={styles.emptySubtitle}>
+          We lost track of that session. Your finished cards were saved — start
+          a new one to pick up where you left off.
+        </Text>
+        <TouchableOpacity style={styles.backButton} onPress={handleBegin}>
+          <Text style={styles.backText}>Start a session</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.backButton} onPress={() => setPhase('ready')}>
+          <Text style={styles.backText}>Back to Study</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    )
+  }
+
+  // ── Empty queue ───────────────────────────────────────────────────────────
+  // Reached only when the deck was genuinely exhausted — a Begin that found
+  // nothing due. Anything else routes to 'sessionLost' above.
+
+  if (screen === 'empty') {
     return (
       <SafeAreaView style={styles.safe}>
         <Ionicons name="checkmark-circle" size={64} color={colors.success} />
@@ -544,7 +626,7 @@ function StudySession() {
 
   // ── Saving ────────────────────────────────────────────────────────────────
 
-  if (isSaving) {
+  if (screen === 'saving') {
     return (
       <SafeAreaView style={styles.safe}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -555,7 +637,7 @@ function StudySession() {
 
   // ── Session complete ──────────────────────────────────────────────────────
 
-  if (sessionSummary) {
+  if (screen === 'sessionComplete' && sessionSummary) {
     return (
       <>
         <SessionComplete
@@ -630,7 +712,7 @@ function StudySession() {
 
   // ── Fallback (should not reach here) ─────────────────────────────────────
 
-  if (isComplete) {
+  if (screen === 'finishing') {
     return (
       <SafeAreaView style={styles.safe}>
         <ActivityIndicator color={colors.primary} size="large" />
