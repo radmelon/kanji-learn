@@ -4,9 +4,8 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import * as Speech from 'expo-speech'
 import { useReinforce } from '../../mnemonics/useReinforce'
-import { getBestVoice } from '../../utils/tts'
+import { speakMixed } from '../../utils/tts'
 import { colors, spacing, radius, typography } from '../../theme'
 
 interface Props {
@@ -61,9 +60,9 @@ export function ReinforceSheet({
   // SafeAreaView), so the home-indicator zone eats the footer without this.
   const insets = useSafeAreaInsets()
 
-  const speakStory = async () => {
-    Speech.speak(storyText, { voice: await getBestVoice('en-US'), rate: 0.95 })
-  }
+  // B-212(a): was a single en-US utterance, which silently dropped every kanji
+  // and kana embedded in the story — the part that carries the reading.
+  const speakStory = () => { speakMixed(storyText) }
 
   const finish = () => {
     if (state.shouldOfferDeepen) onOfferDeepen?.(mnemonicId)

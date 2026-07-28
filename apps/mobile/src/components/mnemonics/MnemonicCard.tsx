@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, typography } from '../../theme'
+import { speakMixed } from '../../utils/tts'
 import type { Mnemonic } from '../../hooks/useMnemonics'
 
 interface Props {
@@ -190,7 +191,22 @@ export function MnemonicCard({
           placeholderTextColor={colors.textMuted}
         />
       ) : (
-        <Text style={styles.story}>{mnemonic.storyText}</Text>
+        <>
+          <Text style={styles.story}>{mnemonic.storyText}</Text>
+          {/* B-213: "Speak it" existed only in the sheet that creates a hook,
+              never anywhere one is read. This card is every read surface —
+              kanji detail and the Journal list — so one button covers both.
+              speakMixed also means it reads the Japanese, unlike the original
+              (B-212). */}
+          <TouchableOpacity
+            style={styles.speakBtn}
+            onPress={() => speakMixed(mnemonic.storyText)}
+            hitSlop={8}
+          >
+            <Ionicons name="volume-medium-outline" size={18} color={colors.primary} />
+            <Text style={styles.speakBtnText}>Speak it</Text>
+          </TouchableOpacity>
+        </>
       )}
 
       {/* The threads added since. The assembled story above already weaves them
@@ -272,6 +288,14 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: spacing.xs },
   iconBtn: { padding: spacing.xs },
   story: { ...typography.body, color: colors.textPrimary, lineHeight: 24 },
+  speakBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  speakBtnText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
   editInput: {
     ...typography.body,
     color: colors.textPrimary,

@@ -9,7 +9,7 @@ import * as Speech from 'expo-speech'
 import { teachingBeat } from '../../lib/teaching-beat'
 import { useCoCreation, defaultCoCreationDeps } from '../../mnemonics/useCoCreation'
 import { useProfile } from '../../hooks/useProfile'
-import { getBestVoice } from '../../utils/tts'
+import { speakMixed } from '../../utils/tts'
 import type { KanjiForHook } from '../../mnemonics/buildSlots'
 import { snoozeBuddyMoment } from '../../mnemonics/cocreationApi'
 import { colors, spacing, radius, typography } from '../../theme'
@@ -179,14 +179,12 @@ export function CoCreationSheet({ visible, kanji, onClose, onSaved }: Props) {
     }
     if (!state.draft) return
     setSpeakingHook(true)
-    const voice = await getBestVoice('en-US')
-    Speech.speak(state.draft, {
-      language: 'en-US',
-      voice,
-      onDone: () => setSpeakingHook(false),
-      onStopped: () => setSpeakingHook(false),
-      onError: () => setSpeakingHook(false),
-    })
+    // B-212(a): speakMixed segments the story and switches voice per run. The
+    // old single en-US utterance silently dropped every kanji and kana in it —
+    // which, in a hook whose whole point is anchoring a reading, is the half
+    // worth hearing. Resolves when the last segment finishes or is stopped.
+    await speakMixed(state.draft)
+    setSpeakingHook(false)
   }
 
   const meaning = kanji.meanings[0] ?? ''
