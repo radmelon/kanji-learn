@@ -6,6 +6,40 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [x] **(B-221) Daily reminders fired at :54 past the hour, not on the hour — and an hour could be skipped entirely** — Found by log inspection (owner, 2026-07-28): *"I was expecting to see a daily reminder today at 8am, but didn't get one."* It did fire — at **8:54am**.
+
+  **Symptom:** every learner's daily reminder arrives up to 59 minutes after the hour they chose. A learner who sets 8:00 gets it at 8:54. Nothing in the app or the API is wrong; the skew is entirely in the EventBridge schedule.
+
+  **Root cause:** rule `kanji-learn-hourly-reminders` was created with `rate(1 hour)`. A rate expression fires 60 minutes after **rule creation** and every 60 minutes thereafter — it is not pinned to a wall-clock minute. The rule was created 2026-04-09 (see B-108's superseded diagnosis below) and had settled on **HH:54**. `isEligibleNow` compares only the hour (`hour === reminderHour`), so whichever minute the rule drifts to becomes everyone's delivery minute.
+
+  **The sharper risk, which is why this is not cosmetic.** Firing at HH:54 leaves six minutes of margin. Any delay past HH:59 puts two invocations inside one UTC hour and **zero in the next** — silently dropping every user whose `reminderHour` was the skipped one, with no error anywhere. The job would log `Sent 0` (or nothing at all) and look perfectly healthy. This is a plausible contributor to the three months of "the reminders are broken" that root causes A and B did not fully account for.
+
+  **Fix applied 2026-07-28 (owner-approved), infra-only, no build or deploy:**
+
+  ```bash
+  aws events put-rule --name kanji-learn-hourly-reminders \
+    --schedule-expression 'cron(0 * * * ? *)' --state ENABLED \
+    --description 'Triggers the kanji-learn daily-reminders Lambda every hour, on the hour'
+  ```
+
+  Verified after the change: `ScheduleExpression` is `cron(0 * * * ? *)`, `State` is `ENABLED`, and the `daily-reminders-lambda` target survived (`put-rule` does not touch targets, but it *does* reset unspecified fields — pass `--state` and `--description` explicitly or they are silently dropped).
+
+  **⚠️ Not codified anywhere.** This rule exists only in the AWS console/CLI — there is no IaC for it in the repo, and `apps/api/src/cron.ts` merely mentions it in a comment. Anyone who recreates it from that comment will reintroduce `rate(1 hour)`. **Next hourly run to confirm on the hour: check for a `[Internal] Daily reminder job triggered by EventBridge` line at `HH:00:0x` rather than `HH:54:0x`.**
+
+  **Affected:** AWS EventBridge rule `kanji-learn-hourly-reminders` (us-east-1) — no repo files changed.
+
+  `[Effort: XS]` `[Impact: High — every reminder for every user, plus a silent-skip failure mode]` `[Backend: infra only]` `[Status: ✅ Fixed 2026-07-28 — awaiting one on-the-hour run as confirmation]`
+
+- [ ] **(B-222) Streak copy under-counts by one for learners who already studied today** — Found alongside B-221 (2026-07-28). Buddy studied on 07-27 **and** 07-28, yet the 8:54am push read *"✅ Nice work today! — 7 kanji done"* (the `streakDays < 2` branch) instead of *"⚡ Nice — 2 days in a row"*.
+
+  **Root cause:** `getUserStreak` starts counting at **yesterday**, with the comment *"(they haven't studied today yet)"*. That assumption held when the daily cron only messaged people who had **not** studied. Plan 4 added the `reviewedToday > 0` encouragement branch to `buildMessage`, so the same streak number now feeds copy that explicitly acknowledges today — the message congratulates you on today's 7 kanji while the streak behind it pretends today has not happened.
+
+  **Fix:** count today when `reviewedToday > 0`, or have `getUserStreak` take the day's review count and include today when it is non-zero. One function, fully unit-testable without a device.
+
+  **Affected files:** `apps/api/src/services/notification.service.ts` (`getUserStreak` ~L401, `buildMessage` ~L34).
+
+  `[Effort: XS]` `[Impact: Low — copy only, but it undercuts the streak feature's whole point]` `[Backend: Yes]` `[Status: 🐛 Active]`
+
 - [ ] **(B-211) Journal cannot list your hooks — no API exists to fetch them** — Found on-device in **B144** (owner, 2026-07-27): *"after building it shouldn't I be able to find it under Journal?"* Yes, and today you cannot.
 
   **Symptom:** build a hook, open Journal, see nothing. The only way to view a hook is to search its exact kanji, or open that kanji's detail page.
