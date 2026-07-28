@@ -106,8 +106,43 @@ table above.
 
 | Rotation | Date | Notes |
 |---|---|---|
-| 1st | 2026-07-28 | Initial rotation + SSM migration. Four keys burned mid-run and reissued — see Chat hygiene. |
+| 1st | 2026-07-28 ✅ | Initial rotation + SSM migration, **complete**. Four keys burned mid-run and reissued — see Chat hygiene. Cutover window ~1s (deploy SUCCEEDED 11:53:22, Lambda 11:53:23). |
 | 2nd | **2026-10-26** | LLM keys expire. Supabase four may already be rotated by the `us-east-1` migration; check before including them. |
+
+### 1st rotation — what was actually proven (2026-07-28)
+
+Recorded because "the deploy succeeded" is not evidence, and this project has
+been burned by that exact inference before (see `SOP.md`).
+
+**Strong proof:**
+
+- **Plaintext removed** — `RuntimeEnvironmentVariables` went from 17 names to
+  10; all seven secrets are now ARN references. Directly observed.
+- **All seven resolved** — App Runner fails a deployment when a referenced
+  parameter cannot be fetched or decrypted, so `SUCCEEDED` + `RUNNING` proves
+  the IAM policy works for every one of them.
+- **`INTERNAL_SECRET`** — the 12:00 tick logged `[Internal] Daily reminder job
+  triggered by EventBridge`, so the Lambda authenticated against the new
+  container with the new secret. Both sides agree.
+- **`DATABASE_URL`** — the same run logged
+  `[Notifications] 2/5 users have no captured timezone`, a line that can only
+  be produced by querying `user_profiles`. The database connection is live.
+- **New container is serving** — the hostname changed from `ip-10-0-105-33`
+  (pre-switch) to `ip-10-1-45-202`. Worth checking: it distinguishes "new
+  config deployed" from "old container still up".
+
+**Weak or absent proof, deliberately:**
+
+- **`ANTHROPIC_API_KEY`** — resolved, never exercised. A mistyped key resolves
+  perfectly and fails only at call time. Needs one real hook build.
+- **`GROQ_API_KEY` / `GEMINI_API_KEY`** — tier-2/3 fallbacks, unreachable
+  without deliberately breaking the Anthropic path. Not worth sabotaging a
+  working tier on rotation day.
+- **`SUPABASE_JWT_SECRET` / `SUPABASE_SERVICE_ROLE_KEY`** — resolved, and the
+  values are unchanged, so risk is near zero. Confirmed by signing in on device.
+
+**Do not revoke the old keys until a hook has been built on B145** — that is
+the first moment `ANTHROPIC_API_KEY` is genuinely exercised.
 
 ---
 
