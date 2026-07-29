@@ -113,12 +113,23 @@ do not exist.
 
 ## Mobile testing reality
 
-There is **no** `@testing-library/react-native`; jest runs in a `node`
-environment. The established pattern is a **pure reducer beside a thin hook**
-(mirror `useCoCreation.reducer`). API integration tests authenticate with a bare
-`x-test-user-id` header — there is no `test/helpers/auth.ts`, only
-`test-app.ts`.
+Mobile now has two Jest lanes:
+
+1. `pnpm --filter @kanji-learn/mobile test -- --runInBand` — the established
+   pure logic lane. It still runs in `node` with `ts-jest`, and it deliberately
+   excludes `apps/mobile/test/components/`.
+2. `pnpm --filter @kanji-learn/mobile test:components` — the component render
+   lane. It uses `jest-expo` + `@testing-library/react-native` and currently
+   proves focused `.tsx` component rendering with `OfflineBanner`.
+
+Default to the pure reducer / pure helper pattern for decisions that do not need
+rendering (mirror `useCoCreation.reducer`). Use the component lane when the
+behavior is a visible React Native render state or interaction surface. Full
+protocol:
+https://github.com/radmelon/kanji-learn/blob/main/docs/local-build-and-test-protocol.md
+
+API integration tests authenticate with a bare `x-test-user-id` header — there
+is no `test/helpers/auth.ts`, only `test-app.ts`.
 
 **Check that test scaffolding exists before trusting a plan that references
-it.** Plans in this repo have confidently cited both of the above when neither
-was real.
+it.** Plans in this repo have confidently cited missing tools before.

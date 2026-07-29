@@ -4,6 +4,28 @@ Standard operating procedures for building, testing, and deploying the Kanji Lea
 
 ---
 
+## Local test-first loop
+
+Before spending an EAS build or starting a TestFlight pass, use the local
+protocol:
+
+https://github.com/radmelon/kanji-learn/blob/main/docs/local-build-and-test-protocol.md
+
+Minimum mobile gates:
+
+```bash
+pnpm --filter @kanji-learn/mobile test -- --runInBand
+pnpm --filter @kanji-learn/mobile test:components
+pnpm --filter @kanji-learn/mobile typecheck
+```
+
+The pure logic lane and the component render lane are intentionally separate.
+Keep using pure helpers/reducers for decisions that do not require rendering;
+use the component lane for focused JSX/React Native states before moving to
+simulator, device, or TestFlight checks.
+
+---
+
 ## TestFlight Build & Submission
 
 ### One-command release (preferred)
