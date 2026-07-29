@@ -605,11 +605,11 @@ Confirm the file was written and has non-trivial size (`ls -lh /tmp/placement-re
 
 Read the output. Note the affected-account count and whether the account with 104 kanji in `learning` (flagged in `docs/HANDOFF-placement-and-b210.md`) appears.
 
-- [ ] **Step 2: STOP — human review gate**
+- [ ] **Step 3: STOP — human review gate**
 
-**Do not proceed to Step 3 without explicit confirmation from whoever is running this plan.** Paste the detector's account-level summary and get an explicit go-ahead before writing to live data. This is exactly the kind of hard-to-reverse, shared-state action that needs a pause, even though the repair script is idempotent and dry-runnable — the underlying data change is still real.
+**Do not proceed to Step 4 without explicit confirmation from whoever is running this plan.** Paste the detector's account-level summary and get an explicit go-ahead before writing to live data. This is exactly the kind of hard-to-reverse, shared-state action that needs a pause, even though the repair script is idempotent and dry-runnable — the underlying data change is still real.
 
-- [ ] **Step 3: Dry-run the repair against live data**
+- [ ] **Step 4: Dry-run the repair against live data**
 
 ```bash
 ./scripts/with-live-db.sh node --import tsx/esm scripts/repair-placement-damage.mjs --dry-run
@@ -617,13 +617,13 @@ Read the output. Note the affected-account count and whether the account with 10
 
 Compare the row count to the detector's count from Step 2. They must match.
 
-- [ ] **Step 4: Run the repair against live data**
+- [ ] **Step 5: Run the repair against live data**
 
 ```bash
 ./scripts/with-live-db.sh node --import tsx/esm scripts/repair-placement-damage.mjs
 ```
 
-- [ ] **Step 5: Verify and record**
+- [ ] **Step 6: Verify and record**
 
 ```bash
 ./scripts/with-live-db.sh node --import tsx/esm scripts/detect-placement-damage.mjs
