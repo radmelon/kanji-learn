@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-29 (**local build-and-test protocol landed**)
+# Session Handoff — 2026-07-29 (**placement model planned; repair partially executed, paused for a live-DB session**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -6,6 +6,89 @@
 > *(This line is deliberately part of the artifact. A handoff that cannot state
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
+
+## START HERE — 2026-07-29 (later)
+
+> ## 🟡 Placement model: designed, planned, repair 4/5 done — needs a live-DB session next
+>
+> Resolves [`HANDOFF-placement-and-b210.md`](HANDOFF-placement-and-b210.md) — that
+> file's questions are now answered; treat it as historical context, not a task list.
+>
+> **What landed on `main`, all committed:**
+>
+> - Design spec:
+>   [`docs/superpowers/specs/2026-07-29-placement-model-design.md`](superpowers/specs/2026-07-29-placement-model-design.md)
+>   — replaces the 56-line staircase with a Rasch (1-parameter IRT) ability
+>   estimator over kanji-feature-derived item difficulty. B-210 is fixed by a
+>   **never-overwrite rule** (placement never writes to a progress row with
+>   real review history), not a guard.
+> - Three implementation plans, each self-reviewed against its spec:
+>   - [`2026-07-29-placement-repair.md`](superpowers/plans/2026-07-29-placement-repair.md)
+>     (5 tasks) — **prerequisite, must land before the model plan's DB work.**
+>   - [`2026-07-29-placement-model.md`](superpowers/plans/2026-07-29-placement-model.md)
+>     (13 tasks) — the estimator, difficulty model, adaptive selection, schema,
+>     mobile store/UI.
+>   - [`2026-07-29-terminology-attribution-sweep.md`](superpowers/plans/2026-07-29-terminology-attribution-sweep.md)
+>     (6 tasks) — SRS→FSRS copy fixes, independent of the other two. Scope was
+>     expanded past the spec's own file list after discovering
+>     `apps/mobile/app/(tabs)/index.tsx` contained a fabricated attribution to
+>     Piotr Woźniak's SM-2 as "the basis for this app's scheduling engine" —
+>     false since the FSRS-5 migration. Owner-confirmed before widening scope.
+>
+> **Repair plan execution — Tasks 1–4 done, reviewed clean, NOT merged to `main`:**
+>
+> Isolated worktree at `.claude/worktrees/placement-repair`, branch
+> `worktree-placement-repair`. **Keep this worktree** — it has 4 real commits
+> the repair plan needs, none pushed or merged yet:
+>
+> | Task | Commit(s) | Status |
+> |---|---|---|
+> | 1 — damage-signature predicate (`packages/shared/src/placement-repair.ts`) | `e8230fe` | reviewed clean |
+> | 2 — read-only detector (`scripts/detect-placement-damage.mjs`) | `e8230fe..94acf6e` | 1 fix cycle (broken tsx invocation in header comment), re-reviewed clean |
+> | 3 — proved the detector against a seeded fixture | no commit (validation only) | confirmed working |
+> | 4 — repair script (`scripts/repair-placement-damage.mjs`) | `558b141` | reviewer independently re-ran dry-run/live-run/idempotency/unrepairable-branch — all clean |
+>
+> **Task 5 — run against the live database — is the reason this paused.** Two
+> reasons, both deliberate, not oversights:
+>
+> 1. The worktree has no live DB credentials (`packages/db/.env` is gitignored
+>    and is never copied into a new worktree by design).
+> 2. The plan's own Step 3 is a mandatory human confirmation gate before any
+>    live write — a subagent should not run past it regardless of credentials.
+>
+> **To finish:** from a session with `packages/db/.env` in place, either `cd`
+> into the worktree above or re-enter it, then follow
+> [`2026-07-29-placement-repair.md`](superpowers/plans/2026-07-29-placement-repair.md)
+> Task 5 exactly — safety dump → read-only detector against live data → **stop
+> and review the findings** → dry-run repair → live repair → verify clean →
+> record the result in a new section here. Only then does the repair branch
+> merge, and only then should the placement-model plan's DB-touching tasks
+> begin (it reads `user_kanji_progress.difficulty`, which repair cleans up).
+>
+> **Two environment gaps worth fixing while someone's in there:**
+>
+> - `docs/local-test-db.md` doesn't mention that the local Docker Postgres
+>   needs `?sslmode=disable` appended to `TEST_DATABASE_URL` — every script
+>   in this session that connected had to discover this manually. It's
+>   documented in an FSRS-rollout runbook, not in the doc a new session would
+>   actually reach for.
+> - `--import tsx/esm` fails on this pnpm workspace (root `node_modules`
+>   doesn't hoist `tsx`) — the working form is `--import
+>   ./packages/db/node_modules/tsx/dist/esm/index.cjs`. `replay-srs-fsrs.mjs`
+>   already documented this; the two new repair scripts now do too. Any
+>   future one-off script following that precedent should copy the same
+>   header note rather than rediscovering it.
+>
+> **Minor, non-blocking:** the repair plan's Task 4 brief has a stale
+> illustrative number (`S=0.40 D=7.19`) from an arithmetic slip — it assumed
+> `quality=3` maps to FSRS rating 1; `packages/shared/src/srs.ts`'s
+> `ratingFromQuality` actually maps it to rating 2 ("Hard"). Real output is
+> `S=1.18 D=6.49`, confirmed against the unmodified function. Doesn't affect
+> any shipped code, just a typo in the plan doc if anyone rereads it closely.
+
+---
+
+# Previous — 2026-07-29 (**local build-and-test protocol landed**)
 
 ## START HERE — 2026-07-29
 
