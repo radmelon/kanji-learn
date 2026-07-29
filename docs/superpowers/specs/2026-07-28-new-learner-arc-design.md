@@ -305,11 +305,119 @@ effortConsistency(studyDays: Date[], window: number): {
 
 **Why it matters beyond a badge:** unlike a streak it **survives a rest day**,
 so Buddy can praise sustained commitment without implicitly demanding that the
-learner never take one. It is also an input to `selectInvitation` — a learner
-whose consistency is high but volume low needs different encouragement from one
-who is bursty.
+learner never take one.
 
 Pure, testable, no new data: `daily_stats` already records which days had reviews.
+
+#### Measured on live accounts, 2026-07-29
+
+| | study days | mean gap | max gap | **B** | reading |
+|---|---|---|---|---|---|
+| RAD | 10 | 4.0d | 8d | **−0.200** | most *regular* — every ~4 days |
+| Buddy | 71 | 1.8d | 22d | **+0.235** | most *volume*, but bursty |
+| Bucky | 18 | 6.2d | 61d | **+0.381** | very bursty — the 61-day absence he returned from |
+
+**This table is the argument for the metric.** RAD has the fewest study days and
+the best rhythm; the owner has seven times the volume and a worse one. Ranked by
+streak the owner wins easily; ranked by regularity RAD does. Both deserve
+praise, and the app can currently express only one of them.
+
+Note also that Bucky's +0.381 would have flagged disengagement **weeks before**
+the 61-day gap — see *early warning*, below.
+
+#### Two traps specific to this app
+
+**1. `user_profiles.rest_day` exists, and naive burstiness punishes using it.**
+A learner who declares Sunday a rest day and studies Monday–Saturday perfectly
+produces a weekly gap the raw metric reads as irregularity — so **the app would
+penalise a setting it offers**. Declared rest days must be removed from the
+interval series before computing. Not hypothetical: the owner's account has
+`rest_day = 0` (Sunday).
+
+**2. Small-n bias, exactly where this spec lives.** The original formula is
+biased for short sequences — RAD's B rests on **nine intervals**, which is noise
+wearing a number. Use the **Kim & Jo (2016) finite-size correction**, and below a
+minimum interval count return **`null`**, not a number. Same discipline as
+`projectedDate` (§5B): silence beats a confident-looking artefact. Since this
+spec is *about* new learners, who by definition have almost no history, the
+correction is not optional.
+
+#### Where it feeds — five uses, in value order
+
+1. **Projection confidence (§5B2).** Mean pace systematically flatters a bursty
+   learner. B is the right term to widen the interval and drop `confidence` from
+   `firm` to `rough`.
+2. **Review-debt forecasting.** See below — the strongest use.
+3. **Early warning.** *Rising* B is disengagement beginning, visible before a
+   lapse rather than after. Supplies the trigger for the parent spec's §10
+   "rescue call" nudge, which currently has no source.
+4. **Invitation selection (§5C).** Regular-low-volume and bursty-high-volume need
+   opposite encouragement. The app's own copy already knows this — *"20
+   reviews/day every day beats 200 reviews on weekends"* — it just cannot tell
+   which learner it is addressing.
+5. **A milestone dimension**, with one rule: **never show the number.**
+   "Burstiness −0.2" is meaningless to a person; *"you've studied 4–5 days a week
+   for six weeks"* is the same fact, legible.
+
+**Never comparative.** B is tailor-made for a toxic leaderboard, and §10 forbids
+leading with a negative comparison. Self-referential only — the learner's rhythm
+against their own past, never against a friend's.
+
+#### Relationship to FSRS — what it must *not* do
+
+**B does not feed into FSRS.** Injecting a behavioural metric into stability,
+difficulty or retrievability would decalibrate a published model and contradict
+the transparency commitment in §10.4. FSRS answers *"when should this card be
+reviewed for retention?"*; burstiness answers *"when will this learner actually
+be here?"* Different questions, and conflating them corrupts the one that works.
+
+The value is at the **intersection**, and there are two legitimate uses and one
+that needs evidence:
+
+- ✅ **Review-debt forecasting.** FSRS due-dates × predicted attendance =
+  predicted backlog. Cards accrue silently during a gap and the learner returns
+  to a wall — the "280 due" experience. B makes that wall *predictable* and
+  therefore preventable: *"at your rhythm you'll have ~180 due by Monday; 20
+  today keeps it flat."* Attacks the pile before it demoralises rather than
+  after.
+- ✅ **Load balancing inside FSRS's existing tolerance.** FSRS accepts jitter
+  around an interval without meaningful retention loss, and mainstream
+  implementations already use this to smooth daily counts. Biasing that jitter
+  toward the days a learner actually attends uses slack the model already
+  grants. It changes *scheduling within tolerance*, never the memory model.
+- ⚠️ **Per-learner desired-retention tuning** — a bursty learner might warrant
+  slightly higher desired retention so a long gap does less damage. Plausible,
+  unproven, and it changes real outcomes. **Do not ship on intuition**; it needs
+  the dedicated session (§13).
+
+#### The tutor report
+
+The report already has the right home and the right data. `ReportData.effort`
+carries `dailyStats30` and `dailyStats90`, so **burstiness needs no new query** —
+and `weekendVsWeekdayRatio`, already present, is a crude regularity proxy this
+supersedes.
+
+Add to `effort`:
+
+```ts
+consistency: {
+  burstiness: number | null       // null when below the interval floor
+  activeRatio30: number
+  activeRatio90: number
+  trend: 'steadying' | 'stable' | 'fragmenting' | 'insufficient_data'
+  restDaysExcluded: boolean
+}
+```
+
+**Written for a human, not a dashboard.** A tutor reading *"B = +0.235"* learns
+nothing; *"studies in concentrated bursts with gaps up to 22 days; rhythm has
+been fragmenting over the last month"* is a teaching observation they can act on.
+The report should carry both — the number for anyone who wants it, the sentence
+for everyone who does not.
+
+Same rule as §5C3 for learners applies here with one exception: a tutor **may**
+see the raw metric, because they have the context to interpret it and the
+report is already a professional instrument.
 
 ### D. Context endpoint
 
@@ -577,7 +685,43 @@ be estimated from recorded behaviour rather than invented.
   populate `goals`/`interests` or drop them; four unused jsonb columns across
   two tables invite a future reader to trust them.
 
-## 12. What this explicitly does not do
+## 12. Scheduled: a dedicated session on the learner behaviour model
+
+Requested by the owner, 2026-07-29. `effort_consistency` (§5C3) turned out to
+reach into projection confidence, review-debt forecasting, rescue triggers,
+invitation selection and the tutor report — which is more than one metric should
+carry, and a signal that the real subject is bigger than burstiness.
+
+**Handoff:** [`HANDOFF-behaviour-model.md`](../../HANDOFF-behaviour-model.md)
+
+**This spec implements only the narrow version**: burstiness plus active-ratio,
+feeding invitation selection and the tutor report. Everything below waits for
+that session — including anything that touches FSRS scheduling.
+
+Owner's stated interests, verbatim:
+
+> *"I am particularly interested in understanding how B feeds into the FSRS
+> model. But also how we can design a model that is specifically tracking each
+> student's study behavior in order to drive Buddy's encouragement and coaching
+> activities. Also when present we might have a human tutor who is consuming a
+> report we generate on demand."*
+
+Scope for that session:
+
+- **B × FSRS** — review-debt forecasting and load balancing within tolerance are
+  the two defensible uses (§5C3). Per-learner desired-retention tuning is the
+  open question and the one that changes real outcomes.
+- **A behaviour model wider than one metric** — time-of-day preference, session
+  length distribution, modality balance, grade-drift, and the **memory
+  coefficient** (Goh & Barabási, same paper) which measures whether short gaps
+  follow short gaps and so distinguishes *steady decline* from *randomness* —
+  two very different situations that burstiness alone conflates.
+- **What drives coaching** — which signals justify which intervention, and which
+  are merely interesting. A model that measures more than it acts on is
+  surveillance, not teaching.
+- **The tutor report as a designed instrument** rather than an accreting struct.
+
+## 13. What this explicitly does not do
 
 - Leech detection, confused-pair drills (Phase 3, later slice)
 - Scaffolding Levels 2 and 3 (input only)

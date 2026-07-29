@@ -75,6 +75,11 @@
 > - **[`HANDOFF-placement-and-b210.md`](HANDOFF-placement-and-b210.md)** — the
 >   placement model and B-210. **Do not fix B-210 as written**; the owner's
 >   reframing dissolves it. Blocks the New Learner Arc spec.
+> - **[`HANDOFF-behaviour-model.md`](HANDOFF-behaviour-model.md)** — the learner
+>   behaviour model. Third in the queue. Burstiness turned out to reach into five
+>   systems, which means the subject is bigger than the metric. Owner especially
+>   wants the FSRS relationship worked out — and the starting position is that B
+>   must **not** feed into FSRS's memory model, only the intersection.
 > - **The New Learner Arc spec** — written, pushed, under owner review:
 >   [`2026-07-28-new-learner-arc-design.md`](superpowers/specs/2026-07-28-new-learner-arc-design.md).
 >   Next step after review is `writing-plans`.
