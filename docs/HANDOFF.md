@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-28 (**B145 submitted** — ten defects fixed; walkthrough owed)
+# Session Handoff — 2026-07-29 (**next: a local build-and-test protocol**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,101 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-07-28
+## START HERE — 2026-07-29
+
+> ## 🔧 Next session: a local build-and-test protocol, reusable across projects
+>
+> **Why this and not features.** Every layout and voice judgement in this project
+> currently costs an EAS build: ~$2, ~20 minutes, and a TestFlight round trip.
+> The budget allows roughly **one** before it resets **2026-08-04**. Meanwhile
+> the New Learner Arc spec is written and blocked partly on exactly this — Buddy's
+> tone will need a dozen passes, and at one build per pass it will not get them.
+>
+> **Owner requirement (2026-07-29): the protocol must be useful for other
+> projects too**, specifically the **ABC Spike Phonics** work. So the deliverable
+> is a *portable protocol*, not a `kanji-learn` script. Expect it to end up as a
+> document plus a small amount of config that transfers.
+>
+> ### The core finding to start from
+>
+> **The testing constraint everyone has worked around is a config choice, not a
+> law.** `apps/mobile/jest.config.js` uses `preset: 'ts-jest'` with
+> `testEnvironment: 'node'`. That is why:
+> - anything containing JSX cannot be loaded by a test (`SyntaxError: Unexpected token '<'`)
+> - anything importing an ESM-only package cannot either (`Cannot use import statement outside a module`)
+>
+> **Both errors were hit on 2026-07-28**, an hour apart, and forced three
+> functions to be extracted purely to become testable — `teachingBeat`,
+> `segmentByScript`, `selectStudyScreen`.
+>
+> And the workaround is already in the repo, applied ad hoc **four times**:
+> `moduleNameMapper` hand-mocks `expo-web-browser`, `expo-auth-session`,
+> `expo-secure-store` and `supabase`. Someone hits the wall, mocks that one
+> module, moves on.
+>
+> **Neither `jest-expo` nor `@testing-library/react-native` is installed.**
+> `jest-expo` exists precisely to handle the JSX + ESM transform for Expo apps.
+> Whether adopting it is right is the session's first question — it would remove
+> the constraint and the four hand-mocks, but it is a preset swap that could
+> disturb **136 currently-passing mobile tests**. Evaluate, do not assume.
+>
+> ### What the protocol has to answer
+>
+> 1. **Component-level testing** — can we render components at all? (`jest-expo`
+>    + `@testing-library/react-native`.) The repo's `CLAUDE.md` currently states
+>    as fact that there is no RTL and jest is node-env; if that changes, that
+>    file must change with it.
+> 2. **Running the app locally.** A previous attempt cost an hour for zero
+>    verification — see *Lessons* below, item 6: the device picker offered only
+>    simulators, `xcodebuild` failed with error 65 (no Apple ID in Xcode), and
+>    `eas build` tried to **disable Sign in with Apple on the production
+>    bundle**. Understand why before retrying. Note this environment has an
+>    **iOS Simulator MCP** available, which the earlier attempt did not use.
+> 3. **What still genuinely needs a device** — and how to batch it. Some things
+>    (TTS voice quality, haptics, real push delivery) will never be local.
+> 4. **Portability to ABC Spike Phonics** — what is generic (jest preset, RTL,
+>    simulator loop, "pure logic in `src/lib/`") versus what is kanji-specific.
+>
+> ### Budget reality
+>
+> EAS as of 2026-07-28: **~$40 of $45**, resetting **2026-08-04**. B145 is cut
+> and submitted. Do not spend a build during this session unless the protocol
+> itself demands one.
+>
+> ---
+>
+> ### Also queued, deliberately not next
+>
+> - **[`HANDOFF-placement-and-b210.md`](HANDOFF-placement-and-b210.md)** — the
+>   placement model and B-210. **Do not fix B-210 as written**; the owner's
+>   reframing dissolves it. Blocks the New Learner Arc spec.
+> - **The New Learner Arc spec** — written, pushed, under owner review:
+>   [`2026-07-28-new-learner-arc-design.md`](superpowers/specs/2026-07-28-new-learner-arc-design.md).
+>   Next step after review is `writing-plans`.
+> - **B145 device walkthrough** — [`b145-test-plan.md`](b145-test-plan.md).
+>   Partly done: B-217, B-218, B-212(a) and the rotated Anthropic key all
+>   confirmed on device. **B-216's C1 test never actually ran** — the coaching
+>   toggle produced no profile PATCH, so the trigger never fired.
+> - **Four new bugs from B145** — B-223 (teaching beat always says "beside"; owner
+>   wants the deep IDS fix), B-224 (a hook with no dictionary-mapped components
+>   gets no recall-quiz stamp — **not root-caused**), B-225 (TTS voice switch
+>   abrupt), B-227 (Journal renders nothing while loading).
+> - **Supabase `ap-southeast-2` → `us-east-1`** — after the EAS reset. Rotates
+>   the three remaining Supabase secrets by construction.
+>
+> ### Done 2026-07-28/29, needing nothing further
+>
+> - **Ten B145 defects fixed**, API deployed and verified by content, B145 cut
+>   and submitted.
+> - **B-221** — daily reminders were firing at HH:54 because the EventBridge rule
+>   used `rate(1 hour)`. Now `cron(0 * * * ? *)`; **confirmed firing at 19:00:03**.
+> - **Secrets migration complete** — seven secrets moved from plaintext App
+>   Runner env vars to SSM SecureString references; four rotated. Cutover window
+>   ~1s. Runbook and reusable script: [`secrets-rotation.md`](secrets-rotation.md),
+>   `scripts/rotate-secrets.sh`. **Next rotation due 2026-10-26** — the three LLM
+>   keys expire 90 days from issue.
+
+## Previous — 2026-07-28 (B145 submitted)
 
 > ## 🟢 B145 is submitted. Walk it, then do the SSM migration.
 >
