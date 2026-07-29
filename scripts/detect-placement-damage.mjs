@@ -13,8 +13,18 @@
  *   DATABASE_URL='<postgres connection string>' \
  *     node --import tsx/esm scripts/detect-placement-damage.mjs [--user <uuid>]
  *
+ * tsx must be resolvable — if not on PATH, use the workspace copy:
+ *   DATABASE_URL='...' node \
+ *     --import ./packages/db/node_modules/tsx/dist/esm/index.cjs \
+ *     scripts/detect-placement-damage.mjs
+ *
  * Prefer running against live data via the safety wrapper:
  *   ./scripts/with-live-db.sh node --import tsx/esm scripts/detect-placement-damage.mjs
+ *
+ * ...or, with the workspace tsx fallback:
+ *   ./scripts/with-live-db.sh node \
+ *     --import ./packages/db/node_modules/tsx/dist/esm/index.cjs \
+ *     scripts/detect-placement-damage.mjs
  */
 
 import { createRequire } from 'node:module'
