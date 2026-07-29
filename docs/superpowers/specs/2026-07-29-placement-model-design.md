@@ -34,8 +34,10 @@ repair of accounts already damaged, and the SRS → FSRS terminology and
 attribution sweep.
 
 **Out:** continuous re-estimation from review logs (§9, deliberately deferred);
-Buddy's invitation behaviour beyond a default (§10, owned by the arc spec);
-writing/voice item types in placement.
+folding Take a Quiz data into the difficulty model or the estimator (§9.1, same
+deferral — and quiz must keep its "no effect on learning progress" promise
+regardless); Buddy's invitation behaviour beyond a default (§10, owned by the
+arc spec); writing/voice item types in placement.
 
 Two parts are **independently shippable and should not wait on the estimator**:
 §12 (repair — which must in fact go first) and §13 (terminology and attribution).
@@ -352,6 +354,38 @@ per-item responses, so adding `review_logs` as a second evidence source later is
 a query change, not a migration.
 
 The trap this avoids is storing θ as the record. Store evidence, derive θ.
+
+### 9.1 Take a Quiz — a second deferred evidence source, not a third design
+
+Quiz (`apps/api/src/services/test.service.ts`, `kl_test_sessions` /
+`kl_test_results`) is a distinct feature and must **not** be folded into §7/§8.
+Two reasons, one technical and one a stated product promise.
+
+**It cannot inform θ or seeding directly.** `generateQuestions` samples only from
+`userKanjiProgress.status != 'unseen'` — kanji already studied. It structurally
+cannot say anything about the ~1,800-kanji frontier placement exists to predict.
+
+**It is an explicit product promise, and the promise currently holds.** The
+app's own copy: *"quiz results have no effect on your card intervals or learning
+progress... purely for self-assessment."* Verified: `testResults.quality` is
+written on every answer but read only by `tutor-report.service.ts` and
+`analytics.service.ts` — reporting, never FSRS or SRS. Nothing in this spec may
+change that.
+
+What quiz data *can* eventually be, on the same deferred track as review_logs in
+§9: a second `b_observed` input for the difficulty model (§6.2). Item
+construction differs enough that it cannot simply be pooled with placement or
+review data — quiz distractors are drawn from **the learner's own seen pool**,
+not a global same-level pool, so a miss there is not directly comparable across
+learners the way a placement miss is. That comparability question is unsolved and
+deliberately left that way; it belongs to whichever session takes up §9.
+
+One thing worth not losing by the time that session happens: quiz already
+carries five question types (`meaning_recall`, `kanji_from_meaning`,
+`reading_recall`, `vocab_reading`, `vocab_from_definition`), the same axis as
+`δ_read` (§5) generalised. `analytics.service.ts` already groups quiz accuracy by
+`questionType` — a per-modality breakdown that is directly useful for
+calibrating offsets beyond meaning/reading, once calibration is in scope.
 
 ## 10. Retests
 
