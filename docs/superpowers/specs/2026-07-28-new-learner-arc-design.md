@@ -81,7 +81,7 @@ Not just the happy path.
 | **Ruler inferred, not asked** | `milestoneFocusFromReasons` already maps reasons → `jlpt` \| `grade` and drives badge selection. Generalising it makes the onboarding questionnaire load-bearing, which is the fix for observation #1. |
 | **Ask only on genuine ambiguity** | Owner: *"let's infer when we can based on what they have already told us. If they skip the onboarding questions or we need to disambiguate then we have no alternative than to ask directly."* |
 | **Buddy states the inferred frame** | A silent wrong guess yields an app that feels subtly off with no way to correct it. A stated guess corrects itself. |
-| **Never project beyond the next rung** | *"All 2294 Jouyou kanji: Jul 2053"* is not a copy bug; the system computes a number it has no business computing. Removing the capability removes the class of bug. |
+| **Never project *unbidden*** | Refined by the owner 2026-07-29. Not "never project" — learners legitimately want to know *"what must I do to reach N2 by summer 2027?"* and the app should support that planning. The failure is a distant date **volunteered as encouragement**. A projection the learner requested is information; the same number handed to them uninvited is a sentence being served. See §5B. |
 | **Decisions in `packages/shared`, copy from the API** | Pure functions are the only testable unit in this repo (§9). Server-side copy means Buddy's voice — and later, other languages — can change without an EAS build. |
 
 ## 4. Architecture
@@ -182,11 +182,45 @@ A learner inside N4 with a projected burn of Dec 2026 still hears about 750
 seen, a 21-day streak, grade 3 reaching silver — several times a week rather
 than twice a year.
 
-**`projectedDate` covers the next rung only.** There is no field for full-deck
-completion, so the 2053 string cannot be constructed. It is `null` when there is
-too little data, or when the estimate exceeds one year — a next rung dated 2029
-is the same failure in miniature. Buddy says *"a bit early to estimate"*, which
-is true.
+**`destination.projectedDate` covers the next rung only, and is what Buddy may
+speak unbidden.** It is `null` when there is too little data, or when the
+estimate exceeds one year — a next rung dated 2029 is the same failure in
+miniature. Buddy then says *"a bit early to estimate"*, which is true.
+
+### B2. The planner — projection on request
+
+Owner, 2026-07-29: *"Many who take up KanjiBuddy will be hoping to get the
+monkey off their back finally… It is natural to wonder how long will it take me
+to get there. What level of effort do I need to commit to get to N2 proficiency
+by the JLPT test window in summer of 2027? We should support this healthy
+planning."*
+
+**Push and pull are different products, and only push was broken.**
+
+| | Trigger | Horizon | Purpose |
+|---|---|---|---|
+| **Push** — `destination.projectedDate` | ambient, unbidden | next rung only | encouragement |
+| **Pull** — the planner | learner opens it | any target, incl. the full deck | planning |
+
+The planner answers in both directions, and both are the same function inverted:
+
+```ts
+// "N2 by summer 2027 — what does that take?"
+planForTarget({ target, byDate, currentPosition, observedPace }): RequiredEffort
+
+// "If I keep up 25/day, when do I burn 1,000?"
+projectFromPace({ pace, target, currentPosition }): { date: string | null; confidence: 'firm' | 'rough' }
+```
+
+Two rules keep it honest. **It must be able to say a target is unreachable** —
+*"N2 by December is not reachable at any sustainable pace; N3 is"* — because a
+planner that only ever agrees is a horoscope. And **`confidence` is surfaced**,
+never hidden: an estimate from three days of data is `rough` and must be labelled
+so. The Velocity entry in `ENHANCEMENTS.md` ("goal calculator") is this surface;
+the two should be built as one thing.
+
+The full-deck horizon **is** allowed here. It is the honest answer to a question
+the learner asked, and refusing to answer it would be its own kind of evasion.
 
 ### C. Invitation
 
@@ -217,6 +251,65 @@ and the coaching opt-out. **Returning `null` is the common case.**
 With 60+ milestones the frequency cap stops being a nicety and becomes
 load-bearing — three ladders crossing in one session must yield one celebration,
 not three.
+
+### C2. Ranking simultaneous milestones
+
+Owner, 2026-07-29: *"Acknowledge the most consequential initially, and bank the
+remaining achievements for subsequent acknowledgement. Most consequential should
+be judged in relation to the student's goal."*
+
+So ranking is **frame-relative**, not a fixed table. Under a `jlpt` frame a JLPT
+tier outranks a grade tier; under `grade`, the reverse. Banked milestones are not
+discarded — they surface at later boundaries, or go to the social consumer (§7).
+
+### C3. `effort_consistency` — regularity over streaks
+
+Owner: *"Regularity is more important than infrequent streaks: 4 on, 3 off,
+repeated over many weeks is a stronger signal of a commitment to a regular
+program of study than a 14-day streak followed by 12-days off."*
+
+Correct, and the current streak counter cannot express it — a streak resets to
+zero on one missed day, so it rewards brittleness and punishes a deliberate rest
+day.
+
+**The owner proposed fitting a sine wave. This spec does not, for a specific
+reason: a learner who studies every single day has no oscillation to fit**, so a
+periodicity-based score is degenerate exactly where behaviour is best. The ideal
+case would score worst.
+
+Instead, **burstiness** (Goh & Barabási), computed over the gaps between study
+days:
+
+```
+B = (σ − μ) / (σ + μ)        −1 = perfectly regular … +1 = highly bursty
+```
+
+Against the owner's own cases:
+
+| Pattern | B | Reading |
+|---|---|---|
+| Every day | −1.00 | perfectly regular |
+| 4 on / 3 off, repeated | −0.15 | regular-ish |
+| 14 on / 12 off | +0.24 | bursty |
+
+It ranks them as intended, assumes no period, and rewards daily study. Paired
+with active-days-in-a-rolling-window for volume:
+
+```ts
+effortConsistency(studyDays: Date[], window: number): {
+  score: number          // 0..1
+  activeRatio: number
+  burstiness: number
+}
+```
+
+**Why it matters beyond a badge:** unlike a streak it **survives a rest day**,
+so Buddy can praise sustained commitment without implicitly demanding that the
+learner never take one. It is also an input to `selectInvitation` — a learner
+whose consistency is high but volume low needs different encouragement from one
+who is bursty.
+
+Pure, testable, no new data: `daily_stats` already records which days had reviews.
 
 ### D. Context endpoint
 
@@ -380,7 +473,44 @@ and it is the owner's — another reason copy is served, so tuning costs no buil
 
 ## 10. Prerequisites
 
-1. **B-210** — placement retake destroys FSRS state. Must be fixed first.
+### Two need their own sessions before this can be planned
+
+**(a) A local build-and-test protocol.** Requested by the owner 2026-07-29.
+Every layout and voice judgement in this spec currently costs an EAS build, and
+the budget allows roughly one before 2026-08-04. Without a local loop, Buddy's
+tone gets tuned at ~$2 and a 20-minute round trip per attempt.
+
+**(b) The placement test — B-210, and the model beneath it.** Owner questions,
+2026-07-29, with what is verifiable today:
+
+| Question | Answer, from `packages/shared/src/placement.ts` (56 lines) |
+|---|---|
+| How many questions? | **60**, fixed length. Starts at N3. |
+| What methodology? | An **up-down staircase**: sliding window of 5, ≥70% steps up, ≤30% steps down. |
+| IRT? | **No.** No item difficulty parameters, no ability estimate, no information function. |
+| Confidence in the estimate? | **None is computed.** No standard error, no interval. The result is wherever the walk stopped after 60 items. |
+
+Three consequences:
+
+1. **Within-level difficulty is treated as uniform**, which is indefensible when
+   N1 alone holds 1,308 kanji.
+2. **60 items is a large ask** of someone who has not yet seen the app work.
+   Adaptive selection under an item-response model typically reaches better
+   precision in fewer items, because it chooses the item that most reduces
+   uncertainty rather than walking a ladder.
+3. **The owner's instinct about retests dissolves B-210.** Today a retake is an
+   independent walk that *replaces* state — which is precisely why it destroys
+   FSRS progress. Under an estimation model a retest is **additional evidence
+   refining a posterior**; nothing is replaced, so nothing is destroyed. B-210
+   stops being a bug to guard against and becomes a symptom of the wrong model.
+
+**Calibration data already exists.** FSRS maintains a per-kanji `difficulty` for
+every studied card, and there are thousands of review logs. Item difficulties can
+be estimated from recorded behaviour rather than invented.
+
+### Also blocking
+
+1. **B-210** — must be resolved by session (b) above, not merely patched.
 2. **Onboarding chips pinned to stable values**, not matched on display text
    (§5A).
 3. **The kanji-count sweep** (`BUGS.md`, re-scoped 2026-07-28) — two honestly
@@ -388,13 +518,55 @@ and it is the owner's — another reason copy is served, so tuning costs no buil
    Position arithmetic depends on which question is being asked, and a third
    number (2254) is still unexplained.
 
-## 11. Open questions
+4. **SRS → FSRS terminology and attribution sweep.** Owner, 2026-07-29:
+   *"all of our explanations reference SRS while some time ago we refactored to
+   use FSRS… We need to be transparent and accurate regarding our methods and
+   models, particularly when we are using open source ones."*
 
-- **When several milestones land at once**, does Buddy mention the single best
-  one, or briefly acknowledge all? Raised, not settled.
-- **Exam date source.** Hard-coding two dates a year is trivial and stale by
-  definition; scraping is fragile. A small seeded table with an annual manual
-  refresh is probably the honest answer.
+   **Verified: 11 user-facing strings in `apps/mobile/app/(tabs)/progress.tsx`
+   say "SRS"** — including *"Your kanji are sorted into five SRS stages"*, *"The
+   SRS interval has reached ~6 months"*, and a panel titled *"Quiz vs SRS"*.
+   The engine has been **FSRS-5** since Spec 1.5 (migration `0024` plus a
+   one-time replay).
+
+   This is not pedantry. SRS is the family; FSRS is a specific, published,
+   open-source algorithm the app depends on. Describing FSRS behaviour as "SRS"
+   is both inaccurate and an attribution failure toward work the project
+   benefits from. It also misleads: several strings describe *interval*
+   behaviour that FSRS derives from stability and difficulty, not from the
+   fixed-interval ladder "SRS" implies.
+
+   Blocking because this spec adds explanatory content (§5E teaching moments),
+   and new copy must not inherit the wrong vocabulary.
+
+   Scope: `progress.tsx` info panels, plus a sweep of README, onboarding copy,
+   sign-in subtitle and `ACKNOWLEDGEMENTS`.
+
+## 11. Resolved and open
+
+**Resolved by the owner, 2026-07-29:**
+
+- **Simultaneous milestones** — acknowledge the most consequential, bank the
+  rest, judge consequence relative to the learner's goal (§5 C2).
+- **Exam dates** — a scheduled job checks an authoritative source **at least
+  twice a year**, and the dates are **inserted as milestones the learner works
+  toward**. That makes an exam a rung on the ladder rather than a fact in a
+  countdown, which fits the §5B two-layer model exactly.
+- **`goals` / `interests`** — backfill them rather than drop them. **And goals
+  change over time**, so they need history, not a single current value: a
+  learner who moves from "curiosity" to "N2 for work" should have the frame
+  follow, and the change is itself a signal worth noticing. This makes the
+  columns temporal, which the current `jsonb` single-value shape does not
+  support.
+
+**Still open:**
+
+- **Retest cadence** — how often periodic re-estimation should be offered, and
+  whether Buddy proposes it or waits to be asked. Depends on the B-210 session
+  (§10).
+- **Whether the planner is its own surface or lives inside Velocity.** The
+  `ENHANCEMENTS.md` goal-calculator entry describes the same thing; they should
+  be built once.
 - **`goals` and `interests` are dead columns — verified 2026-07-28.** Both exist
   on `learner_profiles` *and* `learner_profile_universal`, and **nothing in
   `apps/api` or `apps/mobile` writes either.** Onboarding writes only
