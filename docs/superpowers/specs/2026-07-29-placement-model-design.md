@@ -514,13 +514,18 @@ Same subject — being accurate about the models the project uses. Owner,
 
 ## 14. Testing
 
-Per `CLAUDE.md`: there is no `@testing-library/react-native`; jest runs in
-`node`. The established pattern is a **pure function or reducer beside a thin
-hook**. API integration tests authenticate with a bare `x-test-user-id` header
-via `test-app.ts` — there is no `test/helpers/auth.ts`.
+Per `CLAUDE.md` (updated 2026-07-29, merged
+[PR #8](https://github.com/radmelon/kanji-learn/pull/8)): mobile now has two
+Jest lanes — the established pure logic lane (`node` + `ts-jest`) and a new
+component render lane (`jest-expo` + `@testing-library/react-native`,
+`test:components`). Full protocol:
+[`local-build-and-test-protocol.md`](../../local-build-and-test-protocol.md).
+API integration tests authenticate with a bare `x-test-user-id` header via
+`test-app.ts` — there is no `test/helpers/auth.ts`.
 
 Everything decision-bearing here is a pure function in `packages/shared`, which
-is the point:
+is the point — this design deliberately keeps the estimator out of components,
+so it stays on the logic lane regardless of which lane exists:
 
 | Unit | Test |
 |---|---|
@@ -534,6 +539,14 @@ is the point:
 | `inferredLevel(θ)` | band boundaries; agrees with item selection |
 | never-overwrite | a row with `totalReviews>0` is untouched — **the B-210 regression test** |
 | retest prior | widens with elapsed days; converges in fewer items than a flat prior |
+
+**One component-lane candidate**, per the protocol's "smallest test that asserts
+user-visible behavior": `placement.tsx` always showing the reading prompt after
+a missed meaning (§5's item-design change). It's a focused render/interaction
+assertion on an existing screen, not a new component — evaluate against the
+protocol's "avoid as first candidates" list (Expo Router screens, network
+hooks) before committing to it; the pure-function tests above cover the same
+behavior at the store level regardless.
 
 Rebuild the local test database before judging API results — see
 [`local-test-db.md`](../../local-test-db.md). A stale one reads ~5 extra
