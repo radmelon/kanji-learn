@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-29 (**next: a local build-and-test protocol**)
+# Session Handoff — 2026-07-29 (**local build-and-test protocol landed**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -6,6 +6,55 @@
 > *(This line is deliberately part of the artifact. A handoff that cannot state
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
+
+## START HERE — 2026-07-29
+
+> ## ✅ Local build-and-test protocol is now real
+>
+> The protocol requested in the previous handoff has landed as
+> [`docs/local-build-and-test-protocol.md`](local-build-and-test-protocol.md),
+> with the minimum transferable config in `apps/mobile`.
+>
+> **What changed:**
+>
+> - Kept the existing `ts-jest`/`node` mobile test lane intact for pure logic.
+> - Added a separate component render lane:
+>   `pnpm --filter @kanji-learn/mobile test:components`.
+> - Added `jest-expo@54.0.17`, `@testing-library/react-native@13.3.3`, and
+>   React 19.1-compatible `react-test-renderer`.
+> - Aligned mobile `jest`/`babel-jest`/`@types/jest` to 29.x because
+>   `jest-expo@54` failed under Jest 30 inside Expo runtime setup.
+> - Proved the lane with a real React Native component test:
+>   `apps/mobile/test/components/OfflineBanner.test.tsx`.
+> - Updated `CLAUDE.md` and `docs/SOP.md`; future sessions should not repeat
+>   the stale “no RTL” claim.
+>
+> **Verification after the change:**
+>
+> ```bash
+> pnpm --filter @kanji-learn/mobile test -- --runInBand
+> # 17 suites, 136 tests passed
+>
+> pnpm --filter @kanji-learn/mobile test:components
+> # 1 suite, 1 test passed
+>
+> pnpm --filter @kanji-learn/mobile typecheck
+> # passed
+> ```
+>
+> **The transferable lesson:** use the pure lane for decisions and reducers,
+> the component lane for focused JSX/render states, simulator/dev-client only
+> for integration observations, and TestFlight/physical devices only for TTS
+> quality, haptics, push delivery, Apple capability behavior, and final layout
+> walkthroughs. For ABC Spike Phonics, copy the protocol shape but match
+> `jest-expo` to its Expo SDK major version before installing anything.
+>
+> **Still not done by this session:** no EAS build was spent, no B145 bugs were
+> fixed, and no Supabase region migration was attempted.
+
+---
+
+# Previous — 2026-07-29 (**next: a local build-and-test protocol**)
 
 ## START HERE — 2026-07-29
 

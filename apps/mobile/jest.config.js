@@ -12,6 +12,7 @@ module.exports = {
     ],
   },
   testMatch: ['<rootDir>/test/**/*.test.ts', '<rootDir>/test/**/*.test.tsx'],
+  testPathIgnorePatterns: ['<rootDir>/test/components/'],
   moduleNameMapper: {
     '^@kanji-learn/shared$': '<rootDir>/../../packages/shared/src/index.ts',
     '^expo-web-browser$': '<rootDir>/test/__mocks__/expo-web-browser.ts',
