@@ -408,10 +408,42 @@ weak enough that a retest can genuinely overturn it, while a retest a week later
 still starts sharp. It is a tuning constant, not a measurement; revisit once §9
 ships and real drift is observable.
 
-**Default: retests are learner-initiated.** Buddy offers one at most once per 30
-days, and only after ≥200 new kanji have been studied since the last placement.
-Invitation behaviour proper is owned by the arc spec's §5 rules; this is the
-floor, not the design.
+### 10.1 Cadence — resolving the arc spec's open question
+
+The arc spec (§11) lists this as blocked on this session: *"how often periodic
+re-estimation should be offered, and whether Buddy proposes it or waits to be
+asked."* Resolved here.
+
+**Buddy proposes; the learner is never forced.** A retest offer runs through the
+arc spec's existing `packages/shared/src/buddy/invitation.ts` — the same
+anti-nag machinery already speced there (one offer per boundary, declines
+remembered with cooldown, a global frequency cap). No new invitation
+infrastructure.
+
+**The trigger is the SE-widening formula above, and nothing else.** Propose a
+retest when `SE'` has grown enough that the credible interval would likely no
+longer fit inside ±1 JLPT band (§7.4's stopping condition, evaluated against the
+*current*, staleness-widened SE rather than a fresh one). This is honest, not a
+heuristic dressed as one: `SE'` is a direct measurement of how much confidence
+has degraded since last placement, already computed from stored
+`ability_se` and `completed_at`.
+
+An earlier draft of this section proposed offering a retest after "≥200 new
+kanji studied." That number is dropped, not merely deferred — under §9, study
+does not sharpen θ, so kanji volume is not evidence a retest would say anything
+new. Keeping it would have repeated the handoff's own mistake of sounding
+data-driven without being so.
+
+**A richer trigger — comparing θ's predictions against real outcomes on
+frontier-adjacent kanji the learner has since studied — would be genuinely
+data-driven** ("you've been acing N2 vocabulary faster than expected, want a
+quick recalibration?"). It is deliberately not built here. It belongs to the arc spec's §12
+("Scheduled: a dedicated session on the learner behaviour model"), which owns
+exactly this question — *"what drives coaching... which signals justify which
+intervention"* — and has the review-log and behaviour-signal machinery this
+would need. Added as a concrete scope item there, not left as a pointer only
+this document knows about — see
+[`2026-07-28-new-learner-arc-design.md`](2026-07-28-new-learner-arc-design.md#12-scheduled-a-dedicated-session-on-the-learner-behaviour-model).
 
 ## 11. Schema changes
 

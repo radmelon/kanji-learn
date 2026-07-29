@@ -666,12 +666,14 @@ be estimated from recorded behaviour rather than invented.
   follow, and the change is itself a signal worth noticing. This makes the
   columns temporal, which the current `jsonb` single-value shape does not
   support.
+- **Retest cadence** — resolved by
+  [`2026-07-29-placement-model-design.md`](2026-07-29-placement-model-design.md)
+  §10.1. Buddy proposes, never forces, through the existing invitation
+  component; the trigger is time/SE-widening only. A richer, behaviour-informed
+  trigger is scoped to §12 below rather than built as part of B-210.
 
 **Still open:**
 
-- **Retest cadence** — how often periodic re-estimation should be offered, and
-  whether Buddy proposes it or waits to be asked. Depends on the B-210 session
-  (§10).
 - **Whether the planner is its own surface or lives inside Velocity.** The
   `ENHANCEMENTS.md` goal-calculator entry describes the same thing; they should
   be built once.
@@ -720,6 +722,15 @@ Scope for that session:
   are merely interesting. A model that measures more than it acts on is
   surveillance, not teaching.
 - **The tutor report as a designed instrument** rather than an accreting struct.
+- **A frontier-surprise retest trigger.** Resolved by
+  [`2026-07-29-placement-model-design.md`](2026-07-29-placement-model-design.md)
+  §10.1: retest cadence uses only time/SE-widening for now (data-grounded, ships
+  with that spec). A richer trigger — comparing the placement posterior's
+  predictions against real review outcomes on frontier-adjacent kanji studied
+  since the last placement, to surface "you've learned more than expected, want
+  to recalibrate?" — was deliberately left for this session, since it needs the
+  same review-log/behaviour-signal machinery as B × FSRS above, not a second
+  ad-hoc read path.
 
 ## 13. What this explicitly does not do
 
