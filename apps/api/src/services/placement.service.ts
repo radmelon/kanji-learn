@@ -1,5 +1,12 @@
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
-import { kanji, placementResults, placementSessions, userKanjiProgress, userProfiles } from '@kanji-learn/db'
+import {
+  kanji,
+  kanjiDifficulty,
+  placementResults,
+  placementSessions,
+  userKanjiProgress,
+  userProfiles,
+} from '@kanji-learn/db'
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
@@ -10,6 +17,71 @@ function shuffle<T>(arr: T[]): T[] {
   return a
 }
 
+const CANDIDATE_POOL_SIZE = 20
+
+export interface SelectedItem {
+  kanjiId: number
+  bMeaning: number
+  bReading: number
+}
+
+/**
+ * Adaptive item selection (spec §7.3): candidates nearest theta by Fisher
+ * information (maximized at b = theta for the Rasch model), sampled from a
+ * pool so two learners at the same theta don't see an identical test.
+ * Excludes any kanji with real review history (spec §4.1's never-overwrite
+ * rule, extended to item selection — not just remembered/burned).
+ *
+ * NOTE on the exclusion predicate: this uses `total_reviews > 0` because
+ * spec §4.1 defines never-overwrite that way ("an `unseen` row with
+ * totalReviews = 0"). That is deliberately conservative, and it has a known
+ * consequence: a row written by the old placement flow (B-210) carries
+ * total_reviews = 1 with no review_logs, so those kanji are excluded from
+ * selection forever and can never be re-measured. On live data that is 44
+ * kanji on one account. Task 6's difficulty calibration deliberately uses
+ * the stricter `EXISTS(review_logs)` test instead, because there the
+ * question is "is this evidence?" rather than "may we write here?".
+ * Whether §4.1 should move to the same predicate is an open product call.
+ */
+export async function selectNextItems(
+  db: any,
+  userId: string,
+  theta: number,
+  exclude: number[],
+  count = 5,
+): Promise<SelectedItem[]> {
+  const alreadyReviewed = await db
+    .select({ kanjiId: userKanjiProgress.kanjiId })
+    .from(userKanjiProgress)
+    .where(and(eq(userKanjiProgress.userId, userId), sql`${userKanjiProgress.totalReviews} > 0`))
+
+  const excludeIds = [...exclude, ...alreadyReviewed.map((r: any) => r.kanjiId as number)]
+
+  const candidates = await db
+    .select({
+      kanjiId: kanjiDifficulty.kanjiId,
+      b: kanjiDifficulty.b,
+      readingOffset: kanjiDifficulty.readingOffset,
+    })
+    .from(kanjiDifficulty)
+    .where(excludeIds.length > 0 ? notInArray(kanjiDifficulty.kanjiId, excludeIds) : undefined)
+    .orderBy(sql`ABS(${kanjiDifficulty.b} - ${theta})`)
+    .limit(CANDIDATE_POOL_SIZE)
+
+  const pool = shuffle(candidates).slice(0, count)
+
+  return pool.map((c: any) => ({
+    kanjiId: c.kanjiId as number,
+    bMeaning: c.b as number,
+    bReading: (c.b as number) + (c.readingOffset as number),
+  }))
+}
+
+/**
+ * @deprecated Superseded by `selectNextItems`. Still exported because
+ * `routes/placement.ts` calls it until Task 9 rewires the routes; removing it
+ * here would break the API build, and Task 7 Step 6 requires typecheck to pass.
+ */
 export async function sampleKanjiIds(
   db: any,
   userId: string,
@@ -41,6 +113,23 @@ export async function sampleKanjiIds(
 
 export async function getQuestionsWithDistractors(db: any, kanjiIds: number[]) {
   if (kanjiIds.length === 0) return []
+
+  // Item difficulty travels with the question so the client-side engine can
+  // update its posterior without a second round-trip (spec §7.3). Kanji absent
+  // from kanji_difficulty fall back to b = 0 (the population mean) rather than
+  // failing the request — the table is populated by an operational job, and a
+  // placement must still work if a kanji has not been scored yet.
+  const difficultyRows = await db
+    .select({
+      kanjiId: kanjiDifficulty.kanjiId,
+      b: kanjiDifficulty.b,
+      readingOffset: kanjiDifficulty.readingOffset,
+    })
+    .from(kanjiDifficulty)
+    .where(inArray(kanjiDifficulty.kanjiId, kanjiIds))
+  const difficultyById = new Map<number, { b: number; readingOffset: number }>(
+    difficultyRows.map((r: any) => [r.kanjiId as number, { b: r.b as number, readingOffset: r.readingOffset as number }]),
+  )
 
   const kanjiRows = await db
     .select({
@@ -113,6 +202,8 @@ export async function getQuestionsWithDistractors(db: any, kanjiIds: number[]) {
       correctReadingIndex = shuffledReadings.indexOf(correctReading)
     }
 
+    const diff = difficultyById.get(k.id as number)
+
     questions.push({
       kanjiId: k.id,
       character: k.character,
@@ -121,6 +212,8 @@ export async function getQuestionsWithDistractors(db: any, kanjiIds: number[]) {
       correctMeaningIndex,
       readingOptions: shuffledReadings,
       correctReadingIndex,
+      bMeaning: diff?.b ?? 0,
+      bReading: (diff?.b ?? 0) + (diff?.readingOffset ?? 0),
     })
   }
 
