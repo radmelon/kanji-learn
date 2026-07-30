@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-30 (**placement repair complete: live scan found no damage; branch merged**)
+# Session Handoff — 2026-07-30 later (**placement model shipped to `main`; next session is an Arc brainstorm**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,214 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-07-30
+## START HERE — 2026-07-30 (later)
+
+> ## 🎯 Next session: brainstorm the New Learner Arc around a weekly Buddy check-in
+>
+> **Do not start by re-reading the Arc spec.** Owner's call (2026-07-30): the
+> Arc work needs **re-staging**, not a spec review — so open with
+> `superpowers:brainstorming`, not `writing-plans`.
+>
+> ### The idea to brainstorm around
+>
+> The Arc design's projection trigger
+> ([`2026-07-28-new-learner-arc-design.md`](superpowers/specs/2026-07-28-new-learner-arc-design.md),
+> ~lines 726–730) wants to compare the placement posterior against progress
+> since the last placement, to surface *"you've learned more than expected —
+> want to retest?"*. **That trigger has never had a home.** Firing it
+> mid-session interrupts; firing it on the dashboard is missable.
+>
+> **Owner's synthesis: the weekly scheduled study-plan review with Buddy is
+> the container.** And it runs in *both* directions — "more than expected"
+> (offer a retest, raise the plan) and "less than hoped" (reassess without it
+> reading as failure). That symmetry is what makes it a *review* rather than a
+> reward, and it is the part not to lose.
+>
+> The weekly-meeting framing may **reorganise** the Arc's Frame / Position /
+> Invitation components rather than slot into them — which is why this is a
+> brainstorm.
+>
+> **It is now unblocked by real data:** `placement_sessions.ability_theta` and
+> `.ability_se` exist as of the merge below, so the comparison has something to
+> run on. Before the merge it was reasoning about fields that did not exist.
+>
+> ### Also in Open Brain, and Arc-adjacent
+>
+> A search for enhancement ideas returned nine thoughts. Four belong in this
+> brainstorm and should be read before it, not folded in blind:
+>
+> - **Dashboard velocity rework** — the estimate currently projects "All 2254
+>   Jōyō Kanji: Nov 2034", which reads as a sentence being served. The framing
+>   principle in the note is the useful bit: *velocity should feel like a lever
+>   the learner controls*.
+> - **Goal calculator** — learner picks "N2 by next year", app computes the
+>   daily pace. The note flags it as the lightweight first slice of the AI
+>   study-plan idea.
+> - **"Study on the Go"** — flashcard-only mode without the writing/speaking
+>   legs, for trains and public places.
+> - **The weekly Buddy review** itself (captured 2026-07-30).
+>
+> Two more — geo-triggered hook recall and cloud "Buddy voice" TTS — are Phase
+> 5+ and unrelated to the Arc.
+>
+> ---
+>
+> ## ✅ Shipped this session: the placement model, all 13 tasks
+>
+> `main` is at **`8f745c2`**. Two merges: `a81ff37` (placement model) and
+> `8f745c2` (B-227 + study ⓘ + B-224 closure).
+>
+> Replaces the 56-line level staircase with a grid-based Bayesian posterior
+> over ability: feature-derived difficulty, OLS weight fitting, adaptive
+> selection by Fisher information, server-authoritative scoring, conservative
+> seeding at p(knows) ≥ 0.85, and retests that start from the stored posterior.
+>
+> **Verified on `main`:** all four packages typecheck clean · shared 193 ·
+> mobile pure 144 · components 1 · api 360 passing, 2 skipped. The 3 API
+> failures (`rls-coverage`, `user-delete`, `learner-state-refresh`) are
+> pre-existing — confirmed by stashing and reproducing them on a clean tree.
+>
+> ### 🛑 The deploy sequence is forced — one step is silent if skipped
+>
+> | | Step | Why here |
+> |---|---|---|
+> | 1 | Apply migration `0029` to live | the new API queries `kanji_difficulty`; deploying first means 500s |
+> | 2 | Deploy API | — |
+> | 3 | **Run `refreshKanjiDifficulty`** | `selectNextItems` reads that table. Skip it and placement returns **an empty test, not an error.** |
+> | 4 | EAS build + submit | mobile calls the new endpoints |
+> | 5 | Device walkthrough | none of this has run on a device |
+>
+> **Breaking change for installed builds:** `POST /v1/placement/complete` now
+> takes `responses: [{kanjiId, itemType, correct}]`; B145 sends
+> `results: [{kanjiId, passed}]`. Deploying the API breaks placement for
+> anyone on an older build — onboarding only, tiny tester group, but real. Keep
+> the API deploy and the new build close together.
+>
+> Budget is fine: **7 medium iOS builds** until the account renews 2026-08-04.
+>
+> ### Five defects in the plan, all fixed — worth knowing if you replay it
+>
+> 1. **A `shouldStop` test that could never pass** — expected an 80% CI ≤ 1.5
+>    from 15 items at fixed `b=0`; measured 2.10, still 1.40 at n=60.
+>    Informational, not a coding error: with `b` pinned while θ runs to ~2.4,
+>    each further item carries almost no information.
+> 2. **Missing enum member** — the SQL added `'placement'` to `review_type`,
+>    the Drizzle schema did not, so Task 8 could not have typed its audit insert.
+> 3. **An unrunnable verification step** — `pnpm db:generate` blocks on
+>    interactive prompts about pre-existing FSRS-5 drift.
+> 4. **Task 13 could not execute at all** — vitest imports in a Jest project,
+>    in a directory its own verification command ignores. Rewritten as a
+>    pure-lane store test.
+> 5. **Two test blocks that passed exactly once per database** — no cleanup, so
+>    a stored session survived into the next run. Only a *second* full run
+>    surfaces this class; isolation runs never will.
+>
+> ### 🔴 The B-210 regression test was vacuous — and still cannot isolate the rule
+>
+> It passed with the never-overwrite protection **deleted entirely**. Its
+> fixture sent two responses on one kanji, which cannot drive p(knows) past the
+> 0.85 seeding threshold, so `completePlacement` bailed at `if (!seed) continue`
+> before never-overwrite was consulted. The plan's most important test — the one
+> guarding the bug that motivated the whole effort — was testing nothing.
+>
+> Rebuilt to raise θ on the easiest items, with a **control assertion** that an
+> unprotected kanji really was seeded in the same call, so it cannot silently
+> pass on an empty write path again.
+>
+> **It still cannot isolate `hasHistory`, and nothing of that shape can.**
+> Seeding is `.insert(...).onConflictDoNothing()`, so an existing row is
+> untouchable whatever the predicate says. Never-overwrite is enforced twice and
+> the structural guard fires first.
+>
+> ### The §4.1 predicate change, and what it did *not* do
+>
+> Never-overwrite now keys on a real `review_logs` row rather than
+> `total_reviews > 0`, because that counter can be incremented by a *write* —
+> the old placement flow stamped rows with `total_reviews = 1` for kanji the
+> learner never saw. Safe: `submitReview` writes the log and the progress row in
+> one transaction, so a genuine review cannot exist without a log (verified in
+> production: of 984 rows with `total_reviews > 0`, the only 44 without logs are
+> one account's placement stamps).
+>
+> **Half of that change is inert, and the earlier briefing overstated it.**
+> `selectNextItems` genuinely changed — a stamped kanji is offered again instead
+> of excluded forever. `completePlacement` did not: `onConflictDoNothing` blocks
+> existing rows either way.
+>
+> **So a retake will now ASK about those 44 kanji but cannot rewrite them.**
+> Correcting them needs seeding to update rows with no `review_logs` — a real
+> change to user data, deliberately not taken unilaterally. **Open decision.**
+>
+> ### The account behind all of this
+>
+> `602a09f3-55c3-428c-acd2-ed3bfcfbbd8c` — Scott Brause, a friend of the owner.
+> Signed up 2026-07-07, took placement 19 minutes later, **never studied**. All
+> 44 rows came from that single placement.
+>
+> Running his 60 real responses through the new estimator: **θ = 1.138**, 80% CI
+> [0.70, 1.60], inferred level **N1** — the same label the old staircase gave,
+> but with the crucial addition that conservative p(knows) at an average N1
+> kanji is only **54%**. He is *at* the N1 threshold, not through it. The old
+> flow stamped 44 kanji as remembered; the new rule would seed **2**. Forty-two
+> of those stamps are unsupported by his own answers.
+>
+> **On asking him to retake:** a retake contributes **nothing** to calibration —
+> `b_observed` comes from `review_logs`, and placement responses never feed it.
+> That is structural, not a timing problem. Worth one favour *after* the new
+> flow ships, to test a specific prediction (stops at ~13 items vs his 60; seeds
+> ~2 of 44). Not before.
+>
+> **The calibration gap he represents is the real finding:**
+>
+> | Level | Kanji | With any review log |
+> |---|---|---|
+> | N5 | 79 | 100% |
+> | N4 | 166 | 100% |
+> | N3 | 370 | 88% |
+> | N2 | 371 | **3.2%** |
+> | N1 | 1308 | **0.2%** |
+>
+> Above N3 the difficulty model is *entirely* feature-derived prior with no
+> observed component. Scott's θ rests on modelled difficulty because at N1 there
+> is nothing to measure from. He is not an outlier to recruit — he is evidence
+> about who the app currently serves.
+>
+> ### Also shipped
+>
+> - **B-227** — the Journal rendered nothing during a cold load; the owner
+>   concluded the feature was unbuilt. Three body states now exhaustive, as a
+>   pure decision in `apps/mobile/src/lib/journal-list-state.ts`. **The audit
+>   the bug asked for came back clean** — `hasLoaded` exists in exactly one
+>   place in the app, so this was the only instance, not a latent pattern.
+> - **Study screen ⓘ** (from Open Brain, owner 2026-07-27) — the "How studying
+>   works" explainer was a one-shot behind a SecureStore flag, so learners saw
+>   the grading semantics once on day one and never on day thirty.
+> - **B-224 closed as NOT A DEFECT.** Both premises refuted by querying all nine
+>   co-created hooks instead of the one the report examined. Five have empty
+>   components, four lack a quiz stamp, and the sets do not match; the quiz
+>   never consults components. The stamp correlates perfectly with
+>   `reinforcement_count > 0`, which is spec §8 clearing it on a *correct*
+>   answer. 歯 has no stamp because the learner passed its quiz. **A fix would
+>   have reintroduced the forever-refiring quiz the original plan review
+>   caught** — the entry's instinct not to guess was right.
+>
+> ### Still open
+>
+> - **`learner-state-refresh` fails and is not in the known-failures list** in
+>   [`local-test-db.md`](local-test-db.md). Not caused by this work — verified
+>   by stashing. Either a regression or a stale doc; currently being absorbed as
+>   accepted noise, which is how failures become permanent.
+> - **The local test DB holds 7 kanji, not 2294.** Documented now. It makes a
+>   whole class of test impossible — two cases skip with explicit preconditions
+>   rather than flake. Seeding it would turn them back on.
+> - **Whether to correct Scott's 44 rows**, as user-facing state, separate from
+>   the model question.
+> - **Supabase `ap-southeast-2` → `us-east-1`** after 2026-08-04. Upstream of
+>   B-227's severity and the 10–15s Progress tab.
+
+---
+
+# Previous — 2026-07-30 (**placement repair: live scan found no damage**)
 
 > ## ✅ Placement repair is done. The live database was never damaged.
 >
