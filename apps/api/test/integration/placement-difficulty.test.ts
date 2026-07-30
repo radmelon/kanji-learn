@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { sql, eq } from 'drizzle-orm'
+import { sql, eq, inArray } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
 import { refreshKanjiDifficulty } from '../../src/services/placement-difficulty.service'
 
@@ -19,7 +19,16 @@ describe('refreshKanjiDifficulty', () => {
     `)
   })
 
+  // The two kanji this file reserves. Chosen as the highest ids so they don't
+  // collide with the `.limit(1)` / ORDER BY id patterns other suites use.
+  let reserved: number[] = []
+
   beforeEach(async () => {
+    const rows = (await db.execute(sql`
+      SELECT id FROM kanji ORDER BY id DESC LIMIT 2
+    `)) as unknown as { id: number }[]
+    reserved = rows.map((r) => r.id)
+
     await db.execute(sql`DELETE FROM kanji_difficulty`)
     await db.execute(sql`DELETE FROM user_kanji_progress WHERE user_id = ${TEST_USER}`)
     // The evidence-rule test below writes review_logs/review_sessions too.
@@ -27,6 +36,17 @@ describe('refreshKanjiDifficulty', () => {
     // leaving those behind would leak this fixture into other suites.
     await db.execute(sql`DELETE FROM review_logs WHERE user_id = ${TEST_USER}`)
     await db.execute(sql`DELETE FROM review_sessions WHERE user_id = ${TEST_USER}`)
+
+    // Clear the reserved kanji across ALL users. Earlier this file hunted for
+    // kanji with zero progress rows, which made it depend on a resource other
+    // suites consume: the local corpus is 7 kanji, and Tasks 9/12's fixtures
+    // claim several, so those tests started failing purely on file order.
+    // Rows left behind by other suites are their own leftovers, not seeded
+    // fixtures — each suite inserts what it needs in its own setup.
+    await db.delete(schema.reviewLogs).where(inArray(schema.reviewLogs.kanjiId, reserved))
+    await db
+      .delete(schema.userKanjiProgress)
+      .where(inArray(schema.userKanjiProgress.kanjiId, reserved))
   })
 
   it('populates one row per kanji in the table, all with a finite b', async () => {
@@ -42,21 +62,16 @@ describe('refreshKanjiDifficulty', () => {
   })
 
   it('a kanji with no review history gets b === bPrior (blend at n=0)', async () => {
-    // Target a kanji that genuinely has no progress rows. The plan's version
-    // took an unordered `.limit(1)`, which asserts observed_n === 0 on whatever
-    // row Postgres happened to return first — in a test DB carrying fixture
-    // progress rows that is a coin flip, not a test.
-    const [free] = (await db.execute(sql`
-      SELECT k.id FROM kanji k
-       WHERE NOT EXISTS (SELECT 1 FROM user_kanji_progress p WHERE p.kanji_id = k.id)
-       ORDER BY k.id LIMIT 1
-    `)) as unknown as { id: number }[]
-    expect(free, 'need a kanji with no progress rows in the test DB').toBeDefined()
+    // Use a reserved kanji, which beforeEach guarantees has no progress rows.
+    // The plan's version took an unordered `.limit(1)` and asserted
+    // observed_n === 0 on whatever row Postgres returned first — in a test DB
+    // carrying leftover progress rows that is a coin flip, not a test.
+    const freeId = reserved[0]
 
     await refreshKanjiDifficulty(db)
     const [row] = await db
       .select().from(schema.kanjiDifficulty)
-      .where(eq(schema.kanjiDifficulty.kanjiId, free.id))
+      .where(eq(schema.kanjiDifficulty.kanjiId, freeId))
     expect(row.observedN).toBe(0)
     expect(row.b).toBeCloseTo(row.bPrior, 6)
   })
@@ -81,21 +96,12 @@ describe('refreshKanjiDifficulty', () => {
   // 44 of 984 rows are exactly that, and 40 kanji would otherwise have had
   // their observed difficulty derived from nothing but those fabricated rows.
   it('counts a progress row WITH review history and ignores one without', async () => {
-    // Pick kanji no OTHER user has progress on. observed_n is SUM(total_reviews)
-    // across all learners, so a kanji carrying fixture rows from other users
-    // would fold their review counts into this assertion — the first two kanji
-    // by id do exactly that in the shared test DB. beforeEach clears TEST_USER's
-    // own rows, so "no progress rows at all" means clean at this point.
-    const kanjiRows = (await db.execute(sql`
-      SELECT k.id FROM kanji k
-       WHERE NOT EXISTS (SELECT 1 FROM user_kanji_progress p WHERE p.kanji_id = k.id)
-       ORDER BY k.id LIMIT 2
-    `)) as unknown as { id: number }[]
-    expect(
-      kanjiRows.length,
-      'need 2 kanji with no existing progress rows; rebuild the local test DB (docs/local-test-db.md)',
-    ).toBe(2)
-    const [reviewed, stampedOnly] = [kanjiRows[0].id, kanjiRows[1].id]
+    // observed_n is SUM(total_reviews) across ALL learners, so any row another
+    // suite left on these kanji would fold its review counts into the
+    // assertion. beforeEach clears the reserved pair for every user, which is
+    // what makes the exact numbers below meaningful.
+    expect(reserved.length, 'need at least 2 kanji in the test DB').toBe(2)
+    const [reviewed, stampedOnly] = reserved
 
     // Row A — genuine history: difficulty 8, three reviews, one review_logs row.
     await db.execute(sql`
