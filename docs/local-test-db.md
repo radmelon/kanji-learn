@@ -119,6 +119,25 @@ location**. Run it from a worktree and it looks for the worktree's copy, which
 is gitignored and therefore absent by design — copy the file in for the
 duration of the task, then delete it.
 
+## The test DB holds 7 kanji, not the full corpus
+
+`drizzle-kit push` creates the schema; it does not seed reference data. So
+`kanji` has **7 rows** locally against **2294** in production, and any test whose
+behaviour depends on corpus size is either meaningless or impossible here.
+
+Found on 2026-07-30 by the placement work: `selectNextItems` orders candidates by
+`ABS(b - theta)`, takes the nearest `CANDIDATE_POOL_SIZE = 20`, then shuffles that
+pool. With 7 kanji the pool swallows the entire corpus, so every `theta` returns
+the same candidate set and the shuffle decides the outcome — a test asserting
+"picks items near theta" passes or fails at random. That test now checks the
+precondition and skips with an explanatory message rather than flaking; it starts
+running for real as soon as the corpus is seeded.
+
+If you add tests that depend on realistic reference data — difficulty spread,
+distractor pools, level distributions — seed `kanji` first or assert the
+precondition explicitly. A silently-passing test on a 7-row corpus is worse than
+a skipped one.
+
 ## Known residual failures (6)
 
 None are caused by application code; all are provisioning gaps.

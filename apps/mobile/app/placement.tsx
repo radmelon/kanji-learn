@@ -21,18 +21,16 @@ const JLPT_LEVELS: JlptLevel[] = ['N5', 'N4', 'N3', 'N2', 'N1']
  * and "unsure" (no levels passed / skipped placement) start with pitch on,
  * so intermediate+ learners see the feature without needing to discover it.
  */
-function pitchDefaultFromPlacement(passedByLevel: Record<string, number>): boolean {
-  const passed = JLPT_LEVELS.filter((l) => (passedByLevel[l] ?? 0) > 0)
-  if (passed.length === 0) return true // unsure
-  const highest = passed[passed.length - 1]
-  return highest === 'N3' || highest === 'N2' || highest === 'N1'
+function pitchDefaultFromPlacement(inferredLevel: JlptLevel | null): boolean {
+  if (inferredLevel === null) return true // unsure
+  return inferredLevel === 'N3' || inferredLevel === 'N2' || inferredLevel === 'N1'
 }
 
 export default function PlacementScreen() {
   const router = useRouter()
   const {
     status, error, questions, currentQuestionIndex, phase,
-    stats, passedByLevel, totalApplied,
+    totalApplied, inferredLevel, isRetest,
     startTest, answerMeaning, answerReading, reset, engine,
   } = usePlacementStore()
 
@@ -99,7 +97,7 @@ export default function PlacementScreen() {
   }
 
   const handleStartStudying = () => {
-    setShowPitchAccent(pitchDefaultFromPlacement(passedByLevel))
+    setShowPitchAccent(pitchDefaultFromPlacement(inferredLevel))
     reset()
     router.replace('/(tabs)')
   }
@@ -118,7 +116,7 @@ export default function PlacementScreen() {
             Those kanji will be marked as remembered so you can start at the right level instead of reviewing basics you already know.
           </Text>
           <View style={styles.introBullets}>
-            {['~50 adaptive questions', 'Adjusts to your level', "Safe — won't downgrade burned kanji"].map((item, i) => (
+            {['~15–25 characters, adaptive', 'Adjusts to your level as you go', "Safe — never touches kanji you've already studied"].map((item, i) => (
               <View key={i} style={styles.introBulletRow}>
                 <Ionicons name="checkmark-circle" size={16} color={colors.success} />
                 <Text style={styles.introBulletText}>{item}</Text>
@@ -182,15 +180,12 @@ export default function PlacementScreen() {
               : "No kanji were recognized. You'll start fresh from N5 — that's totally fine!"}
           </Text>
 
-          {Object.keys(passedByLevel).length > 0 && (
+          {inferredLevel && (
             <View style={styles.resultsBreakdown}>
-              <Text style={styles.resultsSectionTitle}>By level</Text>
-              {JLPT_LEVELS.filter((l) => (passedByLevel[l] ?? 0) > 0).map((level) => (
-                <View key={level} style={styles.resultsLevelRow}>
-                  <Text style={styles.resultsLevelLabel}>{level}</Text>
-                  <Text style={styles.resultsLevelCount}>{passedByLevel[level]} kanji</Text>
-                </View>
-              ))}
+              <Text style={styles.resultsSectionTitle}>{isRetest ? 'Updated level' : 'Estimated level'}</Text>
+              <View style={styles.resultsLevelRow}>
+                <Text style={styles.resultsLevelLabel}>{inferredLevel}</Text>
+              </View>
             </View>
           )}
 
@@ -208,13 +203,13 @@ export default function PlacementScreen() {
   const isMeaning = phase === 'meaning'
   const options = isMeaning ? q.meaningOptions : q.readingOptions
   const correctIndex = isMeaning ? q.correctMeaningIndex : q.correctReadingIndex
-  const totalAsked = engine?.getTotalAsked() ?? 0
+  const askedCharacters = engine?.getAskedKanjiIds().length ?? 0
 
   return (
     <SafeAreaView style={styles.safe}>
       {/* Top bar */}
       <View style={styles.topBar}>
-        <Text style={styles.progressText}>{totalAsked} / ~50</Text>
+        <Text style={styles.progressText}>{askedCharacters} characters</Text>
         <TouchableOpacity onPress={handleStop} hitSlop={10}>
           <Text style={styles.stopText}>Stop</Text>
         </TouchableOpacity>

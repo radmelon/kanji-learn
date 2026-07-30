@@ -227,11 +227,19 @@ export interface PlacementQuestionData {
   correctMeaningIndex: number
   readingOptions: string[]
   correctReadingIndex: number
+  bMeaning: number
+  bReading: number
 }
 
-export interface PlacementResult {
+export type PlacementItemType = 'meaning' | 'reading'
+
+/** One raw (kanjiId, itemType, correct) response — what the client submits.
+ *  No `b` or `passed` field: the server looks up difficulty and computes
+ *  pass/fail itself (spec §4.1 — never trust a client-computed write). */
+export interface PlacementResponse {
   kanjiId: number
-  passed: boolean
+  itemType: PlacementItemType
+  correct: boolean
 }
 
 // ─── Tutor Sharing ───────────────────────────────────────────────────────
