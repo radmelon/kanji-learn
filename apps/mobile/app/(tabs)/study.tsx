@@ -846,6 +846,23 @@ function StudySession() {
             <Ionicons name="arrow-undo" size={20} color={colors.textMuted} />
           </TouchableOpacity>
         )}
+        {/* Reopen "How studying works". Without this the explainer is a
+            first-run overlay only: dismissal writes HELP_KEY to SecureStore
+            and nothing in the UI can bring it back, so the learner sees the
+            grading semantics exactly once — on day one, before they have
+            studied anything, and never on day thirty when Again/Hard/Good/Easy
+            finally matter. The Progress tab already teaches ⓘ as the
+            convention for on-demand explainers; Study was the outlier.
+            Reuses the existing Modal verbatim — no new content. */}
+        <TouchableOpacity
+          onPress={() => setShowOnboarding(true)}
+          style={styles.helpBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="How studying works"
+        >
+          <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
+        </TouchableOpacity>
       </View>
       {(__DEV__ || process.env.EXPO_PUBLIC_DEV_TOOLS === '1') && (
         <View style={styles.devModeRow}>
@@ -1019,6 +1036,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm, width: '100%' },
   closeBtn: { padding: spacing.xs },
   undoBtn: { padding: spacing.xs },
+  helpBtn: { padding: spacing.xs },
   progressTrack: { flex: 1, height: 6, backgroundColor: colors.bgSurface, borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radius.full },
   counter: { ...typography.caption, color: colors.textMuted, minWidth: 36, textAlign: 'right' },

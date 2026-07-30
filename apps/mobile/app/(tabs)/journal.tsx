@@ -11,6 +11,7 @@ import type { Mnemonic, UserHook } from '../../src/hooks/useMnemonics'
 import { api } from '../../src/lib/api'
 import { MnemonicCard } from '../../src/components/mnemonics/MnemonicCard'
 import { colors, spacing, radius, typography } from '../../src/theme'
+import { journalListState } from '../../src/lib/journal-list-state'
 
 // ─── Journal Screen ───────────────────────────────────────────────────────────
 // A searchable list by kanji character. The 30-day refresh queue that used to
@@ -88,9 +89,15 @@ export default function Journal() {
   const displayItems = selectedKanjiId ? mnemonics : hooks
   const listLoading = selectedKanjiId ? isLoading : hooksLoading
   const refreshList = selectedKanjiId ? load : loadHooks
-  // Only claim the Journal is empty once a load has actually completed —
-  // otherwise the tab flashes "no hooks yet" at a learner who has plenty.
-  const showEmptyState = !selectedKanjiId && hooksLoaded && hooks.length === 0
+  // B-227. The three body states are exhaustive by construction — see
+  // src/lib/journal-list-state.ts for why that matters and what broke before.
+  const bodyState = journalListState({
+    hasSelectedKanji: !!selectedKanjiId,
+    hooksLoaded,
+    hookCount: hooks.length,
+  })
+  const showEmptyState = bodyState === 'empty'
+  const showLoading = bodyState === 'loading'
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -164,6 +171,15 @@ export default function Journal() {
       {/* Search error */}
       {searchError && (
         <Text style={styles.searchError}>{searchError}</Text>
+      )}
+
+      {/* Cold load with nothing cached. Mirrors the Study tab's
+          "Loading reviews…" pattern so the tab never renders empty (B-227). */}
+      {showLoading && (
+        <View style={styles.emptyState}>
+          <ActivityIndicator color={colors.primary} size="large" />
+          <Text style={styles.emptySubtitle}>Loading your hooks…</Text>
+        </View>
       )}
 
       {/* Genuinely no hooks yet — not "nothing selected". The old copy said
