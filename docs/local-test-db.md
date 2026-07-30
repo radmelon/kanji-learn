@@ -68,6 +68,57 @@ indexes, whose targets are SQL expressions (`action_payload->>'milestone'`)
 rather than columns. Those must be layered on afterwards from the SQL files,
 which is the last `psql` command above.
 
+## Running a one-off node script against a database
+
+Two things bite every time, and both were rediscovered by hand on 2026-07-29
+and again on 2026-07-30. They are not specific to the test DB, but this is the
+doc people actually open when they need to connect to one.
+
+**1. The local container has no TLS — append `?sslmode=disable`.**
+
+```bash
+TEST_DATABASE_URL='postgresql://kanji:kanji@localhost:5433/kanji_buddy_test?sslmode=disable'
+```
+
+The `postgres` npm client defaults to `ssl: 'require'`, so without this the
+connection fails against Docker Postgres while working fine against Supabase.
+Every script in the repo that connects — `replay-srs-fsrs.mjs`,
+`cleanup-old-mnemonics.mjs`, `detect-placement-damage.mjs`,
+`repair-placement-damage.mjs` — already branches on it:
+
+```js
+const sslDisabled = /[?&]sslmode=disable\b/.test(dbUrl)
+const sql = postgres(dbUrl, { ssl: sslDisabled ? false : 'require', max: 5 })
+```
+
+Copy that line into any new script rather than hardcoding either value. It was
+previously documented only in
+[`superpowers/runbooks/2026-05-22-fsrs-rollout.md`](superpowers/runbooks/2026-05-22-fsrs-rollout.md),
+which is not a file anyone finds while trying to connect to a database.
+
+**2. `--import tsx/esm` does not resolve in this workspace.** pnpm does not
+hoist `tsx` to the root `node_modules`, so the documented-everywhere-else form
+fails here. Use the workspace copy:
+
+```bash
+node --import ./packages/db/node_modules/tsx/dist/esm/index.cjs scripts/<script>.mjs
+```
+
+This matters most inside a **git worktree**, where root `node_modules` may be
+absent entirely.
+
+**For live data, never pass the URL yourself** — use the wrapper, which loads
+`DATABASE_URL` from `packages/db/.env` without printing it:
+
+```bash
+./scripts/with-live-db.sh node --import ./packages/db/node_modules/tsx/dist/esm/index.cjs scripts/<script>.mjs
+```
+
+Note that `with-live-db.sh` resolves `packages/db/.env` **relative to its own
+location**. Run it from a worktree and it looks for the worktree's copy, which
+is gitignored and therefore absent by design — copy the file in for the
+duration of the task, then delete it.
+
 ## Known residual failures (6)
 
 None are caused by application code; all are provisioning gaps.

@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-29 (**placement model planned; repair partially executed, paused for a live-DB session**)
+# Session Handoff — 2026-07-30 (**placement repair complete: live scan found no damage; branch merged**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -6,6 +6,91 @@
 > *(This line is deliberately part of the artifact. A handoff that cannot state
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
+
+## START HERE — 2026-07-30
+
+> ## ✅ Placement repair is done. The live database was never damaged.
+>
+> Task 5 of [`2026-07-29-placement-repair.md`](superpowers/plans/2026-07-29-placement-repair.md)
+> ran against live Supabase on 2026-07-30. **The repair was a no-op: there is
+> no B-210 damage to repair.** The branch is merged; the plan is closed.
+>
+> ### What the scan found
+>
+> | | |
+> |---|---|
+> | Target | Supabase hosted, `aws-1-ap-southeast-2.pooler.supabase.com`, project `pyltysrcqvskxgumzrlg`, PG 17.6 |
+> | Safety dump | `/tmp/placement-repair-safety/live-20260730-0815.sql` — 4.8M, verified complete (984 `user_kanji_progress`, 3262 `review_logs`). **Deleted same session**, since no write was ever made. |
+> | Detector | `Scanned 258 candidate row(s). Found 0 damaged row(s).` |
+> | Writes to live data | **none** — Steps 4–6 deliberately not run |
+>
+> **A clean scan is not self-evidently correct, so it was verified by content**
+> (the `docs/SOP.md` lesson, applied to a detector instead of a deploy). Two
+> read-only queries against the `total_reviews = 1` population:
+>
+> ```
+> status      stability  difficulty  rows  with_logs
+> learning       3.1730      5.2824   112        112
+> reviewing     15.6910      3.2245    52         52
+> learning       1.1839      6.4883    48         48
+> remembered    21.0000      5.0000    44          0   ← B-210 write signature
+> learning       0.4026      7.1949     2          2
+> ```
+>
+> **44 rows do match the damage signature exactly — and every one has zero
+> `review_logs`.** By the plan's own Global Constraints that puts them outside
+> its scope: placement over-claiming on a never-studied card, not destroyed
+> history. There was nothing underneath them to destroy.
+>
+> **The healthy clusters are the confirming evidence.** Those uniform
+> stability/difficulty pairs are deterministic FSRS first-review outputs, one
+> per rating — `0.4026/7.1949` is rating 1 (and 7.1949 is `DEFAULT_FSRS_WEIGHTS[4]`
+> exactly), `1.1839/6.4883` is rating 2, matching the corrected `S=1.18 D=6.49`
+> figure noted in the previous handoff. Real reviews, replayed correctly.
+>
+> **The account the previous handoff flagged is clean.** `b8503589…` — now 111
+> kanji in `learning`, up from the recorded 104 — has **0** signature rows. All
+> 44 belong to `602a09f3…`, an account whose entire 44-row progress table is
+> placement seeding with no reviews ever.
+>
+> ### What this unblocks
+>
+> **The placement-model plan's DB-touching tasks can start.** Their stated
+> gate was "repair cleans up `user_kanji_progress.difficulty` first" — nothing
+> needed cleaning, so the gate is satisfied.
+>
+> **Carry one open question into that work:** those 44 seeded rows are still
+> `difficulty=5` for a user who has never reviewed anything. Not damage, but
+> the new estimator will read them. The design's never-overwrite rule protects
+> rows *with* history; decide explicitly what it does with a row carrying a
+> placement stamp and no history.
+>
+> ### Also landed
+>
+> - Merge commit brings Tasks 1–4 to `main`: `packages/shared/src/placement-repair.ts`
+>   (+ tests), `scripts/detect-placement-damage.mjs`, `scripts/repair-placement-damage.mjs`.
+>   `pnpm --filter @kanji-learn/shared test` → **16 files, 141 tests passing** after merge.
+> - Both environment gaps from the previous handoff are now fixed in
+>   [`local-test-db.md`](local-test-db.md) under *Running a one-off node script
+>   against a database*: the `?sslmode=disable` requirement, and the
+>   `--import ./packages/db/node_modules/tsx/dist/esm/index.cjs` form. Also
+>   documented there: **`with-live-db.sh` resolves `packages/db/.env` relative to
+>   its own location**, so running it inside a worktree looks for the worktree's
+>   copy — which is gitignored and absent by design. That, not missing
+>   credentials, was the actual reason Task 5 stalled.
+>
+> ### Housekeeping
+>
+> The worktree `.claude/worktrees/placement-repair` (branch
+> `worktree-placement-repair`) is **merged and no longer needed** — safe to
+> remove with `git worktree remove`. It was left in place rather than deleted
+> without asking.
+>
+> **Not pushed to `origin` yet** as of this writing.
+
+---
+
+# Previous — 2026-07-29 (**placement model planned; repair partially executed, paused for a live-DB session**)
 
 ## START HERE — 2026-07-29 (later)
 
