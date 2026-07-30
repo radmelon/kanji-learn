@@ -1,24 +1,34 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { sampleKanjiIds, getQuestionsWithDistractors, applyPlacementResults } from '../services/placement.service.js'
+import {
+  selectNextItems, getQuestionsWithDistractors, completePlacement, getSessionPrior,
+} from '../services/placement.service.js'
 
 export async function placementRoutes(server: FastifyInstance) {
-  // GET /v1/placement/kanji-ids?level=N3&exclude=1,2,3
-  server.get<{ Querystring: { level?: string; exclude?: string } }>(
-    '/kanji-ids',
+  // GET /v1/placement/session-prior — does this user have a prior placement
+  // to retest from? (spec §10.1 — server determines retest-ness itself.)
+  server.get('/session-prior', { preHandler: [server.authenticate] }, async (req, reply) => {
+    const result = await getSessionPrior(server.db, req.userId!)
+    return reply.send({ ok: true, data: result })
+  })
+
+  // GET /v1/placement/next-items?theta=<num>&exclude=<csv>&count=<n>
+  server.get<{ Querystring: { theta?: string; exclude?: string; count?: string } }>(
+    '/next-items',
     { preHandler: [server.authenticate] },
     async (req, reply) => {
-      const level = req.query.level ?? 'N3'
-      if (!['N5', 'N4', 'N3', 'N2', 'N1'].includes(level)) {
-        return reply.code(400).send({ ok: false, error: 'Invalid level', code: 'VALIDATION_ERROR' })
+      const theta = req.query.theta != null ? Number(req.query.theta) : 0
+      if (!Number.isFinite(theta)) {
+        return reply.code(400).send({ ok: false, error: 'Invalid theta', code: 'VALIDATION_ERROR' })
       }
       const exclude = (req.query.exclude ?? '')
         .split(',')
         .map(Number)
         .filter((n) => Number.isInteger(n) && n > 0)
+      const count = req.query.count != null ? Number(req.query.count) : 5
 
-      const kanjiIds = await sampleKanjiIds(server.db, req.userId!, level, exclude, 5)
-      return reply.send({ ok: true, data: { kanjiIds } })
+      const items = await selectNextItems(server.db, req.userId!, theta, exclude, count)
+      return reply.send({ ok: true, data: { items } })
     }
   )
 
@@ -43,13 +53,22 @@ export async function placementRoutes(server: FastifyInstance) {
     { preHandler: [server.authenticate] },
     async (req, reply) => {
       const schema = z.object({
-        results: z.array(z.object({ kanjiId: z.number().int().positive(), passed: z.boolean() })).min(1).max(200),
+        responses: z
+          .array(
+            z.object({
+              kanjiId: z.number().int().positive(),
+              itemType: z.enum(['meaning', 'reading']),
+              correct: z.boolean(),
+            })
+          )
+          .min(1)
+          .max(400), // up to 24 characters (cap) × 2 items, plus headroom
       })
       const parsed = schema.safeParse(req.body)
       if (!parsed.success) {
         return reply.code(400).send({ ok: false, error: parsed.error.message, code: 'VALIDATION_ERROR' })
       }
-      const result = await applyPlacementResults(server.db, req.userId!, parsed.data.results)
+      const result = await completePlacement(server.db, req.userId!, parsed.data.responses)
       return reply.send({ ok: true, data: result })
     }
   )
