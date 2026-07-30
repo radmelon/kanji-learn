@@ -37,6 +37,11 @@ export const reviewTypeEnum = pgEnum('review_type', [
   'reading',
   'writing',
   'compound',
+  // Added by migration 0029 — the audit-trail value every placement seed
+  // writes (design spec §8.1). Task 5's plan step added it to the SQL but
+  // not here; without it the enum drifts from the database and Task 8's
+  // seeding code cannot type a review_logs insert as 'placement'.
+  'placement',
 ])
 
 export const interventionTypeEnum = pgEnum('intervention_type', [
@@ -1015,6 +1020,8 @@ export const placementSessions = pgTable(
     completedAt: timestamp('completed_at', { withTimezone: true }),
     inferredLevel: text('inferred_level'),
     summaryJson: jsonb('summary_json'),
+    abilityTheta: real('ability_theta'),
+    abilitySe: real('ability_se'),
   },
   (t) => ({
     userIdx: index('placement_session_user_idx').on(t.userId, t.startedAt),
@@ -1033,11 +1040,28 @@ export const placementResults = pgTable(
       .references(() => kanji.id, { onDelete: 'cascade' }),
     jlptLevel: text('jlpt_level').notNull(),
     passed: boolean('passed').notNull(),
+    meaningCorrect: boolean('meaning_correct'),
+    readingCorrect: boolean('reading_correct'),
+    difficultyAtAsk: real('difficulty_at_ask'),
   },
   (t) => ({
     sessionIdx: index('placement_result_session_idx').on(t.sessionId),
   })
 )
+
+// ─── kanji_difficulty ───────────────────────────────────────────────────────
+
+export const kanjiDifficulty = pgTable('kanji_difficulty', {
+  kanjiId: integer('kanji_id')
+    .primaryKey()
+    .references(() => kanji.id, { onDelete: 'cascade' }),
+  bPrior: real('b_prior').notNull(),
+  bObserved: real('b_observed'),
+  observedN: integer('observed_n').notNull().default(0),
+  b: real('b').notNull(),
+  readingOffset: real('reading_offset').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 
