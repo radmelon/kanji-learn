@@ -220,6 +220,10 @@ export async function getQuestionsWithDistractors(db: any, kanjiIds: number[]) {
   return questions
 }
 
+/**
+ * @deprecated Superseded by `completePlacement` (Task 8). Still exported
+ * because `routes/placement.ts` calls it until Task 9 rewires the routes.
+ */
 export async function applyPlacementResults(
   db: any,
   userId: string,
@@ -340,4 +344,176 @@ export async function applyPlacementResults(
   }
 
   return { applied: toInsert.length + toUpdate.length, skipped }
+}
+
+import {
+  THETA_GRID, initPosterior, updatePosterior, thetaMean, credibleIntervalWidth,
+  pKnows, inferredLevel as deriveInferredLevel,
+  seedFromProbability, widenForStaleness,
+} from '@kanji-learn/shared'
+import type { PlacementResponse, JlptLevel } from '@kanji-learn/shared'
+import { reviewLogs, reviewSessions } from '@kanji-learn/db'
+import type { Db } from '@kanji-learn/db'
+
+const JLPT_LEVELS: JlptLevel[] = ['N5', 'N4', 'N3', 'N2', 'N1']
+const RETEST_DRIFT = 0.004
+
+export interface SessionPrior {
+  hasPrior: boolean
+  theta: number
+  se: number
+}
+
+/** SE from a posterior's 80% credible interval width, approximating a normal SE. */
+function posteriorToSe(posterior: number[]): number {
+  return credibleIntervalWidth(posterior, 0.8) / 2.5631 // 80% CI half-width ≈ 1.2816 SE either side
+}
+
+export async function getSessionPrior(db: Db, userId: string): Promise<SessionPrior> {
+  const [latest] = await db
+    .select({ theta: placementSessions.abilityTheta, se: placementSessions.abilitySe, completedAt: placementSessions.completedAt })
+    .from(placementSessions)
+    .where(and(eq(placementSessions.userId, userId), sql`${placementSessions.abilityTheta} IS NOT NULL`))
+    .orderBy(sql`completed_at DESC`)
+    .limit(1)
+
+  if (!latest || latest.theta == null || latest.se == null || !latest.completedAt) {
+    return { hasPrior: false, theta: 0, se: 1.5 }
+  }
+
+  const daysElapsed = (Date.now() - latest.completedAt.getTime()) / 86_400_000
+  return { hasPrior: true, theta: latest.theta, se: widenForStaleness(latest.se, daysElapsed, RETEST_DRIFT) }
+}
+
+/** Rebuild an approximate posterior from a (theta, se) summary — used to seed
+ *  the authoritative recompute below with a retest's starting point without
+ *  storing the full 81-point grid on placement_sessions. */
+function posteriorFromSummary(theta: number, se: number): number[] {
+  return initPosterior(theta, Math.max(se, 0.3))
+}
+
+export async function completePlacement(
+  db: Db,
+  userId: string,
+  responses: PlacementResponse[],
+): Promise<{ appliedCount: number; inferredLevel: JlptLevel | null; theta: number; se: number }> {
+  if (responses.length === 0) {
+    return { appliedCount: 0, inferredLevel: null, theta: 0, se: 1.5 }
+  }
+
+  const kanjiIds = [...new Set(responses.map((r) => r.kanjiId))]
+
+  const [difficultyRows, kanjiRows, prior] = await Promise.all([
+    db.select().from(kanjiDifficulty).where(inArray(kanjiDifficulty.kanjiId, kanjiIds)),
+    db.select({ id: kanji.id, jlptLevel: kanji.jlptLevel }).from(kanji).where(inArray(kanji.id, kanjiIds)),
+    getSessionPrior(db, userId),
+  ])
+  const difficultyById = new Map(difficultyRows.map((r) => [r.kanjiId, r]))
+  const levelById = new Map(kanjiRows.map((r) => [r.id, r.jlptLevel]))
+
+  // ── Authoritative recompute — never trust a client-sent theta ──────────
+  let posterior = prior.hasPrior ? posteriorFromSummary(prior.theta, prior.se) : initPosterior(0)
+  const responseDifficulties = new Map<string, number>() // `${kanjiId}:${itemType}` -> b used
+
+  for (const r of responses) {
+    const diff = difficultyById.get(r.kanjiId)
+    const b = diff ? (r.itemType === 'meaning' ? diff.b : diff.b + diff.readingOffset) : 0
+    responseDifficulties.set(`${r.kanjiId}:${r.itemType}`, b)
+    posterior = updatePosterior(posterior, b, r.correct)
+  }
+
+  const theta = thetaMean(posterior)
+  const se = posteriorToSe(posterior)
+
+  // Level bands from each JLPT level's mean b (spec §7.5).
+  const levelMeanB = new Map<JlptLevel, number>()
+  for (const level of JLPT_LEVELS) {
+    const rowsAtLevel = difficultyRows.filter((r) => levelById.get(r.kanjiId) === level)
+    if (rowsAtLevel.length > 0) {
+      levelMeanB.set(level, rowsAtLevel.reduce((a, r) => a + r.b, 0) / rowsAtLevel.length)
+    }
+  }
+  const orderedMeans = JLPT_LEVELS.map((l) => levelMeanB.get(l)).filter((v): v is number => v != null)
+  const boundaries: number[] = []
+  for (let i = 0; i < orderedMeans.length - 1; i++) boundaries.push((orderedMeans[i] + orderedMeans[i + 1]) / 2)
+  const level = orderedMeans.length > 0 ? deriveInferredLevel(theta, boundaries, JLPT_LEVELS) : null
+
+  // ── Persist the session + per-item results ───────────────────────────
+  const [session] = await db
+    .insert(placementSessions)
+    .values({
+      userId, completedAt: new Date(), inferredLevel: level,
+      abilityTheta: theta, abilitySe: se,
+      summaryJson: {},
+    })
+    .returning({ id: placementSessions.id })
+
+  const byKanji = new Map<number, { meaningCorrect?: boolean; readingCorrect?: boolean }>()
+  for (const r of responses) {
+    const entry = byKanji.get(r.kanjiId) ?? {}
+    if (r.itemType === 'meaning') entry.meaningCorrect = r.correct
+    else entry.readingCorrect = r.correct
+    byKanji.set(r.kanjiId, entry)
+  }
+
+  const resultRows = Array.from(byKanji.entries()).map(([kanjiId, res]) => ({
+    sessionId: session.id,
+    kanjiId,
+    jlptLevel: levelById.get(kanjiId) ?? 'N5',
+    passed: Boolean(res.meaningCorrect && res.readingCorrect),
+    meaningCorrect: res.meaningCorrect ?? null,
+    readingCorrect: res.readingCorrect ?? null,
+    difficultyAtAsk: responseDifficulties.get(`${kanjiId}:meaning`) ?? responseDifficulties.get(`${kanjiId}:reading`) ?? null,
+  }))
+  if (resultRows.length > 0) await db.insert(placementResults).values(resultRows)
+
+  // ── Never-overwrite rule + seeding (spec §4.1, §8) ───────────────────
+  const existing = await db
+    .select({ kanjiId: userKanjiProgress.kanjiId, totalReviews: userKanjiProgress.totalReviews })
+    .from(userKanjiProgress)
+    .where(and(eq(userKanjiProgress.userId, userId), inArray(userKanjiProgress.kanjiId, kanjiIds)))
+  const hasHistory = new Set(existing.filter((e) => e.totalReviews > 0).map((e) => e.kanjiId))
+
+  await db.insert(userProfiles).values({ id: userId }).onConflictDoNothing()
+
+  const [session_] = await db
+    .insert(reviewSessions)
+    .values({ userId, sessionType: 'placement', startedAt: new Date(), completedAt: new Date() })
+    .returning({ id: reviewSessions.id })
+
+  let appliedCount = 0
+  for (const [kanjiId] of byKanji) {
+    if (hasHistory.has(kanjiId)) continue // never-overwrite — the B-210 fix
+
+    const diff = difficultyById.get(kanjiId)
+    if (!diff) continue
+    const p = pKnows(posterior, diff.b)
+    const seed = seedFromProbability(p, diff.b)
+    if (!seed) continue
+
+    const nextReviewAt = new Date(Date.now() + seed.stabilityDays * 86_400_000)
+
+    await db
+      .insert(userKanjiProgress)
+      .values({
+        userId, kanjiId, status: 'reviewing',
+        stability: seed.stabilityDays, difficulty: seed.fsrsDifficulty,
+        totalReviews: 0, nextReviewAt, lastReviewedAt: null,
+        readingStage: 0, updatedAt: new Date(),
+      })
+      .onConflictDoNothing() // guards the race window between the `existing` read above and this write
+    appliedCount++
+
+    await db.insert(reviewLogs).values({
+      sessionId: session_.id, userId, kanjiId, reviewType: 'placement',
+      quality: 4, responseTimeMs: 0,
+      prevStatus: 'unseen', nextStatus: 'reviewing',
+      prevInterval: 0, nextInterval: Math.round(seed.stabilityDays),
+      prevStability: 0, nextStability: seed.stabilityDays,
+      prevDifficulty: 5, nextDifficulty: seed.fsrsDifficulty,
+      reviewedAt: new Date(),
+    })
+  }
+
+  return { appliedCount, inferredLevel: level, theta, se }
 }
