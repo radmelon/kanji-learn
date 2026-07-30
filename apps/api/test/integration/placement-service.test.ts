@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { sql, and, eq, asc } from 'drizzle-orm'
+import { sql, and, eq, asc, inArray } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
 import { selectNextItems } from '../../src/services/placement.service'
 import { refreshKanjiDifficulty } from '../../src/services/placement-difficulty.service'
@@ -44,6 +44,11 @@ describe('selectNextItems', () => {
 
   beforeEach(async () => {
     await db.execute(sql`DELETE FROM user_kanji_progress WHERE user_id = ${TEST_USER}`)
+    // The exclusion tests below write review_logs, which is now what
+    // selectNextItems keys on. Leaving them behind makes a later test see a
+    // kanji as "already reviewed" and silently invert its assertion.
+    await db.execute(sql`DELETE FROM review_logs WHERE user_id = ${TEST_USER}`)
+    await db.execute(sql`DELETE FROM review_sessions WHERE user_id = ${TEST_USER}`)
   })
 
   it('returns items with finite bMeaning/bReading, bReading > bMeaning', async () => {
@@ -55,15 +60,43 @@ describe('selectNextItems', () => {
     }
   })
 
-  it('never returns a kanji the user has already reviewed (totalReviews > 0) — the extended never-overwrite exclusion', async () => {
+  it('never returns a kanji the user has genuinely reviewed — the extended never-overwrite exclusion', async () => {
     const [someKanji] = await db.select({ id: schema.kanji.id }).from(schema.kanji).limit(1)
     await db.insert(schema.userKanjiProgress).values({
       userId: TEST_USER, kanjiId: someKanji.id, status: 'learning',
       stability: 1, difficulty: 6, totalReviews: 1,
     })
+    // Real history means a review_logs row, not the counter. Without this the
+    // fixture is a B-210 placement stamp, not a reviewed card — and the
+    // assertion would pass for the wrong reason.
+    const [session] = (await db.execute(sql`
+      INSERT INTO review_sessions (user_id) VALUES (${TEST_USER}) RETURNING id
+    `)) as unknown as { id: string }[]
+    await db.execute(sql`
+      INSERT INTO review_logs
+        (session_id, user_id, kanji_id, review_type, quality, response_time_ms,
+         prev_status, next_status, prev_interval, next_interval)
+      VALUES (${session.id}, ${TEST_USER}, ${someKanji.id}, 'meaning'::review_type, 4, 1200,
+              'unseen'::srs_status, 'learning'::srs_status, 0, 1)
+    `)
 
     const items = await selectNextItems(db, TEST_USER, 0, [], 200) // wide net
     expect(items.some((i) => i.kanjiId === someKanji.id)).toBe(false)
+  })
+
+  it('DOES offer a kanji carrying only a B-210 placement stamp, so a retake can correct it', async () => {
+    // total_reviews = 1 with no review_logs: written by the old placement flow
+    // for a kanji the learner never saw. Under the counter-based predicate this
+    // was excluded forever and the fabricated result was uncorrectable. On live
+    // data that is 44 kanji on one account.
+    const [stamped] = await db.select({ id: schema.kanji.id }).from(schema.kanji).limit(1)
+    await db.insert(schema.userKanjiProgress).values({
+      userId: TEST_USER, kanjiId: stamped.id, status: 'remembered',
+      stability: 21, difficulty: 5, totalReviews: 1,
+    })
+
+    const items = await selectNextItems(db, TEST_USER, 0, [], 200)
+    expect(items.some((i) => i.kanjiId === stamped.id)).toBe(true)
   })
 
   it('excludes ids passed in `exclude` (already asked this session)', async () => {
@@ -129,11 +162,68 @@ describe('completePlacement', () => {
       userId: TEST_USER_2, kanjiId: kanjiA, status: 'learning',
       stability: 2, difficulty: 6, totalReviews: 3,
     })
+    // Real history is a review_logs row. Without one this fixture is a B-210
+    // placement stamp, and the assertions below would hold trivially — nothing
+    // would have been written to it regardless of whether protection worked.
+    // This is the plan's most important test; it must not pass vacuously.
+    const [histSession] = (await db.execute(sql`
+      INSERT INTO review_sessions (user_id) VALUES (${TEST_USER_2}) RETURNING id
+    `)) as unknown as { id: string }[]
+    await db.execute(sql`
+      INSERT INTO review_logs
+        (session_id, user_id, kanji_id, review_type, quality, response_time_ms,
+         prev_status, next_status, prev_interval, next_interval)
+      VALUES (${histSession.id}, ${TEST_USER_2}, ${kanjiA}, 'meaning'::review_type, 4, 1100,
+              'unseen'::srs_status, 'learning'::srs_status, 0, 2)
+    `)
 
-    await completePlacement(db, TEST_USER_2, [
-      { kanjiId: kanjiA, itemType: 'meaning', correct: true },
-      { kanjiId: kanjiA, itemType: 'reading', correct: true },
-    ])
+    // Drive theta high with correct answers on the EASIEST available kanji so
+    // p(knows) clears the 0.85 seeding threshold and the write path is actually
+    // live during this call — otherwise everything below holds trivially.
+    //
+    // HONEST LIMIT OF THIS TEST, measured rather than assumed: it still passes
+    // with `hasHistory` emptied out. Never-overwrite is enforced TWICE, and the
+    // structural guard fires first — seeding is
+    // `.insert(...).onConflictDoNothing()`, so an existing row is untouchable
+    // whatever the predicate says. That is reassuring for B-210 (defence in
+    // depth) but it means no test of this shape can isolate `hasHistory`.
+    // What this case does prove, which is the guarantee that matters to a
+    // learner, is that a row with real review history survives a placement
+    // submitting a maximally strong response for it. The control assertion
+    // below keeps it from passing because nothing was written at all.
+    const easiest = await db
+      .select({ kanjiId: schema.kanjiDifficulty.kanjiId })
+      .from(schema.kanjiDifficulty)
+      .orderBy(asc(schema.kanjiDifficulty.b))
+      .limit(6)
+    const others = easiest.map((r) => r.kanjiId).filter((id) => id !== kanjiA)
+
+    const responses = [
+      ...others.flatMap((id) => [
+        { kanjiId: id, itemType: 'meaning' as const, correct: true },
+        { kanjiId: id, itemType: 'reading' as const, correct: true },
+      ]),
+      { kanjiId: kanjiA, itemType: 'meaning' as const, correct: true },
+      { kanjiId: kanjiA, itemType: 'reading' as const, correct: true },
+    ]
+    await completePlacement(db, TEST_USER_2, responses)
+
+    // CONTROL: at least one unprotected kanji must have been seeded in this
+    // same call. If nothing was written the test proves nothing, so fail loudly
+    // rather than report a false pass.
+    const seeded = await db
+      .select({ kanjiId: userKanjiProgress.kanjiId })
+      .from(userKanjiProgress)
+      .where(
+        and(
+          eq(userKanjiProgress.userId, TEST_USER_2),
+          inArray(userKanjiProgress.kanjiId, others),
+        ),
+      )
+    expect(
+      seeded.length,
+      'no kanji were seeded, so this run cannot demonstrate that protection did anything — raise theta or pick easier items',
+    ).toBeGreaterThan(0)
 
     const [row] = await db
       .select()

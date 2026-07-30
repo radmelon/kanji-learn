@@ -50,10 +50,14 @@ export async function selectNextItems(
   exclude: number[],
   count = 5,
 ): Promise<SelectedItem[]> {
+  // Same evidence rule as completePlacement's never-overwrite check below: a
+  // review_logs row, not total_reviews > 0. Excluding on the counter would hide
+  // kanji the old placement flow merely stamped, so a retake could never
+  // re-measure them — the learner stays stuck with a fabricated result.
   const alreadyReviewed = await db
-    .select({ kanjiId: userKanjiProgress.kanjiId })
-    .from(userKanjiProgress)
-    .where(and(eq(userKanjiProgress.userId, userId), sql`${userKanjiProgress.totalReviews} > 0`))
+    .selectDistinct({ kanjiId: reviewLogs.kanjiId })
+    .from(reviewLogs)
+    .where(eq(reviewLogs.userId, userId))
 
   const excludeIds = [...exclude, ...alreadyReviewed.map((r: any) => r.kanjiId as number)]
 
@@ -308,11 +312,44 @@ export async function completePlacement(
   if (resultRows.length > 0) await db.insert(placementResults).values(resultRows)
 
   // ── Never-overwrite rule + seeding (spec §4.1, §8) ───────────────────
-  const existing = await db
-    .select({ kanjiId: userKanjiProgress.kanjiId, totalReviews: userKanjiProgress.totalReviews })
-    .from(userKanjiProgress)
-    .where(and(eq(userKanjiProgress.userId, userId), inArray(userKanjiProgress.kanjiId, kanjiIds)))
-  const hasHistory = new Set(existing.filter((e) => e.totalReviews > 0).map((e) => e.kanjiId))
+  //
+  // "Review history" means a review_logs row, not total_reviews > 0. The spec
+  // words §4.1 as "an `unseen` row with totalReviews = 0", but that counter can
+  // be incremented by a WRITE rather than by a review: the old placement flow
+  // (B-210) stamped rows with total_reviews = 1 for kanji the learner never
+  // saw. Treating those as protected history freezes them forever — they can
+  // never be re-measured or corrected, and on live data that is 44 kanji on one
+  // account whose own answers support only 2 of them.
+  //
+  // Safe because a genuine review cannot exist without a log: submitReview goes
+  // through DualWriteService.recordReviewSubmissions, which inserts review_logs
+  // and upserts progress in ONE transaction. Verified against production — of
+  // 984 rows with total_reviews > 0, the only 44 lacking logs are that one
+  // account's placement stamps. Logs are append-only; the sole migration
+  // touching them is the user-delete cascade, which removes the progress rows
+  // too. If a future write path ever updates progress without logging, this
+  // protection weakens silently — scripts/detect-placement-damage.mjs already
+  // detects exactly that signature.
+  //
+  // NOTE, verified by experiment rather than reasoning: this predicate is
+  // currently INERT here. The seeding write below is
+  // `.insert(...).onConflictDoNothing()`, so an existing row is untouchable no
+  // matter what `hasHistory` contains — emptying this Set does not change a
+  // single test outcome. Never-overwrite is enforced twice and the structural
+  // guard wins. It is kept because it states the rule explicitly, matches
+  // selectNextItems (where the predicate genuinely decides behaviour), and
+  // would become load-bearing the moment seeding ever becomes an upsert.
+  //
+  // CONSEQUENCE worth knowing: a retake can now ASK about a kanji carrying only
+  // a B-210 placement stamp, but cannot rewrite that row — the insert is
+  // skipped. Correcting those 44 live rows needs seeding to update rows that
+  // have no review_logs, which is a real behaviour change to user data and a
+  // separate decision from this predicate.
+  const logged = await db
+    .selectDistinct({ kanjiId: reviewLogs.kanjiId })
+    .from(reviewLogs)
+    .where(and(eq(reviewLogs.userId, userId), inArray(reviewLogs.kanjiId, kanjiIds)))
+  const hasHistory = new Set(logged.map((r) => r.kanjiId))
 
   await db.insert(userProfiles).values({ id: userId }).onConflictDoNothing()
 
