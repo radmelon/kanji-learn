@@ -39,7 +39,9 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: M — migration + backfill + plumbing]` `[Impact: Med — visible on every hook built; states something false about most kanji]` `[Backend: Yes]` `[Status: 🐛 Active — found in B145]`
 
-- [ ] **(B-224) A hook whose components are all outside the radical dictionary never gets a recall-quiz stamp** — Found on-device in **B145** (owner, 2026-07-28), who noticed the *symptom* before the data: *"For 説 I got a confirmation page that I didn't get for 歯 — 'Saved. We'll test it next session.'"*
+- [x] **(B-224) NOT A DEFECT — investigated 2026-07-30, both premises refuted** — the missing stamp is spec §8 working correctly, and no code change was made. Details at the end of this entry; the original report is kept verbatim below because the reasoning it models is worth preserving even though the data behind it was wrong.
+
+  Original report — Found on-device in **B145** (owner, 2026-07-28), who noticed the *symptom* before the data: *"For 説 I got a confirmation page that I didn't get for 歯 — 'Saved. We'll test it next session.'"*
 
   **The missing screen and the missing stamp are the same defect.** Of nine co-created hooks on the live account, 歯 is the **only** one with `cocreation_context->components = []`, and the **only** one with no `mnemonicQuizDueAt`. 歯's components are 止, 凵, 米 — none of which are among the radical dictionary's 20 entries, so `lookupComponents` returns empty.
 
@@ -59,7 +61,35 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/src/mnemonics/buildSlots.ts`, `apps/mobile/src/mnemonics/useCoCreation.ts`, `apps/mobile/src/components/mnemonics/CoCreationSheet.tsx` (`commitment` stage).
 
-  `[Effort: S once reproduced]` `[Impact: Med-High — silently removes a hook from the entire reinforcement loop]` `[Backend: No]` `[Status: 🐛 Active — found in B145, not yet root-caused]`
+  **RESOLUTION (2026-07-30): not a defect. Both premises were false, and the instinct not to guess was the right one — a "fix" here would have re-broken §8.**
+
+  The report rested on a correlation of one row. Querying all nine co-created hooks in production dissolves it:
+
+  | kanji | components | quiz stamp | reinforcement_count | effectiveness |
+  |---|---|---|---|---|
+  | 値 | 1 | **absent** | 1 | 0.70 |
+  | 互 | 0 | present | 0 | 0.50 |
+  | 両 | 0 | present | 0 | 0.50 |
+  | 暗 | 1 | **absent** | 1 | 0.70 |
+  | 調 | 1 | present | 0 | 0.50 |
+  | 費 | 0 | **absent** | 2 | 0.42 |
+  | 歯 | 0 | **absent** | 1 | 0.70 |
+  | 説 | 1 | present | 0 | 0.50 |
+  | 負 | 0 | present | 0 | 0.50 |
+
+  **Premise 1 — "歯 is the only hook with `components = []` and the only one without a stamp" — wrong on both counts.** Five hooks have empty components; four lack a stamp; the two sets do not match. 互, 両 and 負 have *no* components and *do* have stamps. 値 and 暗 have components and *no* stamp. The two variables are independent.
+
+  **Premise 2 — "the recall quiz's distractors come from components, so a kanji with none may have been deliberately excluded" — wrong.** `apps/mobile/src/mnemonics/recallQuiz.ts:146` selects purely on `isRecallQuizDue`; components are never consulted. `ReinforceSheet.tsx` contains no reference to components at all.
+
+  **What actually correlates, perfectly: `reinforcement_count > 0` ⇔ no stamp.** That is `MnemonicService.recordOutcome` (`apps/api/src/services/mnemonic.service.ts:244`) doing exactly what parent spec §8 requires — a *correct* outcome clears `mnemonicQuizDueAt` so the quiz does not re-fire every session forever, while a wrong one deliberately leaves it. Every stamp-less hook shows effectiveness risen from 0.50, i.e. it was quizzed and answered correctly. `isRecallQuizDue({})` returning `false` is the same design, and is already unit-tested.
+
+  So 歯 has no stamp because the learner passed its recall quiz — the loop worked. Changing this would reintroduce the forever-refiring quiz the original plan review caught.
+
+  **What remains genuinely unexplained** is only the owner's UI observation — no "Saved. We'll test it next session." confirmation for 歯. The row saved cleanly, so the sheet reached `commit()`. That screen renders in the `commitment` stage; a plausible innocent reading is that the confirmation did appear and the later quiz-pass is what the recollection attached to. Not reproducible from data, and too thin to act on without a fresh sighting.
+
+  **Lesson worth keeping: the report drew a causal claim from n=1 without checking the other eight rows.** The correlation it needed was one query away and pointed somewhere else entirely.
+
+  `[Effort: —]` `[Impact: None — documented behaviour]` `[Backend: No]` `[Status: ✅ Resolved 2026-07-30 — not a defect, no code change]`
 
 - [ ] **(B-225) Mixed-language hook narration switches voice abruptly** — Found on-device in **B145** (owner, 2026-07-28): *"the speak it function did invoke the japanese voice to read the character 歯. However the quality difference between the english default and the very brief 'ha' was abrupt."*
 
