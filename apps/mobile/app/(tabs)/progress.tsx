@@ -31,7 +31,7 @@ interface InfoSection {
 
 const INFO_BREAKDOWN: InfoSection[] = [
   {
-    body: 'Your kanji are sorted into five SRS stages. Each stage reflects how deeply the character is embedded in your long-term memory based on your review history.',
+    body: 'Your kanji are sorted into five stages by FSRS, the spaced-repetition algorithm behind your reviews. Each stage reflects how deeply the character is embedded in your long-term memory based on your review history.',
   },
   {
     title: 'Unseen',
@@ -87,7 +87,7 @@ const INFO_CONFIDENCE: InfoSection[] = [
   },
   {
     title: 'Confidence vs retention',
-    body: 'High confidence today doesn\'t mean permanent retention. The SRS confirms retention by making you recall a kanji again at 1 month, 3 months, 6 months. Only confident recall (Good/Easy) across all those intervals earns a burn.',
+    body: 'High confidence today doesn\'t mean permanent retention. FSRS, the scheduling algorithm behind your reviews, only marks a kanji burned once its computed memory stability crosses roughly 6 months — reached through a sequence of confident recalls (Good/Easy) at gradually widening intervals, not a fixed 1/3/6-month checklist.',
   },
 ]
 

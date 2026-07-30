@@ -120,7 +120,9 @@ export const kanji = pgTable(
     svgPath: text('svg_path'), // KanjiVG stroke order SVG
 
     // ── KANJIDIC2 reference codes ──────────────────────────────────────────
-    // Sourced from KANJIDIC2 (EDRDG, CC BY-SA 4.0). See ACKNOWLEDGEMENTS.
+    // Sourced from KANJIDIC2 (EDRDG, CC BY-SA 4.0); full attribution lives
+    // in the app's About screen at apps/mobile/app/about.tsx. No standalone
+    // ACKNOWLEDGEMENTS file exists in this repo.
     jisCode:          varchar('jis_code', { length: 8 }),          // JIS X 0208 hex e.g. '3021'
     nelsonClassic:    integer('nelson_classic'),                    // Classic Nelson index
     nelsonNew:        integer('nelson_new'),                        // New Nelson (Haig 1997) index

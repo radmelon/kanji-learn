@@ -183,7 +183,7 @@ mnemonics           — AI-generated (system) + user-authored mnemonic stories;
                       user mnemonics include optional lat/lng (location at creation time)
 user_profiles       — Supabase auth mirror: display_name, email, daily_goal,
                       notifications_enabled, timezone
-user_kanji_progress — SM-2 SRS state per user per kanji (status, ease, interval,
+user_kanji_progress — FSRS-5 state per user per kanji (status, stability, difficulty,
                       next_review_at, reading_stage)
 review_sessions     — Batched study sessions with timing and score summary
 review_logs         — Individual answer records (quality 0–5, response time)
@@ -218,7 +218,7 @@ Go to **Settings → Secrets and variables → Actions** and add:
 
 ## Architecture Notes
 
-- **SRS algorithm** — SM-2 with statuses: `unseen → learning → reviewing → remembered → burned`
+- **Scheduling algorithm** — FSRS-5 (Free Spaced Repetition Scheduler, open-source, MIT licensed — see packages/shared/src/srs.ts), with statuses: `unseen → learning → reviewing → remembered → burned`
 - **Kanji ordering** — JLPT N5 first (most frequent in daily use), N1 last
 - **New cards per session** — up to 20, fills remaining slots after due reviews, ordered N5→N1
 - **Mnemonics** — Claude Haiku system mnemonics (30-day refresh nudge) + user-authored overrides; `expo-location` captures lat/lng at creation time; a reverse-geocoded city badge is shown on each card

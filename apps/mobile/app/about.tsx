@@ -100,6 +100,31 @@ export default function AboutScreen() {
           </TouchableOpacity>
         </AttributionCard>
 
+        {/* FSRS attribution */}
+        <AttributionCard
+          title="Spaced Repetition Algorithm"
+          badge="MIT License"
+          badgeColor={colors.info}
+          icon="repeat"
+        >
+          <Text style={styles.attrBody}>
+            Your review schedule is computed by{' '}
+            <Text style={styles.bold}>FSRS</Text> (Free Spaced Repetition Scheduler), an
+            open-source algorithm led by researcher{' '}
+            <Text style={styles.bold}>Jarrett Ye</Text> and the{' '}
+            <Text style={styles.bold}>Open Spaced Repetition</Text> community.{' '}
+            <Text style={styles.bold}>FSRS</Text> estimates each card's memory stability
+            from actual review history rather than applying one fixed schedule to every card.
+          </Text>
+          <TouchableOpacity
+            style={styles.attrLink}
+            onPress={() => Linking.openURL('https://github.com/open-spaced-repetition')}
+          >
+            <Ionicons name="open-outline" size={14} color={colors.accent} />
+            <Text style={styles.attrLinkText}>github.com/open-spaced-repetition</Text>
+          </TouchableOpacity>
+        </AttributionCard>
+
         {/* AI / Anthropic attribution */}
         <AttributionCard
           title="AI-Generated Mnemonics"

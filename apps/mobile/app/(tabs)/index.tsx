@@ -31,7 +31,7 @@ interface InfoSection {
 
 const INFO_VELOCITY: InfoSection[] = [
   {
-    body: 'Velocity tracks how actively and effectively you\'re learning kanji over time — not just how many cards you tap through, but how deeply you\'re building lasting memory. It is powered by a Spaced Repetition System (SRS), a scheduling method that times each review for the exact moment your brain is about to forget the character.',
+    body: 'Velocity tracks how actively and effectively you\'re learning kanji over time — not just how many cards you tap through, but how deeply you\'re building lasting memory. It is powered by FSRS, an open-source spaced-repetition algorithm that times each review for the exact moment your brain is about to forget the character.',
   },
   {
     title: 'Reviews / day',
@@ -43,7 +43,7 @@ const INFO_VELOCITY: InfoSection[] = [
   },
   {
     title: 'What does "burning" a kanji mean? 🔥',
-    body: 'Every time you answer a card correctly, the SRS stretches its next review further into the future (1 day → 4 days → 2 weeks → 2 months…). When the interval grows to roughly 6 months, the kanji is marked as burned. Burned means you\'ve demonstrated genuine long-term recall — not just short-term familiarity. The character moves out of active rotation and surfaces only as an occasional surprise check to confirm you haven\'t forgotten it.',
+    body: 'Every time you answer a card correctly, FSRS stretches its next review further into the future — how far depends on how easily you recalled it and the character\'s own difficulty, so the pace varies card to card rather than following one fixed sequence. When the interval grows to roughly 6 months, the kanji is marked as burned. Burned means you\'ve demonstrated genuine long-term recall — not just short-term familiarity. The character moves out of active rotation and surfaces only as an occasional surprise check to confirm you haven\'t forgotten it.',
   },
   {
     title: 'Burn rate',
@@ -61,7 +61,7 @@ const INFO_ACTIVITY: InfoSection[] = [
   },
   {
     title: 'What is Spaced Repetition?',
-    body: 'Spaced Repetition is a learning technique that exploits the way human memory works: we forget things on a predictable curve, but a well-timed review resets and strengthens the memory. By scheduling reviews at the last possible moment before forgetting, the system forces your brain to work just hard enough to rebuild the memory — making it stick longer each time.\n\nThe underlying science goes back to psychologist Hermann Ebbinghaus, who mapped the "Forgetting Curve" in 1885. The modern algorithmic form — using an ease factor and expanding intervals — was pioneered by Piotr Woźniak in his SuperMemo software (1987). His SM-2 algorithm remains the foundation of most SRS apps today, and is the basis for this app\'s scheduling engine.',
+    body: 'Spaced Repetition is a learning technique that exploits the way human memory works: we forget things on a predictable curve, but a well-timed review resets and strengthens the memory. By scheduling reviews at the last possible moment before forgetting, the system forces your brain to work just hard enough to rebuild the memory — making it stick longer each time.\n\nThe underlying science goes back to psychologist Hermann Ebbinghaus, who mapped the "Forgetting Curve" in 1885. This app\'s scheduling engine runs FSRS (Free Spaced Repetition Scheduler), an open-source algorithm led by researcher Jarrett Ye that models each card\'s memory stability directly from your review history, rather than applying one fixed formula to every card. See the About screen for full credit.',
   },
   {
     title: 'Why consistency beats volume',
@@ -69,7 +69,7 @@ const INFO_ACTIVITY: InfoSection[] = [
   },
   {
     title: 'How intervals expand',
-    body: 'Every time you answer a card correctly, its next review interval roughly doubles (e.g. 1 day → 4 days → 10 days → 3 weeks…). A wrong answer resets the interval back to 1 day. Over time, characters you know well drift to monthly or biannual reviews, while characters you struggle with stay in heavy daily rotation.',
+    body: 'Every time you answer a card correctly, FSRS grows its computed memory strength for that character, pushing the next review further out — the exact jump depends on the character\'s difficulty and your past accuracy on it, not a fixed multiplier. A wrong answer shrinks that memory strength instead of resetting it to zero, so a well-established card recovers faster than a brand-new one would. Over time, characters you know well drift to monthly or biannual reviews, while characters you struggle with stay in heavy daily rotation.',
   },
 ]
 

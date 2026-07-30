@@ -301,9 +301,9 @@ export default function KanjiDetail() {
             <Text style={styles.primaryMeaning}>{kanji.meanings[0] ?? ''}</Text>
           </View>
 
-          {/* SRS Progress */}
+          {/* Review Progress */}
           {kanji.srsStatus !== 'unseen' && (
-            <Card title="SRS Progress">
+            <Card title="Review Progress">
               <View style={styles.srsRow}>
                 <View style={[styles.srsStatusBadge, { backgroundColor: SRS_COLORS[kanji.srsStatus] + '22' }]}>
                   <Text style={[styles.srsStatusText, { color: SRS_COLORS[kanji.srsStatus] }]}>
