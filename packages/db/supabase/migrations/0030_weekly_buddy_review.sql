@@ -73,7 +73,13 @@ CREATE INDEX IF NOT EXISTS buddy_commitments_user_week_idx
   ON buddy_commitments (user_id, week_start DESC);
 
 -- RLS, mirroring migrations 0009 and 0018.
+--
+-- FORCE as well as ENABLE: apps/api/test/integration/rls-coverage.test.ts
+-- asserts that EVERY public table has both, because ENABLE alone leaves the
+-- table owner exempt from its own policies. Adding a table without FORCE is
+-- caught by that test, which is the point of it.
 ALTER TABLE public.buddy_commitments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.buddy_commitments FORCE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
