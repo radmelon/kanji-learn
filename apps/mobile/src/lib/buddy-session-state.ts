@@ -15,7 +15,12 @@ export type SessionData =
       weekStart: string
       opener: { kind: string; text: string }
       reckon: string | null
-      isFirstSession: boolean
+      // The reckoning is about this: what was actually agreed for the period
+      // that just ended. null on a learner's first-ever session (nothing
+      // preceded it) — always present as a key, never actually omitted, but
+      // typed optional too so a caller that forgets to send it doesn't
+      // silently typecheck against a lie the way isFirstSession did.
+      currentCommitment?: SessionCommitment | null
       proposedCommitment: SessionCommitment
     }
 

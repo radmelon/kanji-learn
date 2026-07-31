@@ -1,11 +1,37 @@
 import React from 'react'
-import { render, screen } from '@testing-library/react-native'
+import { render, screen, fireEvent } from '@testing-library/react-native'
 import { BuddySessionBody } from '../../src/components/buddy/BuddySessionBody'
 
 describe('BuddySessionBody', () => {
   it('renders a loading state rather than nothing (B-227)', () => {
     render(<BuddySessionBody body={{ kind: 'loading' }} onCommit={() => {}} />)
     expect(screen.getByTestId('buddy-session-loading')).toBeTruthy()
+  })
+
+  it('pressing confirm calls onCommit with the proposed commitment plus source: session', () => {
+    const onCommit = jest.fn()
+    const proposed = {
+      weekStart: '2026-08-10', daysCommitted: 4, dayTargets: null,
+      minutesPerDay: 15, focus: null, source: 'rolled_forward' as const,
+    }
+
+    render(
+      <BuddySessionBody
+        body={{
+          kind: 'cards',
+          cards: [
+            { kind: 'opener', text: 'Nice — 4 days this week.' },
+            { kind: 'set', proposed },
+          ],
+        }}
+        onCommit={onCommit}
+      />
+    )
+
+    fireEvent.press(screen.getByTestId('buddy-session-confirm'))
+
+    expect(onCommit).toHaveBeenCalledTimes(1)
+    expect(onCommit).toHaveBeenCalledWith({ ...proposed, source: 'session' })
   })
 
   it('renders the opener and the set card for a due session', () => {

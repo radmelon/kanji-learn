@@ -47,7 +47,6 @@ describe('selectSessionBody', () => {
         weekStart: '2026-08-10',
         opener: { kind: 'strong', text: 'Nice — 4 days this week.' },
         reckon: 'We said 4 days, and you got 4.',
-        isFirstSession: false,
         proposedCommitment: proposed,
       },
     })
@@ -67,13 +66,46 @@ describe('selectSessionBody', () => {
         weekStart: '2026-08-10',
         opener: { kind: 'first_ever', text: "Hi — I'm Buddy." },
         reckon: null,
-        isFirstSession: true,
         proposedCommitment: { ...proposed, source: 'default' },
       },
     })
 
     if (body.kind !== 'cards') throw new Error('expected cards')
     expect(body.cards.map((c) => c.kind)).toEqual(['opener', 'set'])
+  })
+
+  it('accepts currentCommitment when the server sends what the reckoning is about', () => {
+    // Contract check for currentCommitment: it may be null (first-ever
+    // session, nothing preceded it) or omitted entirely — either must
+    // typecheck and neither should disturb the card sequence, since nothing
+    // reads this field yet.
+    const withCurrent = selectSessionBody({
+      hasLoaded: true,
+      error: null,
+      data: {
+        state: 'due',
+        weekStart: '2026-08-10',
+        opener: { kind: 'steady', text: 'Good to see you.' },
+        reckon: 'We said 4 days, and you got 4.',
+        currentCommitment: proposed,
+        proposedCommitment: proposed,
+      },
+    })
+    expect(withCurrent.kind).toBe('cards')
+
+    const withNullCurrent = selectSessionBody({
+      hasLoaded: true,
+      error: null,
+      data: {
+        state: 'due',
+        weekStart: '2026-08-10',
+        opener: { kind: 'first_ever', text: "Hi — I'm Buddy." },
+        reckon: null,
+        currentCommitment: null,
+        proposedCommitment: proposed,
+      },
+    })
+    expect(withNullCurrent.kind).toBe('cards')
   })
 
   it('always ends on the set card — the session has one guaranteed outcome', () => {
@@ -86,7 +118,6 @@ describe('selectSessionBody', () => {
           weekStart: '2026-08-10',
           opener: { kind: 'steady', text: 'Good to see you.' },
           reckon,
-          isFirstSession: false,
           proposedCommitment: proposed,
         },
       })
@@ -104,7 +135,6 @@ describe('selectSessionBody', () => {
         weekStart: '2026-08-10',
         opener: { kind: 'steady', text: 'Good to see you.' },
         reckon: null,
-        isFirstSession: false,
         proposedCommitment: proposed,
       },
     })

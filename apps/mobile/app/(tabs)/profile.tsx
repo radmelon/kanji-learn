@@ -611,6 +611,23 @@ export default function ProfileScreen() {
               </View>
             </View>
           )}
+          {/* Reachable without waiting for the push — a learner who denied
+              notifications, or whose Buddy day hasn't come round yet, still
+              needs a way in. */}
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => router.push('/buddy-session' as never)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="chatbubbles-outline" size={20} color={colors.textSecondary} />
+              <View>
+                <Text style={styles.rowLabel}>Buddy Session</Text>
+                <Text style={styles.rowSub}>Check in on your commitment, without waiting for the reminder</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
         </Section>
 
         {/* Privacy */}
