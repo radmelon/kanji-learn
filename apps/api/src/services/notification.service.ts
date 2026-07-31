@@ -3,6 +3,8 @@ import { and, eq, gte, inArray, or, sql } from 'drizzle-orm'
 import { userProfiles, dailyStats, friendships, userPushTokens, buddyNudges } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import type { BuddyNudge } from '@kanji-learn/shared'
+import { evaluateAppointment, nextCadence, shouldStepDown, stepDownCopy } from '@kanji-learn/shared'
+import { CommitmentService } from './buddy/commitment.service.js'
 
 // Expo ticket error strings that mean "this token will never work again."
 // Anything else (e.g. MessageRateExceeded) is transient — leave the row alone.
@@ -435,6 +437,97 @@ export class NotificationService {
         body,
         sound: 'default',
         data: { type: 'rest_day_summary' },
+      })
+    }
+  }
+
+  /**
+   * Hourly buddy-day pass — spec §8.1 and §8.3.
+   *
+   * Three jobs, in this order:
+   *   1. Roll the commitment forward. This is why it is server-side: the week
+   *      must be set whether or not the learner's phone ever connects.
+   *   2. Push, if a session is due right now in their timezone.
+   *   3. Step the cadence down after three consecutive misses, so the quiet
+   *      exit is ours and legible rather than iOS notification settings.
+   *
+   * Runs off the existing hourly EventBridge → Lambda → POST
+   * /internal/daily-reminders invocation. See cron.ts:8 for why not node-cron.
+   */
+  async runBuddyDayPass(): Promise<void> {
+    const nowUtc = new Date()
+    const commitments = new CommitmentService(this.db)
+
+    const users = await this.db
+      .select({
+        id: userProfiles.id,
+        timezone: userProfiles.timezone,
+        reminderHour: userProfiles.reminderHour,
+        buddyDay: userProfiles.buddyDay,
+        buddyIntervalWeeks: userProfiles.buddyIntervalWeeks,
+        notificationsEnabled: userProfiles.notificationsEnabled,
+      })
+      .from(userProfiles)
+      .where(sql`${userProfiles.buddyDay} IS NOT NULL`)
+
+    for (const user of users) {
+      // A learner still on the 'UTC' default has no reliable buddy_day.
+      // Skipping is deliberate — guessing is what fired daily reminders at the
+      // wrong hour for three months (schema.ts:171).
+      if (user.timezone === 'UTC') {
+        console.warn(`[BuddyDay] skipping ${user.id}: timezone still 'UTC' default`)
+        continue
+      }
+
+      const { hour: localHour } = localHourAndWeekday(nowUtc, user.timezone)
+      const localDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: user.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(nowUtc)
+
+      const lastAgreed = await commitments.getMostRecentAgreed(user.id)
+      const state = evaluateAppointment({
+        buddyDay: user.buddyDay,
+        intervalWeeks: user.buddyIntervalWeeks,
+        localDate,
+        lastSessionDate: lastAgreed?.weekStart ?? null,
+      })
+
+      if (state.kind !== 'due') continue
+
+      // 1. Roll forward — unconditional, independent of the push.
+      await commitments.ensureForWeek(user.id, state.weekStart)
+
+      // 3. Step down before they mute us.
+      const misses = await commitments.getMissCount(user.id)
+      if (shouldStepDown(misses)) {
+        const next = nextCadence({
+          buddyDay: user.buddyDay,
+          intervalWeeks: user.buddyIntervalWeeks,
+        })
+        await this.db.update(userProfiles)
+          .set({ buddyDay: next.buddyDay, buddyIntervalWeeks: next.intervalWeeks })
+          .where(eq(userProfiles.id, user.id))
+
+        if (user.notificationsEnabled) {
+          await this.sendToUserTokens(user.id, {
+            title: 'Buddy',
+            body: stepDownCopy(next),
+            sound: 'default',
+            data: { type: 'buddy_step_down' },
+          })
+        }
+        continue
+      }
+
+      // 2. Push, only at their chosen hour.
+      if (localHour !== (user.reminderHour ?? 20)) continue
+      if (!user.notificationsEnabled) continue
+
+      await this.sendToUserTokens(user.id, {
+        title: 'Time for our weekly catch-up',
+        body: "Let's look at the week and set the next one.",
+        sound: 'default',
+        data: { type: 'buddy_session', weekStart: state.weekStart },
       })
     }
   }
