@@ -512,11 +512,20 @@ three conditions only:
   (§4, decision #13). This is the case that used to have no response at all: a
   learner doing everything they promised and not moving.
 
+**A method recommendation must carry a diagnosis, never a hunch.** `review_logs`
+records `review_type` per row, so weakness is knowable *per dimension* — meaning,
+reading, writing, compound — rather than as one blended accuracy figure. That is
+what lets Buddy say *"your meanings are solid; it's readings where it's falling
+apart, so let's spend half the time there"* instead of *"try mixing it up."* The
+existing drill queue currently discards this by grouping on kanji alone; §10
+covers the change. **No dimension diagnosis, no method proposal** — Buddy stays
+on the effort dials rather than guessing at technique.
+
 **The dials:**
 
 | | Dial | Column | Available |
 |---|---|---|---|
-| 1 | **Study method** | `buddy_commitments.method` | **gated on a second study mode existing** — see §10 |
+| 1 | **Study method** | `buddy_commitments.method` | slice 2 — a gating change on the existing drill queue, see §10 |
 | 2 | Days per week | `buddy_commitments.days_committed` | now |
 | 3 | Minutes per day | `daily_goal` | now — **propose-and-confirm**, never written unilaterally |
 | 4 | Time of day | `reminder_hour` | now — **Buddy asks rather than infers** |
@@ -805,7 +814,8 @@ later failure path falls back to.
 Cloud tier · `buddy_conversations` · `buddy_learner_facts` + the seeding pass
 over hooks, onboarding and hook locations · `buddy_parked_topics` · profile
 dual-write · elicitation · `retract_fact` / `correct_fact` · trajectory and
-frontier checks · escalation and the ask-for-time protocol.
+frontier checks · escalation and the ask-for-time protocol · **the per-dimension
+drill gate and the weakness diagnosis it enables** (§10).
 
 **One dependency named now: trajectory needs a stored target with a date, and
 nothing stores one.** The Arc spec designs the planner (§5B2) but it is not
@@ -825,26 +835,53 @@ Day one has data: hooks already carry coordinates, so this does not wait on new
 collection. Session-location is an enhancement shipped **with its use** rather
 than ahead of it.
 
-### An external dependency: the method dial needs a second study mode
+### The method dial is a gating change, not a missing feature
 
-**A method experiment needs at least two distinguishable ways to spend the
-minutes, and today there is one** — the three-modality loop. The natural second
-is **"Study on the Go"**, the flashcard-only mode already captured in
-`ENHANCEMENTS.md` (owner, 2026-07-05): flip and grade without the writing and
-speaking legs, for trains and public places.
+**Corrected 2026-07-31 (owner).** An earlier draft named "Study on the Go" as an
+external dependency blocking the method dial. It is not a new mode — **it is the
+existing Drill Weakness queue with an adjusted gate**, and the strategic part is
+already in the data.
 
-That feature is **not owned by this spec** and should not be absorbed into it —
-it is a study-surface change with its own questions (how a legs-skipped session
-interacts with per-kanji modality progression). But it is what turns the method
-dial from a column into a conversation, so:
+`SrsService.getWeakKanjiQueue` (`apps/api/src/services/srs.service.ts:705`)
+selects kanji under an accuracy threshold over the last 30 days. Two things it
+does today throw away the dimension we most want:
 
-- `buddy_commitments.method` and `experiment_until` ship with **slice 1**, in
-  schema and in the pure functions. Cheap, and it avoids a migration later.
-- Buddy does not *offer* a method experiment until a second mode exists. Until
-  then `method` records what the learner already does, and the Raise beat's third
-  condition (§6.2) stays silent.
-- **Study on the Go is therefore this spec's highest-value external
-  dependency** — it converts the highest-leverage dial from designed to live.
+```
+.groupBy(reviewLogs.kanjiId)          -- all review types averaged into one number
+reviewType: this.pickReviewType(...)  -- progression rules, not observed weakness
+```
+
+`review_logs.review_type` is recorded per row (`meaning · reading · writing ·
+compound`), so a learner whose **readings** are collapsing while their
+**meanings** are solid is described by a single blended accuracy — and then
+drilled on whatever the progression rules pick.
+
+| Today | Change |
+|---|---|
+| `groupBy(kanjiId)` | `groupBy(kanjiId, reviewType)` → per-dimension weakness |
+| review type from progression | drill the dimension that is actually weak |
+| `threshold = 65`, `minAttempts = 3` | already parameters — "adjust the gate" is passing different arguments |
+
+**"On the go" is a filter, not a mode:** dropping the writing and speaking legs
+is `reviewType ∈ {meaning, reading, compound}` — no `WritingLeg`, no
+`VoiceEvaluator`. Nothing new to build.
+
+**Vocabulary drilling already has its plumbing.** `compound` is an existing
+review type and `exampleVocab` is already on the kanji row and already fetched by
+that same query. So the owner's own strategy — *"you keep losing 説; let's drill
+it through 小説 and 説明, words you already use"* — is a selection change, and a
+strong candidate for a first method experiment.
+
+**The larger gain is diagnostic, and it lands in §6, not here.** Per-dimension
+accuracy lets Buddy stop saying *"you're struggling with 説"* and start saying
+*"your meanings are solid — it's readings where it's falling apart."* A
+recommendation backed by a diagnosis is credible; the same recommendation without
+one is a guess.
+
+**Consequence for the slices:** the method dial no longer waits on anything
+external. `method` and `experiment_until` still ship in slice 1 (schema and pure
+functions); **the per-dimension gate and the diagnosis ship in slice 2**, with
+the conversation that uses them.
 
 ### Cross-cutting
 
