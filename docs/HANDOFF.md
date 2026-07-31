@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-30 later (**placement model shipped to `main`; next session is an Arc brainstorm**)
+# Session Handoff — 2026-07-31 (**Weekly Buddy Review: spec, plan, and slice 1 complete — on a branch, not `main`**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -6,6 +6,150 @@
 > *(This line is deliberately part of the artifact. A handoff that cannot state
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
+
+## START HERE — 2026-07-31
+
+> ## 🟡 Everything below is on branch `weekly-buddy-review-spec`. Nothing is on `main`.
+>
+> ```bash
+> git checkout main && git merge weekly-buddy-review-spec
+> ```
+>
+> 26 commits, 34 files, +6,408 lines. Review before merging — see *Open
+> decisions* at the bottom, which are yours and not the implementers'.
+>
+> ### What exists now
+>
+> | | |
+> |---|---|
+> | **Design spec** | [`2026-07-30-weekly-buddy-review-design.md`](superpowers/specs/2026-07-30-weekly-buddy-review-design.md) — 11 sections, complete |
+> | **Slice-1 plan** | [`2026-07-31-weekly-buddy-review-slice-1.md`](superpowers/plans/2026-07-31-weekly-buddy-review-slice-1.md) — 12 tasks, all executed |
+> | **Slices 2 and 3** | designed in §10 of the spec, not yet planned |
+>
+> **The feature:** a weekly appointment with Buddy on a day the learner picks.
+> Buddy opens in a register chosen by the shape of their week, reports on the
+> commitment they agreed last time, and they set the next one. The commitment is
+> **effort and method, never volume** — days and minutes, not kanji learned,
+> because volume depends on review debt and card difficulty and a learner can do
+> everything right and still miss it.
+>
+> Slice 1 is the ritual on the **template tier** — no LLM anywhere. That tier is
+> not scaffolding: it is the permanent floor every later offline, rate-limited,
+> and outage path falls back to.
+>
+> ### Verified on the branch
+>
+> | Lane | Result |
+> |---|---|
+> | `packages/shared` | **268 passing** (was 193) |
+> | `apps/api` | **391 passing**, 2 skipped, 2 failing — both pre-existing, see below |
+> | `apps/mobile` pure | **153 passing** (was 144) |
+> | `apps/mobile` components | **6 passing** (was 1) |
+> | `pnpm -r typecheck` | clean |
+>
+> ### 🛑 The deploy sequence is forced
+>
+> | | Step | Why here |
+> |---|---|---|
+> | 1 | Apply migration `0030` to live | the API reads `buddy_commitments`; deploying first means 500s |
+> | 2 | Deploy API | — |
+> | 3 | **Verify by CONTENT, not status code** | `GET /v1/buddy/session` must return a body containing `state`. `docs/SOP.md` records a rollout called "verified" on a status code while App Runner served a six-week-old image |
+> | 4 | EAS build + submit | mobile calls the new endpoints |
+> | 5 | Device walkthrough | the `buddy_day` push has never fired on a real device |
+>
+> **No EventBridge change is needed, and that is deliberate.** The hourly pass
+> rides the existing `POST /internal/daily-reminders` invocation.
+> `apps/api/src/cron.ts:8` records why in-app `node-cron` is wrong here — it
+> double-fires once App Runner scales past one instance — and a new rule is an
+> infra step that gets missed at deploy time.
+>
+> ### 🔵 Two corrections to things this project believed
+>
+> **1. `user-delete` was never a product bug, and is now fixed.**
+> `drizzle-kit push` builds the local test DB from `schema.ts`, where
+> `learnerIdentity.learnerId` is a bare primary key with no `.references()`.
+> Production gets that FK from migration `0016`; the local database never did,
+> because `0016` was missing from `local-test-db.md`'s hand-applied list. So the
+> cascade test failed, left the row behind, and every later run died on
+> `duplicate key value violates unique constraint "learner_identity_pkey"`.
+> Read as a fixture bug for months; it was a missing constraint, missing only
+> locally. `local-test-db.md` now lists `0016` and `0030` plus the orphan-cleanup
+> command.
+>
+> **2. `placement-service`'s B-210 test is order-dependent, and is telling the
+> truth.** It passes only when its file runs FIRST in a vitest process. Any
+> preceding integration file makes it fail on its own control assertion — *"no
+> kanji were seeded, so this run cannot demonstrate that protection did
+> anything"*. Reproduced with `learner-profile` and `dual-write` (both unrelated
+> and pre-existing) and with the `0016` FK dropped, so it is **not** caused by
+> this session's work.
+>
+> **The significance is uncomfortable.** That control assertion was added last
+> session precisely so B-210 could not pass vacuously — and what it now reveals
+> is that **in full-suite runs the test has not been proving anything.** It is
+> not newly broken; it is newly honest. Fixture isolation needs its own session.
+>
+> **Remaining API failures are therefore two:** `rls-coverage` (seven genuinely
+> unprotected pre-existing tables — `placement_*`, `tutor_*`, `user_push_tokens`,
+> `kanji_difficulty`) and the B-210 order dependency above.
+>
+> ### 🔴 The lesson this slice actually taught
+>
+> Six review findings across the chain. **Five were a test or check that could
+> not fail**, and three of those trace to defects in the plan's own text — the
+> plan written to prevent exactly that.
+>
+> - Task 6: the plan's "delete the guard, watch it go red" step **did not
+>   reproduce** — the test short-circuits on a read before reaching the guard.
+>   The implementer proved the guard by hand and then deleted the proof.
+> - Task 7: route correct, but the only `due`-state test was the one case where
+>   the copy function ignores its argument. The fix's red run printed
+>   `expected '0 days this week…' to contain '6'`.
+> - Task 11: Profile controls PATCHed two new fields the Zod schema did not
+>   list. `z.object()` **strips** unknown keys — 200 returned, values discarded.
+>   A verbatim recurrence of the four-inert-features bug already in this file.
+> - Task 1 (mine): migration `0030` enabled RLS without forcing it, adding an
+>   eighth table to a `rls-coverage` list already red for seven. Invisible
+>   behind a summary count.
+>
+> **The constraint "every guard test carries a control assertion" is not
+> enough.** Only running the test against the removed rule proves anything.
+> Every fix that mattered this session was demonstrated red first, and the
+> plan for slice 2 should require that, not merely the assertion.
+>
+> Related: **known-failure lists must enumerate, not count.** "3 pre-existing
+> failures" is not a baseline — it is what let an eighth table hide behind
+> seven.
+>
+> ### Open decisions — yours, not the implementers'
+>
+> 1. **`POST /v1/buddy/session/commitment` validates `weekStart` only as a
+>    date-shaped string**, so a client can write a commitment for any week
+>    rather than the one due. Matches the plan's own sample, so it is a design
+>    gap rather than a deviation. Orphan rows outside the cadence are possible.
+> 2. **Nothing is known to alert on the `[BuddyDay]` log prefix.** The hourly
+>    pass now isolates per-user failures and logs a distinctive summary line,
+>    but the endpoint still returns `{ok: true}` regardless. The code-level
+>    signal is sound; whether anything consumes it is unverified.
+> 3. **Spec §11 item 3 is still open — when a new learner is first offered an
+>    appointment.** Slice 1 therefore has **no path that sets `buddy_day` except
+>    the Profile screen**. Shippable (the appointment is opt-in) but a new
+>    learner will not find it unless they go looking. Resolve before slice 2,
+>    where the first session carries Frame's `ask`.
+> 4. **B-210 fixture isolation** (above) — its own session.
+>
+> ### What slice 2 is
+>
+> The conversation: cloud tier, `buddy_conversations`, `buddy_learner_facts`
+> with the seeding pass over hooks and onboarding, parked topics, the profile
+> dual-write, elicitation, `retract_fact`/`correct_fact`, trajectory and
+> frontier checks, escalation with the ask-for-time protocol, and the
+> per-dimension drill diagnosis (§10 of the spec — a `groupBy` change on the
+> existing weak-kanji queue, not a new feature).
+>
+> ---
+
+# Previous — 2026-07-30 later (**placement model shipped to `main`; Arc brainstorm next**)
 
 ## START HERE — 2026-07-30 (later)
 
