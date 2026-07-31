@@ -47,7 +47,7 @@ comparison has something to run on.
 |---|---|---|
 | 1 | **The review *is* the plan mechanism.** No static plan artifact; each session sets the coming week's commitment, and the next session reviews it. | A stored long-range plan you keep missing is worse than no plan — it recreates the sentence-being-served problem in slow motion. A one-week horizon is the natural antidote without banning long horizons; the planner (Arc §5B2) still answers those on request. |
 | 2 | **A conversation with a spine**, not free chat and not generated copy in fixed cards. | Under free chat the commitment is the first casualty of a good conversation — delightful sessions that never set the week. The spine guarantees the outcome while leaving everything around it open, and it is a pure function over session state, which is the only thing this repo tests well (Arc §9). |
-| 3 | **The commitment is effort, not volume** — days and minutes, with an optional focus. | Volume is not the learner's to control: new kanji per week depends on review debt, FSRS intervals, and how hard this week's cards are. A learner can do everything right and miss a volume target — precisely the "less than hoped reads as failure" case. Effort is the only variable they own. Already the owner's position, Arc §5C3: *"Regularity is more important than infrequent streaks."* |
+| 3 | **The commitment is effort *and method*, not volume** — days, minutes, and how those minutes are spent. | What is excluded is *outcome*. New kanji per week depends on review debt, FSRS intervals, and how hard this week's cards are; a learner can do everything right and miss a volume target, which is precisely the "less than hoped reads as failure" case. **Effort and method are both theirs, and method is the higher-leverage of the two** — a coach who can only say "try harder" is not coaching. Effort is already the owner's position, Arc §5C3: *"Regularity is more important than infrequent streaks."* |
 | 4 | **The hard conversation is deadline-triggered, not scheduled.** | Buddy raises "you will not make November" only when there is an external fact (a test date the learner named) **and** a computed miss. Not on a cadence, not on a feeling. |
 | 5 | **Learner memory splits by who reads it**: if a pure function branches on it, it is a typed field; if only the language model reads it, it is a fact row. | Keeps the profile schema from growing a column every time Buddy learns something charming, and matches the repo's split — pure decisions in `packages/shared`, copy from the API. |
 | 6 | **Buddy asserts learner facts freely and world facts only from retrieval.** | Established by a live failure during this brainstorm: a cultural connection was asserted from model recall, disputed, and settled correctly by a web lookup. The fact was real; the recall was not. The rule is therefore not "avoid cultural claims" but "claims about the world come from retrieval." Enforced by `provenance` in §5. |
@@ -55,7 +55,8 @@ comparison has something to run on.
 | 8 | **`buddy_day` is its own column, independent of `rest_day`.** | Owner, 2026-07-30. Conflating them means the one day the learner protects is the day Buddy shows up. They may coincide; that must be the learner's choice, not a schema consequence. |
 | 9 | **No Buddy on/off switch. Cadence is the learner's instead.** | Owner: *"KanjiBuddy with Buddy turned off is KanjiLearn."* A master switch is a tax on every future feature and makes the calibrated controls (coaching opt-out, declines, cooldowns) pointless. **But the exit exists whether or not it is built** — a learner who has had enough mutes iOS notifications, which is silent and teaches us nothing. So the quiet exit must be ours: weekly → fortnightly → when-I-ask, plus the automatic step-down in §8.1. Toned-down Buddy already exists as the Arc's scaffolding level. |
 | 10 | **No catalogue of what Buddy knows — and no data dump on request either.** | Owner, 2026-07-30: a dump with a conversational trigger is still a catalogue. "What do you know about me?" opens a conversation; Buddy answers from salience with two or three recent, relevant things and hands the question back. See §7.1. **Consequence:** retraction must be a real capability, not a polite reply (§7.1). |
-| 11 | **Effort and target are offered as peers; moving the target is never framed as giving up.** | From the owner's escalation script. Every instinct leads with "how do we make November" and holds "change the target" in reserve as the fallback. Side by side is the difference between a coach and a tracker — and it is true: goals legitimately change, and an app that treats that as failure is wrong about the learner. |
+| 11 | **Effort, method, and target are offered as peers; moving the target is never framed as giving up.** | From the owner's escalation script. Every instinct leads with "how do we make November" and holds "change the target" in reserve as the fallback. Side by side is the difference between a coach and a tracker — and it is true: goals legitimately change, and an app that treats that as failure is wrong about the learner. Precedence within the dials is in §6: **method before minutes.** |
+| 13 | **A method change is proposed as an experiment, and measured next session.** | Owner, 2026-07-31: *"Let's switch to 5 mins of 3-modality + 5 mins of drill and measure if this brings improvements."* An experiment is evaluated by **result**, a prescription by **compliance** — and that distinction is the whole reason `study_plans` stays retired (§5.4). It also closes its own loop with no new machinery: proposed in week N as part of the commitment, measured in week N+1's reckoning. |
 | 12 | **Embeddings on the connection library, never on learner facts.** | Two different problems. Learner facts: tens of rows, one learner, loaded whole, and embedding-on-write would give a user-facing path a new failure mode. The library: unbounded, cross-learner, matched by meaning, embedded at harvest time which is already async. See §5.3 and §7.3. |
 
 ## 3. Architecture
@@ -122,7 +123,7 @@ way back rather than steering.
 |---|---|---|
 | **Open** | Chosen by the shape of the week — see below | **yes** |
 | **Reckon** | Last week's commitment: kept, partly, missed — stated without scolding | no |
-| **Raise** | Anything the data says the learner should know. Both directions. **Usually nothing.** | conditional |
+| **Raise** | Anything the data says the learner should know — escalation, a retest offer, or **a method experiment**. Both directions. **Usually nothing.** | conditional |
 | **Draw out** | One question about the learner Buddy does not yet know the answer to | no |
 | **Connect** | One offered link between a kanji met this week and something the learner knows | no |
 | **Set** | The coming week's commitment | **yes** |
@@ -162,6 +163,21 @@ prerequisite for having one.
 now," and closes it at turn two, the week is still set and nothing is broken. A
 session that must *reach* the final beat to produce a commitment produces nothing
 on a bad day — which is the day it matters most.
+
+### Raise carries method experiments, not only escalation
+
+**A missed week where the effort was genuinely there is the strongest cue in the
+design for a method experiment.** Nothing is wrong with the learner; something is
+wrong with the recipe. So Reckon seeing a miss does not lead only to a smaller
+commitment — it can lead to *differently spent* minutes:
+
+> *"Ten minutes is landing, but the weak spots aren't moving. Want to try five
+> minutes of the full loop and five on drilling the stragglers, and see where
+> that puts us in a fortnight?"*
+
+Framed as an experiment with a horizon, so the next reckoning has something to
+measure that is not compliance (decision #13). Silence remains the default —
+this widens what Raise *can* carry, not how often it speaks.
 
 ### Parked topics
 
@@ -239,11 +255,22 @@ id, user_id, week_start date
 days_committed  smallint       -- the promise: how many days
 day_targets     jsonb null     -- optional specific days; null = any N days
 minutes_per_day smallint       -- snapshot of daily_goal at agreement time
+method          jsonb null     -- how the minutes are spent; null = unchanged
+experiment_until date null     -- set when `method` is a trial to be measured
 focus           text null      -- the optional qualitative flavour
 source          text           -- 'session' | 'rolled_forward' | 'default'
 agreed_at, superseded_at
 unique (user_id, week_start)
 ```
+
+**`method` and `experiment_until` are what make decision #13 measurable.**
+`method` describes the split — e.g. the three-modality loop versus drilling weak
+spots — and `experiment_until` marks it as a trial with a horizon, so the
+reckoning knows to report on it rather than treat it as the new normal. A method
+with no `experiment_until` is simply how this learner studies now.
+
+**There are deliberately no `completed_count` / `skipped_count` columns.** See
+§5.4 — those measure compliance, and this measures result.
 
 **`source` is the column that earns its place.** A rolled-forward commitment was
 never actually promised — the learner did not show up to agree it. Scoring it as
@@ -352,6 +379,21 @@ Two details that must be right from the first migration:
   completed_count/skipped_count`: a *generated activity list*, which is the model
   decision #1 rejected. Ours is a learner-agreed weekly promise — different
   shape, lifecycle, and author.
+
+  **The tension is worth recording, because adding the `method` dial narrows the
+  gap.** *"Five minutes of the full loop, five on drills, because your weak spots
+  are stalling"* is not far from `activities[] + rationale`. The discriminator is
+  `completed_count` / `skipped_count`: those encode a **prescription evaluated by
+  compliance** — did you work through the list — and compliance scoring is the
+  checklist the parent spec says would be the first thing a user removed (Arc §3;
+  the deleted quick-check; opt-**out** coaching). A method experiment is
+  **evaluated by result**. Different data, different conversation.
+
+  **And if per-session guided activity lists ever do ship** — parent-spec
+  scaffolding Level 1 — that feature should design its own table knowing its own
+  requirements, rather than inherit one built for a spec that never ran. Keeping
+  an unused table on the chance a future feature fits it is the exact pattern
+  this section exists to end.
 - `study_log_entries` — **handed to Phase 6 untouched.** It is the Journal's
   table and the Journal is Phase 6's job.
 
@@ -374,7 +416,7 @@ point.**
 | Check | Question | Outcomes |
 |---|---|---|
 | **Promise** | Did the week match what was agreed? | `kept` · `partial` · `missed` · `not_promised` |
-| **Trajectory** | Does observed pace reach the target by its date? | `ahead` · `on_track` · `behind` · `no_target` · `insufficient_data` |
+| **Trajectory** | Does observed pace reach the target by its date — or, with no date, is the learner's own pace holding? | `ahead` · `on_track` · `behind` · `easing_off` · `insufficient_data` |
 | **Frontier** | Does the placement posterior still describe this learner? | `outperforming` · `consistent` · `underperforming` |
 
 They are separate because the interesting cases are where they disagree. **You
@@ -386,37 +428,107 @@ over-committed, and the honest fix is a smaller promise.
 Collapsing these into one score is how you get a coach who congratulates you
 while you drift, or scolds you while you are fine.
 
-**Three rules keep it honest:**
+**Four rules keep it honest:**
 
 - **Projection uses observed pace, never committed pace.** Projecting from the
   promise projects from a wish. What the learner did is data; what they said they
   would do is an intention.
-- **No target means there is no such thing as behind.** `no_target` is not a
-  degraded case to nag about. This is what stops the feature manufacturing
-  deadlines for people who never wanted one.
+- **And the same test one level down: prefer what the learner *did* over what
+  they *said*.** FSRS grades are self-report — Again/Hard/Good/Easy is an
+  assertion of confidence. The app already collects demonstrated signals beside
+  them: `writing_attempts`, `voice_attempts`, the recall quiz, `response_time_ms`,
+  and `hint_used` — a card graded "Good" *with the hint pulled* is not the same
+  event as one graded "Good" without, and the column already exists to tell them
+  apart. **Where both exist, trajectory weights the demonstrated one.**
+  *Scope, deliberately:* this changes what the **projection** reads, not what
+  FSRS schedules on. Re-weighting FSRS's own inputs is Arc §12's deferred B×FSRS
+  session, and reaching into it here would start that work by accident.
+- **"Behind schedule" needs a schedule; "you've slowed down" needs only
+  history.** Without a target date there is nothing to be behind, and inventing
+  one would manufacture deadlines for people who never wanted them. But there is
+  always an implied target — learn the kanji — so with no date the trajectory
+  check becomes **self-referential**: rolling burn velocity against the learner's
+  own prior weeks, computable today from `daily_stats` with no behaviour model.
+  That is not a deadline; it is the learner measured against themselves.
+  **`easing_off` is raised as an observation with curiosity, never as a
+  verdict** — *"your pace has eased off from where it was a month ago; is that
+  deliberate?"* — and *"yes, work is mental"* is a complete and acceptable answer
+  that ends the topic.
 - **Confidence is surfaced and unreachable is sayable** — both inherited from Arc
   §5B2. *"N2 by December isn't reachable at any sustainable pace — N3 is"* must
   be in range, because a planner that only ever agrees is a horoscope.
 
+### 6.1 How "will they make it?" is computed
+
+**Coverage is mastery-weighted and continuous, not a burned/remembered cutoff.**
+Both binary choices put a cliff at an arbitrary line. `MASTERY_BY_STATUS`
+(`apps/api/src/services/buddy/constants.ts:7`) already grades the whole scale:
+
+```
+unseen 0 · learning 0.25 · reviewing 0.6 · remembered 0.85 · burned 1.0
+```
+
+Expected coverage of a level is the weighted sum over that level's kanji. A
+learner with 300 at `reviewing` genuinely is further along than one with 150
+`burned` and 150 `unseen`, and only the weighted form says so.
+
+**Two honesty constraints on the number:**
+
+- **Those weights were built to mirror mastery into the UKG, not calibrated as
+  probabilities of exam success.** They are a defensible starting weight and an
+  explicit tunable — not a claim.
+- **Above N3 the difficulty model is entirely feature-derived prior.** Per the
+  placement work, N2 has review logs on 3.2% of its kanji and N1 on 0.2%, so an
+  N2/N1 estimate rests on modelled difficulty with nothing observed underneath.
+  Not a reason to withhold it — a reason it ships at `rough` confidence, which
+  this section already requires.
+
+**The pass margin is ours, and is not derived from the JLPT.** The exam's pass
+mark is a scaled score across sections with sectional minimums, and kanji sits
+inside 言語知識 alongside vocabulary and grammar — there is no published "you
+need X% of the level's kanji." JLPT also stopped publishing official kanji lists
+with the 2010 revision, so "the N3 kanji" here is already a community-derived
+set. **Any threshold we pick is our heuristic about a list that is itself a
+heuristic**, and the spec says so plainly so that no later reader mistakes it for
+an exam fact.
+
+It is therefore a **named, tunable parameter with a written rationale** —
+target coverage plus the confidence at which Buddy will assert it. Applying §7.2
+to ourselves: those JLPT specifics are world facts asserted from recall and
+**must be verified against a current source** before anything is built on them
+(§11).
+
+### 6.2 What Buddy raises, and the dials
+
 **Silence is the default.** Most weeks the **Raise** beat returns nothing — as
-`selectInvitation` returning `null` is the common case in Arc §5C. Escalation
-happens on two conditions only:
+`selectInvitation` returning `null` is the common case in Arc §5C. It speaks on
+three conditions only:
 
 - `trajectory = behind` **and** a real target date → the crucial conversation,
   with the ask-for-time protocol of §4
 - `frontier = outperforming` **and** the posterior's SE is wide enough for a
   retest to be informative → offer the retest
+- **effort held but results flat**, or `easing_off` → a **method experiment**
+  (§4, decision #13). This is the case that used to have no response at all: a
+  learner doing everything they promised and not moving.
 
 **The dials:**
 
-| Dial | Column | Available |
-|---|---|---|
-| Minutes per day | `daily_goal` | now — **propose-and-confirm**, never written unilaterally |
-| Days per week | `buddy_commitments.days_committed` | now |
-| Time of day | `reminder_hour` | now — **Buddy asks rather than infers** |
-| **The target itself** | date or level | now |
+| | Dial | Column | Available |
+|---|---|---|---|
+| 1 | **Study method** | `buddy_commitments.method` | **gated on a second study mode existing** — see §10 |
+| 2 | Days per week | `buddy_commitments.days_committed` | now |
+| 3 | Minutes per day | `daily_goal` | now — **propose-and-confirm**, never written unilaterally |
+| 4 | Time of day | `reminder_hour` | now — **Buddy asks rather than infers** |
+| 5 | **The target itself** | date or level | now |
 
-**Effort and target are offered as peers, in the same breath** (decision #11).
+**Effort, method, and target are offered as peers, in the same breath**
+(decision #11) — but the ordering above is a real precedence, not a list.
+**Method before minutes:** asking someone to spend *longer* is the expensive ask,
+asking them to spend the same time *differently* costs nothing, and when it works
+it was the better answer anyway. A Buddy that reaches for "add ten minutes"
+before "try it this way" is optimising the learner's life for the app's
+convenience.
 
 Time-of-day is worth one note: **the dial ships now, the smart version waits.**
 *"Evenings don't seem to be landing — would mornings suit you better?"* needs no
@@ -580,7 +692,9 @@ stepped back, they keep the rest of the app, and returning is one tap.
 
 None of these degrade to nagging:
 
-- **No target** → `trajectory = no_target`. Never "behind."
+- **No target** → trajectory goes **self-referential** (§6): the learner against
+  their own prior weeks, so `easing_off` is reachable but "behind" never is.
+  No date, no deadline, no manufactured one.
 - **No placement** → `frontier = insufficient_data`. No retest offers at all,
   rather than offers based on a guess.
 - **Too little history** → projection `rough` and labelled, or absent.
@@ -636,9 +750,11 @@ are separate:
 | Case | Must produce |
 |---|---|
 | Promise `kept` + trajectory `behind` | the November conversation, no scolding |
+| Promise `kept` + results flat | a **method experiment**, not more minutes |
 | Promise `missed` + trajectory `ahead` | a *smaller* proposed commitment, no alarm |
 | `not_promised` + missed | no broken-promise register at all |
-| `no_target` + any pace | trajectory silent, never "behind" |
+| No target + declining pace | `easing_off` as a question — and **never** `behind` |
+| Same grade, hint pulled vs not | different trajectory weight (§6, says-vs-does) |
 
 **A test that guards a rule must be shown to fail when the rule is removed.** The
 B-210 regression test passed with the never-overwrite protection deleted
@@ -675,7 +791,8 @@ flaking.
 
 ### Slice 1 — The ritual
 
-`buddy_day` · `buddy_interval_weeks` · `buddy_commitments` · `appointment` and
+`buddy_day` · `buddy_interval_weeks` · `buddy_commitments` (including `method`
+and `experiment_until`, carried but not yet offered) · `appointment` and
 `commitment` pure functions · promise check only · template-tier session as cards
 · the `buddy_day` push · **server-side roll-forward** · the step-down.
 
@@ -708,6 +825,27 @@ Day one has data: hooks already carry coordinates, so this does not wait on new
 collection. Session-location is an enhancement shipped **with its use** rather
 than ahead of it.
 
+### An external dependency: the method dial needs a second study mode
+
+**A method experiment needs at least two distinguishable ways to spend the
+minutes, and today there is one** — the three-modality loop. The natural second
+is **"Study on the Go"**, the flashcard-only mode already captured in
+`ENHANCEMENTS.md` (owner, 2026-07-05): flip and grade without the writing and
+speaking legs, for trains and public places.
+
+That feature is **not owned by this spec** and should not be absorbed into it —
+it is a study-surface change with its own questions (how a legs-skipped session
+interacts with per-kanji modality progression). But it is what turns the method
+dial from a column into a conversation, so:
+
+- `buddy_commitments.method` and `experiment_until` ship with **slice 1**, in
+  schema and in the pure functions. Cheap, and it avoids a migration later.
+- Buddy does not *offer* a method experiment until a second mode exists. Until
+  then `method` records what the learner already does, and the Raise beat's third
+  condition (§6.2) stays silent.
+- **Study on the Go is therefore this spec's highest-value external
+  dependency** — it converts the highest-leverage dial from designed to live.
+
 ### Cross-cutting
 
 An edit to the Arc spec in three places (§5A, §5B2, §12), pointing each orphan at
@@ -731,3 +869,12 @@ ones.
    with nothing to reckon argues for after some study.
 4. **Whether `buddy_interval_weeks` needs a third state** beyond 1 and 2, or
    whether `buddy_day = null` covers "when I ask" adequately.
+5. **Verify the JLPT specifics in §6.1 against a current source** before the
+   coverage margin is implemented: that the pass mark is a scaled score with
+   sectional minimums, that kanji is not separately scored, and that official
+   kanji lists were discontinued with the 2010 revision. These are stated from
+   model recall, which §7.2 says is exactly the thing not to build on. If any is
+   wrong, the margin's rationale changes even though the parameter does not.
+6. **Target coverage and assertion confidence** — the two numbers in §6.1. They
+   need a first value and a written rationale, and they should be tuned against
+   real learners rather than guessed once and forgotten.
