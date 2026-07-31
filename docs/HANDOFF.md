@@ -9,14 +9,34 @@
 
 ## START HERE — 2026-07-31
 
-> ## 🟡 Everything below is on branch `weekly-buddy-review-spec`. Nothing is on `main`.
+> ## 🚨 FIRST: the live API is three days behind `main`, and the placement model was never deployed
+>
+> **Verified 2026-07-31 by App Runner operations, not by assumption:**
+>
+> ```
+> aws apprunner list-operations --service-arn arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654 --region us-east-1
+> → most recent SUCCEEDED deployment: 2026-07-28T10:37
+> ```
+>
+> The placement model merged to `main` on **2026-07-30** (`a81ff37`, `8f745c2`).
+> Nothing has deployed since. **Two slices are now stacked undeployed:** the
+> placement model on `main`, and the weekly Buddy review on this branch.
+>
+> That is the real answer to "is it time to cut a build?" — **the blocker is not
+> the build, it is that nothing has shipped.** Details and the recommended
+> single combined sequence are in *Cutting the next build* below.
+>
+> ## 🟡 This slice is on branch `weekly-buddy-review-spec`, pushed, not merged
 >
 > ```bash
 > git checkout main && git merge weekly-buddy-review-spec
 > ```
 >
-> 26 commits, 34 files, +6,408 lines. Review before merging — see *Open
-> decisions* at the bottom, which are yours and not the implementers'.
+> 30 commits, 37 files, +7,043 lines. Pushed to origin 2026-07-31.
+> PR: https://github.com/radmelon/kanji-learn/pull/new/weekly-buddy-review-spec
+>
+> Review before merging — see *Open decisions* at the bottom, which are yours
+> and not the implementers'.
 >
 > ### What exists now
 >
@@ -179,6 +199,66 @@
 >    `buddy_session` push opens the screen from both killed and backgrounded
 >    states, that it does not double-navigate when the screen is already open,
 >    and that the Profile entry reaches it with no push involved.
+>
+> ### 🚢 Cutting the next build — one deploy, one build, both slices
+>
+> **Recommendation: do not cut a build for the weekly review alone. Merge,
+> deploy both slices in one forced sequence, then cut ONE build that carries
+> both device walkthroughs.**
+>
+> Three reasons it has to be combined rather than sequential:
+>
+> 1. **Deploying placement alone breaks installed builds.** The placement model
+>    changed `POST /v1/placement/complete` from `results: [{kanjiId, passed}]`
+>    to `responses: [{kanjiId, itemType, correct}]`. B145 sends the old shape.
+>    The moment that API deploys, placement is broken for anyone on B145 —
+>    onboarding only, tiny tester group, but real. So a build has to follow
+>    immediately anyway; there is no version of this where you deploy placement
+>    and wait.
+> 2. **Both slices owe a device walkthrough and neither has had one.** One
+>    build discharges both.
+> 3. **Budget is not the constraint.** ~7 medium iOS builds remain and the
+>    allowance renews **2026-08-04**. Spending one is cheap; spending two when
+>    one would do is the only waste available here.
+>
+> **The combined sequence, in this order — every step is load-bearing:**
+>
+> | | Step | Why here |
+> |---|---|---|
+> | 1 | Merge `weekly-buddy-review-spec` to `main` | so one deploy carries both slices |
+> | 2 | Apply `0029` (placement) to live | the API queries `kanji_difficulty`; deploying first means 500s |
+> | 3 | Apply `0030` + `0031` (weekly review) to live | same reason for `buddy_commitments` |
+> | 4 | **Run `refreshKanjiDifficulty`** | `selectNextItems` reads that table. Skip it and placement returns **an empty test, not an error** — it fails silently |
+> | 5 | Deploy API | — |
+> | 6 | **Verify by CONTENT** | an App Runner operation dated today AND a response field only the new build returns. `docs/SOP.md` records a rollout called "verified" on a status code while a six-week-old image served |
+> | 7 | EAS build + submit | mobile calls the new endpoints in both slices |
+> | 8 | Device walkthrough — **both** | see below |
+>
+> **What the walkthrough must cover, because none of it is testable off-device:**
+>
+> *Placement:* the new adaptive test end to end; the prediction to check is that
+> it stops at ~13 items rather than the old 60, and seeds ~2 kanji rather than
+> 44 (see the previous handoff's account analysis).
+>
+> *Weekly review:* set a `buddy_day` in Profile; confirm the push arrives at
+> `reminder_hour` in local time on that day; **tap it from a killed app and from
+> a backgrounded app** and confirm both land on the session screen; confirm no
+> double-navigation when the screen is already open; confirm the Profile entry
+> reaches it with no push involved; run one full session and confirm the
+> commitment persists.
+>
+> **The timezone caveat that decides whether any of this fires at all:**
+> `user_profiles.timezone` carried a `'UTC'` default that no client ever wrote,
+> and the hourly pass deliberately SKIPS those rows rather than guessing. Plan 4
+> Task 17 fixed the capture path, but **whether existing rows were backfilled is
+> a live-data question nobody has answered.** If your tester's row is still
+> `'UTC'`, they will get no Buddy push at all and the walkthrough will look like
+> a broken feature when it is a working guard. Check this before cutting the
+> build, not after:
+>
+> ```sql
+> select timezone, count(*) from user_profiles group by timezone;
+> ```
 >
 > ### What slice 2 is
 >
