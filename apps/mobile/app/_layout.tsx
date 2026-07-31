@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Audio } from 'expo-av'
 import * as Speech from 'expo-speech'
 import * as SplashScreen from 'expo-splash-screen'
+import * as Notifications from 'expo-notifications'
 import { useAuthStore } from '../src/stores/auth.store'
 import { usePushNotifications } from '../src/hooks/usePushNotifications'
 import { useNetworkStatus } from '../src/hooks/useNetworkStatus'
@@ -91,6 +92,30 @@ export default function RootLayout() {
   }, [isInitialized])
 
   usePushNotifications(!!session)
+
+  // Route a tapped Buddy session push to the session screen. Mirrors the
+  // OAuth deep-link handling below: a cold-start check (app launched by
+  // tapping the notification) plus a warm-start listener (app already
+  // running). Without this the server's `{ type: 'buddy_session', weekStart }`
+  // payload had no handler anywhere in the app — tapping it just opened
+  // whatever screen the app happened to be on.
+  useEffect(() => {
+    if (!isInitialized || !session) return undefined
+
+    const handleResponse = (response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data as { type?: string } | undefined
+      if (data?.type === 'buddy_session') {
+        router.push('/buddy-session' as never)
+      }
+    }
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => { if (response) handleResponse(response) })
+      .catch((e) => console.warn('[Push] getLastNotificationResponseAsync failed:', e))
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleResponse)
+    return () => subscription.remove()
+  }, [isInitialized, session, router])
 
   // Drain pending sessions whenever we come back online
   useEffect(() => {
@@ -182,6 +207,7 @@ export default function RootLayout() {
         <Stack.Screen name="kanji/[id]" />
         <Stack.Screen name="about" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="placement" options={{ headerShown: false }} />
+        <Stack.Screen name="buddy-session" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="deleted" options={{ headerShown: false, gestureEnabled: false }} />
       </Stack>

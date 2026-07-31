@@ -9,6 +9,7 @@ import {
   real,
   boolean,
   timestamp,
+  date,
   uuid,
   jsonb,
   numeric,
@@ -173,6 +174,18 @@ export const userProfiles = pgTable('user_profiles', {
   timezone: text('timezone').notNull().default('UTC'),
   reminderHour: smallint('reminder_hour').notNull().default(20),   // 0-23, in user's timezone
   restDay: smallint('rest_day'),                                    // 0=Sun…6=Sat, null=no rest day
+  // Deliberately separate from restDay (weekly-review spec decision #8):
+  // conflating them means the one day the learner protects is the day Buddy
+  // shows up. NULL is meaningful — it is the "when I ask" cadence AND the
+  // correct state for every row that predates migration 0030.
+  buddyDay: smallint('buddy_day'),                                  // 0=Sun…6=Sat, null=no appointment
+  buddyIntervalWeeks: smallint('buddy_interval_weeks').notNull().default(1), // 1=weekly, 2=fortnightly
+  // Migration 0031. Nothing recorded that runBuddyDayPass had already acted,
+  // which made the fortnightly tier unreachable (re-evaluated and stepped
+  // down again the very next hour) and re-sent the same invitation on every
+  // day of evaluateAppointment's multi-day due window.
+  buddyCadenceChangedAt: timestamp('buddy_cadence_changed_at', { withTimezone: true }),
+  buddyLastInvitedAt: timestamp('buddy_last_invited_at', { withTimezone: true }),
   onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
   showPitchAccent: boolean('show_pitch_accent').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -713,6 +726,40 @@ export const studyPlanEvents = pgTable(
   (t) => ({
     // Postgres does not auto-index FKs; "all events for plan X" is the core read.
     planIdx: index('study_plan_events_plan_idx').on(t.planId),
+  })
+)
+
+// ─── buddy_commitments ────────────────────────────────────────────────────────
+// One row per learner per 7-day period. Deliberately has NO completed_count /
+// skipped_count: those measure compliance with a prescription, and this
+// measures the result of an agreement (weekly-review spec §5.4).
+
+export const buddyCommitments = pgTable(
+  'buddy_commitments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    weekStart: date('week_start').notNull(),
+    daysCommitted: smallint('days_committed').notNull(),
+    dayTargets: jsonb('day_targets').$type<number[] | null>(),
+    minutesPerDay: smallint('minutes_per_day').notNull(), // 1-600, enforced by CHECK constraint (migration 0031)
+    method: jsonb('method').$type<Record<string, unknown> | null>(),
+    experimentUntil: date('experiment_until'),
+    focus: text('focus'),
+    // 'session' | 'rolled_forward' | 'default'. The reckoning changes register
+    // on this: a missed rolled_forward commitment is NOT a broken promise,
+    // because the learner never turned up to agree it.
+    source: text('source').notNull(),
+    agreedAt: timestamp('agreed_at', { withTimezone: true }).notNull().defaultNow(),
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  },
+  (t) => ({
+    userWeekUnique: uniqueIndex('buddy_commitments_user_week_unique').on(t.userId, t.weekStart),
+    // No separate (user_id, week_start DESC) index: migration 0031 dropped it
+    // as redundant — the unique constraint above already indexes the same
+    // columns, and Postgres can scan a unique index backwards.
   })
 )
 

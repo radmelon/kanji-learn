@@ -38,6 +38,8 @@ interface UserProfile {
   timezone: string
   reminderHour: number
   restDay: number | null  // 0=Sun … 6=Sat, null=no rest day
+  buddyDay: number | null  // 0=Sun … 6=Sat, null=no appointment
+  buddyIntervalWeeks: number  // 1=weekly, 2=fortnightly
 }
 
 // ─── Daily goal options ───────────────────────────────────────────────────────
@@ -67,6 +69,8 @@ export default function ProfileScreen() {
   const [attachLocationToHooks, setAttachLocationToHooks] = useState(false)
   const [reminderHour, setReminderHour] = useState(20)
   const [restDay, setRestDay] = useState<number | null>(null)
+  const [buddyDay, setBuddyDay] = useState<number | null>(null)
+  const [buddyIntervalWeeks, setBuddyIntervalWeeks] = useState(1)
 
   // Apple Watch
   const [watchEnabled, setWatchEnabledLocal] = useState(false)
@@ -152,6 +156,8 @@ export default function ProfileScreen() {
     setAttachLocationToHooks(data.attachLocationToHooks ?? false)
     setReminderHour(data.reminderHour ?? 20)
     setRestDay(data.restDay ?? null)
+    setBuddyDay(data.buddyDay ?? null)
+    setBuddyIntervalWeeks(data.buddyIntervalWeeks ?? 1)
   }, [])
 
   const loadProfile = useCallback(async () => {
@@ -207,6 +213,8 @@ export default function ProfileScreen() {
     attachLocationToHooks: boolean
     reminderHour: number
     restDay: number | null
+    buddyDay: number | null
+    buddyIntervalWeeks: number
   }>) => {
     setIsSaving(true)
     try {
@@ -274,6 +282,19 @@ export default function ProfileScreen() {
   const handleRestDay = useCallback((day: number | null) => {
     setRestDay(day)
     save({ restDay: day })
+  }, [save])
+
+  // Deliberately independent of restDay (parent spec §11 pattern) — a learner
+  // may want their Buddy catch-up and their rest day on the same day, or on
+  // different ones. Neither setting implies the other.
+  const handleBuddyDay = useCallback((day: number | null) => {
+    setBuddyDay(day)
+    save({ buddyDay: day })
+  }, [save])
+
+  const handleBuddyIntervalWeeks = useCallback((weeks: number) => {
+    setBuddyIntervalWeeks(weeks)
+    save({ buddyIntervalWeeks: weeks })
   }, [save])
 
   const handleFriendSearch = useCallback(async () => {
@@ -546,6 +567,67 @@ export default function ProfileScreen() {
               </View>
             </>
           )}
+        </Section>
+
+        {/* Buddy weekly check-in — independently settable from Rest day above:
+            a learner may want them on the same day or different days. */}
+        <Section title="Buddy Weekly Check-in">
+          <View style={styles.reminderTimeRow}>
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.textMuted} />
+            <Text style={styles.reminderTimeLabel}>Buddy day</Text>
+            <View style={styles.reminderHourPills}>
+              {([null, 0, 1, 2, 3, 4, 5, 6] as (number | null)[]).map((d) => {
+                const label = d == null ? 'None' : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]
+                const active = buddyDay === d
+                return (
+                  <TouchableOpacity
+                    key={d == null ? 'none' : d}
+                    style={[styles.reminderPill, active && styles.reminderPillActive]}
+                    onPress={() => handleBuddyDay(d)}
+                  >
+                    <Text style={[styles.reminderPillText, active && styles.reminderPillTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </View>
+          {buddyDay != null && (
+            <View style={styles.reminderTimeRow}>
+              <Ionicons name="repeat-outline" size={18} color={colors.textMuted} />
+              <Text style={styles.reminderTimeLabel}>How often</Text>
+              <View style={styles.reminderHourPills}>
+                {([{ weeks: 1, label: 'Weekly' }, { weeks: 2, label: 'Fortnightly' }]).map(({ weeks, label }) => {
+                  const active = buddyIntervalWeeks === weeks
+                  return (
+                    <TouchableOpacity
+                      key={weeks}
+                      style={[styles.reminderPill, active && styles.reminderPillActive]}
+                      onPress={() => handleBuddyIntervalWeeks(weeks)}
+                    >
+                      <Text style={[styles.reminderPillText, active && styles.reminderPillTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+            </View>
+          )}
+          {/* Reachable without waiting for the push — a learner who denied
+              notifications, or whose Buddy day hasn't come round yet, still
+              needs a way in. */}
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => router.push('/buddy-session' as never)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="chatbubbles-outline" size={20} color={colors.textSecondary} />
+              <View>
+                <Text style={styles.rowLabel}>Buddy Session</Text>
+                <Text style={styles.rowSub}>Check in on your commitment, without waiting for the reminder</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
         </Section>
 
         {/* Privacy */}

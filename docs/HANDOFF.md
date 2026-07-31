@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-30 later (**placement model shipped to `main`; next session is an Arc brainstorm**)
+# Session Handoff — 2026-07-31 (**Weekly Buddy Review: spec, plan, and slice 1 complete — on a branch, not `main`**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -6,6 +6,290 @@
 > *(This line is deliberately part of the artifact. A handoff that cannot state
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
+
+## START HERE — 2026-07-31
+
+> ## 🚨 FIRST: the live API is three days behind `main`, and the placement model was never deployed
+>
+> **Verified 2026-07-31 by App Runner operations, not by assumption:**
+>
+> ```
+> aws apprunner list-operations --service-arn arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654 --region us-east-1
+> → most recent SUCCEEDED deployment: 2026-07-28T10:37
+> ```
+>
+> The placement model merged to `main` on **2026-07-30** (`a81ff37`, `8f745c2`).
+> Nothing has deployed since. **Two slices are now stacked undeployed:** the
+> placement model on `main`, and the weekly Buddy review on this branch.
+>
+> That is the real answer to "is it time to cut a build?" — **the blocker is not
+> the build, it is that nothing has shipped.** Details and the recommended
+> single combined sequence are in *Cutting the next build* below.
+>
+> ## 🟡 This slice is on branch `weekly-buddy-review-spec`, pushed, not merged
+>
+> ```bash
+> git checkout main && git merge weekly-buddy-review-spec
+> ```
+>
+> 30 commits, 37 files, +7,043 lines. Pushed to origin 2026-07-31.
+> PR: https://github.com/radmelon/kanji-learn/pull/new/weekly-buddy-review-spec
+>
+> Review before merging — see *Open decisions* at the bottom, which are yours
+> and not the implementers'.
+>
+> ### What exists now
+>
+> | | |
+> |---|---|
+> | **Design spec** | [`2026-07-30-weekly-buddy-review-design.md`](superpowers/specs/2026-07-30-weekly-buddy-review-design.md) — 11 sections, complete |
+> | **Slice-1 plan** | [`2026-07-31-weekly-buddy-review-slice-1.md`](superpowers/plans/2026-07-31-weekly-buddy-review-slice-1.md) — 12 tasks, all executed |
+> | **Slices 2 and 3** | designed in §10 of the spec, not yet planned |
+>
+> **The feature:** a weekly appointment with Buddy on a day the learner picks.
+> Buddy opens in a register chosen by the shape of their week, reports on the
+> commitment they agreed last time, and they set the next one. The commitment is
+> **effort and method, never volume** — days and minutes, not kanji learned,
+> because volume depends on review debt and card difficulty and a learner can do
+> everything right and still miss it.
+>
+> Slice 1 is the ritual on the **template tier** — no LLM anywhere. That tier is
+> not scaffolding: it is the permanent floor every later offline, rate-limited,
+> and outage path falls back to.
+>
+> ### Verified on the branch (after the whole-branch review and its fixes)
+>
+> | Lane | Result |
+> |---|---|
+> | `packages/shared` | **268 passing** (was 193) |
+> | `apps/api` | **397 passing**, 2 skipped, 3 failing — all pre-existing, see below |
+> | `apps/mobile` pure | **154 passing** (was 144) |
+> | `apps/mobile` components | **7 passing** (was 1) |
+> | `pnpm -r typecheck` | clean, 0 errors |
+>
+> ### 🔍 The whole-branch review returned NOT READY, and was right
+>
+> Per-task reviews all passed. The final review then found four defects that
+> **only exist in the seams between tasks** — every individual function was
+> correct. Fixed in `33e4595` (API) and `09fb7c9` (mobile), with migrations
+> `0031` adding `buddy_cadence_changed_at` and `buddy_last_invited_at`.
+>
+> - **The fortnightly tier was unreachable.** `getMissCount` and `nextCadence`
+>   are each correct; together on an hourly loop they stepped a learner
+>   weekly → fortnightly → off within two hours, sending two contradictory
+>   pushes. Nothing recorded that the pass had already acted.
+> - **Both of those fired at local midnight** — the step-down branch
+>   `continue`d before the `reminderHour` gate.
+> - **Step-down triggered after two misses, not three.** `ensureForWeek` writes
+>   the current period's row, then `getMissCount` counted it.
+> - **The invitation re-pushed every day of the due window** — four days
+>   weekly, eight fortnightly — for a feature whose premise is not nagging.
+> - **The mobile screen was unreachable**: no route, and no
+>   `addNotificationResponseReceivedListener` anywhere in the app, so the
+>   `buddy_session` push payload had no handler at all.
+>
+> **The transferable point:** none of these are bugs in a function. They are
+> bugs in a composition, and only a review of the whole sees a composition.
+> A plan executed task-by-task with clean per-task reviews can still assemble
+> into something broken.
+>
+> ### 🛑 The deploy sequence is forced
+>
+> | | Step | Why here |
+> |---|---|---|
+> | 1 | Apply migration `0030` to live | the API reads `buddy_commitments`; deploying first means 500s |
+> | 2 | Deploy API | — |
+> | 3 | **Verify by CONTENT, not status code** | `GET /v1/buddy/session` must return a body containing `state`. `docs/SOP.md` records a rollout called "verified" on a status code while App Runner served a six-week-old image |
+> | 4 | EAS build + submit | mobile calls the new endpoints |
+> | 5 | Device walkthrough | the `buddy_day` push has never fired on a real device |
+>
+> **No EventBridge change is needed, and that is deliberate.** The hourly pass
+> rides the existing `POST /internal/daily-reminders` invocation.
+> `apps/api/src/cron.ts:8` records why in-app `node-cron` is wrong here — it
+> double-fires once App Runner scales past one instance — and a new rule is an
+> infra step that gets missed at deploy time.
+>
+> ### 🔵 Two corrections to things this project believed
+>
+> **1. `user-delete` was never a product bug, and is now fixed.**
+> `drizzle-kit push` builds the local test DB from `schema.ts`, where
+> `learnerIdentity.learnerId` is a bare primary key with no `.references()`.
+> Production gets that FK from migration `0016`; the local database never did,
+> because `0016` was missing from `local-test-db.md`'s hand-applied list. So the
+> cascade test failed, left the row behind, and every later run died on
+> `duplicate key value violates unique constraint "learner_identity_pkey"`.
+> Read as a fixture bug for months; it was a missing constraint, missing only
+> locally. `local-test-db.md` now lists `0016` and `0030` plus the orphan-cleanup
+> command.
+>
+> **2. `placement-service`'s B-210 test is order-dependent, and is telling the
+> truth.** It passes only when its file runs FIRST in a vitest process. Any
+> preceding integration file makes it fail on its own control assertion — *"no
+> kanji were seeded, so this run cannot demonstrate that protection did
+> anything"*. Reproduced with `learner-profile` and `dual-write` (both unrelated
+> and pre-existing) and with the `0016` FK dropped, so it is **not** caused by
+> this session's work.
+>
+> **The significance is uncomfortable.** That control assertion was added last
+> session precisely so B-210 could not pass vacuously — and what it now reveals
+> is that **in full-suite runs the test has not been proving anything.** It is
+> not newly broken; it is newly honest. Fixture isolation needs its own session.
+>
+> **Remaining API failures are three, all pre-existing and none caused by this
+> branch:** `rls-coverage` (seven genuinely unprotected legacy tables —
+> `placement_*`, `tutor_*`, `user_push_tokens`, `kanji_difficulty`), the B-210
+> order dependency above, and `learner-state-refresh`, which is **intermittent**
+> — a `setImmediate`/50ms timing race that appears in some full-suite runs and
+> not others.
+>
+> **That makes two documented fixture-isolation failures in this repo**, both
+> passing or failing on execution order rather than on the code under test.
+> They deserve one session together, not another round of being counted as
+> noise.
+>
+> ### 🔴 The lesson this slice actually taught
+>
+> Six review findings across the chain. **Five were a test or check that could
+> not fail**, and three of those trace to defects in the plan's own text — the
+> plan written to prevent exactly that.
+>
+> - Task 6: the plan's "delete the guard, watch it go red" step **did not
+>   reproduce** — the test short-circuits on a read before reaching the guard.
+>   The implementer proved the guard by hand and then deleted the proof.
+> - Task 7: route correct, but the only `due`-state test was the one case where
+>   the copy function ignores its argument. The fix's red run printed
+>   `expected '0 days this week…' to contain '6'`.
+> - Task 11: Profile controls PATCHed two new fields the Zod schema did not
+>   list. `z.object()` **strips** unknown keys — 200 returned, values discarded.
+>   A verbatim recurrence of the four-inert-features bug already in this file.
+> - Task 1 (mine): migration `0030` enabled RLS without forcing it, adding an
+>   eighth table to a `rls-coverage` list already red for seven. Invisible
+>   behind a summary count.
+>
+> **The constraint "every guard test carries a control assertion" is not
+> enough.** Only running the test against the removed rule proves anything.
+> Every fix that mattered this session was demonstrated red first, and the
+> plan for slice 2 should require that, not merely the assertion.
+>
+> Related: **known-failure lists must enumerate, not count.** "3 pre-existing
+> failures" is not a baseline — it is what let an eighth table hide behind
+> seven.
+>
+> ### Open decisions — yours, not the implementers'
+>
+> 1. **`POST /v1/buddy/session/commitment` validates `weekStart` only as a
+>    date-shaped string**, so a client can write a commitment for any week
+>    rather than the one due. Matches the plan's own sample, so it is a design
+>    gap rather than a deviation. Orphan rows outside the cadence are possible.
+> 2. **Nothing is known to alert on the `[BuddyDay]` log prefix.** The hourly
+>    pass now isolates per-user failures and logs a distinctive summary line,
+>    but the endpoint still returns `{ok: true}` regardless. The code-level
+>    signal is sound; whether anything consumes it is unverified.
+> 3. **Spec §11 item 3 is still open — when a new learner is first offered an
+>    appointment.** Slice 1 therefore has **no path that sets `buddy_day` except
+>    the Profile screen**. Shippable (the appointment is opt-in) but a new
+>    learner will not find it unless they go looking. Resolve before slice 2,
+>    where the first session carries Frame's `ask`.
+> 4. **B-210 and `learner-state-refresh` fixture isolation** (above) — one
+>    session for both.
+> 5. **The notification-tap routing has no test, deliberately.** There is no
+>    harness in this repo for mounting `_layout.tsx` or mocking
+>    `expo-notifications`' response surface, and a shallow mock would only test
+>    the mock. **Owed at deploy step 5**, and specifically: that tapping a
+>    `buddy_session` push opens the screen from both killed and backgrounded
+>    states, that it does not double-navigate when the screen is already open,
+>    and that the Profile entry reaches it with no push involved.
+>
+> ### 🚢 Cutting the next build — one deploy, one build, both slices
+>
+> **Recommendation: do not cut a build for the weekly review alone. Merge,
+> deploy both slices in one forced sequence, then cut ONE build that carries
+> both device walkthroughs.**
+>
+> Three reasons it has to be combined rather than sequential:
+>
+> 1. **Deploying placement alone breaks installed builds.** The placement model
+>    changed `POST /v1/placement/complete` from `results: [{kanjiId, passed}]`
+>    to `responses: [{kanjiId, itemType, correct}]`. B145 sends the old shape.
+>    The moment that API deploys, placement is broken for anyone on B145 —
+>    onboarding only, tiny tester group, but real. So a build has to follow
+>    immediately anyway; there is no version of this where you deploy placement
+>    and wait.
+> 2. **Both slices owe a device walkthrough and neither has had one.** One
+>    build discharges both.
+> 3. **Budget is not the constraint.** ~7 medium iOS builds remain and the
+>    allowance renews **2026-08-04**. Spending one is cheap; spending two when
+>    one would do is the only waste available here.
+>
+> **The combined sequence, in this order — every step is load-bearing:**
+>
+> | | Step | Why here |
+> |---|---|---|
+> | 1 | Merge `weekly-buddy-review-spec` to `main` | so one deploy carries both slices |
+> | 2 | Apply `0029` (placement) to live | the API queries `kanji_difficulty`; deploying first means 500s |
+> | 3 | Apply `0030` + `0031` (weekly review) to live | same reason for `buddy_commitments` |
+> | 4 | **Run `refreshKanjiDifficulty`** | `selectNextItems` reads that table. Skip it and placement returns **an empty test, not an error** — it fails silently |
+> | 5 | Deploy API | — |
+> | 6 | **Verify by CONTENT** | an App Runner operation dated today AND a response field only the new build returns. `docs/SOP.md` records a rollout called "verified" on a status code while a six-week-old image served |
+> | 7 | EAS build + submit | mobile calls the new endpoints in both slices |
+> | 8 | Device walkthrough — **both** | see below |
+>
+> **What the walkthrough must cover, because none of it is testable off-device:**
+>
+> *Placement:* the new adaptive test end to end; the prediction to check is that
+> it stops at ~13 items rather than the old 60, and seeds ~2 kanji rather than
+> 44 (see the previous handoff's account analysis).
+>
+> *Weekly review:* set a `buddy_day` in Profile; confirm the push arrives at
+> `reminder_hour` in local time on that day; **tap it from a killed app and from
+> a backgrounded app** and confirm both land on the session screen; confirm no
+> double-navigation when the screen is already open; confirm the Profile entry
+> reaches it with no push involved; run one full session and confirm the
+> commitment persists.
+>
+> **Timezone — checked 2026-07-31, and the walkthrough is safe:**
+>
+> ```
+> Asia/Tokyo           1
+> America/Los_Angeles  2
+> UTC                  2
+> ```
+>
+> **Run the walkthrough on an `America/Los_Angeles` account.** The hourly pass
+> deliberately SKIPS rows still on the `'UTC'` default rather than guessing at a
+> local day — so testing on one of those two would show silence, and a working
+> guard would read as a broken feature.
+>
+> **The two stragglers self-heal; no backfill migration is needed.** Plan 4 Task
+> 17 captures timezone at sign-in, which is why the server's "no captured
+> timezone" warning has been falling: 5/5 → 3/5 → 2/5. Those accounts simply
+> have not signed in since it shipped.
+>
+> **One divergence to know about before someone "fixes" it backwards.** The two
+> jobs in `notification.service.ts` treat a `'UTC'` row differently, on purpose:
+>
+> | | Behaviour on a `'UTC'` row |
+> |---|---|
+> | `sendDailyReminders` | evaluates `reminderHour` against UTC anyway — fires, at the wrong local hour |
+> | `runBuddyDayPass` | **skips the row entirely** |
+>
+> The buddy behaviour is the better one: a weekly appointment fired on the wrong
+> day is worse than one not fired at all, and silence is diagnosable where a
+> wrong-day push is just confusing. Do not "align" the buddy pass to the daily
+> reminder — align the daily reminder to the buddy pass, if either.
+>
+> ### What slice 2 is
+>
+> The conversation: cloud tier, `buddy_conversations`, `buddy_learner_facts`
+> with the seeding pass over hooks and onboarding, parked topics, the profile
+> dual-write, elicitation, `retract_fact`/`correct_fact`, trajectory and
+> frontier checks, escalation with the ask-for-time protocol, and the
+> per-dimension drill diagnosis (§10 of the spec — a `groupBy` change on the
+> existing weak-kanji queue, not a new feature).
+>
+> ---
+
+# Previous — 2026-07-30 later (**placement model shipped to `main`; Arc brainstorm next**)
 
 ## START HERE — 2026-07-30 (later)
 

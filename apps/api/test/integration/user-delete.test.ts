@@ -15,6 +15,7 @@ import {
   userKanjiProgress,
   learnerIdentity,
   learnerProfileUniversal,
+  buddyCommitments,
 } from '@kanji-learn/db'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
@@ -64,11 +65,27 @@ describe('user_profiles delete cascade', () => {
       learnerId: TEST_USER,
       interests: ['Anime / Manga'],
     })
+    await db.insert(buddyCommitments).values({
+      userId: TEST_USER,
+      weekStart: '2026-08-03',
+      daysCommitted: 4,
+      minutesPerDay: 15,
+      source: 'session',
+    })
 
     const learnerBefore = await db.query.learnerProfiles.findFirst({
       where: eq(learnerProfiles.userId, TEST_USER),
     })
     expect(learnerBefore).toBeTruthy()
+
+    // Control assertion for the buddy_commitments row below: without it, a
+    // post-delete count of 0 would also be satisfied by a row that was never
+    // there, and the cascade assertion would prove nothing.
+    const commitmentsBefore = await db
+      .select()
+      .from(buddyCommitments)
+      .where(eq(buddyCommitments.userId, TEST_USER))
+    expect(commitmentsBefore).toHaveLength(1)
 
     await db.delete(userProfiles).where(eq(userProfiles.id, TEST_USER))
 
@@ -84,9 +101,12 @@ describe('user_profiles delete cascade', () => {
     const universalAfter = await db.query.learnerProfileUniversal.findFirst({
       where: eq(learnerProfileUniversal.learnerId, TEST_USER),
     })
+    const commitments = await db.select().from(buddyCommitments)
+      .where(eq(buddyCommitments.userId, TEST_USER))
     expect(learnerAfter).toBeUndefined()
     expect(progressAfter).toBeUndefined()
     expect(identityAfter).toBeUndefined()
     expect(universalAfter).toBeUndefined()
+    expect(commitments).toHaveLength(0)
   })
 })

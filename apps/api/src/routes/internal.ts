@@ -40,6 +40,20 @@ export async function internalRoutes(fastify: FastifyInstance): Promise<void> {
       fastify.log.error({ err }, '[Internal] Rest-day summaries failed')
     }
 
+    // The weekly Buddy appointment rides this same hourly invocation — see
+    // cron.ts:8 for why this is not a node-cron schedule, and the plan for why
+    // it is not a second EventBridge rule.
+    try {
+      await notifications.runBuddyDayPass()
+    } catch (err) {
+      // Distinct from the per-user failure line runBuddyDayPass logs itself
+      // (`[BuddyDay] pass completed with N user failure(s)`): reaching this
+      // catch means the pass aborted before finishing everyone, which is far
+      // worse than N isolated per-user failures and must read as such to
+      // whoever is grepping "[BuddyDay]" for alerts.
+      fastify.log.error({ err }, '[BuddyDay] hourly pass threw and did not complete')
+    }
+
     return reply.send({ ok: true })
   })
 }
