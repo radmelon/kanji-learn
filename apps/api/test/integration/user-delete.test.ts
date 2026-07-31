@@ -78,6 +78,15 @@ describe('user_profiles delete cascade', () => {
     })
     expect(learnerBefore).toBeTruthy()
 
+    // Control assertion for the buddy_commitments row below: without it, a
+    // post-delete count of 0 would also be satisfied by a row that was never
+    // there, and the cascade assertion would prove nothing.
+    const commitmentsBefore = await db
+      .select()
+      .from(buddyCommitments)
+      .where(eq(buddyCommitments.userId, TEST_USER))
+    expect(commitmentsBefore).toHaveLength(1)
+
     await db.delete(userProfiles).where(eq(userProfiles.id, TEST_USER))
 
     const learnerAfter = await db.query.learnerProfiles.findFirst({
