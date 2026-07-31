@@ -458,6 +458,13 @@ export class NotificationService {
     const nowUtc = new Date()
     const commitments = new CommitmentService(this.db)
 
+    // Unscoped on purpose in production — every learner with a buddy day
+    // configured must be considered every hour. In tests this also sweeps up
+    // any row another test file left behind with a non-null buddy_day; the
+    // only reason that hasn't caused cross-file bleed is
+    // `apps/api/vitest.config.ts`'s `fileParallelism: false`, which keeps test
+    // files from running concurrently against the shared Postgres instance.
+    // If that ever flips to `true`, this query needs its own guard.
     const users = await this.db
       .select({
         id: userProfiles.id,
@@ -470,65 +477,83 @@ export class NotificationService {
       .from(userProfiles)
       .where(sql`${userProfiles.buddyDay} IS NOT NULL`)
 
+    let failures = 0
+
     for (const user of users) {
-      // A learner still on the 'UTC' default has no reliable buddy_day.
-      // Skipping is deliberate — guessing is what fired daily reminders at the
-      // wrong hour for three months (schema.ts:171).
-      if (user.timezone === 'UTC') {
-        console.warn(`[BuddyDay] skipping ${user.id}: timezone still 'UTC' default`)
-        continue
-      }
+      try {
+        // A learner still on the 'UTC' default has no reliable buddy_day.
+        // Skipping is deliberate — guessing is what fired daily reminders at
+        // the wrong hour for three months (schema.ts:171).
+        if (user.timezone === 'UTC') {
+          console.warn(`[BuddyDay] skipping ${user.id}: timezone still 'UTC' default`)
+          continue
+        }
 
-      const { hour: localHour } = localHourAndWeekday(nowUtc, user.timezone)
-      const localDate = new Intl.DateTimeFormat('en-CA', {
-        timeZone: user.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
-      }).format(nowUtc)
+        const { hour: localHour } = localHourAndWeekday(nowUtc, user.timezone)
+        const localDate = new Intl.DateTimeFormat('en-CA', {
+          timeZone: user.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(nowUtc)
 
-      const lastAgreed = await commitments.getMostRecentAgreed(user.id)
-      const state = evaluateAppointment({
-        buddyDay: user.buddyDay,
-        intervalWeeks: user.buddyIntervalWeeks,
-        localDate,
-        lastSessionDate: lastAgreed?.weekStart ?? null,
-      })
-
-      if (state.kind !== 'due') continue
-
-      // 1. Roll forward — unconditional, independent of the push.
-      await commitments.ensureForWeek(user.id, state.weekStart)
-
-      // 3. Step down before they mute us.
-      const misses = await commitments.getMissCount(user.id)
-      if (shouldStepDown(misses)) {
-        const next = nextCadence({
+        const lastAgreed = await commitments.getMostRecentAgreed(user.id)
+        const state = evaluateAppointment({
           buddyDay: user.buddyDay,
           intervalWeeks: user.buddyIntervalWeeks,
+          localDate,
+          lastSessionDate: lastAgreed?.weekStart ?? null,
         })
-        await this.db.update(userProfiles)
-          .set({ buddyDay: next.buddyDay, buddyIntervalWeeks: next.intervalWeeks })
-          .where(eq(userProfiles.id, user.id))
 
-        if (user.notificationsEnabled) {
-          await this.sendToUserTokens(user.id, {
-            title: 'Buddy',
-            body: stepDownCopy(next),
-            sound: 'default',
-            data: { type: 'buddy_step_down' },
+        if (state.kind !== 'due') continue
+
+        // 1. Roll forward — unconditional, independent of the push.
+        await commitments.ensureForWeek(user.id, state.weekStart)
+
+        // 3. Step down before they mute us.
+        const misses = await commitments.getMissCount(user.id)
+        if (shouldStepDown(misses)) {
+          const next = nextCadence({
+            buddyDay: user.buddyDay,
+            intervalWeeks: user.buddyIntervalWeeks,
           })
+          await this.db.update(userProfiles)
+            .set({ buddyDay: next.buddyDay, buddyIntervalWeeks: next.intervalWeeks })
+            .where(eq(userProfiles.id, user.id))
+
+          if (user.notificationsEnabled) {
+            await this.sendToUserTokens(user.id, {
+              title: 'Buddy',
+              body: stepDownCopy(next),
+              sound: 'default',
+              data: { type: 'buddy_step_down' },
+            })
+          }
+          continue
         }
-        continue
+
+        // 2. Push, only at their chosen hour.
+        if (localHour !== (user.reminderHour ?? 20)) continue
+        if (!user.notificationsEnabled) continue
+
+        await this.sendToUserTokens(user.id, {
+          title: 'Time for our weekly catch-up',
+          body: "Let's look at the week and set the next one.",
+          sound: 'default',
+          data: { type: 'buddy_session', weekStart: state.weekStart },
+        })
+      } catch (err) {
+        // One learner's malformed row / transient DB error must never abort
+        // the pass for everyone behind them in the loop — that would silently
+        // break the roll-forward guarantee for the whole population, every
+        // hour, indefinitely. Isolate per user, log with the id, and keep going.
+        failures++
+        console.error(`[BuddyDay] failed for user ${user.id}:`, err)
       }
+    }
 
-      // 2. Push, only at their chosen hour.
-      if (localHour !== (user.reminderHour ?? 20)) continue
-      if (!user.notificationsEnabled) continue
-
-      await this.sendToUserTokens(user.id, {
-        title: 'Time for our weekly catch-up',
-        body: "Let's look at the week and set the next one.",
-        sound: 'default',
-        data: { type: 'buddy_session', weekStart: state.weekStart },
-      })
+    // A single grep-able line an operator can alert on. Deliberately absent
+    // on a clean pass so its mere presence in the logs is the signal —
+    // "0 failures" would read as fine at a glance even when it wasn't.
+    if (failures > 0) {
+      console.error(`[BuddyDay] pass completed with ${failures} user failure(s)`)
     }
   }
 

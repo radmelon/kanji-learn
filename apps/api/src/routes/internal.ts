@@ -46,7 +46,12 @@ export async function internalRoutes(fastify: FastifyInstance): Promise<void> {
     try {
       await notifications.runBuddyDayPass()
     } catch (err) {
-      fastify.log.error({ err }, '[Internal] Buddy-day pass failed')
+      // Distinct from the per-user failure line runBuddyDayPass logs itself
+      // (`[BuddyDay] pass completed with N user failure(s)`): reaching this
+      // catch means the pass aborted before finishing everyone, which is far
+      // worse than N isolated per-user failures and must read as such to
+      // whoever is grepping "[BuddyDay]" for alerts.
+      fastify.log.error({ err }, '[BuddyDay] hourly pass threw and did not complete')
     }
 
     return reply.send({ ok: true })
