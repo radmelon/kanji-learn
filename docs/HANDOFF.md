@@ -37,15 +37,41 @@
 > not scaffolding: it is the permanent floor every later offline, rate-limited,
 > and outage path falls back to.
 >
-> ### Verified on the branch
+> ### Verified on the branch (after the whole-branch review and its fixes)
 >
 > | Lane | Result |
 > |---|---|
 > | `packages/shared` | **268 passing** (was 193) |
-> | `apps/api` | **391 passing**, 2 skipped, 2 failing — both pre-existing, see below |
-> | `apps/mobile` pure | **153 passing** (was 144) |
-> | `apps/mobile` components | **6 passing** (was 1) |
-> | `pnpm -r typecheck` | clean |
+> | `apps/api` | **397 passing**, 2 skipped, 3 failing — all pre-existing, see below |
+> | `apps/mobile` pure | **154 passing** (was 144) |
+> | `apps/mobile` components | **7 passing** (was 1) |
+> | `pnpm -r typecheck` | clean, 0 errors |
+>
+> ### 🔍 The whole-branch review returned NOT READY, and was right
+>
+> Per-task reviews all passed. The final review then found four defects that
+> **only exist in the seams between tasks** — every individual function was
+> correct. Fixed in `33e4595` (API) and `09fb7c9` (mobile), with migrations
+> `0031` adding `buddy_cadence_changed_at` and `buddy_last_invited_at`.
+>
+> - **The fortnightly tier was unreachable.** `getMissCount` and `nextCadence`
+>   are each correct; together on an hourly loop they stepped a learner
+>   weekly → fortnightly → off within two hours, sending two contradictory
+>   pushes. Nothing recorded that the pass had already acted.
+> - **Both of those fired at local midnight** — the step-down branch
+>   `continue`d before the `reminderHour` gate.
+> - **Step-down triggered after two misses, not three.** `ensureForWeek` writes
+>   the current period's row, then `getMissCount` counted it.
+> - **The invitation re-pushed every day of the due window** — four days
+>   weekly, eight fortnightly — for a feature whose premise is not nagging.
+> - **The mobile screen was unreachable**: no route, and no
+>   `addNotificationResponseReceivedListener` anywhere in the app, so the
+>   `buddy_session` push payload had no handler at all.
+>
+> **The transferable point:** none of these are bugs in a function. They are
+> bugs in a composition, and only a review of the whole sees a composition.
+> A plan executed task-by-task with clean per-task reviews can still assemble
+> into something broken.
 >
 > ### 🛑 The deploy sequence is forced
 >
@@ -89,9 +115,17 @@
 > is that **in full-suite runs the test has not been proving anything.** It is
 > not newly broken; it is newly honest. Fixture isolation needs its own session.
 >
-> **Remaining API failures are therefore two:** `rls-coverage` (seven genuinely
-> unprotected pre-existing tables — `placement_*`, `tutor_*`, `user_push_tokens`,
-> `kanji_difficulty`) and the B-210 order dependency above.
+> **Remaining API failures are three, all pre-existing and none caused by this
+> branch:** `rls-coverage` (seven genuinely unprotected legacy tables —
+> `placement_*`, `tutor_*`, `user_push_tokens`, `kanji_difficulty`), the B-210
+> order dependency above, and `learner-state-refresh`, which is **intermittent**
+> — a `setImmediate`/50ms timing race that appears in some full-suite runs and
+> not others.
+>
+> **That makes two documented fixture-isolation failures in this repo**, both
+> passing or failing on execution order rather than on the code under test.
+> They deserve one session together, not another round of being counted as
+> noise.
 >
 > ### 🔴 The lesson this slice actually taught
 >
@@ -136,7 +170,15 @@
 >    the Profile screen**. Shippable (the appointment is opt-in) but a new
 >    learner will not find it unless they go looking. Resolve before slice 2,
 >    where the first session carries Frame's `ask`.
-> 4. **B-210 fixture isolation** (above) — its own session.
+> 4. **B-210 and `learner-state-refresh` fixture isolation** (above) — one
+>    session for both.
+> 5. **The notification-tap routing has no test, deliberately.** There is no
+>    harness in this repo for mounting `_layout.tsx` or mocking
+>    `expo-notifications`' response surface, and a shallow mock would only test
+>    the mock. **Owed at deploy step 5**, and specifically: that tapping a
+>    `buddy_session` push opens the screen from both killed and backgrounded
+>    states, that it does not double-navigate when the screen is already open,
+>    and that the Profile entry reaches it with no push involved.
 >
 > ### What slice 2 is
 >
