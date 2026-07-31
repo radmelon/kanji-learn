@@ -6,6 +6,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { eq } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
+import { addDays } from '@kanji-learn/shared'
 import { buildTestApp } from '../helpers/test-app'
 import { buddySessionRoutes } from '../../src/routes/buddy-session'
 
@@ -27,6 +28,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(schema.buddyCommitments).where(eq(schema.buddyCommitments.userId, TEST_USER_ID))
+  await db.delete(schema.dailyStats).where(eq(schema.dailyStats.userId, TEST_USER_ID))
   await db.update(schema.userProfiles)
     .set({ buddyDay: null, buddyIntervalWeeks: 1 })
     .where(eq(schema.userProfiles.id, TEST_USER_ID))
@@ -34,6 +36,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await db.delete(schema.buddyCommitments).where(eq(schema.buddyCommitments.userId, TEST_USER_ID))
+  await db.delete(schema.dailyStats).where(eq(schema.dailyStats.userId, TEST_USER_ID))
   await db.delete(schema.userProfiles).where(eq(schema.userProfiles.id, TEST_USER_ID))
   await app.close()
   await client.end()
@@ -54,6 +57,16 @@ async function postCommitment(payload: Record<string, unknown>) {
     headers: { 'x-test-user-id': TEST_USER_ID },
     payload,
   })
+}
+
+/** Mirrors buddy-session.ts's own localDateFor — the test needs to predict
+ * the due week's anchor date WITHOUT hitting the route first, since hitting
+ * it prematurely would call ensureForWeek and insert a commitment row before
+ * the fixture has seeded the previous period it needs. */
+function localDateInLA(now: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now)
 }
 
 describe('GET /v1/buddy/session', () => {
@@ -93,6 +106,7 @@ describe('GET /v1/buddy/session', () => {
     // Agree a commitment for the due session, then ask again — the same
     // period should now read as "waiting", not "due" a second time.
     const dueRes = await get()
+    expect(dueRes.json().data.state).toBe('due')
     const weekStart = dueRes.json().data.weekStart as string
     await postCommitment({
       weekStart, daysCommitted: 5, minutesPerDay: 20, dayTargets: null, focus: null,
@@ -102,6 +116,64 @@ describe('GET /v1/buddy/session', () => {
     const data = res.json().data
     expect(data.state).toBe('waiting')
     expect(typeof data.nextDue).toBe('string')
+  })
+
+  it('opens in the strong register with the real active-day count on a SECOND appointment cycle', async () => {
+    // This is the one test that would catch a regression to the original
+    // defect: computing a fresh zeroed PromiseCheck for the openerCopy call
+    // instead of reusing the check that decided selectOpener. Every other
+    // `due` test is the first-ever-session case, where selectOpener always
+    // returns 'first_ever' and openerCopy('first_ever', check) never reads
+    // `check` at all — so those tests pass unchanged even if the route
+    // recomputes a bogus zeroed check for the copy. Here isFirstSession is
+    // false (there IS a previous, session-sourced commitment), so 'strong'
+    // is only reachable — and its "N days this week" text only reads the
+    // seeded number — if the SAME check object flows to both calls.
+    const todayWeekday = new Date(
+      new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })
+    ).getDay()
+    await db.update(schema.userProfiles)
+      .set({ buddyDay: todayWeekday })
+      .where(eq(schema.userProfiles.id, TEST_USER_ID))
+
+    // Predict the due week's anchor the same way the route will, WITHOUT
+    // calling the route first — an early GET would call ensureForWeek and
+    // insert a commitment for this week before we've seeded last week's.
+    const weekStart = localDateInLA(new Date())
+    const previousWeekStart = addDays(weekStart, -7)
+    const ACTIVE_DAYS = 6 // deliberately not 4 (default daysCommitted) or 15
+    // (default minutesPerDay), so a match on "6" in opener.text could not be
+    // coincidental.
+
+    await db.insert(schema.buddyCommitments).values({
+      userId: TEST_USER_ID,
+      weekStart: previousWeekStart,
+      daysCommitted: 5,
+      dayTargets: null,
+      minutesPerDay: 20,
+      focus: null,
+      source: 'session',
+    })
+
+    await db.insert(schema.dailyStats).values(
+      Array.from({ length: ACTIVE_DAYS }, (_, i) => ({
+        userId: TEST_USER_ID,
+        date: addDays(previousWeekStart, i),
+        reviewed: 3,
+        studyTimeMs: 20 * 60_000,
+      }))
+    )
+
+    try {
+      const res = await get()
+      const data = res.json().data
+
+      expect(data.state).toBe('due')
+      expect(data.opener.kind).toBe('strong')
+      expect(data.opener.text).toContain(`${ACTIVE_DAYS}`)
+    } finally {
+      await db.delete(schema.dailyStats).where(eq(schema.dailyStats.userId, TEST_USER_ID))
+    }
   })
 
   it('requires authentication', async () => {
