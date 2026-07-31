@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, lte, ne } from 'drizzle-orm'
 import { buddyCommitments, dailyStats } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import {
@@ -136,8 +136,40 @@ export class CommitmentService {
     })
   }
 
-  /** Consecutive missed appointments, derived rather than stored (spec §8.1). */
-  async getMissCount(userId: string): Promise<number> {
+  /**
+   * Consecutive missed appointments, derived rather than stored (spec §8.1).
+   *
+   * `excludeWeekStart` — the period currently being evaluated by the pass.
+   * `ensureForWeek` writes THIS period's `rolled_forward` row before the pass
+   * asks for the miss count, so without excluding it a learner is stepped
+   * down on the morning of their third appointment, before they could have
+   * attended it — the spec means three COMPLETED misses (fix for the
+   * off-by-one in the weekly-buddy-review pre-merge review).
+   *
+   * `sinceCadenceChangedAt` — only rows whose period began AFTER this
+   * timestamp count. Without it, the very next hourly pass after a step-down
+   * re-evaluates the SAME miss streak (the window just widened) and steps
+   * the learner down again immediately — the fortnightly tier was otherwise
+   * unreachable. A cadence change resets the count.
+   */
+  async getMissCount(
+    userId: string,
+    options: { excludeWeekStart?: string; sinceCadenceChangedAt?: Date | null } = {},
+  ): Promise<number> {
+    const { excludeWeekStart, sinceCadenceChangedAt } = options
+
+    const conditions = [eq(buddyCommitments.userId, userId)]
+    if (excludeWeekStart) {
+      conditions.push(ne(buddyCommitments.weekStart, excludeWeekStart))
+    }
+    if (sinceCadenceChangedAt) {
+      // Compare on the calendar date the period began, not the instant —
+      // week_start is a plain date. Anything at or before the cadence
+      // change's own day is the streak that caused it, not a new miss.
+      const sinceDate = sinceCadenceChangedAt.toISOString().slice(0, 10)
+      conditions.push(gt(buddyCommitments.weekStart, sinceDate))
+    }
+
     // Capped at the last 12 periods (~3 months). A streak of rolled-forward
     // rows longer than that would be undercounted, but the step-down
     // threshold in the reckoning is 3, so anything past that already reads
@@ -148,7 +180,7 @@ export class CommitmentService {
       source: buddyCommitments.source,
     })
       .from(buddyCommitments)
-      .where(eq(buddyCommitments.userId, userId))
+      .where(and(...conditions))
       .orderBy(desc(buddyCommitments.weekStart))
       .limit(12)
 

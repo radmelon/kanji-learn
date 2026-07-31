@@ -113,4 +113,27 @@ describe('buddy_commitments schema', () => {
         .where(eq(schema.userProfiles.id, TEST_USER_ID))
     ).rejects.toThrow()
   })
+
+  // Migration 0031.
+  it('rejects a minutes_per_day outside 1-600', async () => {
+    await expect(
+      db.insert(schema.buddyCommitments).values({
+        userId: TEST_USER_ID,
+        weekStart: '2026-08-24',
+        daysCommitted: 4,
+        minutesPerDay: 601,
+        source: 'session',
+      })
+    ).rejects.toThrow()
+
+    await expect(
+      db.insert(schema.buddyCommitments).values({
+        userId: TEST_USER_ID,
+        weekStart: '2026-08-31',
+        daysCommitted: 4,
+        minutesPerDay: 0,
+        source: 'session',
+      })
+    ).rejects.toThrow()
+  })
 })

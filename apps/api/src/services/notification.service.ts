@@ -473,6 +473,8 @@ export class NotificationService {
         buddyDay: userProfiles.buddyDay,
         buddyIntervalWeeks: userProfiles.buddyIntervalWeeks,
         notificationsEnabled: userProfiles.notificationsEnabled,
+        buddyCadenceChangedAt: userProfiles.buddyCadenceChangedAt,
+        buddyLastInvitedAt: userProfiles.buddyLastInvitedAt,
       })
       .from(userProfiles)
       .where(sql`${userProfiles.buddyDay} IS NOT NULL`)
@@ -507,15 +509,41 @@ export class NotificationService {
         // 1. Roll forward — unconditional, independent of the push.
         await commitments.ensureForWeek(user.id, state.weekStart)
 
+        // Gate step-down AND invitation on the learner's chosen local hour,
+        // same as each other. Previously only the invitation was gated here,
+        // so the step-down branch fired as soon as roll-forward made the
+        // period due — typically local midnight — hours before the learner's
+        // chosen time, and (combined with the miss-count reset below) could
+        // fire a second contradictory push an hour later.
+        if (localHour !== (user.reminderHour ?? 20)) continue
+
         // 3. Step down before they mute us.
-        const misses = await commitments.getMissCount(user.id)
+        //
+        // excludeWeekStart drops the period `ensureForWeek` just wrote above:
+        // it is still in progress, and counting it steps the learner down on
+        // the morning of their third appointment rather than after it.
+        //
+        // sinceCadenceChangedAt drops any miss the pass already acted on: a
+        // cadence step-down widens the due window (`floor(periodDays/2)`
+        // grows with `intervalWeeks`), so without this the very next hourly
+        // invocation would re-evaluate the SAME rolled_forward rows as still
+        // due and step the learner down a second time immediately — the
+        // fortnightly tier was unreachable.
+        const misses = await commitments.getMissCount(user.id, {
+          excludeWeekStart: state.weekStart,
+          sinceCadenceChangedAt: user.buddyCadenceChangedAt,
+        })
         if (shouldStepDown(misses)) {
           const next = nextCadence({
             buddyDay: user.buddyDay,
             intervalWeeks: user.buddyIntervalWeeks,
           })
           await this.db.update(userProfiles)
-            .set({ buddyDay: next.buddyDay, buddyIntervalWeeks: next.intervalWeeks })
+            .set({
+              buddyDay: next.buddyDay,
+              buddyIntervalWeeks: next.intervalWeeks,
+              buddyCadenceChangedAt: nowUtc,
+            })
             .where(eq(userProfiles.id, user.id))
 
           if (user.notificationsEnabled) {
@@ -529,9 +557,19 @@ export class NotificationService {
           continue
         }
 
-        // 2. Push, only at their chosen hour.
-        if (localHour !== (user.reminderHour ?? 20)) continue
+        // 2. Push the invitation — but only once per period. Nothing recorded
+        // that an invitation had already gone out, so every one of the
+        // `floor(periodDays / 2)` due days re-sent the identical push. Skip
+        // when the last invitation landed during (or after) this period.
         if (!user.notificationsEnabled) continue
+        const alreadyInvitedThisPeriod =
+          user.buddyLastInvitedAt != null &&
+          user.buddyLastInvitedAt.toISOString().slice(0, 10) >= state.weekStart
+        if (alreadyInvitedThisPeriod) continue
+
+        await this.db.update(userProfiles)
+          .set({ buddyLastInvitedAt: nowUtc })
+          .where(eq(userProfiles.id, user.id))
 
         await this.sendToUserTokens(user.id, {
           title: 'Time for our weekly catch-up',

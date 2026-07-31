@@ -56,6 +56,16 @@ export async function buddySessionRoutes(server: FastifyInstance) {
       return reply.code(404).send({ ok: false, error: 'Profile not found', code: 'NOT_FOUND' })
     }
 
+    // A learner still on the 'UTC' default has no reliable buddy_day — the
+    // same guard runBuddyDayPass applies (notification.service.ts, spec
+    // §8.5). Without it, this read path served a fabricated "due" session,
+    // wrote rolled_forward rows, and accumulated miss counts the pass would
+    // never see (its own query skips these users entirely), so the two
+    // consumers disagreed about the same learner.
+    if (profile.timezone === 'UTC') {
+      return reply.send({ ok: true, data: { state: 'not_scheduled' } })
+    }
+
     const now = new Date()
     const localDate = localDateFor(profile.timezone, now)
 

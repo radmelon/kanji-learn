@@ -180,6 +180,34 @@ describe('GET /v1/buddy/session', () => {
     const res = await app.inject({ method: 'GET', url: '/v1/buddy/session' })
     expect(res.statusCode).toBe(401)
   })
+
+  // Weekly-buddy-review pre-merge review, FIX 6: runBuddyDayPass skips a
+  // learner still on the 'UTC' default (schema.ts:171) because their
+  // buddy_day has no reliable local meaning — but this read path had no
+  // matching guard, so it served a fabricated "due" session, wrote
+  // rolled_forward rows, and accumulated miss counts the pass would never
+  // see (its own query filters these users out entirely).
+  it('reports not_scheduled for a learner still on the UTC default timezone, even with a buddy_day set (FIX 6)', async () => {
+    await db.update(schema.userProfiles)
+      .set({ timezone: 'UTC', buddyDay: new Date().getUTCDay() })
+      .where(eq(schema.userProfiles.id, TEST_USER_ID))
+
+    try {
+      const res = await get()
+      expect(res.statusCode).toBe(200)
+      expect(res.json().data.state).toBe('not_scheduled')
+
+      // Control: no commitment row should have been fabricated for this
+      // learner — before the fix, the due path ran and called ensureForWeek.
+      const rows = await db.select().from(schema.buddyCommitments)
+        .where(eq(schema.buddyCommitments.userId, TEST_USER_ID))
+      expect(rows).toHaveLength(0)
+    } finally {
+      await db.update(schema.userProfiles)
+        .set({ timezone: 'America/Los_Angeles' })
+        .where(eq(schema.userProfiles.id, TEST_USER_ID))
+    }
+  })
 })
 
 describe('POST /v1/buddy/session/commitment', () => {

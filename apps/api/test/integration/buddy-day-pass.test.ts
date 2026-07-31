@@ -6,6 +6,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { eq } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
+import { addDays } from '@kanji-learn/shared'
 import { NotificationService } from '../../src/services/notification.service'
 import { CommitmentService } from '../../src/services/buddy/commitment.service'
 
@@ -30,6 +31,15 @@ beforeAll(async () => {
 beforeEach(async () => {
   for (const id of [TEST_USER_ID, UTC_USER_ID, ISOLATION_USER_ID]) {
     await db.delete(schema.buddyCommitments).where(eq(schema.buddyCommitments.userId, id))
+    // Reset the pass's own bookkeeping columns too — otherwise a push or
+    // step-down recorded by one test's runBuddyDayPass() call suppresses the
+    // next test's, since both dedupe guards are keyed off these timestamps
+    // rather than the (test-local) buddy_commitments rows just cleared above.
+    // Also reset cadence to weekly — the step-down tests flip it to
+    // fortnightly (or null) via the pass itself, and nothing else resets it.
+    await db.update(schema.userProfiles)
+      .set({ buddyLastInvitedAt: null, buddyCadenceChangedAt: null, buddyIntervalWeeks: 1 })
+      .where(eq(schema.userProfiles.id, id))
   }
 })
 
@@ -47,6 +57,15 @@ async function scheduleForNow(userId: string, timeZone: string) {
   await db.update(schema.userProfiles)
     .set({ buddyDay: local.getDay(), reminderHour: local.getHours(), notificationsEnabled: true })
     .where(eq(schema.userProfiles.id, userId))
+}
+
+/** The learner's local calendar date in America/Los_Angeles, as YYYY-MM-DD.
+ * Matches buddy-session.ts's own localDateFor. With buddyDay set to today's
+ * weekday (via scheduleForNow), this IS the due period's anchor/weekStart. */
+function localDateInLA(now: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now)
 }
 
 describe('runBuddyDayPass', () => {
@@ -177,5 +196,148 @@ describe('runBuddyDayPass', () => {
     // ...and the pass-level summary line fired — the one thing an operator
     // could plausibly alert on.
     expect(errorMessages.some((m) => m.includes('pass completed with 1 user failure'))).toBe(true)
+  })
+
+  // Weekly-buddy-review pre-merge review, fixes 2-5: nothing recorded that
+  // the pass had already acted, which made the fortnightly tier unreachable,
+  // let the step-down push ignore reminderHour, stepped a learner down
+  // before their third appointment rather than after it, and re-sent the
+  // same invitation on every day of the due window.
+  describe('cadence and invitation bookkeeping', () => {
+    it('does NOT step down after only two completed misses (FIX 4 boundary)', async () => {
+      await scheduleForNow(TEST_USER_ID, 'America/Los_Angeles')
+      const commitments = new CommitmentService(db)
+      const todayStr = localDateInLA(new Date())
+
+      await commitments.setForWeek(TEST_USER_ID, {
+        weekStart: addDays(todayStr, -21), daysCommitted: 4, dayTargets: null,
+        minutesPerDay: 15, focus: null, source: 'session',
+      })
+      // Two COMPLETED misses. The current (today) period is created by the
+      // pass itself via ensureForWeek and must not count as a third.
+      for (const w of [addDays(todayStr, -14), addDays(todayStr, -7)]) {
+        await commitments.ensureForWeek(TEST_USER_ID, w)
+      }
+
+      const service = new NotificationService(db)
+      vi.spyOn(service as any, 'sendToUserTokens').mockResolvedValue(undefined)
+      await service.runBuddyDayPass()
+
+      const profile = await db.select().from(schema.userProfiles)
+        .where(eq(schema.userProfiles.id, TEST_USER_ID))
+      expect(profile[0].buddyIntervalWeeks).toBe(1)
+      expect(profile[0].buddyDay).not.toBeNull()
+    })
+
+    it('DOES step down after three completed misses (FIX 4 boundary)', async () => {
+      await scheduleForNow(TEST_USER_ID, 'America/Los_Angeles')
+      const commitments = new CommitmentService(db)
+      const todayStr = localDateInLA(new Date())
+
+      await commitments.setForWeek(TEST_USER_ID, {
+        weekStart: addDays(todayStr, -28), daysCommitted: 4, dayTargets: null,
+        minutesPerDay: 15, focus: null, source: 'session',
+      })
+      // Three COMPLETED misses this time — the boundary the spec means.
+      for (const w of [addDays(todayStr, -21), addDays(todayStr, -14), addDays(todayStr, -7)]) {
+        await commitments.ensureForWeek(TEST_USER_ID, w)
+      }
+
+      const service = new NotificationService(db)
+      vi.spyOn(service as any, 'sendToUserTokens').mockResolvedValue(undefined)
+      await service.runBuddyDayPass()
+
+      const profile = await db.select().from(schema.userProfiles)
+        .where(eq(schema.userProfiles.id, TEST_USER_ID))
+      expect(profile[0].buddyIntervalWeeks).toBe(2)
+    })
+
+    it('does not step down a second time on the immediately following hourly pass (FIX 2)', async () => {
+      await scheduleForNow(TEST_USER_ID, 'America/Los_Angeles')
+      const commitments = new CommitmentService(db)
+      const todayStr = localDateInLA(new Date())
+
+      await commitments.setForWeek(TEST_USER_ID, {
+        weekStart: addDays(todayStr, -28), daysCommitted: 4, dayTargets: null,
+        minutesPerDay: 15, focus: null, source: 'session',
+      })
+      for (const w of [addDays(todayStr, -21), addDays(todayStr, -14), addDays(todayStr, -7)]) {
+        await commitments.ensureForWeek(TEST_USER_ID, w)
+      }
+
+      const service = new NotificationService(db)
+      const send = vi.spyOn(service as any, 'sendToUserTokens').mockResolvedValue(undefined)
+
+      await service.runBuddyDayPass()
+      let profile = (await db.select().from(schema.userProfiles)
+        .where(eq(schema.userProfiles.id, TEST_USER_ID)))[0]
+      expect(profile.buddyIntervalWeeks).toBe(2) // stepped down once, to fortnightly
+
+      // Simulate the very next hourly invocation. evaluateAppointment's due
+      // window widens with the new intervalWeeks, so the SAME period is
+      // still 'due' here. Without resetting the miss count on cadence
+      // change, this would re-count the same rolled_forward rows and step
+      // the learner down a second time, straight to buddyDay: null.
+      await service.runBuddyDayPass()
+      profile = (await db.select().from(schema.userProfiles)
+        .where(eq(schema.userProfiles.id, TEST_USER_ID)))[0]
+      expect(profile.buddyDay).not.toBeNull()
+      expect(profile.buddyIntervalWeeks).toBe(2)
+
+      const stepDownCalls = send.mock.calls.filter(
+        (c) => c[0] === TEST_USER_ID && (c[1] as any).data.type === 'buddy_step_down',
+      )
+      expect(stepDownCalls).toHaveLength(1)
+    })
+
+    it('gates the step-down push on reminderHour, same as the invitation (FIX 3)', async () => {
+      await scheduleForNow(TEST_USER_ID, 'America/Los_Angeles')
+      const commitments = new CommitmentService(db)
+      const todayStr = localDateInLA(new Date())
+
+      // Force a mismatch between "now" and the learner's chosen hour, so the
+      // period is due well before their reminderHour arrives — reproducing
+      // "fires on the first hourly pass after local midnight".
+      const nowHour = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })
+      ).getHours()
+      await db.update(schema.userProfiles)
+        .set({ reminderHour: (nowHour + 5) % 24 })
+        .where(eq(schema.userProfiles.id, TEST_USER_ID))
+
+      await commitments.setForWeek(TEST_USER_ID, {
+        weekStart: addDays(todayStr, -28), daysCommitted: 4, dayTargets: null,
+        minutesPerDay: 15, focus: null, source: 'session',
+      })
+      for (const w of [addDays(todayStr, -21), addDays(todayStr, -14), addDays(todayStr, -7)]) {
+        await commitments.ensureForWeek(TEST_USER_ID, w)
+      }
+
+      const service = new NotificationService(db)
+      const send = vi.spyOn(service as any, 'sendToUserTokens').mockResolvedValue(undefined)
+      await service.runBuddyDayPass()
+
+      expect(send.mock.calls.filter((c) => c[0] === TEST_USER_ID)).toHaveLength(0)
+      const profile = (await db.select().from(schema.userProfiles)
+        .where(eq(schema.userProfiles.id, TEST_USER_ID)))[0]
+      // Not stepped down yet — it isn't the learner's chosen hour.
+      expect(profile.buddyIntervalWeeks).toBe(1)
+    })
+
+    it('pushes the weekly invitation only once per due period, not every day of the window (FIX 5)', async () => {
+      await scheduleForNow(TEST_USER_ID, 'America/Los_Angeles')
+
+      const service = new NotificationService(db)
+      const send = vi.spyOn(service as any, 'sendToUserTokens').mockResolvedValue(undefined)
+
+      await service.runBuddyDayPass()
+      // Simulate the next hourly pass within the same multi-day due window.
+      await service.runBuddyDayPass()
+
+      const calls = send.mock.calls.filter(
+        (c) => c[0] === TEST_USER_ID && (c[1] as any).data.type === 'buddy_session',
+      )
+      expect(calls).toHaveLength(1)
+    })
   })
 })
