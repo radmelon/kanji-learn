@@ -247,18 +247,36 @@
 > reaches it with no push involved; run one full session and confirm the
 > commitment persists.
 >
-> **The timezone caveat that decides whether any of this fires at all:**
-> `user_profiles.timezone` carried a `'UTC'` default that no client ever wrote,
-> and the hourly pass deliberately SKIPS those rows rather than guessing. Plan 4
-> Task 17 fixed the capture path, but **whether existing rows were backfilled is
-> a live-data question nobody has answered.** If your tester's row is still
-> `'UTC'`, they will get no Buddy push at all and the walkthrough will look like
-> a broken feature when it is a working guard. Check this before cutting the
-> build, not after:
+> **Timezone — checked 2026-07-31, and the walkthrough is safe:**
 >
-> ```sql
-> select timezone, count(*) from user_profiles group by timezone;
 > ```
+> Asia/Tokyo           1
+> America/Los_Angeles  2
+> UTC                  2
+> ```
+>
+> **Run the walkthrough on an `America/Los_Angeles` account.** The hourly pass
+> deliberately SKIPS rows still on the `'UTC'` default rather than guessing at a
+> local day — so testing on one of those two would show silence, and a working
+> guard would read as a broken feature.
+>
+> **The two stragglers self-heal; no backfill migration is needed.** Plan 4 Task
+> 17 captures timezone at sign-in, which is why the server's "no captured
+> timezone" warning has been falling: 5/5 → 3/5 → 2/5. Those accounts simply
+> have not signed in since it shipped.
+>
+> **One divergence to know about before someone "fixes" it backwards.** The two
+> jobs in `notification.service.ts` treat a `'UTC'` row differently, on purpose:
+>
+> | | Behaviour on a `'UTC'` row |
+> |---|---|
+> | `sendDailyReminders` | evaluates `reminderHour` against UTC anyway — fires, at the wrong local hour |
+> | `runBuddyDayPass` | **skips the row entirely** |
+>
+> The buddy behaviour is the better one: a weekly appointment fired on the wrong
+> day is worse than one not fired at all, and silence is diagnosable where a
+> wrong-day push is just confusing. Do not "align" the buddy pass to the daily
+> reminder — align the daily reminder to the buddy pass, if either.
 >
 > ### What slice 2 is
 >
