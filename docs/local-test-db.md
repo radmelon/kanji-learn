@@ -11,12 +11,33 @@ psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_dev" -f docker/postgre
 npx drizzle-kit push --config=<a config pointing at kanji_buddy_test>
 psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_test" \
   -f packages/db/supabase/migrations/0009_rls_service_role_policies.sql \
+  -f packages/db/supabase/migrations/0016_add_learner_identity_user_profiles_fk.sql \
   -f packages/db/supabase/migrations/0018_rls_placement_tutor_tables.sql \
   -f packages/db/supabase/migrations/0021_push_tokens_and_mate_mute.sql \
   -f packages/db/supabase/migrations/0025_buddy_nudges_dedupe_indexes.sql \
+  -f packages/db/supabase/migrations/0030_weekly_buddy_review.sql \
   -f packages/db/drizzle/0007_rls.sql \
   -f packages/db/drizzle/0010_rls_phase0_tables.sql
 pnpm --filter @kanji-learn/api test
+```
+
+**`0016` was missing from this list until 2026-07-31, and that alone accounted
+for one of the "permanent" failures.** `drizzle-kit push` builds the test
+database from `schema.ts`, where `learnerIdentity.learnerId` is declared as a
+bare primary key with no `.references()`. Production gets the FK from migration
+`0016`; the test database never did. So `user-delete.test.ts` — which asserts
+that deleting a `user_profiles` row cascades into `learner_identity` — failed,
+left the row behind, and every subsequent run died on
+`duplicate key value violates unique constraint "learner_identity_pkey"`.
+It read as a fixture bug and was in fact a missing constraint.
+
+**If `0016` errors with a foreign-key violation**, the database already holds
+orphaned `learner_identity` rows from runs that failed this way. Clear them
+first — this is a local test database, so deleting fixture debris is safe:
+
+```bash
+psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_test?sslmode=disable" \
+  -c "delete from learner_identity li where not exists (select 1 from user_profiles up where up.id = li.learner_id);"
 ```
 
 Result as of 2026-07-26: **287 of 293 tests pass.** The 6 residual failures are
