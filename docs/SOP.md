@@ -202,22 +202,47 @@ aws ecr get-login-password --region us-east-1 \
 
 Expect `Login Succeeded`. Safe: it is a short-lived registry credential, not an account password.
 
-### Quick deploy (source-based App Runner)
+### 🛑 There is no "quick deploy". `git push` deploys nothing (corrected 2026-07-31)
+
+This section used to describe a source-based flow — build TypeScript, `git push`,
+then `start-deployment`. **That flow does not apply to this service and never
+did.** Checked against the live configuration:
+
 ```bash
-# From monorepo root — build TypeScript, push to git, trigger App Runner
-cd apps/api && npm run build
-git add apps/api/src && git commit -m "..."
-git push
-aws apprunner start-deployment \
+aws apprunner describe-service --region us-east-1 \
   --service-arn arn:aws:apprunner:us-east-1:087656010655:service/kanji-learn-api/470f4fc9f81c407e871228fb9dd93654 \
-  --region us-east-1
+  --query 'Service.SourceConfiguration.{Image:ImageRepository.ImageIdentifier,AutoDeploy:AutoDeploymentsEnabled,CodeRepo:CodeRepository}'
+# → Image: 087656010655.dkr.ecr.us-east-1.amazonaws.com/kanji-learn-api:latest
+#   AutoDeploy: false        CodeRepo: null
 ```
 
-### Full Docker deploy (when Dockerfile changes)
+App Runner pulls an **image from ECR**. It has no connection to the git remote,
+so a commit reaches production only once a new image carrying it is pushed to
+`:latest`.
+
+**Why this mattered enough to rewrite rather than delete:** running the old
+block would have called `start-deployment` against the image already running.
+App Runner would have redeployed it happily and recorded a
+`START_DEPLOYMENT SUCCEEDED` operation dated today — which is *exactly* check
+(a) above. The stale-deploy check would have passed on a deploy that shipped
+nothing. A wrong runbook that satisfies your own verification is worse than no
+runbook.
+
+### Deploying the API — the only path
+
 ```bash
-cd /Users/rdennis/Documents/projects/kanji-learn
 ./scripts/deploy-api.sh
 ```
+
+Run it from the repo root (`/Volumes/DockM2/projects/kanji-learn` — **not**
+`~/Documents/projects/kanji-learn`, which this file used to say and which does
+not exist). It logs in to ECR, builds `apps/api/Dockerfile` for
+`linux/amd64` from the monorepo root context, pushes `:latest`, and then calls
+`start-deployment`.
+
+Read its output to the end. It is `set -euo pipefail`, so a dead Docker daemon
+or the keychain failure below stops it before the push — and the only thing that
+tells you is the output you didn't read.
 
 ### Type-check before deploying
 ```bash
