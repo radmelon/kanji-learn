@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm'
 import { kanji, kanjiDifficulty } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import {
-  computeJlptRank, computeFeatureStats, bPrior, blend,
+  computeJlptRank, computeFeatureStats, bPrior, blend, fsrsDifficultyToB,
   DEFAULT_DIFFICULTY_WEIGHTS, type KanjiFeatures, type DifficultyWeights,
 } from '@kanji-learn/shared'
 import { fitWeights, shouldUseFallback, type FitRow } from '@kanji-learn/shared'
@@ -119,7 +119,7 @@ export async function refreshKanjiDifficulty(db: Db): Promise<RefreshResult> {
   const observedMap = new Map<number, { bObserved: number; n: number }>()
   for (const row of observedByKanji as unknown as { kanjiId: number; avgDifficulty: string; totalReviews: string }[]) {
     observedMap.set(row.kanjiId, {
-      bObserved: Number(row.avgDifficulty) - 5,
+      bObserved: fsrsDifficultyToB(Number(row.avgDifficulty)),
       n: Number(row.totalReviews),
     })
   }

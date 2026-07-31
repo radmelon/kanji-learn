@@ -148,6 +148,21 @@ export function bToFsrsDifficulty(b: number): number {
   return Math.min(10, Math.max(1, 5 + b))
 }
 
+/**
+ * The inverse, for reading FSRS difficulty back onto the b scale — the shared
+ * centre, without the clamp (which only exists to keep a seeded card inside
+ * FSRS's own [1,10] range).
+ *
+ * This exists as a named function because the -5 was open-coded in two places
+ * and applied in only one of them: refreshKanjiDifficulty centred b_observed
+ * correctly while handing fitWeights the raw column, so b_prior came back on
+ * the FSRS scale and blend() averaged two different quantities. Anything
+ * converting between the scales goes through this pair.
+ */
+export function fsrsDifficultyToB(fsrsDifficulty: number): number {
+  return fsrsDifficulty - 5
+}
+
 // ─── Seeding (spec §8) ──────────────────────────────────────────────────────
 
 export interface PlacementSeed {

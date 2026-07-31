@@ -1,4 +1,4 @@
-import type { DifficultyWeights } from './placement-difficulty'
+import { fsrsDifficultyToB, type DifficultyWeights } from './placement-difficulty'
 
 /** One (user, kanji) progress row, pre-resolved to z-scored features — the
  *  unit of the pooled regression (spec §6.3: "pooled across all learners"). */
@@ -45,7 +45,10 @@ export function fitWeights(rows: FitRow[]): DifficultyWeights {
   // Design matrix X (intercept + 5 features), target y. Normal equations:
   // (X^T X) w = X^T y.
   const X = rows.map((r) => [1, r.zJlptRank, r.zLogFreq, r.zGrade, r.zStrokeCount, r.zReadingCount])
-  const y = rows.map((r) => r.fsrsDifficulty)
+  // The target is converted to the b scale, because the DifficultyWeights this
+  // returns are consumed by bPrior, whose output is a logit centred on 0.
+  // Fitting the raw FSRS column puts its ~5 midpoint into the intercept.
+  const y = rows.map((r) => fsrsDifficultyToB(r.fsrsDifficulty))
 
   const p = 6
   const XtX: number[][] = Array.from({ length: p }, () => Array(p).fill(0))
@@ -65,16 +68,20 @@ export function fitWeights(rows: FitRow[]): DifficultyWeights {
 }
 
 function rSquared(rows: FitRow[], weights: DifficultyWeights): number {
-  const yMean = rows.reduce((a, r) => a + r.fsrsDifficulty, 0) / rows.length
+  // Same scale as fitWeights' target — a prediction on the b scale compared
+  // against a raw FSRS value would inflate ssRes by the 5-point offset and
+  // send R² sharply negative, tripping the fallback on a healthy fit.
+  const ys = rows.map((r) => fsrsDifficultyToB(r.fsrsDifficulty))
+  const yMean = ys.reduce((a, y) => a + y, 0) / ys.length
   let ssRes = 0
   let ssTot = 0
-  for (const r of rows) {
+  rows.forEach((r, i) => {
     const predicted =
       weights.w0 + weights.w1 * r.zJlptRank + weights.w2 * r.zLogFreq +
       weights.w3 * r.zGrade + weights.w4 * r.zStrokeCount + weights.w5 * r.zReadingCount
-    ssRes += (r.fsrsDifficulty - predicted) ** 2
-    ssTot += (r.fsrsDifficulty - yMean) ** 2
-  }
+    ssRes += (ys[i] - predicted) ** 2
+    ssTot += (ys[i] - yMean) ** 2
+  })
   return ssTot === 0 ? 0 : 1 - ssRes / ssTot
 }
 
