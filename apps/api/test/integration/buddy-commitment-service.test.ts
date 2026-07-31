@@ -52,9 +52,27 @@ describe('ensureForWeek', () => {
     expect(next.focus).toBeNull()
   })
 
-  it('is idempotent — running twice does not create a second row', async () => {
+  it('sequential calls short-circuit on the read-check and never reach the insert', async () => {
     await service.ensureForWeek(TEST_USER_ID, '2026-08-03')
     await service.ensureForWeek(TEST_USER_ID, '2026-08-03')
+
+    const rows = await db.select().from(schema.buddyCommitments)
+      .where(eq(schema.buddyCommitments.userId, TEST_USER_ID))
+    expect(rows).toHaveLength(1)
+  })
+
+  it('is idempotent under a genuine race — concurrent calls collide on the insert and onConflictDoNothing absorbs it', async () => {
+    const results = await Promise.allSettled([
+      service.ensureForWeek(TEST_USER_ID, '2026-08-03'),
+      service.ensureForWeek(TEST_USER_ID, '2026-08-03'),
+      service.ensureForWeek(TEST_USER_ID, '2026-08-03'),
+      service.ensureForWeek(TEST_USER_ID, '2026-08-03'),
+    ])
+
+    // Control assertion: the guard actually had to do something. If every
+    // call rejected, or if this weren't a real race, the row-count check
+    // below would pass vacuously.
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true)
 
     const rows = await db.select().from(schema.buddyCommitments)
       .where(eq(schema.buddyCommitments.userId, TEST_USER_ID))

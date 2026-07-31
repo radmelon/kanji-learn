@@ -138,6 +138,11 @@ export class CommitmentService {
 
   /** Consecutive missed appointments, derived rather than stored (spec §8.1). */
   async getMissCount(userId: string): Promise<number> {
+    // Capped at the last 12 periods (~3 months). A streak of rolled-forward
+    // rows longer than that would be undercounted, but the step-down
+    // threshold in the reckoning is 3, so anything past that already reads
+    // as "maximally missed" — raise this cap only if a caller ever needs the
+    // exact streak length beyond 12.
     const rows = await this.db.select({
       weekStart: buddyCommitments.weekStart,
       source: buddyCommitments.source,
