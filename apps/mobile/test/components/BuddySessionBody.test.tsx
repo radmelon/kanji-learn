@@ -35,4 +35,17 @@ describe('BuddySessionBody', () => {
     render(<BuddySessionBody body={{ kind: 'not_scheduled' }} onCommit={() => {}} />)
     expect(screen.getByTestId('buddy-session-not-scheduled')).toBeTruthy()
   })
+
+  it('renders an error state when Buddy is unreachable', () => {
+    render(<BuddySessionBody body={{ kind: 'error' }} onCommit={() => {}} />)
+    expect(screen.getByTestId('buddy-session-error')).toBeTruthy()
+  })
+
+  it('renders waiting state and displays the next due date', () => {
+    render(
+      <BuddySessionBody body={{ kind: 'waiting', nextDue: '2026-08-10' }} onCommit={() => {}} />
+    )
+    expect(screen.getByTestId('buddy-session-waiting')).toBeTruthy()
+    expect(screen.getByText('Next catch-up: 2026-08-10')).toBeTruthy()
+  })
 })
