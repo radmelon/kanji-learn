@@ -191,8 +191,24 @@ tier; better wording, never different substance, on the cloud tier.
 ## 8. First open
 
 Section 3 leans on onboarding (Phase 7) writing page one — Buddy's introduction,
-the `buddy_day` negotiation recorded under "What we've settled", the first
-agreement seeded from the placement result.
+the `buddy_day` negotiation recorded under "What we've settled", and the reasons
+and focus the learner gave.
+
+**Page one does NOT contain an agreement.** Owner, 2026-07-31: placement moves to
+the *end* of onboarding and is framed as the first thing Buddy asks of the
+learner — *"as soon as you can complete a brief placement test I can prepare a
+specific plan"* — to be done before the first weekly meeting rather than during
+onboarding. So the first agreement is negotiated at the **first weekly session**,
+against a placement result that now exists.
+
+This is deliberate and it is what gives that session something to do. It also
+means "The agreement" is the one section legitimately empty on page one, and it
+must read as *anticipated* rather than missing — Buddy has said what he will put
+there and when.
+
+**If placement is still outstanding at the first session**, the session happens
+anyway. Buddy asks again, and sets a commitment without it. A learner who never
+places must never be blocked from the weekly ritual.
 
 **If Phase 6 ships before Phase 7, that safety net does not exist** and every
 existing learner opens a blank document. Phase 6 therefore carries its own seed:
