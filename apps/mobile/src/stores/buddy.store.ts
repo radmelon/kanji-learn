@@ -26,13 +26,17 @@ export const useBuddyStore = create<BuddyState>((set, get) => ({
   },
 
   commit: async (c) => {
-    await api.post('/v1/buddy/session/commitment', {
-      weekStart: c.weekStart,
-      daysCommitted: c.daysCommitted,
-      minutesPerDay: c.minutesPerDay,
-      dayTargets: c.dayTargets,
-      focus: c.focus,
-    })
-    await get().load()
+    try {
+      await api.post('/v1/buddy/session/commitment', {
+        weekStart: c.weekStart,
+        daysCommitted: c.daysCommitted,
+        minutesPerDay: c.minutesPerDay,
+        dayTargets: c.dayTargets,
+        focus: c.focus,
+      })
+      await get().load()
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : 'Failed to save' })
+    }
   },
 }))
