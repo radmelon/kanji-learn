@@ -871,7 +871,8 @@ export * from './buddy/appointment'
 pnpm --filter @kanji-learn/shared test -- appointment
 ```
 
-Expected: PASS, 17 tests.
+Expected: PASS, 19 tests. **(Task 3 is already complete on this branch —
+`2c1517a`. Left here for reference and for anyone replaying the plan.)**
 
 - [ ] **Step 6: Commit**
 
