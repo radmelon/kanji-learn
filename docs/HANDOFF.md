@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-31 (**Weekly Buddy Review: spec, plan, and slice 1 complete — on a branch, not `main`**)
+# Session Handoff — 2026-07-31 later (**both slices merged, migrated, and DEPLOYED — one device walkthrough owed**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,216 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-07-31
+## START HERE — 2026-07-31 (later)
+
+> ## ✅ The stack is unstacked. `main` is deployed and live.
+>
+> The three-day gap is closed. Both slices — the placement model and the weekly
+> Buddy review — are merged, migrated, and serving.
+>
+> | | |
+> |---|---|
+> | `main` | `1a4aaf3` |
+> | Merge | `78e615c` — fast-forward, 32 commits, no conflicts |
+> | Migrations on live | `0029`, `0030`, `0031` applied and verified by content |
+> | `kanji_difficulty` | 2294 rows, **recomputed after the fix below** |
+> | API deploy | `START_DEPLOYMENT SUCCEEDED` 13:25:19 → 13:29:08, image `sha256:efce8a74…` |
+> | Verified | `GET /v1/buddy/session` **404 → 401** against a pre-state captured before deploying |
+> | **B146** | `c3cd48d6-59ac-43ef-880c-f1ddc503b26c`, cut 13:43, `--auto-submit` |
+>
+> B146 carries the mobile halves of **both** slices, which is why one build
+> discharged two device walkthroughs. `EXPO_NO_CAPABILITY_SYNC=1` was set, as it
+> must be on every profile — it is what stops EAS trying to switch `APPLE_ID_AUTH`
+> off on the live App Store bundle.
+>
+> ### 🔴 The deploy was stopped once, and the reason is the whole story
+>
+> **`refreshKanjiDifficulty` ran successfully and produced 2294 rows of wrong
+> numbers.** Step 4 of the forced sequence exists to stop placement returning
+> "an empty test, not an error." It ran. The table filled. The *values* were on
+> the wrong scale, and every downstream check would have passed.
+>
+> `refreshKanjiDifficulty` computed `b_observed` as `difficulty - 5` — correctly
+> centred — and then handed `fitWeights` the **raw** `user_kanji_progress.difficulty`
+> column. OLS put that column's ~5 midpoint into the intercept, so `bPrior`
+> returned FSRS-scale values while `bObserved` returned logits, and `blend()`
+> averaged two different quantities.
+>
+> Measured on live before the fix:
+>
+> | | mean | range |
+> |---|---|---|
+> | `b_prior` | **7.74** | 2.41 → 11.49 |
+> | `b_observed` | **-0.12** | -4.00 → 5.00 |
+>
+> `THETA_GRID` is `[-4, 4]`. **Only 285 of 2294 kanji fell inside it**, and only
+> 84 could ever clear the 0.85 seeding threshold — and then only for a learner
+> pinned at the θ ceiling. Placement would have returned 200 OK, selected items
+> nobody could be matched to, and seeded almost nothing.
+>
+> **Fixed in `1a4aaf3`.** `fitWeights` now fits on the b scale through a named
+> `fsrsDifficultyToB`, the inverse of the existing `bToFsrsDifficulty`, so the
+> conversion is single-sourced instead of open-coded in one place and forgotten
+> in the other. `rSquared` shifts its target too — a b-scale prediction compared
+> against a raw FSRS value sends R² negative and trips the fallback on a healthy
+> fit, which would have traded one silent misbehaviour for another.
+>
+> **Verified on live after recomputing**, and this is the check that matters:
+>
+> | Subset | count | `b_prior` | `b_observed` | corr |
+> |---|---|---|---|---|
+> | kanji with both | 592 | **-0.17** | **-0.12** | **0.589** |
+> | never reviewed | 1702 | 3.76 | — | — |
+>
+> On every kanji where the model can be checked against reality, the two agree
+> to 0.05 logits. The overall mean of 2.75 is the 1702 never-reviewed kanji, and
+> that is the model correctly saying the untouched kanji are the hard ones — a
+> property of the population, not a scale error. 1400 rows now sit inside the
+> grid, against 285 before.
+>
+> ### 🔴 Why nothing caught it — the sixth "test that could not fail"
+>
+> The previous section of this file counted five review findings that were each
+> a check incapable of failing. **This is the sixth, and it reached production
+> data.**
+>
+> Two independent reasons, and both matter:
+>
+> 1. **`placement-difficulty-fit.test.ts` asserted `w1` and `w2` and skipped
+>    `w0`** — the only coefficient that carries the scale — while generating its
+>    own fixture as `y + 5`. The test knew about the offset and declined to
+>    assert on it.
+> 2. **The fitted branch was unreachable from the test suite.** The local test
+>    database holds **10** fit rows against `MIN_ROWS = 300`, so
+>    `shouldUseFallback` is always `true` there and every integration test runs
+>    `DEFAULT_DIFFICULTY_WEIGHTS`, where `w0 = 0` and the scale is correct by
+>    construction. Live had 945 rows and took the other path. **No amount of
+>    running the existing suite could have found this.**
+>
+> Both new tests were run red first. `w0` came back `6.0000336` against 1;
+> composed through `bPrior`, the population mean came back `5.000000000000002`
+> against 0. Off by exactly the offset, twice — which is what a test proving the
+> right thing looks like.
+>
+> The second new test covers the *seam* (`fitWeights` → `bPrior`) rather than
+> either function, and asserts `shouldUseFallback(rows, fitted) === false` so
+> the fitted branch is genuinely under test. It needs no database, so the
+> unreachable branch is now reachable.
+>
+> **The transferable rule, and it is sharper than "add a control assertion":**
+> when a function has a fallback branch, check which branch the tests actually
+> execute. A guard whose safe path is the only tested path is not tested.
+>
+> ### 🛑 `docs/SOP.md` had a wrong runbook that passed its own check
+>
+> Corrected in `2acd737`. The "Quick deploy (source-based App Runner)" block
+> described building TypeScript, `git push`, then `start-deployment`. **This
+> service is ECR image-based** — `AutoDeploymentsEnabled: false`,
+> `CodeRepository: null`. `git push` reaches nothing.
+>
+> Running that block would have called `start-deployment` against the image
+> already running, and App Runner would have recorded a
+> `START_DEPLOYMENT SUCCEEDED` operation dated today — **satisfying the
+> freshness check the same file prescribes.** A wrong runbook that passes your
+> own verification is worse than no runbook. `./scripts/deploy-api.sh` is the
+> only path. The stale `~/Documents/projects/kanji-learn` path is fixed too.
+>
+> ### The canary, and why this verification was stronger than the SOP asked for
+>
+> **Capture the pre-state before deploying.** Before the deploy,
+> `GET /v1/buddy/session` returned `404 {"message":"Route GET:/v1/buddy/session
+> not found"}`. After, it returns the app's own
+> `401 {"ok":false,"error":"Unauthorized","code":"UNAUTHORIZED"}` from
+> `apps/api/src/plugins/auth.ts`. A 401 there **cannot** be produced by the old
+> image, and unlike `/v1/mnemonics/refresh` there is no parametric route that
+> could shadow it. A control request to `/v1/buddy/nonexistent-route` still
+> returns Fastify's 404, proving the negative case still works.
+>
+> That last control is the part worth copying. Without it, "everything returns
+> 401 now" is indistinguishable from a route that exists.
+>
+> **Note for whoever verifies the next deploy:** full body verification needs a
+> real token. Auth verifies ES256 against Supabase's JWKS, so the local
+> `SUPABASE_JWT_SECRET` cannot sign an acceptable one. The 404→401 transition is
+> the strongest check available without a signed-in device.
+>
+> ### 🟡 What is still owed — the device walkthrough, and only that
+>
+> Nothing else from the forced sequence is outstanding. The walkthrough covers
+> both slices and none of it is testable off-device.
+>
+> **Run it on an `America/Los_Angeles` account.** The hourly pass deliberately
+> SKIPS rows still on the `'UTC'` default rather than guessing at a local day,
+> so testing on a UTC account shows silence and a working guard reads as a
+> broken feature. Live timezone spread: LA 2, UTC 2, Tokyo 1.
+>
+> *Placement:* the adaptive test end to end. The prediction to check is that it
+> stops at ~13 items rather than 60, and seeds ~2 kanji rather than 44.
+> **`kanji_difficulty` is now correctly scaled, so this prediction is finally
+> meaningful** — before the fix it would have seeded ~0 and looked like a
+> different bug.
+>
+> *Weekly review:* set a `buddy_day` in Profile; confirm the push arrives at
+> `reminder_hour` local on that day; **tap it from a killed app and from a
+> backgrounded app**, confirming both land on the session screen; confirm no
+> double-navigation when the screen is already open; confirm the Profile entry
+> reaches it with no push involved; run one full session and confirm the
+> commitment persists.
+>
+> That notification-tap routing is the one deliberate test gap on the branch —
+> there is no harness for mounting `_layout.tsx` and a shallow mock would only
+> test the mock. It is owed here.
+>
+> ### Open decisions — still yours, unchanged by this session
+>
+> 1. **`POST /v1/buddy/session/commitment` validates `weekStart` only as a
+>    date-shaped string**, so a client can write a commitment for any week
+>    rather than the one due. Orphan rows outside the cadence are possible.
+> 2. **Nothing is known to alert on the `[BuddyDay]` log prefix.** The endpoint
+>    returns `{ok: true}` regardless. The code-level signal is sound; whether
+>    anything consumes it is unverified.
+> 3. **Spec §11 item 3 — when a new learner is first offered an appointment.**
+>    There is still **no path that sets `buddy_day` except the Profile screen**.
+>    Shippable, since the appointment is opt-in, but a new learner will not find
+>    it unless they go looking. Resolve before slice 2, where the first session
+>    carries Frame's `ask`.
+> 4. **B-210 and `learner-state-refresh` fixture isolation** — one session for
+>    both. See below; this session did not touch it, and the new finding above
+>    makes it more urgent, not less.
+>
+> ### The fixture-isolation session now has a third item
+>
+> Previously two: `placement-service`'s B-210 order dependency and
+> `learner-state-refresh`'s intermittent `setImmediate`/50ms race. **Add a
+> third:** the local test database cannot reach the fitted-weights branch,
+> because it holds 10 rows against a 300-row threshold. That is not a flaky
+> test — it is a whole code path the suite structurally cannot execute, and it
+> is what let a production-data bug through today. Whatever fixes fixture
+> isolation should seed enough pooled review history to cross `MIN_ROWS`.
+>
+> **Known-failure lists must enumerate, not count.** Still true, and the
+> remaining API failures are three: `rls-coverage` (seven genuinely unprotected
+> legacy tables — `placement_*`, `tutor_*`, `user_push_tokens`,
+> `kanji_difficulty`), the B-210 order dependency, and `learner-state-refresh`.
+>
+> Note `kanji_difficulty` is one of those seven by design — migration `0029`
+> creates it without RLS, matching `kanji`'s precedent as global reference data.
+> That is deliberate and documented in the migration; it is not a new gap.
+>
+> ### What slice 2 is
+>
+> Unchanged: the conversation — cloud tier, `buddy_conversations`,
+> `buddy_learner_facts` with the seeding pass over hooks and onboarding, parked
+> topics, the profile dual-write, elicitation, `retract_fact`/`correct_fact`,
+> trajectory and frontier checks, escalation with the ask-for-time protocol, and
+> the per-dimension drill diagnosis (§10 of the spec — a `groupBy` change on the
+> existing weak-kanji queue, not a new feature).
+>
+> ---
+
+# Previous — 2026-07-31 earlier (**Weekly Buddy Review: spec, plan, and slice 1 complete — on a branch, not `main`**)
+
+## START HERE — 2026-07-31 (superseded by the section above)
 
 > ## 🚨 FIRST: the live API is three days behind `main`, and the placement model was never deployed
 >
