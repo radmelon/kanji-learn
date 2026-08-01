@@ -46,6 +46,19 @@ export function clearProfileCache() {
   notifyListeners(null)
 }
 
+/** Re-fetch the profile into the module cache and notify all listeners.
+ *  Used after POST /v1/buddy/meet/complete so the routing gate sees
+ *  metBuddyAt without waiting for a remount. */
+export async function refreshProfile(): Promise<void> {
+  try {
+    const fresh = await api.get<UserProfile>('/v1/user/profile')
+    _cache = fresh
+    notifyListeners(fresh)
+  } catch {
+    // Offline: the stash/flush path owns retries; the cache keeps its old value.
+  }
+}
+
 /**
  * Push the device's timezone up when it differs from what's stored.
  *
