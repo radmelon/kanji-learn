@@ -88,29 +88,30 @@ export class NotebookService {
     if (!existing) throw new Error('NOT_FOUND')
     if (existing.supersededAt !== null) throw new Error('ALREADY_SUPERSEDED')
 
-    let replacementId: string | null = null
-    if (replacementBody !== null) {
-      const [row] = await this.db.insert(notebookEntries).values({
-        userId, kind: existing.kind, body: replacementBody,
-        author: 'learner', weekStart: existing.weekStart, source: existing.source,
-      }).returning({ id: notebookEntries.id })
-      replacementId = row.id
-    }
-
-    const updated = await this.db.update(notebookEntries)
-      .set({ supersededAt: new Date(), supersededBy: replacementId })
-      .where(and(eq(notebookEntries.id, id), isNull(notebookEntries.supersededAt)))
-      .returning({ id: notebookEntries.id })
-
-    if (updated.length === 0) {
-      // Someone else superseded this entry between our check and our
-      // update. Our replacement row (if any) has nothing pointing at it —
-      // delete it rather than leave it orphaned.
-      if (replacementId !== null) {
-        await this.db.delete(notebookEntries).where(eq(notebookEntries.id, replacementId))
+    const replacementId = await this.db.transaction(async (tx) => {
+      let replacementId: string | null = null
+      if (replacementBody !== null) {
+        const [row] = await tx.insert(notebookEntries).values({
+          userId, kind: existing.kind, body: replacementBody,
+          author: 'learner', weekStart: existing.weekStart, source: existing.source,
+        }).returning({ id: notebookEntries.id })
+        replacementId = row.id
       }
-      throw new Error('ALREADY_SUPERSEDED')
-    }
+
+      const updated = await tx.update(notebookEntries)
+        .set({ supersededAt: new Date(), supersededBy: replacementId })
+        .where(and(eq(notebookEntries.id, id), isNull(notebookEntries.supersededAt)))
+        .returning({ id: notebookEntries.id })
+
+      if (updated.length === 0) {
+        // Someone else superseded this entry between our check and our
+        // update. Throwing here rolls back the whole transaction, including
+        // the replacement insert above — no compensating delete needed.
+        throw new Error('ALREADY_SUPERSEDED')
+      }
+
+      return replacementId
+    })
 
     return { id: replacementId }
   }
