@@ -32,7 +32,10 @@ export function TutorNote({
   note: TutorNoteView
   onLookupKanji: (character: string) => void
   onSpeak: (body: string) => void
-  onTranslate: (noteId: string) => void
+  /** No translation endpoint exists (Task 9 plan never specified one). The
+   *  control below renders only when a caller actually supplies this — a
+   *  control that does nothing is worse than a control that is not there. */
+  onTranslate?: (noteId: string) => void
 }) {
   const characters = Array.from(note.body)
 
@@ -69,15 +72,17 @@ export function TutorNote({
         >
           <Text style={styles.control}>Read aloud</Text>
         </Pressable>
-        <Pressable
-          testID="tutor-note-translate"
-          accessibilityRole="button"
-          accessibilityLabel="Translate note"
-          hitSlop={12}
-          onPress={() => onTranslate(note.id)}
-        >
-          <Text style={styles.control}>Translate</Text>
-        </Pressable>
+        {onTranslate && (
+          <Pressable
+            testID="tutor-note-translate"
+            accessibilityRole="button"
+            accessibilityLabel="Translate note"
+            hitSlop={12}
+            onPress={() => onTranslate(note.id)}
+          >
+            <Text style={styles.control}>Translate</Text>
+          </Pressable>
+        )}
       </View>
 
       {note.translation !== null && (

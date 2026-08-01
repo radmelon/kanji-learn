@@ -5,6 +5,8 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useRouter } from 'expo-router'
+import * as Speech from 'expo-speech'
 import { Ionicons } from '@expo/vector-icons'
 import { useMnemonics, useUserHooks } from '../../src/hooks/useMnemonics'
 import type { Mnemonic, UserHook } from '../../src/hooks/useMnemonics'
@@ -80,7 +82,18 @@ const CLOSED_ENTRY_MODAL: NotebookEntryModalState = {
   visible: false, kind: null, entry: null,
 }
 
+/** Character → kanji ID lookup. Shared by the "Type a kanji or ID…" search
+ *  box and the tutor-note kanji taps (Task 9 Step 5) — one lookup path, not
+ *  a second one invented for TutorNote. */
+async function lookupKanjiByCharacter(character: string): Promise<number> {
+  const result = await api.get<{ id: number; character: string }>(
+    `/v1/kanji/lookup?character=${encodeURIComponent(character)}`
+  )
+  return result.id
+}
+
 export default function Journal() {
+  const router = useRouter()
   const [selectedKanjiId, setSelectedKanjiId] = useState<number | null>(null)
   const [kanjiSearch, setKanjiSearch] = useState('')
   const [isSearching, setIsSearching] = useState(false)
@@ -224,10 +237,8 @@ export default function Journal() {
     // Kanji character — look it up
     setIsSearching(true)
     try {
-      const result = await api.get<{ id: number; character: string }>(
-        `/v1/kanji/lookup?character=${encodeURIComponent(trimmed)}`
-      )
-      setSelectedKanjiId(result.id)
+      const id = await lookupKanjiByCharacter(trimmed)
+      setSelectedKanjiId(id)
     } catch {
       setSearchError(`"${trimmed}" not found`)
     } finally {
@@ -243,6 +254,22 @@ export default function Journal() {
 
   const handleOpenCompose = useCallback(() => {
     setComposeVisible(true)
+  }, [])
+
+  // ─── Notebook: tutor-note actions ───────────────────────────────────────
+  // NotebookBody/TutorNote are pure presentation and take these as props
+  // (see NotebookBody.tsx's header comment) — the I/O lives here.
+  const handleNotebookLookupKanji = useCallback(async (character: string) => {
+    try {
+      const id = await lookupKanjiByCharacter(character)
+      router.push(`/kanji/${id}`)
+    } catch {
+      Alert.alert('Not found', `"${character}" not found`)
+    }
+  }, [router])
+
+  const handleNotebookSpeak = useCallback((text: string) => {
+    Speech.speak(text, { language: 'ja-JP' })
   }, [])
 
   const displayItems = selectedKanjiId ? mnemonics : hooks
@@ -327,6 +354,8 @@ export default function Journal() {
             onNotebookAdd={handleNotebookAdd}
             onNotebookEdit={handleNotebookEdit}
             onNotebookDelete={handleNotebookDelete}
+            onNotebookLookupKanji={handleNotebookLookupKanji}
+            onNotebookSpeak={handleNotebookSpeak}
             kanjiSearch={kanjiSearch}
             onChangeKanjiSearch={setKanjiSearch}
             onSubmitSearch={handleSubmitSearch}
@@ -436,6 +465,8 @@ function JournalListHeader({
   onNotebookAdd,
   onNotebookEdit,
   onNotebookDelete,
+  onNotebookLookupKanji,
+  onNotebookSpeak,
   kanjiSearch,
   onChangeKanjiSearch,
   onSubmitSearch,
@@ -451,6 +482,8 @@ function JournalListHeader({
   onNotebookAdd: (sectionKey: NotebookSection['key']) => void
   onNotebookEdit: (entry: NotebookEntry) => void
   onNotebookDelete: (entry: NotebookEntry) => void
+  onNotebookLookupKanji: (character: string) => void
+  onNotebookSpeak: (text: string) => void
   kanjiSearch: string
   onChangeKanjiSearch: (text: string) => void
   onSubmitSearch: () => void
@@ -493,6 +526,8 @@ function JournalListHeader({
             onAdd={onNotebookAdd}
             onEdit={onNotebookEdit}
             onDelete={onNotebookDelete}
+            onLookupKanji={onNotebookLookupKanji}
+            onSpeak={onNotebookSpeak}
           />
         </View>
       )}

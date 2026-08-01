@@ -2,6 +2,9 @@ import React from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { CommitmentView, NotebookEntry, NotebookSection, NotebookView } from '@kanji-learn/shared'
 import { colors, radius, spacing, typography } from '../../theme'
+import { TutorNote } from './TutorNote'
+
+const noop = () => {}
 
 // Every Text in this file carries an explicit colour.
 //
@@ -25,11 +28,21 @@ export function NotebookBody({
   onAdd,
   onEdit,
   onDelete,
+  onLookupKanji,
+  onSpeak,
+  onTranslate,
 }: {
   view: NotebookView
   onAdd: (sectionKey: NotebookSection['key']) => void
   onEdit: (entry: NotebookEntry) => void
   onDelete: (entry: NotebookEntry) => void
+  /** All three are I/O and belong to the screen, not this pure component
+   *  (see NotebookBody/TutorNote header comments). `onTranslate` is left
+   *  unwired here on purpose — there is no translation endpoint yet, and
+   *  TutorNote only shows the control when it is actually supplied. */
+  onLookupKanji?: (char: string) => void
+  onSpeak?: (text: string) => void
+  onTranslate?: (noteId: string) => void
 }) {
   return (
     <View style={styles.root}>
@@ -66,10 +79,13 @@ export function NotebookBody({
         <View key={tutorShare.shareId} testID="notebook-section-tutor" style={styles.section}>
           <Text style={styles.sectionTitle}>{tutorShare.tutorLabel}</Text>
           {tutorShare.notes.map((note) => (
-            <View key={note.id} style={styles.entry}>
-              <Text style={styles.entryBody}>{note.body}</Text>
-              {note.translation && <Text style={styles.entryMeta}>{note.translation}</Text>}
-            </View>
+            <TutorNote
+              key={note.id}
+              note={note}
+              onLookupKanji={onLookupKanji ?? noop}
+              onSpeak={onSpeak ?? noop}
+              onTranslate={onTranslate}
+            />
           ))}
         </View>
       ))}

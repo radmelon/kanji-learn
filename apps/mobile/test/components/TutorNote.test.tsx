@@ -49,6 +49,15 @@ describe('TutorNote', () => {
     expect(screen.getByTestId('tutor-note-translated-marker')).toBeTruthy()
   })
 
+  // Task 9 Step 5: there is no translation endpoint, and the plan never
+  // specified one. A control that does nothing is worse than a control that
+  // is not there, so the translate affordance must not appear unless a
+  // caller actually supplies a handler for it.
+  it('omits the translate control when onTranslate is not supplied', () => {
+    render(<TutorNote note={jaNote} onLookupKanji={() => {}} onSpeak={() => {}} />)
+    expect(screen.queryByTestId('tutor-note-translate')).toBeNull()
+  })
+
   // B146: a screen rendered correctly and was invisible — black default text
   // on #0F0F1A. getByText finds text whatever colour it is, and the tests
   // above would all pass on an all-black render. Assert colour explicitly,
