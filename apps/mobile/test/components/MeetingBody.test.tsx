@@ -100,22 +100,49 @@ describe('MeetingBody — every beat surface renders visibly', () => {
     )
   })
 
+  // F9 (whole-branch review, LOW) changes this surface to disable both CTAs
+  // after the first press, so each route is exercised with its OWN render
+  // and its own mock — a single render pressing both buttons in sequence
+  // would only ever see the first one fire post-F9.
   it('ask offers both closes and routes them', () => {
-    const { getByText } = render(<MeetingBody ui={at('ask')} {...noop} />)
-    fireEvent.press(getByText('Take it now'))
-    expect(noop.onFinish).toHaveBeenCalledWith('placement')
-    fireEvent.press(getByText('Before our first meeting'))
-    expect(noop.onFinish).toHaveBeenCalledWith('home')
+    const takeItNow = jest.fn()
+    const { getByText: getByTextA } = render(<MeetingBody ui={at('ask')} {...noop} onFinish={takeItNow} />)
+    fireEvent.press(getByTextA('Take it now'))
+    expect(takeItNow).toHaveBeenCalledWith('placement')
+
+    const beforeMeeting = jest.fn()
+    const { getByText: getByTextB } = render(<MeetingBody ui={at('ask')} {...noop} onFinish={beforeMeeting} />)
+    fireEvent.press(getByTextB('Before our first meeting'))
+    expect(beforeMeeting).toHaveBeenCalledWith('home')
   })
 
   it('done offers the same two closes as ask, and hides the composer even on cloud tier', () => {
     const cloudDone = { ...at('done'), tier: 'cloud' as const }
-    const { getByText, queryByTestId } = render(<MeetingBody ui={cloudDone} {...noop} />)
+    const takeItNow = jest.fn()
+    const { getByText: getByTextA, queryByTestId } = render(
+      <MeetingBody ui={cloudDone} {...noop} onFinish={takeItNow} />,
+    )
     expect(queryByTestId('meeting-composer')).toBeNull()
-    fireEvent.press(getByText('Take it now'))
-    expect(noop.onFinish).toHaveBeenCalledWith('placement')
-    fireEvent.press(getByText('Before our first meeting'))
-    expect(noop.onFinish).toHaveBeenCalledWith('home')
+    fireEvent.press(getByTextA('Take it now'))
+    expect(takeItNow).toHaveBeenCalledWith('placement')
+
+    const beforeMeeting = jest.fn()
+    const { getByText: getByTextB } = render(<MeetingBody ui={cloudDone} {...noop} onFinish={beforeMeeting} />)
+    fireEvent.press(getByTextB('Before our first meeting'))
+    expect(beforeMeeting).toHaveBeenCalledWith('home')
+  })
+
+  // F9 (whole-branch review, LOW): neither finish CTA disabled itself after
+  // being pressed, so a slow network plus an impatient double-tap could fire
+  // finish() (and its POST /v1/buddy/meet/complete) twice.
+  it('ask and done disable both CTAs after the first press — no double-tap double finish', () => {
+    for (const beatKind of ['ask', 'done'] as const) {
+      const onFinish = jest.fn()
+      const { getByText } = render(<MeetingBody ui={at(beatKind)} {...noop} onFinish={onFinish} />)
+      fireEvent.press(getByText('Take it now'))
+      fireEvent.press(getByText('Before our first meeting'))
+      expect(onFinish).toHaveBeenCalledTimes(1)
+    }
   })
 
   it('new learner skip goes to the form; prior learner skip goes outright', () => {

@@ -425,13 +425,28 @@ function FinishCTAs({
   busy: boolean
   onFinish: (dest: 'placement' | 'home') => void
 }) {
+  // F9 fix (whole-branch review, LOW): neither CTA disabled itself once
+  // pressed, so a slow finish() plus an impatient double-tap (on the SAME
+  // button, or the OTHER one before the screen navigates away) could fire
+  // finish() — and its POST /v1/buddy/meet/complete — more than once. Local
+  // state, not `busy`: this is a one-way close, not something the reducer
+  // needs to know about.
+  const [submitting, setSubmitting] = useState(false)
+  const disabled = busy || submitting
+
+  const finish = (dest: 'placement' | 'home') => {
+    if (submitting) return
+    setSubmitting(true)
+    onFinish(dest)
+  }
+
   return (
     <View style={styles.stackedButtons}>
-      <PrimaryButton label="Take it now" disabled={busy} onPress={() => onFinish('placement')} />
+      <PrimaryButton label="Take it now" disabled={disabled} onPress={() => finish('placement')} />
       <SecondaryButton
         label="Before our first meeting"
-        disabled={busy}
-        onPress={() => onFinish('home')}
+        disabled={disabled}
+        onPress={() => finish('home')}
       />
     </View>
   )
