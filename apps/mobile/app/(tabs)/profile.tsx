@@ -628,6 +628,20 @@ export default function ProfileScreen() {
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => router.push('/onboarding' as never)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="chatbubble-ellipses-outline" size={20} color={colors.textSecondary} />
+              <View>
+                <Text style={styles.rowLabel}>Meet Buddy</Text>
+                <Text style={styles.rowSub}>Revisit your first meeting</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
         </Section>
 
         {/* Privacy */}
