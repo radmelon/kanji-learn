@@ -124,7 +124,17 @@ export default function OnboardingScreen() {
       return
     }
 
-    await api.post('/v1/buddy/meet/complete', { outcome: 'form' })
+    try {
+      await api.post('/v1/buddy/meet/complete', { outcome: 'form' })
+    } catch {
+      // Same recovery contract as a failed PATCH: surface the error, re-enable
+      // the button. The PATCHes above are idempotent, so retry re-runs them
+      // safely. (The conversation path owns the offline stash; this form is
+      // the connectivity-requiring escape it has always been.)
+      setSaveError(ONBOARDING_CONTENT.dailyTarget.saveError)
+      setIsSaving(false)
+      return
+    }
     await refreshProfile()
 
     router.replace('/placement')
