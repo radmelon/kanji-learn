@@ -1,6 +1,7 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react-native'
 import { NotebookBody } from '../../src/components/notebook/NotebookBody'
+import { assembleNotebook } from '@kanji-learn/shared'
 import type { NotebookSection, NotebookView } from '@kanji-learn/shared'
 
 function flattenStyle(style: unknown): Record<string, unknown> {
@@ -151,5 +152,40 @@ describe('NotebookBody', () => {
     }
     render(<NotebookBody view={view} onAdd={noop} onEdit={noop} onDelete={noop} />)
     expect(screen.getByRole('button', { name: 'Edit entry' })).toBeTruthy()
+  })
+
+  // Every fixture above hand-builds `sections` in a shape assembleNotebook
+  // never actually produces — which is exactly why the tutor-note duplicate
+  // bug (a `key: 'tutor'` entry BOTH in `sections` and in `tutorNotes`,
+  // wired to the learner-edit PATCH path) went unnoticed. This test goes
+  // through the real function instead of a fixture.
+  it('renders a tutor note exactly once when fed the literal output of assembleNotebook', () => {
+    const view = assembleNotebook({
+      cadence: { intervalWeeks: 1, buddyDay: 0 },
+      commitments: [],
+      entries: [],
+      tutorNotes: [
+        {
+          shareId: 's1',
+          tutorLabel: 'Ono Kumiko',
+          notes: [
+            {
+              id: 'n1',
+              body: 'Great pronunciation today',
+              language: 'en',
+              translation: null,
+              createdAt: '2026-08-01T00:00:00Z',
+            },
+          ],
+        },
+      ],
+    })
+
+    render(<NotebookBody view={view} onAdd={noop} onEdit={noop} onDelete={noop} />)
+
+    expect(screen.getAllByText('Great pronunciation today')).toHaveLength(1)
+    // A tutor note must never be reachable through the learner-edit path —
+    // there must be no "Edit entry" Pressable wrapping it.
+    expect(screen.queryAllByRole('button', { name: 'Edit entry' })).toHaveLength(0)
   })
 })

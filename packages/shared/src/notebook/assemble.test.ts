@@ -58,7 +58,7 @@ describe('assembleNotebook', () => {
     expect(settled.live.map((e) => e.id)).toEqual(['c'])
   })
 
-  it('marks buddy entries learner-editable and tutor notes editable by nobody else', () => {
+  it('marks buddy entries learner-editable; tutor notes surface only through view.tutorNotes, never sections', () => {
     const view = assembleNotebook({
       ...base,
       entries: [entry('a', 'observation', null)],
@@ -70,17 +70,24 @@ describe('assembleNotebook', () => {
     const obs = view.sections.find((s) => s.key === 'observations')!
     expect(obs.live[0].editableBy).toContain('learner')
 
-    const tutor = view.sections.find((s) => s.key === 'tutor')!
-    expect(tutor.shareId).toBe('s1')
-    expect(tutor.live[0].editableBy).toEqual(['tutor'])
+    // Nobody but the tutor may supersede a tutor note. TutorNoteView has no
+    // `editableBy` field at all — unlike a NotebookSection's `live` entries,
+    // it structurally cannot be routed through the generic supersede path.
+    // A tutor section in `sections` would be exactly that path, wired to
+    // `onEdit`, so it must never appear there.
+    expect(view.sections.find((s) => s.key === 'tutor')).toBeUndefined()
+    expect(view.tutorNotes).toHaveLength(1)
+    expect(view.tutorNotes[0].shareId).toBe('s1')
+    expect(view.tutorNotes[0].notes[0].body).toBe('がんばって')
   })
 
-  it('omits the tutor section entirely when there is no accepted share', () => {
+  it('omits tutor notes entirely when there is no accepted share', () => {
     const view = assembleNotebook(base)
+    expect(view.tutorNotes).toEqual([])
     expect(view.sections.find((s) => s.key === 'tutor')).toBeUndefined()
   })
 
-  it('emits one tutor section per share so two tutors never merge', () => {
+  it('emits one tutorNotes entry per share so two tutors never merge, and never a tutor section', () => {
     const view = assembleNotebook({
       ...base,
       tutorNotes: [
@@ -88,6 +95,7 @@ describe('assembleNotebook', () => {
         { shareId: 's2', tutorLabel: 'Alex', notes: [] },
       ],
     })
-    expect(view.sections.filter((s) => s.key === 'tutor').map((s) => s.shareId)).toEqual(['s1', 's2'])
+    expect(view.tutorNotes.map((s) => s.shareId)).toEqual(['s1', 's2'])
+    expect(view.sections.filter((s) => s.key === 'tutor')).toHaveLength(0)
   })
 })

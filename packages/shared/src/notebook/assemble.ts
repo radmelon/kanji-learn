@@ -31,17 +31,14 @@ export function assembleNotebook(input: NotebookInput): NotebookView {
 
   const sections: NotebookSection[] = [section('observations', 'observation'), section('settled', 'decision')]
 
-  // One section per share — spec §3. Absent, not empty, when there is no share.
-  for (const share of input.tutorNotes) {
-    sections.push({
-      key: 'tutor', title: `From ${share.tutorLabel}`, shareId: share.shareId,
-      live: share.notes.map((n) => ({
-        id: n.id, body: n.body, author: 'tutor' as const,
-        createdAt: n.createdAt, editableBy: ['tutor' as const],
-      })),
-      archived: [],
-    })
-  }
+  // Tutor notes surface ONLY through `tutorNotes` below, never as a
+  // `sections` entry. `NotebookEntry.editableBy` exists so the generic
+  // supersede path (NotebookBody's onEdit -> PATCH /notebook/entries/:id)
+  // knows who may edit a row; a tutor-authored `sections` entry would be
+  // wired to that same Pressable and PATCH path, and nobody but the tutor
+  // may supersede a tutor note (spec §4). `TutorNoteView` carries no
+  // `editableBy` at all, which is what makes that structurally impossible
+  // once it stays out of `sections`.
 
   const isEmpty =
     agreement === null &&
