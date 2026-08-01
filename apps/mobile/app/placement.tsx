@@ -10,6 +10,7 @@ import * as Haptics from 'expo-haptics'
 import { usePlacementStore } from '../src/stores/placement.store'
 import { useShowPitchAccent } from '../src/hooks/useShowPitchAccent'
 import { colors, spacing, radius, typography } from '../src/theme'
+import { placementResultCopy } from '../src/lib/placement-result-copy'
 import type { JlptLevel } from '@kanji-learn/shared'
 
 const JLPT_LEVELS: JlptLevel[] = ['N5', 'N4', 'N3', 'N2', 'N1']
@@ -167,27 +168,15 @@ export default function PlacementScreen() {
 
   // ── Results ──
   if (status === 'complete') {
+    const resultCopy = placementResultCopy({ inferredLevel, seededCount: totalApplied, isRetest })
     return (
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.resultsContainer}>
           <View style={styles.resultsHero}>
-            <Text style={styles.resultsBigNum}>{totalApplied}</Text>
-            <Text style={styles.resultsHeroLabel}>kanji recognized</Text>
+            <Text style={styles.resultsBigNum}>{resultCopy.heroValue}</Text>
+            <Text style={styles.resultsHeroLabel}>{resultCopy.heroLabel}</Text>
           </View>
-          <Text style={styles.resultsSubtitle}>
-            {totalApplied > 0
-              ? `These ${totalApplied} kanji are now marked as Remembered and won't appear in your early review queue.`
-              : "No kanji were recognized. You'll start fresh from N5 — that's totally fine!"}
-          </Text>
-
-          {inferredLevel && (
-            <View style={styles.resultsBreakdown}>
-              <Text style={styles.resultsSectionTitle}>{isRetest ? 'Updated level' : 'Estimated level'}</Text>
-              <View style={styles.resultsLevelRow}>
-                <Text style={styles.resultsLevelLabel}>{inferredLevel}</Text>
-              </View>
-            </View>
-          )}
+          <Text style={styles.resultsSubtitle}>{resultCopy.subtitle}</Text>
 
           <TouchableOpacity style={styles.primaryBtn} onPress={handleStartStudying}>
             <Text style={styles.primaryBtnText}>Start studying</Text>

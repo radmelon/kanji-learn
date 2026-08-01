@@ -358,38 +358,82 @@ export async function completePlacement(
     .values({ userId, sessionType: 'placement', startedAt: new Date(), completedAt: new Date() })
     .returning({ id: reviewSessions.id })
 
-  let appliedCount = 0
-  for (const [kanjiId] of byKanji) {
-    if (hasHistory.has(kanjiId)) continue // never-overwrite — the B-210 fix
+  // ── Seeding runs over the CORPUS, not the asked items (B146) ─────────────
+  //
+  // This loop used to iterate `byKanji` — the ~10 kanji the test asked about.
+  // But selectNextItems maximises Fisher information, which peaks at b ≈ theta,
+  // while seedFromProbability requires p(knows) >= 0.85, i.e. b <= theta - 1.386.
+  // Those sets are disjoint, so an adaptive test could never seed anything, for
+  // any learner, at any ability.
+  //
+  // Found on device: a real session's asked difficulties ran -0.39..+0.10 against
+  // a bar of b <= -1.16, while 151 corpus kanji cleared that bar unasked. The
+  // learner was told "0 kanji recognized" in the same response that inferred N4.
+  //
+  // The ability estimate generalises across the corpus by construction — that is
+  // what a latent-trait model is for — so the posterior is the right thing to
+  // evaluate every kanji against, not just the sample that produced it.
+  const allDifficulty = await db.select().from(kanjiDifficulty)
 
-    const diff = difficultyById.get(kanjiId)
-    if (!diff) continue
-    const p = pKnows(posterior, diff.b)
-    const seed = seedFromProbability(p, diff.b)
-    if (!seed) continue
+  // Everything the learner already has, not just the asked set. Stricter than
+  // the reviewLogs predicate above and it subsumes it: a row is protected
+  // whether or not it carries history, which is what onConflictDoNothing
+  // enforced structurally anyway.
+  const owned = await db
+    .select({ kanjiId: userKanjiProgress.kanjiId })
+    .from(userKanjiProgress)
+    .where(eq(userKanjiProgress.userId, userId))
+  const alreadyHas = new Set<number>(owned.map((r) => r.kanjiId))
+  for (const k of hasHistory) alreadyHas.add(k)
 
-    const nextReviewAt = new Date(Date.now() + seed.stabilityDays * 86_400_000)
+  const seedsByKanji = new Map<number, ReturnType<typeof seedFromProbability>>()
+  for (const diff of allDifficulty) {
+    if (alreadyHas.has(diff.kanjiId)) continue
+    const seed = seedFromProbability(pKnows(posterior, diff.b), diff.b)
+    if (seed) seedsByKanji.set(diff.kanjiId, seed)
+  }
 
-    await db
-      .insert(userKanjiProgress)
-      .values({
-        userId, kanjiId, status: 'reviewing',
-        stability: seed.stabilityDays, difficulty: seed.fsrsDifficulty,
-        totalReviews: 0, nextReviewAt, lastReviewedAt: null,
-        readingStage: 0, updatedAt: new Date(),
-      })
-      .onConflictDoNothing() // guards the race window between the `existing` read above and this write
-    appliedCount++
+  // Batched. Row-at-a-time cost ~400ms against the transaction pooler, so a
+  // strong learner seeding 150 kanji would have held the request open for a
+  // minute.
+  const now = Date.now()
+  const inserted =
+    seedsByKanji.size === 0
+      ? []
+      : await db
+          .insert(userKanjiProgress)
+          .values(
+            Array.from(seedsByKanji.entries()).map(([kanjiId, seed]) => ({
+              userId, kanjiId, status: 'reviewing' as const,
+              stability: seed!.stabilityDays, difficulty: seed!.fsrsDifficulty,
+              totalReviews: 0,
+              nextReviewAt: new Date(now + seed!.stabilityDays * 86_400_000),
+              lastReviewedAt: null, readingStage: 0, updatedAt: new Date(),
+            })),
+          )
+          .onConflictDoNothing() // guards the race between the read above and this write
+          .returning({ kanjiId: userKanjiProgress.kanjiId })
 
-    await db.insert(reviewLogs).values({
-      sessionId: session_.id, userId, kanjiId, reviewType: 'placement',
-      quality: 4, responseTimeMs: 0,
-      prevStatus: 'unseen', nextStatus: 'reviewing',
-      prevInterval: 0, nextInterval: Math.round(seed.stabilityDays),
-      prevStability: 0, nextStability: seed.stabilityDays,
-      prevDifficulty: 5, nextDifficulty: seed.fsrsDifficulty,
-      reviewedAt: new Date(),
-    })
+  // Count what was actually written. The old counter incremented before an
+  // onConflictDoNothing that may have skipped the row, so for any returning
+  // learner it reported writes that never happened.
+  const appliedCount = inserted.length
+
+  if (inserted.length > 0) {
+    await db.insert(reviewLogs).values(
+      inserted.map(({ kanjiId }) => {
+        const seed = seedsByKanji.get(kanjiId)!
+        return {
+          sessionId: session_.id, userId, kanjiId, reviewType: 'placement' as const,
+          quality: 4, responseTimeMs: 0,
+          prevStatus: 'unseen' as const, nextStatus: 'reviewing' as const,
+          prevInterval: 0, nextInterval: Math.round(seed.stabilityDays),
+          prevStability: 0, nextStability: seed.stabilityDays,
+          prevDifficulty: 5, nextDifficulty: seed.fsrsDifficulty,
+          reviewedAt: new Date(),
+        }
+      }),
+    )
   }
 
   return { appliedCount, inferredLevel: level, theta, se }

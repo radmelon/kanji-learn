@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { sql, and, eq, asc, inArray } from 'drizzle-orm'
@@ -355,5 +355,95 @@ describe('getSessionPrior', () => {
     expect(result.hasPrior).toBe(true)
     expect(Number.isFinite(result.theta)).toBe(true)
     expect(Number.isFinite(result.se)).toBe(true)
+  })
+})
+
+// ─── Seeding scope (B146, found on device) ──────────────────────────────────
+//
+// completePlacement seeded only the kanji the test ASKED — `for (const [kanjiId]
+// of byKanji)`. But selectNextItems maximises Fisher information, which peaks at
+// b ≈ theta, while seedFromProbability requires p(knows) >= 0.85, i.e.
+// b <= theta - 1.386. Those sets are disjoint, so an adaptive test could never
+// seed anything, for any learner, at any ability.
+//
+// On live: a real session's asked difficulties ran -0.39..+0.10 against a bar of
+// b <= -1.16, and 151 corpus kanji cleared that bar unasked. The learner was
+// told "0 kanji recognized. You'll start fresh from N5" while the same response
+// carried inferredLevel N4.
+//
+// Every existing seeding test passes because its fixture makes the ASKED kanji
+// easy — the one arrangement adaptive selection cannot produce.
+describe('completePlacement seeding scope', () => {
+  const SCOPE_USER = '00000000-0000-0000-0000-0000000000d3'
+
+  beforeAll(async () => {
+    await db.execute(sql`
+      INSERT INTO user_profiles (id, display_name, timezone)
+      VALUES (${SCOPE_USER}, 'SeedScopeFixture', 'UTC') ON CONFLICT DO NOTHING
+    `)
+  })
+
+  const wipe = async () => {
+    await db.execute(sql`DELETE FROM user_kanji_progress WHERE user_id = ${SCOPE_USER}`)
+    await db.execute(sql`DELETE FROM review_logs WHERE user_id = ${SCOPE_USER}`)
+    await db.execute(sql`DELETE FROM review_sessions WHERE user_id = ${SCOPE_USER}`)
+    await db.execute(sql`DELETE FROM placement_results WHERE session_id IN
+      (SELECT id FROM placement_sessions WHERE user_id = ${SCOPE_USER})`)
+    await db.execute(sql`DELETE FROM placement_sessions WHERE user_id = ${SCOPE_USER}`)
+  }
+
+  beforeEach(wipe)
+
+  // Seeding now writes across the corpus, so this fixture leaves far more rows
+  // behind than a per-item one did. Left in place they are counted by any suite
+  // that asks "every user with progress" — backfill.test.ts flipped from passing
+  // to failing on exactly that, in the full run only.
+  afterAll(async () => {
+    await wipe()
+    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${SCOPE_USER}`)
+  })
+
+  it('seeds an easy kanji that the test never asked about', async () => {
+    const asked = await pickKanji(0)
+    const neverAsked = await pickKanji(1)
+    expect(asked).not.toBe(neverAsked)
+
+    // The asked item sits AT theta — what Fisher-information selection actually
+    // picks. The unasked one is far below it, which is the only place a seed can
+    // ever come from.
+    await db.execute(sql`
+      UPDATE kanji_difficulty SET b = 0, b_prior = 0, reading_offset = 0.4 WHERE kanji_id = ${asked}
+    `)
+    await db.execute(sql`
+      UPDATE kanji_difficulty SET b = -3, b_prior = -3, reading_offset = 0.4 WHERE kanji_id = ${neverAsked}
+    `)
+
+    const result = await completePlacement(db, SCOPE_USER, [
+      { kanjiId: asked, itemType: 'meaning', correct: true },
+      { kanjiId: asked, itemType: 'reading', correct: true },
+    ])
+
+    // CONTROL: the run must actually have produced a positive ability estimate,
+    // otherwise nothing could clear the threshold and this asserts nothing.
+    expect(
+      result.theta,
+      'theta did not rise above 0, so no kanji could clear p >= 0.85 — the fixture, not the code, is wrong',
+    ).toBeGreaterThan(0)
+
+    const seeded = await db
+      .select({ kanjiId: schema.userKanjiProgress.kanjiId })
+      .from(schema.userKanjiProgress)
+      .where(
+        and(
+          eq(schema.userKanjiProgress.userId, SCOPE_USER),
+          eq(schema.userKanjiProgress.kanjiId, neverAsked),
+        ),
+      )
+
+    expect(
+      seeded.length,
+      'an easy kanji outside the asked set was not seeded — seeding is still scoped to responses',
+    ).toBe(1)
+    expect(result.appliedCount).toBeGreaterThan(0)
   })
 })
