@@ -76,6 +76,28 @@ export class NotebookService {
     return { id: row.id }
   }
 
+  /**
+   * Spec §8. Phase 7 writes page one during onboarding, but if Phase 6 ships
+   * first — or for any learner who onboarded before it — the notebook would open
+   * blank. Idempotent: keyed on the existence of any buddy-authored decision.
+   */
+  async ensureFirstOpen(userId: string): Promise<void> {
+    const existing = await this.db.query.notebookEntries.findFirst({
+      where: and(
+        eq(notebookEntries.userId, userId),
+        eq(notebookEntries.author, 'buddy'),
+        eq(notebookEntries.kind, 'decision'),
+      ),
+    })
+    if (existing) return
+
+    await this.createEntry(userId, {
+      kind: 'decision', author: 'buddy',
+      body: "This is where we'll keep track of what we decide together — what you're working on, what we're trying, and what's actually helping.",
+      source: { kind: 'first_open' },
+    })
+  }
+
   /** Editing IS superseding. `replacementBody: null` is a delete. */
   async supersedeEntry(
     userId: string,

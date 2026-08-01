@@ -36,6 +36,7 @@ export async function notebookRoutes(server: FastifyInstance) {
   const service = new NotebookService(server.db)
 
   server.get('/', { preHandler: [server.authenticate] }, async (req, reply) => {
+    await service.ensureFirstOpen(req.userId!)
     return reply.send({ ok: true, data: await service.getNotebook(req.userId!) })
   })
 

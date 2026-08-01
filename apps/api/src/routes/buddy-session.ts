@@ -20,6 +20,7 @@ import {
 } from '@kanji-learn/shared'
 import { z } from 'zod'
 import { CommitmentService } from '../services/buddy/commitment.service.js'
+import { NotebookService } from '../services/notebook.service.js'
 
 const commitmentBodySchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -47,6 +48,7 @@ function defaultShape(weekStart: string): Commitment {
 
 export async function buddySessionRoutes(server: FastifyInstance) {
   const service = new CommitmentService(server.db)
+  const notebook = new NotebookService(server.db)
 
   server.get('/', { preHandler: [server.authenticate] }, async (req, reply) => {
     const profile = await server.db.query.userProfiles.findFirst({
@@ -144,6 +146,17 @@ export async function buddySessionRoutes(server: FastifyInstance) {
     }
 
     await service.setForWeek(req.userId!, commitment)
+
+    // Template copy only — Slice 1 has no LLM, and the notebook must still
+    // render on the template tier every offline/rate-limited/outage path
+    // falls back to (spec decision #11).
+    await notebook.createEntry(req.userId!, {
+      kind: 'observation', author: 'buddy',
+      weekStart: commitment.weekStart,
+      body: `Agreed ${commitment.daysCommitted} days, ${commitment.minutesPerDay} minutes.`,
+      source: { kind: 'commitment' },
+    })
+
     return reply.send({ ok: true, data: commitment })
   })
 }
