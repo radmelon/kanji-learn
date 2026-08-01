@@ -1,5 +1,5 @@
 // apps/api/src/services/notebook.service.ts
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import {
   notebookEntries, buddyCommitments, userProfiles, tutorNotes, tutorShares,
 } from '@kanji-learn/db'
@@ -107,6 +107,48 @@ export class NotebookService {
       body: "This is where we'll keep track of what we decide together — what you're working on, what we're trying, and what's actually helping.",
       source: { kind: 'first_open' },
     }).onConflictDoNothing()
+  }
+
+  /**
+   * Write-back for a just-agreed weekly commitment (buddy-session.ts).
+   * CommitmentService.setForWeek is an idempotent upsert keyed on
+   * (user_id, week_start) — saving a commitment twice in one session
+   * updates the same row. This write-back needs the same idempotence: a
+   * bare createEntry insert here left two live observations ("Agreed 4
+   * days, 15 minutes." and "Agreed 5 days, 20 minutes.") both rendered,
+   * the stale one never superseded. Supersede any existing LIVE commitment
+   * observation for the same week rather than appending a second — the
+   * replacement stays buddy-authored, unlike NotebookService.supersedeEntry
+   * (which is the learner-edit path and always attributes the replacement
+   * to 'learner').
+   */
+  async writeCommitmentObservation(
+    userId: string,
+    weekStart: string,
+    body: string,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const existing = await tx.query.notebookEntries.findFirst({
+        where: and(
+          eq(notebookEntries.userId, userId),
+          eq(notebookEntries.kind, 'observation'),
+          eq(notebookEntries.weekStart, weekStart),
+          isNull(notebookEntries.supersededAt),
+          sql`${notebookEntries.source}->>'kind' = 'commitment'`,
+        ),
+      })
+
+      const [row] = await tx.insert(notebookEntries).values({
+        userId, kind: 'observation', body, author: 'buddy',
+        weekStart, source: { kind: 'commitment' },
+      }).returning({ id: notebookEntries.id })
+
+      if (existing) {
+        await tx.update(notebookEntries)
+          .set({ supersededAt: new Date(), supersededBy: row.id })
+          .where(and(eq(notebookEntries.id, existing.id), isNull(notebookEntries.supersededAt)))
+      }
+    })
   }
 
   /** Editing IS superseding. `replacementBody: null` is a delete. */

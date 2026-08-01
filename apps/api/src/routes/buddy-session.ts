@@ -154,12 +154,11 @@ export async function buddySessionRoutes(server: FastifyInstance) {
     // notebook write is guarded: a failure here is logged, not surfaced,
     // and never turns an already-saved commitment into a 500.
     try {
-      await notebook.createEntry(req.userId!, {
-        kind: 'observation', author: 'buddy',
-        weekStart: commitment.weekStart,
-        body: `Agreed ${commitment.daysCommitted} days, ${commitment.minutesPerDay} minutes.`,
-        source: { kind: 'commitment' },
-      })
+      await notebook.writeCommitmentObservation(
+        req.userId!,
+        commitment.weekStart,
+        `Agreed ${commitment.daysCommitted} days, ${commitment.minutesPerDay} minutes.`,
+      )
     } catch (err) {
       req.log.error({ err, userId: req.userId }, '[BuddySession] notebook write failed after commitment saved')
     }
