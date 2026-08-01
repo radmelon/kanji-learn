@@ -12,13 +12,27 @@ import { api } from '../../src/lib/api'
 import { MnemonicCard } from '../../src/components/mnemonics/MnemonicCard'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import { journalListState } from '../../src/lib/journal-list-state'
+import { useNotebookStore } from '../../src/stores/notebook.store'
+import { NotebookBody } from '../../src/components/notebook/NotebookBody'
+import type { NotebookEntry, NotebookSection } from '@kanji-learn/shared'
 
-// ─── Journal Screen ───────────────────────────────────────────────────────────
-// A searchable list by kanji character. The 30-day refresh queue that used to
-// be the default view is retired (parent spec §10.4) — a hook is now kept alive
-// by the reinforcement loop, not by a calendar.
+// ─── Buddy (formerly the Mnemonic Journal) ─────────────────────────────────
+// The tab now opens on the shared notebook: the agreement, experiments,
+// observations, settled decisions and tutor notes assembled by
+// `assembleNotebook` and rendered by `NotebookBody`. "Your hooks" — the old
+// Journal — stays mounted below it, unchanged in behaviour: hooks have no
+// live/archive split and no supersede chain, so pulling them through the
+// notebook assembly would mean rebuilding them to gain nothing (Task 8 brief).
+//
+// The 30-day refresh queue that used to be the default hooks view is retired
+// (parent spec §10.4) — a hook is now kept alive by the reinforcement loop,
+// not by a calendar.
 
 const INFO_JOURNAL = [
+  {
+    title: "Buddy's notebook",
+    body: "This is the shared record of what you and Buddy have agreed, noticed, and settled together — plus anything your tutor has left you.",
+  },
   {
     title: 'Your hooks',
     body: "A hook is a memory story you built yourself — anchored to where you were and what you noticed. Search a kanji to see its hook, the threads you've added, and where it was built.",
@@ -35,6 +49,27 @@ const INFO_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 }
  *  not (the character is already in the search box). */
 const isUserHook = (m: Mnemonic | UserHook): m is UserHook => 'kanjiCharacter' in m
 
+/** Only these two notebook sections are learner-composed prose (spec — the
+ *  agreement/experiment are projections of buddy_commitments, tutor notes are
+ *  read-only here, and hooks live in their own section below). Any other
+ *  section key is a no-op tap rather than a broken write. */
+const NOTEBOOK_KIND_BY_SECTION: Partial<Record<NotebookSection['key'], 'observation' | 'decision'>> = {
+  observations: 'observation',
+  settled: 'decision',
+}
+
+interface NotebookEntryModalState {
+  visible: boolean
+  mode: 'add' | 'edit'
+  kind: 'observation' | 'decision' | null
+  entryId: string | null
+  text: string
+}
+
+const CLOSED_ENTRY_MODAL: NotebookEntryModalState = {
+  visible: false, mode: 'add', kind: null, entryId: null, text: '',
+}
+
 export default function Journal() {
   const [selectedKanjiId, setSelectedKanjiId] = useState<number | null>(null)
   const [kanjiSearch, setKanjiSearch] = useState('')
@@ -49,6 +84,66 @@ export default function Journal() {
     setActiveInfo((prev) => (prev === id ? null : id))
   }, [])
 
+  // ─── Notebook ──────────────────────────────────────────────────────────
+  const {
+    hasLoaded: notebookLoaded,
+    error: notebookError,
+    view: notebookView,
+    load: loadNotebook,
+    addEntry: addNotebookEntry,
+    editEntry: editNotebookEntry,
+    deleteEntry: deleteNotebookEntry,
+  } = useNotebookStore()
+
+  useEffect(() => {
+    loadNotebook()
+  }, [loadNotebook])
+
+  const [entryModal, setEntryModal] = useState<NotebookEntryModalState>(CLOSED_ENTRY_MODAL)
+  const [entrySaving, setEntrySaving] = useState(false)
+
+  const handleNotebookAdd = useCallback((sectionKey: NotebookSection['key']) => {
+    const kind = NOTEBOOK_KIND_BY_SECTION[sectionKey]
+    if (!kind) return
+    setEntryModal({ visible: true, mode: 'add', kind, entryId: null, text: '' })
+  }, [])
+
+  const handleNotebookEdit = useCallback((entry: NotebookEntry) => {
+    setEntryModal({ visible: true, mode: 'edit', kind: null, entryId: entry.id, text: entry.body })
+  }, [])
+
+  const handleNotebookDelete = useCallback((entry: NotebookEntry) => {
+    Alert.alert('Remove this?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => { void deleteNotebookEntry(entry.id) },
+      },
+    ])
+  }, [deleteNotebookEntry])
+
+  const handleEntrySave = useCallback(async () => {
+    if (!entryModal.text.trim()) return
+    setEntrySaving(true)
+    try {
+      if (entryModal.mode === 'add' && entryModal.kind) {
+        await addNotebookEntry(entryModal.kind, entryModal.text.trim())
+      } else if (entryModal.mode === 'edit' && entryModal.entryId) {
+        await editNotebookEntry(entryModal.entryId, entryModal.text.trim())
+      }
+      // addEntry/editEntry swallow their own failures into store.error rather
+      // than throwing (notebook.store.ts) — read it back rather than assuming
+      // success, or a failed save would silently close the modal.
+      if (!useNotebookStore.getState().error) {
+        setEntryModal(CLOSED_ENTRY_MODAL)
+      }
+    } finally {
+      setEntrySaving(false)
+    }
+  }, [entryModal, addNotebookEntry, editNotebookEntry])
+
+  // ─── Hooks ("Your hooks") ──────────────────────────────────────────────
   // kanjiId=0 disables loads until a kanji is selected.
   const {
     mnemonics,
@@ -103,7 +198,7 @@ export default function Journal() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Mnemonic Journal</Text>
+        <Text style={styles.title}>Buddy</Text>
         <InfoButton id="journal" activeInfo={activeInfo} onToggle={toggleInfo} />
       </View>
       {activeInfo === 'journal' && (
@@ -111,6 +206,43 @@ export default function Journal() {
           <InfoPanel sections={INFO_JOURNAL} />
         </View>
       )}
+
+      {/* Cold load with nothing cached yet (B-227's failure mode, repeated
+          here deliberately: a store that never leaves hasLoaded false,
+          rendered distinctly at each of its three states so this screen
+          never appears unbuilt). */}
+      {!notebookLoaded && (
+        <View style={styles.notebookLoading}>
+          <ActivityIndicator color={colors.primary} size="large" />
+          <Text style={styles.notebookLoadingText}>Loading Buddy's notebook…</Text>
+        </View>
+      )}
+
+      {notebookLoaded && notebookError && (
+        <View style={styles.notebookErrorBanner}>
+          <Ionicons name="cloud-offline-outline" size={18} color={colors.error} />
+          <Text style={styles.notebookErrorText}>{notebookError}</Text>
+        </View>
+      )}
+
+      {/* NotebookBody's own root carries `flex: 1` (styled for a screen
+          where it's the only body). As a direct child of this column it
+          would greedily claim every pixel of remaining height and push
+          "Your hooks" off the bottom of the screen — this plain wrapping
+          View (no flex of its own) gives Yoga an undefined-height parent,
+          so NotebookBody sizes to its content instead of growing. */}
+      {notebookLoaded && notebookView && (
+        <View>
+          <NotebookBody
+            view={notebookView}
+            onAdd={handleNotebookAdd}
+            onEdit={handleNotebookEdit}
+            onDelete={handleNotebookDelete}
+          />
+        </View>
+      )}
+
+      <Text style={styles.sectionTitle}>Your hooks</Text>
 
       {/* Search / filter bar */}
       <View style={styles.searchRow}>
@@ -248,7 +380,7 @@ export default function Journal() {
         ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
       />
 
-      {/* Compose modal */}
+      {/* Compose modal — hooks */}
       <Modal visible={composeVisible} animationType="slide" transparent>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -282,6 +414,43 @@ export default function Journal() {
         </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Compose modal — notebook entries (observations / settled decisions) */}
+      <Modal visible={entryModal.visible} animationType="slide" transparent>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {entryModal.mode === 'edit' ? 'Edit note' : 'Add a note'}
+              </Text>
+              <TouchableOpacity onPress={() => setEntryModal(CLOSED_ENTRY_MODAL)}>
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.composeInput}
+              placeholder="What did you notice, or what did you decide?"
+              placeholderTextColor={colors.textMuted}
+              value={entryModal.text}
+              onChangeText={(text) => setEntryModal((prev) => ({ ...prev, text }))}
+              multiline
+              autoFocus
+            />
+            <TouchableOpacity
+              style={[styles.saveBtn, (!entryModal.text.trim() || entrySaving) && styles.disabled]}
+              onPress={handleEntrySave}
+              disabled={!entryModal.text.trim() || entrySaving}
+            >
+              <Text style={styles.saveBtnText}>{entrySaving ? 'Saving…' : 'Save note'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -292,6 +461,16 @@ const styles = StyleSheet.create({
   title: { ...typography.h2, color: colors.textPrimary, flex: 1 },
   refreshBadge: { backgroundColor: colors.warning + '22', paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.full },
   refreshBadgeText: { ...typography.caption, color: colors.warning, fontWeight: '700' },
+  notebookLoading: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl, gap: spacing.md },
+  notebookLoadingText: { ...typography.bodySmall, color: colors.textMuted },
+  notebookErrorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.error + '18', borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.error + '44',
+    marginHorizontal: spacing.md, marginTop: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+  },
+  notebookErrorText: { ...typography.bodySmall, color: colors.error, flexShrink: 1 },
   searchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   searchInput: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.bgCard, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border },
   searchText: { ...typography.body, color: colors.textPrimary, flex: 1 },
@@ -299,7 +478,7 @@ const styles = StyleSheet.create({
   generateRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   genBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.bgCard, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
   genBtnText: { ...typography.bodySmall, color: colors.accent },
-  sectionTitle: { ...typography.bodySmall, color: colors.textMuted, paddingHorizontal: spacing.md, paddingBottom: spacing.xs, fontWeight: '600' },
+  sectionTitle: { ...typography.h3, color: colors.textPrimary, paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl },
   hookGroup: { gap: spacing.xs, marginBottom: spacing.md },
   hookHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
