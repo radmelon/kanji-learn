@@ -25,6 +25,11 @@ function at(beatKind: string): MeetingUiState {
     { type: 'answered', patch: { explicitRuler: 'jlpt' } },             // frame_ask → meaning (no-op patch otherwise)
     { type: 'answered', patch: { dailyGoal: 20 } },                     // → meet
     { type: 'answered', patch: { buddyDay: 0, buddyIntervalWeeks: 1 } }, // → ask
+    // F2 (whole-branch review, HIGH): 'done' is reachable on cloud tier when
+    // the learner sends free text at 'ask' instead of pressing a finish CTA —
+    // the composer stays live through every beat. Drive it with the same
+    // action the store's sendText path produces on a successful cloud turn.
+    { type: 'cloud_replied', reply: 'Good luck!', patch: {} },          // ask → done
   ]
   for (const a of walk) {
     if (s.beat.kind === beatKind) return s
@@ -35,7 +40,7 @@ function at(beatKind: string): MeetingUiState {
 }
 
 // Every beat surface, enumerated. Deleting a branch's render must fail here.
-const SURFACES = ['intro', 'orientation', 'why', 'frame_ask', 'meaning', 'meet', 'ask'] as const
+const SURFACES = ['intro', 'orientation', 'why', 'frame_ask', 'meaning', 'meet', 'ask', 'done'] as const
 
 describe('MeetingBody — every beat surface renders visibly', () => {
   it.each(SURFACES)('%s renders its transcript and an answer surface', (kind) => {
@@ -74,6 +79,16 @@ describe('MeetingBody — every beat surface renders visibly', () => {
 
   it('ask offers both closes and routes them', () => {
     const { getByText } = render(<MeetingBody ui={at('ask')} {...noop} />)
+    fireEvent.press(getByText('Take it now'))
+    expect(noop.onFinish).toHaveBeenCalledWith('placement')
+    fireEvent.press(getByText('Before our first meeting'))
+    expect(noop.onFinish).toHaveBeenCalledWith('home')
+  })
+
+  it('done offers the same two closes as ask, and hides the composer even on cloud tier', () => {
+    const cloudDone = { ...at('done'), tier: 'cloud' as const }
+    const { getByText, queryByTestId } = render(<MeetingBody ui={cloudDone} {...noop} />)
+    expect(queryByTestId('meeting-composer')).toBeNull()
     fireEvent.press(getByText('Take it now'))
     expect(noop.onFinish).toHaveBeenCalledWith('placement')
     fireEvent.press(getByText('Before our first meeting'))

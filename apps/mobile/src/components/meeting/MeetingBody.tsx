@@ -100,7 +100,12 @@ export function MeetingBody({
 
       <AnswerSurface ui={ui} onAnswer={onAnswer} onFinish={onFinish} />
 
-      {ui.tier === 'cloud' && (
+      {/* F2 fix (whole-branch review, HIGH): 'done' used to render null with
+          the composer still live, so a free-text reply at 'ask' landed the
+          learner on a beat with no surface and no way forward but a message
+          that always 400s server-side. The composer is meaningless once the
+          conversation is over — hide it alongside the transient beat. */}
+      {ui.tier === 'cloud' && ui.beat.kind !== 'done' && (
         <View testID="meeting-composer" style={styles.composer}>
           <TextInput
             style={styles.composerInput}
@@ -190,20 +195,20 @@ function AnswerSurface({
     case 'ask':
       return (
         <View testID="answer-ask" style={styles.answerSurface}>
-          <View style={styles.stackedButtons}>
-            <PrimaryButton label="Take it now" disabled={busy} onPress={() => onFinish('placement')} />
-            <SecondaryButton
-              label="Before our first meeting"
-              disabled={busy}
-              onPress={() => onFinish('home')}
-            />
-          </View>
+          <FinishCTAs busy={busy} onFinish={onFinish} />
         </View>
       )
     case 'done':
-      // Transient: the ask beat's two closes both leave the screen before the
-      // meeting reducer would ever advance here.
-      return null
+      // F2 fix (whole-branch review, HIGH): reachable after all — a cloud
+      // free-text reply sent while at 'ask' advances here via the same
+      // reducer path as any other beat, and the old `return null` left the
+      // learner on a dead surface. Same two finish CTAs as 'ask': there is
+      // still no third option once everything required has been collected.
+      return (
+        <View testID="answer-done" style={styles.answerSurface}>
+          <FinishCTAs busy={busy} onFinish={onFinish} />
+        </View>
+      )
   }
 }
 
@@ -379,6 +384,26 @@ function MeetAnswer({
         label="Sounds good"
         disabled={busy}
         onPress={() => onAnswer({ buddyDay: day, buddyIntervalWeeks: intervalWeeks })}
+      />
+    </View>
+  )
+}
+
+// Shared by 'ask' and 'done' (F2) — the same two closes, no third option.
+function FinishCTAs({
+  busy,
+  onFinish,
+}: {
+  busy: boolean
+  onFinish: (dest: 'placement' | 'home') => void
+}) {
+  return (
+    <View style={styles.stackedButtons}>
+      <PrimaryButton label="Take it now" disabled={busy} onPress={() => onFinish('placement')} />
+      <SecondaryButton
+        label="Before our first meeting"
+        disabled={busy}
+        onPress={() => onFinish('home')}
       />
     </View>
   )
