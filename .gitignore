@@ -85,3 +85,8 @@ apps/mobile/credentials.json
 # ── Saved-webpage scratch (local reference, not a project asset) ───────────────
 KanjiBuddyMonkey.html
 KanjiBuddyMonkey_files/
+
+# Local tool state and personal notes — never commit (SOP: no git add -A)
+.codex/
+/supabase/
+docs/2026-07-31.rtf
