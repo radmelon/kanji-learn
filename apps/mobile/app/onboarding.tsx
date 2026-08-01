@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { MeetingBody } from '../src/components/meeting/MeetingBody'
+import { selectMeetingScreen } from '../src/lib/meeting-screen-state'
 import { useMeetBuddyStore } from '../src/stores/meet-buddy.store'
 import { markMetBuddyLocally } from '../src/hooks/useProfile'
 import { colors, radius, spacing, typography } from '../src/theme'
@@ -18,13 +19,29 @@ export default function OnboardingScreen() {
   // would loop straight back: _layout.tsx's gate checks profile.metBuddyAt,
   // which a failed flush never touched.
   const [pendingOffline, setPendingOffline] = useState(false)
+  // B147, found on device: `if (!ui) return <SafeAreaView />` rendered an EMPTY
+  // view for the whole of begin()'s round-trip, and forever when the request
+  // hung. These two flags let selectMeetingScreen tell "still working" apart
+  // from "finished with nothing to show" — the distinction the blank view
+  // erased. See src/lib/meeting-screen-state.ts.
+  const [settled, setSettled] = useState(false)
+  const [leaving, setLeaving] = useState(false)
 
   const attemptBegin = useCallback(() => {
     setPendingOffline(false)
-    void begin({ revisit: revisit === '1' }).then((state) => {
-      if (state === 'already_done') router.replace('/(tabs)')
-      else if (state === 'pending_offline') setPendingOffline(true)
-    })
+    setSettled(false)
+    setLeaving(false)
+    void begin({ revisit: revisit === '1' })
+      .then((state) => {
+        if (state === 'already_done') {
+          setLeaving(true)
+          router.replace('/(tabs)')
+        } else if (state === 'pending_offline') setPendingOffline(true)
+      })
+      // begin() resolves rather than throwing today, but a future throw must
+      // not strand the screen on a spinner forever — the failure this whole
+      // file exists to stop.
+      .finally(() => setSettled(true))
   }, [begin, revisit])
 
   useEffect(() => {
@@ -34,7 +51,50 @@ export default function OnboardingScreen() {
     // [begin, revisit] deps exactly.
   }, [attemptBegin])
 
-  if (pendingOffline) {
+  const screen = selectMeetingScreen({ settled, hasUi: ui !== null, pendingOffline, leaving })
+
+  if (screen.kind === 'loading') {
+    return (
+      <SafeAreaView style={styles.root}>
+        <View testID="meeting-loading" style={styles.centred}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (screen.kind === 'error') {
+    return (
+      <SafeAreaView style={styles.root}>
+        <View testID="meeting-error" style={styles.pendingWrap}>
+          <Text style={styles.pendingText}>
+            We couldn't start your meeting with Buddy just now. Check your
+            connection and try again.
+          </Text>
+          <Pressable
+            testID="meeting-error-retry"
+            onPress={attemptBegin}
+            accessibilityRole="button"
+            accessibilityLabel="Retry"
+            style={styles.pendingPrimaryButton}
+          >
+            <Text style={styles.pendingPrimaryButtonText}>Retry</Text>
+          </Pressable>
+          <Pressable
+            testID="meeting-error-skip"
+            onPress={() => router.replace('/onboarding-form')}
+            accessibilityRole="button"
+            accessibilityLabel="Use the form instead"
+            style={styles.pendingSecondaryButton}
+          >
+            <Text style={styles.pendingSecondaryButtonText}>Use the form instead</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (screen.kind === 'pending_offline') {
     return (
       <SafeAreaView style={styles.root}>
         <View style={styles.pendingWrap}>
@@ -68,12 +128,10 @@ export default function OnboardingScreen() {
     )
   }
 
-  if (!ui) return <SafeAreaView style={styles.root} />
-
   return (
     <SafeAreaView style={styles.root}>
       <MeetingBody
-        ui={ui}
+        ui={ui!}
         onAnswer={answer}
         onSendText={(t) => void sendText(t)}
         onFinish={(dest) => {
@@ -92,6 +150,7 @@ export default function OnboardingScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  centred: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   pendingWrap: { flex: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
   pendingText: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
   pendingPrimaryButton: {
