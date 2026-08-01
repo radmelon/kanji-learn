@@ -1,18 +1,22 @@
 import React, { useEffect } from 'react'
 import { SafeAreaView, StyleSheet } from 'react-native'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { MeetingBody } from '../src/components/meeting/MeetingBody'
 import { useMeetBuddyStore } from '../src/stores/meet-buddy.store'
 import { colors } from '../src/theme'
 
 export default function OnboardingScreen() {
   const { ui, begin, sendText, answer, finish, skip } = useMeetBuddyStore()
+  // F3 (whole-branch review, HIGH): Profile's "Meet Buddy" row pushes here
+  // with ?revisit=1 so a learner who has already met Buddy can come back —
+  // begin() otherwise bails 'already_done' for everyone who can see that row.
+  const { revisit } = useLocalSearchParams<{ revisit?: string }>()
 
   useEffect(() => {
-    void begin().then((state) => {
+    void begin({ revisit: revisit === '1' }).then((state) => {
       if (state === 'already_done') router.replace('/(tabs)')
     })
-  }, [begin])
+  }, [begin, revisit])
 
   if (!ui) return <SafeAreaView style={styles.root} />
 

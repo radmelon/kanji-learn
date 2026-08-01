@@ -630,7 +630,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.row}
-            onPress={() => router.push('/onboarding' as never)}
+            onPress={() => router.push('/onboarding?revisit=1' as never)}
             activeOpacity={0.7}
           >
             <View style={styles.rowLeft}>

@@ -38,7 +38,7 @@ export async function flushPendingMeetBuddy(): Promise<boolean> {
 interface MeetBuddyState {
   ui: MeetingUiState | null
   error: string | null
-  begin: () => Promise<'ready' | 'already_done'>
+  begin: (opts?: { revisit?: boolean }) => Promise<'ready' | 'already_done'>
   sendText: (text: string) => Promise<void>
   answer: (patch: ExtractedPatch) => void
   finish: () => Promise<void>
@@ -49,11 +49,15 @@ export const useMeetBuddyStore = create<MeetBuddyState>((set, get) => ({
   ui: null,
   error: null,
 
-  begin: async () => {
-    // An offline-completed meeting relaunched offline must not re-run.
+  begin: async (opts) => {
+    const revisit = opts?.revisit ?? false
+    // An offline-completed meeting relaunched offline must not re-run — but
+    // an explicit re-entry (F3: Profile's "Meet Buddy" row) still needs any
+    // stash flushed first, since a stale local queue must not silently ride
+    // along into a fresh conversation.
     if (await AsyncStorage.getItem(KEY_PENDING_MEET)) {
       await flushPendingMeetBuddy()
-      return 'already_done'
+      if (!revisit) return 'already_done'
     }
     try {
       const [profile, learner] = await Promise.all([
@@ -64,8 +68,18 @@ export const useMeetBuddyStore = create<MeetBuddyState>((set, get) => ({
         }>('/v1/user/profile'),
         api.get<{ reasonsForLearning: string[]; interests: string[] }>('/v1/user/learner-profile'),
       ])
-      if (profile.metBuddyAt) return 'already_done'
-      const collected = initialCollected(profile, learner)
+      // F3 fix (whole-branch review, HIGH): the Profile row was inert
+      // because this bail fired for EVERY learner who can see it — anyone
+      // with metBuddyAt set. Re-entry skips the bail outright.
+      if (profile.metBuddyAt && !revisit) return 'already_done'
+      // A learner who met Buddy but never had onboardingCompletedAt stamped
+      // (a stale/legacy row, or a conversation outcome — see F5) still has
+      // prior data by construction. Coalesce so initialCollected's
+      // hadPriorData discriminator sees it and does not re-ask.
+      const collected = initialCollected(
+        { ...profile, onboardingCompletedAt: profile.onboardingCompletedAt ?? profile.metBuddyAt },
+        learner,
+      )
       set({ ui: initMeeting({ collected, restDay: profile.restDay, tier: 'cloud' }), error: null })
       return 'ready'
     } catch {
