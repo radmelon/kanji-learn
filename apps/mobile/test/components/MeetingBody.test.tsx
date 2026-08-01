@@ -72,6 +72,24 @@ describe('MeetingBody — every beat surface renders visibly', () => {
     )
   })
 
+  // F8 (whole-branch review, LOW): a learner with prior reasons on file
+  // (revisit, or a why re-ask after interests alone were missing) saw every
+  // chip unselected, contradicting what they'd already told Buddy.
+  it('why chips pre-select from collected.reasons, intersected with the chip list', () => {
+    const withPriorReasons: MeetingUiState = {
+      ...at('why'),
+      collected: { ...at('why').collected, reasons: ['JLPT exam', 'not-a-real-chip'] },
+    }
+    const { getByText } = render(<MeetingBody ui={withPriorReasons} {...noop} />)
+    expect(flatStyle(getByText('JLPT exam')).color).toBe(colors.textPrimary) // chipTextSelected
+    expect(flatStyle(getByText('Travel')).color).toBe(colors.textSecondary) // chipTextUnselected
+
+    fireEvent.press(getByText('Done'))
+    expect(noop.onAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({ reasons: expect.arrayContaining(['JLPT exam']) }),
+    )
+  })
+
   it('meet renders all seven day pills and answers with the chosen day', () => {
     const { getByText } = render(<MeetingBody ui={at('meet')} {...noop} />)
     for (const d of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) getByText(d)

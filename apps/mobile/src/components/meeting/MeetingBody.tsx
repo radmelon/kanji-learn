@@ -161,7 +161,7 @@ function AnswerSurface({
     case 'why':
       return (
         <View testID="answer-why" style={styles.answerSurface}>
-          <WhyAnswer busy={busy} onAnswer={onAnswer} />
+          <WhyAnswer collected={collected} busy={busy} onAnswer={onAnswer} />
         </View>
       )
     case 'frame_ask':
@@ -214,13 +214,22 @@ function AnswerSurface({
 }
 
 function WhyAnswer({
+  collected,
   busy,
   onAnswer,
 }: {
+  collected: CollectedState
   busy: boolean
   onAnswer: (patch: ExtractedPatch) => void
 }) {
-  const [selected, setSelected] = useState<string[]>([])
+  // F8 fix (whole-branch review, LOW): a learner with prior reasons on file
+  // (revisit, or a re-ask of why triggered only by missing interests) saw
+  // every chip unselected, contradicting what they'd already told Buddy.
+  // Intersected with the chip list so a stray reason from free text (or a
+  // stale chip label) never renders a phantom selection.
+  const [selected, setSelected] = useState<string[]>(() =>
+    FOCUS_CHIPS.filter((chip) => collected.reasons.includes(chip)),
+  )
   const [interestsText, setInterestsText] = useState('')
   const [showHint, setShowHint] = useState(false)
 
