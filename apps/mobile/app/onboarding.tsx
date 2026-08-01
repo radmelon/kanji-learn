@@ -1,7 +1,39 @@
-import { Redirect } from 'expo-router'
+import React, { useEffect } from 'react'
+import { SafeAreaView, StyleSheet } from 'react-native'
+import { router } from 'expo-router'
+import { MeetingBody } from '../src/components/meeting/MeetingBody'
+import { useMeetBuddyStore } from '../src/stores/meet-buddy.store'
+import { colors } from '../src/theme'
 
-// Placeholder front door: Task 13 replaces this with the meeting-Buddy
-// conversation. Until then the form IS onboarding, so nothing regresses.
 export default function OnboardingScreen() {
-  return <Redirect href="/onboarding-form" />
+  const { ui, begin, sendText, answer, finish, skip } = useMeetBuddyStore()
+
+  useEffect(() => {
+    void begin().then((state) => {
+      if (state === 'already_done') router.replace('/(tabs)')
+    })
+  }, [begin])
+
+  if (!ui) return <SafeAreaView style={styles.root} />
+
+  return (
+    <SafeAreaView style={styles.root}>
+      <MeetingBody
+        ui={ui}
+        onAnswer={answer}
+        onSendText={(t) => void sendText(t)}
+        onFinish={(dest) => {
+          void finish().finally(() =>
+            router.replace(dest === 'placement' ? '/placement' : '/(tabs)'),
+          )
+        }}
+        onSkipToForm={() => router.replace('/onboarding-form')}
+        onSkipOutright={() => {
+          void skip().finally(() => router.replace('/(tabs)'))
+        }}
+      />
+    </SafeAreaView>
+  )
 }
+
+const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg } })
