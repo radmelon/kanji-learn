@@ -29,12 +29,26 @@ build.
 - [ ] Old-build interaction is safe: `/complete` stamps `onboarding_completed_at`
       too, so a conversation-onboarded account opening B146 is not re-gated.
 
-### 🛑 One check here needs an API deploy that has NOT happened
+### ✅ `504b1ea` is deployed — §4b is unblocked
 
-`504b1ea` (placement level bands) is committed to `main` and **is not in the live
-image** — the running API was deployed at 14:11, before it landed. §4b is
-unverifiable until the API is redeployed. Everything else in this plan runs
-against the deployed API as-is.
+Deployed 2026-08-01 16:00:12, image `sha256:67edd74f…`, operation `bcb9c6eb`
+`SUCCEEDED` 15:56:09 → 16:00:12, service `RUNNING`, `/health` 200.
+
+**Verified by artifact content, not by status code.** This fix changes computed
+*values*, not response shape, and `/health` carries no version — so there is no
+canary field to check, and a 401 on `/v1/placement/complete` proves nothing (it
+returns 401 on every build). What was checked instead:
+
+- ECR `:latest` digest **changed**: `c55b2f64…` → `67edd74f…`. A `start-deployment`
+  against an unchanged image would have recorded a SUCCEEDED operation dated today
+  and told you nothing — this is the check that rules that out
+- The running image was inspected directly: `export function levelBands` present in
+  `packages/shared/src/placement.ts`, call site `levelBands(corpus, JLPT_LEVELS)` at
+  `placement.service.ts:302`
+- Local image digest == the ECR digest App Runner pulled
+
+The behavioural proof is §4b below, on a device. Nothing above proves the level is
+*correct* — only that the code computing it is the code that shipped.
 
 ---
 
@@ -210,7 +224,7 @@ until the fix wave.
 - [ ] Retest starts from the stored posterior rather than from scratch, and is
       shorter
 
-### 4b. The reported level — 🛑 BLOCKED until the API is redeployed
+### 4b. The reported level — ✅ deployed 16:00:12, runnable now
 
 `504b1ea` fixes level bands being computed from the learner's own ~10 asked items
 and then labelled out of the full five-level list. The bug is **inverted**: item
@@ -218,7 +232,8 @@ selection asks near your ability, so a strong learner is never asked an N5 item,
 those levels drop out of the ladder, and the index-1 band — really N2 — was
 reported as **N4**. The better you did, the lower the level you were told.
 
-Once the API carries `504b1ea`:
+The API carries `504b1ea` as of 16:00:12, so this runs now — but **your existing
+placement row is not retroactively repaired**. Retake the test to see the fix.
 
 - [ ] Answer most items correctly → the reported level is **N3 or higher**, and
       moves *up* with performance
