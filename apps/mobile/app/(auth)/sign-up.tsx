@@ -26,7 +26,7 @@ export default function SignUp() {
     }
     try {
       await signUp(email.trim().toLowerCase(), password, displayName.trim())
-      router.replace('/placement')
+      router.replace('/onboarding')
     } catch (err: any) {
       Alert.alert('Sign up failed', err.message ?? 'Please try again')
     }

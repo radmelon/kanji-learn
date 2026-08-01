@@ -178,7 +178,7 @@ export default function RootLayout() {
     // Logged in, in auth group — decide where to go (wait for profile first)
     if (session && inAuthGroup) {
       if (profileLoading || profile === null) return  // wait for load or hold on fetch error
-      if (profile && !profile.onboardingCompletedAt) {
+      if (profile && !profile.metBuddyAt) {
         router.replace('/onboarding')
       } else {
         router.replace('/(tabs)')
@@ -189,8 +189,12 @@ export default function RootLayout() {
     // Logged in, NOT in auth group — check onboarding gate
     if (session && !inAuthGroup) {
       if (profileLoading || profile === null) return
-      if (profile && !profile.onboardingCompletedAt) {
-        const inOnboarding = segments[0] === 'onboarding'
+      if (profile && !profile.metBuddyAt) {
+        // 'onboarding' immediately <Redirect>s to 'onboarding-form' (the
+        // temporary front door installed in Phase 7 task 12) — both segments
+        // count as "already in onboarding", or the redirect and this gate
+        // would bounce the router back and forth forever.
+        const inOnboarding = segments[0] === 'onboarding' || segments[0] === 'onboarding-form'
         if (!inOnboarding) router.replace('/onboarding')
       }
     }
@@ -209,6 +213,7 @@ export default function RootLayout() {
         <Stack.Screen name="placement" options={{ headerShown: false }} />
         <Stack.Screen name="buddy-session" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding-form" options={{ headerShown: false }} />
         <Stack.Screen name="deleted" options={{ headerShown: false, gestureEnabled: false }} />
       </Stack>
     </GestureHandlerRootView>
