@@ -100,7 +100,7 @@ export function TutorNote({
 const styles = StyleSheet.create({
   root: { gap: spacing.sm },
   body: { ...typography.body, color: colors.textPrimary },
-  kanji: { ...typography.body, color: colors.primary, fontWeight: '600' },
+  kanji: { ...typography.body, color: colors.primary, fontWeight: '600', paddingHorizontal: 4, paddingVertical: 4, lineHeight: 24 },
   controls: { flexDirection: 'row', gap: spacing.md },
   control: { ...typography.bodySmall, color: colors.primary, fontWeight: '600' },
   translationBox: {
