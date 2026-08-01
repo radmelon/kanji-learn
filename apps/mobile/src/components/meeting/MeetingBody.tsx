@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import {
   ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native'
-import { DAY_NAMES, type Beat, type ExtractedPatch } from '@kanji-learn/shared'
+import { DAY_NAMES, type Beat, type CollectedState, type ExtractedPatch } from '@kanji-learn/shared'
 import type { MeetingUiState } from '../../lib/meeting-state'
 import { ONBOARDING_CONTENT } from '../../config/onboarding-content'
 import { colors, radius, spacing, typography } from '../../theme'
@@ -148,7 +148,7 @@ function AnswerSurface({
   onAnswer: (patch: ExtractedPatch) => void
   onFinish: (dest: 'placement' | 'home') => void
 }) {
-  const { beat, busy } = ui
+  const { beat, busy, collected } = ui
 
   switch (beat.kind) {
     case 'intro':
@@ -184,13 +184,13 @@ function AnswerSurface({
     case 'meaning':
       return (
         <View testID="answer-meaning" style={styles.answerSurface}>
-          <MeaningAnswer beat={beat} busy={busy} onAnswer={onAnswer} />
+          <MeaningAnswer beat={beat} collected={collected} busy={busy} onAnswer={onAnswer} />
         </View>
       )
     case 'meet':
       return (
         <View testID="answer-meet" style={styles.answerSurface}>
-          <MeetAnswer beat={beat} busy={busy} onAnswer={onAnswer} />
+          <MeetAnswer beat={beat} collected={collected} busy={busy} onAnswer={onAnswer} />
         </View>
       )
     case 'ask':
@@ -288,14 +288,23 @@ function WhyAnswer({
 
 function MeaningAnswer({
   beat,
+  collected,
   busy,
   onAnswer,
 }: {
   beat: Extract<Beat, { kind: 'meaning' }>
+  collected: CollectedState
   busy: boolean
   onAnswer: (patch: ExtractedPatch) => void
 }) {
-  const [selected, setSelected] = useState<number>(beat.proposedGoal)
+  // F7 fix (whole-branch review, MED): prefer whatever the cloud already
+  // extracted into `collected` over the beat's own proposal — the same
+  // pattern as MeetAnswer below. selectBeat only shows 'meaning' while
+  // collected.dailyGoal is null today, so this is currently equivalent to
+  // beat.proposedGoal alone, but it is the correct contract rather than an
+  // accident of the current gating, and matches what MeetAnswer does for a
+  // field (buddyIntervalWeeks) that genuinely CAN already be set here.
+  const [selected, setSelected] = useState<number>(collected.dailyGoal ?? beat.proposedGoal)
 
   return (
     <View style={styles.meaningWrap}>
@@ -333,15 +342,24 @@ const INTERVAL_OPTIONS = [
 
 function MeetAnswer({
   beat,
+  collected,
   busy,
   onAnswer,
 }: {
   beat: Extract<Beat, { kind: 'meet' }>
+  collected: CollectedState
   busy: boolean
   onAnswer: (patch: ExtractedPatch) => void
 }) {
-  const [day, setDay] = useState<number>(beat.proposedDay)
-  const [intervalWeeks, setIntervalWeeks] = useState<1 | 2>(1)
+  // F7 fix (whole-branch review, MED): buddyIntervalWeeks is NOT one of
+  // selectBeat's gating fields (only buddyDay is), so a learner can have
+  // already negotiated "every other week" via the cloud conversation well
+  // before buddyDay is settled. The old hardcoded `1` silently overwrote
+  // that agreement the moment "Sounds good" was pressed without a change.
+  const [day, setDay] = useState<number>(collected.buddyDay ?? beat.proposedDay)
+  const [intervalWeeks, setIntervalWeeks] = useState<1 | 2>(
+    collected.buddyIntervalWeeks === 2 ? 2 : 1,
+  )
 
   return (
     <View style={styles.meetWrap}>

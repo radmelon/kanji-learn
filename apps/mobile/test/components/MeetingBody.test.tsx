@@ -3,6 +3,11 @@ import { render, fireEvent } from '@testing-library/react-native'
 import { MeetingBody } from '../../src/components/meeting/MeetingBody'
 import { initMeeting, meetingReducer, type MeetingUiState } from '../../src/lib/meeting-state'
 import type { CollectedState, ExtractedPatch } from '@kanji-learn/shared'
+import { colors } from '../../src/theme'
+
+function flatStyle(el: { props: { style?: unknown } }): Record<string, unknown> {
+  return Object.assign({}, ...([] as unknown[]).concat(el.props.style ?? []))
+}
 
 const emptyCollected: CollectedState = {
   reasons: [], interests: [], explicitRuler: null, dailyGoal: null,
@@ -199,5 +204,56 @@ describe('MeetingBody — template tier can complete the whole walk without the 
 
     getByTestId('answer-ask')
     expect(queryByTestId('meeting-composer')).toBeNull()
+  })
+})
+
+// F7 (whole-branch review, MED): the meet and meaning surfaces ignored
+// whatever the cloud conversation had already extracted into `collected`,
+// always defaulting to the beat's proposal (or a hardcoded 1 for interval).
+// A learner who negotiated "let's meet fortnightly" mid-conversation saw
+// Weekly pre-highlighted at the meet beat and had to notice the drift and
+// correct it — or, worse, press "Sounds good" without looking and have their
+// verbal agreement silently overwritten.
+describe('MeetingBody — meet and meaning pre-seed from cloud-extracted collected state (F7)', () => {
+  it('meet pre-selects Fortnightly (not the default Weekly) when the cloud already extracted buddyIntervalWeeks', () => {
+    // buddyIntervalWeeks is NOT one of selectBeat's gating fields (only
+    // buddyDay is), so it can genuinely arrive via the reducer ahead of the
+    // meet beat — e.g. a learner who said "let's do it every other week"
+    // during the why or meaning turns, well before buddyDay is settled.
+    let s = initMeeting({ collected: emptyCollected, restDay: null, tier: 'cloud' })
+    s = meetingReducer(s, { type: 'answered', patch: {} }) // intro -> orientation
+    s = meetingReducer(s, { type: 'answered', patch: {} }) // orientation -> why
+    s = meetingReducer(s, {
+      type: 'answered',
+      patch: { reasons: ['JLPT exam'], interests: ['cooking'], buddyIntervalWeeks: 2 },
+    }) // unambiguous reasons -> meaning directly
+    s = meetingReducer(s, { type: 'answered', patch: { dailyGoal: 20 } }) // -> meet
+    if (s.beat.kind !== 'meet') throw new Error(`walk never reached meet, got ${s.beat.kind}`)
+    expect(s.collected.buddyIntervalWeeks).toBe(2)
+
+    const { getByText } = render(<MeetingBody ui={s} {...noop} />)
+    expect(flatStyle(getByText('Fortnightly')).color).toBe(colors.textPrimary) // chipTextSelected
+    expect(flatStyle(getByText('Weekly')).color).toBe(colors.textSecondary) // chipTextUnselected
+
+    fireEvent.press(getByText('Sounds good'))
+    expect(noop.onAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({ buddyIntervalWeeks: 2 }),
+    )
+  })
+
+  // selectBeat only ever shows 'meaning' while collected.dailyGoal is null
+  // (dailyGoal is itself the gating field for this beat), so this exact
+  // combination cannot arise through the reducer today. It is still the
+  // component's documented contract — the same defensive pattern as
+  // MeetAnswer above — and guards against a future revisit/seeding path
+  // that pre-populates dailyGoal while still routing through this beat for
+  // confirmation.
+  it('meaning pre-selects an already-collected daily goal over the beat\'s own proposal', () => {
+    const seeded: MeetingUiState = { ...at('meaning'), collected: { ...at('meaning').collected, dailyGoal: 30 } }
+    const { getByText } = render(<MeetingBody ui={seeded} {...noop} />)
+    expect(flatStyle(getByText('30')).color).toBe(colors.textPrimary)
+
+    fireEvent.press(getByText('Sounds good'))
+    expect(noop.onAnswer).toHaveBeenCalledWith(expect.objectContaining({ dailyGoal: 30 }))
   })
 })
