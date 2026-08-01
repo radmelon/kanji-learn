@@ -145,8 +145,17 @@ export default function Journal() {
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          void deleteNotebookEntry(entry.id)
-          after?.()
+          void (async () => {
+            await deleteNotebookEntry(entry.id)
+            // deleteEntry swallows its own failure into store.error rather
+            // than throwing (notebook.store.ts) — read it back rather than
+            // assuming success, mirroring handleEntrySubmit below. Offline,
+            // this used to fire-and-forget and close the modal unconditionally
+            // — the learner tapped Remove and nothing visibly happened.
+            if (!useNotebookStore.getState().error) {
+              after?.()
+            }
+          })()
         },
       },
     ])
@@ -442,6 +451,7 @@ export default function Journal() {
         visible={entryModal.visible}
         entry={entryModal.entry}
         saving={entrySaving}
+        error={notebookError}
         onSubmit={handleEntrySubmit}
         onDelete={handleEntryModalDelete}
         onCancel={handleEntryModalCancel}

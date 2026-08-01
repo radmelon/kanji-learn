@@ -1,6 +1,7 @@
 import React from 'react'
 import { fireEvent, render, screen } from '@testing-library/react-native'
 import { NotebookEntryModal } from '../../src/components/notebook/NotebookEntryModal'
+import { colors } from '../../src/theme'
 import type { NotebookEntry } from '@kanji-learn/shared'
 
 // B146: a screen rendered correctly and was invisible — black default text on
@@ -95,5 +96,39 @@ describe('NotebookEntryModal', () => {
       expect(style.color).toBeDefined()
       expect(style.color).not.toBe('#000')
     }
+  })
+
+  // Offline, the learner taps Save, the button un-greys, and nothing visibly
+  // happens — the screen's only error display sits in the FlatList header,
+  // behind the modal's overlay. The modal needs its own error surface.
+  it('renders the error text when error is set, in colors.error', () => {
+    render(
+      <NotebookEntryModal
+        visible entry={null} error="Couldn't save. Check your connection."
+        onSubmit={noop} onDelete={noop} onCancel={noop}
+      />
+    )
+    const node = screen.getByText("Couldn't save. Check your connection.")
+    expect(node).toBeTruthy()
+    const style = flattenStyle(node.props.style)
+    expect(style.color).toBe(colors.error)
+
+    // Same colour discipline as the rest of the file.
+    const texts = legibleTextNodes()
+    for (const n of texts) {
+      const s = flattenStyle(n.props.style)
+      expect(s.color).toBeDefined()
+      expect(s.color).not.toBe('#000')
+    }
+  })
+
+  it('renders no error text when error is null', () => {
+    render(
+      <NotebookEntryModal
+        visible entry={null} error={null}
+        onSubmit={noop} onDelete={noop} onCancel={noop}
+      />
+    )
+    expect(screen.queryByTestId('notebook-entry-modal-error')).toBeNull()
   })
 })

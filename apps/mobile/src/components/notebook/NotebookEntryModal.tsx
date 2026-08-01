@@ -21,6 +21,7 @@ export function NotebookEntryModal({
   visible,
   entry,
   saving = false,
+  error = null,
   onSubmit,
   onDelete,
   onCancel,
@@ -28,6 +29,11 @@ export function NotebookEntryModal({
   visible: boolean
   entry: NotebookEntry | null
   saving?: boolean
+  /** Set when the last submit/delete failed (e.g. offline). The screen's
+   *  FlatList-header error banner sits behind this modal's overlay, so a
+   *  failed save while the modal is open must be shown here too — see
+   *  journal.tsx's confirmDeleteEntry/handleEntrySubmit. */
+  error?: string | null
   onSubmit: (text: string) => void
   onDelete: (entry: NotebookEntry) => void
   onCancel: () => void
@@ -69,6 +75,11 @@ export function NotebookEntryModal({
               multiline
               autoFocus
             />
+            {error && (
+              <Text testID="notebook-entry-modal-error" style={styles.errorText}>
+                {error}
+              </Text>
+            )}
             {isEditing && (
               <TouchableOpacity
                 testID="notebook-entry-modal-delete"
@@ -100,6 +111,7 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalTitle: { ...typography.h3, color: colors.textPrimary },
   composeInput: { ...typography.body, color: colors.textPrimary, backgroundColor: colors.bgSurface, borderRadius: radius.md, padding: spacing.md, minHeight: 120, textAlignVertical: 'top', borderWidth: 1, borderColor: colors.border },
+  errorText: { ...typography.bodySmall, color: colors.error },
   deleteBtn: { alignSelf: 'flex-start' },
   deleteBtnText: { ...typography.bodySmall, color: colors.error },
   saveBtn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
