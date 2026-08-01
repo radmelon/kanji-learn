@@ -13,6 +13,9 @@ export type UserProfile = {
   reminderHour: number
   restDay: number | null
   onboardingCompletedAt: string | null
+  /** When the learner completed (or skipped) meeting Buddy — Phase 7 gate.
+   *  Server-stamped by POST /v1/buddy/meet/complete only; never PATCH this. */
+  metBuddyAt: string | null
   showPitchAccent: boolean
   /** "Mnemonic coaching" — parent spec §11 specifies an opt-OUT, so this
    *  defaults true server-side (migration 0027). Off suppresses automatic

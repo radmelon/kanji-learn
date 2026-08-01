@@ -179,6 +179,7 @@ export const userProfiles = pgTable('user_profiles', {
   buddyCadenceChangedAt: timestamp('buddy_cadence_changed_at', { withTimezone: true }),
   buddyLastInvitedAt: timestamp('buddy_last_invited_at', { withTimezone: true }),
   onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
+  metBuddyAt: timestamp('met_buddy_at', { withTimezone: true }),
   showPitchAccent: boolean('show_pitch_accent').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
