@@ -14,7 +14,8 @@ import { colors, spacing, radius, typography } from '../../src/theme'
 import { journalListState } from '../../src/lib/journal-list-state'
 import { useNotebookStore } from '../../src/stores/notebook.store'
 import { NotebookBody } from '../../src/components/notebook/NotebookBody'
-import type { NotebookEntry, NotebookSection } from '@kanji-learn/shared'
+import { NotebookEntryModal } from '../../src/components/notebook/NotebookEntryModal'
+import type { NotebookEntry, NotebookSection, NotebookView } from '@kanji-learn/shared'
 
 // ─── Buddy (formerly the Mnemonic Journal) ─────────────────────────────────
 // The tab now opens on the shared notebook: the agreement, experiments,
@@ -27,6 +28,15 @@ import type { NotebookEntry, NotebookSection } from '@kanji-learn/shared'
 // The 30-day refresh queue that used to be the default hooks view is retired
 // (parent spec §10.4) — a hook is now kept alive by the reinforcement loop,
 // not by a calendar.
+//
+// Everything above the hook list — the notebook block, the "Your hooks"
+// heading, and the search row — lives in the FlatList's ListHeaderComponent
+// rather than a plain View column above it. The notebook is unbounded in
+// height (cadence line, optional agreement/experiment cards, N sections × M
+// entries, tutor notes) and the screen had no scroll container anywhere;
+// past a certain amount of notebook content there was no way to reach the
+// hook list below it. One FlatList is the one scroll container for the whole
+// page, and the list itself stays virtualised (fix pass 1, review finding 1).
 
 const INFO_JOURNAL = [
   {
@@ -60,14 +70,14 @@ const NOTEBOOK_KIND_BY_SECTION: Partial<Record<NotebookSection['key'], 'observat
 
 interface NotebookEntryModalState {
   visible: boolean
-  mode: 'add' | 'edit'
+  /** The kind to create under, when adding (`entry` is null). Unused when editing. */
   kind: 'observation' | 'decision' | null
-  entryId: string | null
-  text: string
+  /** The entry being edited, or null when adding a new one. */
+  entry: NotebookEntry | null
 }
 
 const CLOSED_ENTRY_MODAL: NotebookEntryModalState = {
-  visible: false, mode: 'add', kind: null, entryId: null, text: '',
+  visible: false, kind: null, entry: null,
 }
 
 export default function Journal() {
@@ -105,32 +115,50 @@ export default function Journal() {
   const handleNotebookAdd = useCallback((sectionKey: NotebookSection['key']) => {
     const kind = NOTEBOOK_KIND_BY_SECTION[sectionKey]
     if (!kind) return
-    setEntryModal({ visible: true, mode: 'add', kind, entryId: null, text: '' })
+    setEntryModal({ visible: true, kind, entry: null })
   }, [])
 
   const handleNotebookEdit = useCallback((entry: NotebookEntry) => {
-    setEntryModal({ visible: true, mode: 'edit', kind: null, entryId: entry.id, text: entry.body })
+    setEntryModal({ visible: true, kind: null, entry })
   }, [])
 
-  const handleNotebookDelete = useCallback((entry: NotebookEntry) => {
+  // Shared by the notebook's own per-entry "Remove" control and the modal's
+  // delete affordance — same confirm flow either way; `after` additionally
+  // closes the modal when the delete was initiated from inside it.
+  const confirmDeleteEntry = useCallback((entry: NotebookEntry, after?: () => void) => {
     Alert.alert('Remove this?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
-        onPress: () => { void deleteNotebookEntry(entry.id) },
+        onPress: () => {
+          void deleteNotebookEntry(entry.id)
+          after?.()
+        },
       },
     ])
   }, [deleteNotebookEntry])
 
-  const handleEntrySave = useCallback(async () => {
-    if (!entryModal.text.trim()) return
+  const handleNotebookDelete = useCallback((entry: NotebookEntry) => {
+    confirmDeleteEntry(entry)
+  }, [confirmDeleteEntry])
+
+  const handleEntryModalDelete = useCallback((entry: NotebookEntry) => {
+    confirmDeleteEntry(entry, () => setEntryModal(CLOSED_ENTRY_MODAL))
+  }, [confirmDeleteEntry])
+
+  const handleEntryModalCancel = useCallback(() => {
+    setEntryModal(CLOSED_ENTRY_MODAL)
+  }, [])
+
+  const handleEntrySubmit = useCallback(async (text: string) => {
+    if (!text.trim()) return
     setEntrySaving(true)
     try {
-      if (entryModal.mode === 'add' && entryModal.kind) {
-        await addNotebookEntry(entryModal.kind, entryModal.text.trim())
-      } else if (entryModal.mode === 'edit' && entryModal.entryId) {
-        await editNotebookEntry(entryModal.entryId, entryModal.text.trim())
+      if (entryModal.entry) {
+        await editNotebookEntry(entryModal.entry.id, text.trim())
+      } else if (entryModal.kind) {
+        await addNotebookEntry(entryModal.kind, text.trim())
       }
       // addEntry/editEntry swallow their own failures into store.error rather
       // than throwing (notebook.store.ts) — read it back rather than assuming
@@ -181,6 +209,42 @@ export default function Journal() {
     }
   }, [composeText, selectedKanjiId, save])
 
+  const handleSubmitSearch = useCallback(async () => {
+    const trimmed = kanjiSearch.trim()
+    if (!trimmed) return
+    setSearchError(null)
+
+    // Numeric ID — use directly
+    const asNumber = parseInt(trimmed)
+    if (!isNaN(asNumber)) {
+      setSelectedKanjiId(asNumber)
+      return
+    }
+
+    // Kanji character — look it up
+    setIsSearching(true)
+    try {
+      const result = await api.get<{ id: number; character: string }>(
+        `/v1/kanji/lookup?character=${encodeURIComponent(trimmed)}`
+      )
+      setSelectedKanjiId(result.id)
+    } catch {
+      setSearchError(`"${trimmed}" not found`)
+    } finally {
+      setIsSearching(false)
+    }
+  }, [kanjiSearch])
+
+  const handleClearSearch = useCallback(() => {
+    setKanjiSearch('')
+    setSelectedKanjiId(null)
+    setSearchError(null)
+  }, [])
+
+  const handleOpenCompose = useCallback(() => {
+    setComposeVisible(true)
+  }, [])
+
   const displayItems = selectedKanjiId ? mnemonics : hooks
   const listLoading = selectedKanjiId ? isLoading : hooksLoading
   const refreshList = selectedKanjiId ? load : loadHooks
@@ -193,6 +257,35 @@ export default function Journal() {
   })
   const showEmptyState = bodyState === 'empty'
   const showLoading = bodyState === 'loading'
+
+  // Both branches below correspond to `displayItems` being empty (see
+  // journalListState's exhaustiveness note) — the per-kanji "no hook yet"
+  // case is the remaining one, gated the same way it always was.
+  const listEmptyContent = showLoading ? (
+    // Cold load with nothing cached. Mirrors the Study tab's
+    // "Loading reviews…" pattern so the tab never renders empty (B-227).
+    <View style={styles.emptyState}>
+      <ActivityIndicator color={colors.primary} size="large" />
+      <Text style={styles.emptySubtitle}>Loading your hooks…</Text>
+    </View>
+  ) : showEmptyState ? (
+    // Genuinely no hooks yet — not "nothing selected". The old copy said
+    // "Search a kanji" because listing them was impossible (B-211).
+    <View style={styles.emptyState}>
+      <Ionicons name="journal-outline" size={48} color={colors.textMuted} />
+      <Text style={styles.emptyTitle}>No hooks yet</Text>
+      <Text style={styles.emptySubtitle}>
+        Build one from a kanji you keep forgetting and it will appear here
+      </Text>
+    </View>
+  ) : listLoading || !selectedKanjiId ? null : (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyTitle}>No hook yet</Text>
+      <Text style={styles.emptySubtitle}>
+        Open this kanji from Browse and tap “Build a hook”, or write your own here
+      </Text>
+    </View>
+  )
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -207,126 +300,14 @@ export default function Journal() {
         </View>
       )}
 
-      {/* Cold load with nothing cached yet (B-227's failure mode, repeated
-          here deliberately: a store that never leaves hasLoaded false,
-          rendered distinctly at each of its three states so this screen
-          never appears unbuilt). */}
-      {!notebookLoaded && (
-        <View style={styles.notebookLoading}>
-          <ActivityIndicator color={colors.primary} size="large" />
-          <Text style={styles.notebookLoadingText}>Loading Buddy's notebook…</Text>
-        </View>
-      )}
-
-      {notebookLoaded && notebookError && (
-        <View style={styles.notebookErrorBanner}>
-          <Ionicons name="cloud-offline-outline" size={18} color={colors.error} />
-          <Text style={styles.notebookErrorText}>{notebookError}</Text>
-        </View>
-      )}
-
-      {/* NotebookBody's own root carries `flex: 1` (styled for a screen
-          where it's the only body). As a direct child of this column it
-          would greedily claim every pixel of remaining height and push
-          "Your hooks" off the bottom of the screen — this plain wrapping
-          View (no flex of its own) gives Yoga an undefined-height parent,
-          so NotebookBody sizes to its content instead of growing. */}
-      {notebookLoaded && notebookView && (
-        <View>
-          <NotebookBody
-            view={notebookView}
-            onAdd={handleNotebookAdd}
-            onEdit={handleNotebookEdit}
-            onDelete={handleNotebookDelete}
-          />
-        </View>
-      )}
-
-      <Text style={styles.sectionTitle}>Your hooks</Text>
-
-      {/* Search / filter bar */}
-      <View style={styles.searchRow}>
-        <View style={styles.searchInput}>
-          <Ionicons name="search" size={16} color={colors.textMuted} />
-          <TextInput
-            style={styles.searchText}
-            placeholder="Type a kanji or ID…"
-            placeholderTextColor={colors.textMuted}
-            value={kanjiSearch}
-            onChangeText={setKanjiSearch}
-            onSubmitEditing={async () => {
-              const trimmed = kanjiSearch.trim()
-              if (!trimmed) return
-              setSearchError(null)
-
-              // Numeric ID — use directly
-              const asNumber = parseInt(trimmed)
-              if (!isNaN(asNumber)) {
-                setSelectedKanjiId(asNumber)
-                return
-              }
-
-              // Kanji character — look it up
-              setIsSearching(true)
-              try {
-                const result = await api.get<{ id: number; character: string }>(
-                  `/v1/kanji/lookup?character=${encodeURIComponent(trimmed)}`
-                )
-                setSelectedKanjiId(result.id)
-              } catch {
-                setSearchError(`"${trimmed}" not found`)
-              } finally {
-                setIsSearching(false)
-              }
-            }}
-            returnKeyType="search"
-          />
-          {isSearching ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : kanjiSearch.length > 0 ? (
-            <TouchableOpacity onPress={() => { setKanjiSearch(''); setSelectedKanjiId(null); setSearchError(null) }}>
-              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {selectedKanjiId && (
-          <TouchableOpacity
-            style={styles.composeBtn}
-            onPress={() => setComposeVisible(true)}
-          >
-            <Ionicons name="add" size={20} color="#fff" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Search error */}
-      {searchError && (
-        <Text style={styles.searchError}>{searchError}</Text>
-      )}
-
-      {/* Cold load with nothing cached. Mirrors the Study tab's
-          "Loading reviews…" pattern so the tab never renders empty (B-227). */}
-      {showLoading && (
-        <View style={styles.emptyState}>
-          <ActivityIndicator color={colors.primary} size="large" />
-          <Text style={styles.emptySubtitle}>Loading your hooks…</Text>
-        </View>
-      )}
-
-      {/* Genuinely no hooks yet — not "nothing selected". The old copy said
-          "Search a kanji" because listing them was impossible (B-211). */}
-      {showEmptyState && (
-        <View style={styles.emptyState}>
-          <Ionicons name="journal-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>No hooks yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Build one from a kanji you keep forgetting and it will appear here
-          </Text>
-        </View>
-      )}
-
-      {/* List */}
+      {/* List — the sole scroll container for the whole screen. Everything
+          that used to sit in a plain, non-scrolling column above the list
+          (the notebook block, "Your hooks" heading, and search row) now
+          lives in ListHeaderComponent, so it scrolls together with the list
+          instead of squeezing it toward zero height. JournalListHeader is a
+          module-scope component so its identity is stable across renders —
+          only its props change — which keeps the search TextInput mounted
+          (and therefore focused) while the learner types. */}
       <FlatList
         data={displayItems}
         keyExtractor={(m) => m.id}
@@ -336,6 +317,24 @@ export default function Journal() {
             refreshing={listLoading}
             onRefresh={refreshList}
             tintColor={colors.primary}
+          />
+        }
+        ListHeaderComponent={
+          <JournalListHeader
+            notebookLoaded={notebookLoaded}
+            notebookError={notebookError}
+            notebookView={notebookView}
+            onNotebookAdd={handleNotebookAdd}
+            onNotebookEdit={handleNotebookEdit}
+            onNotebookDelete={handleNotebookDelete}
+            kanjiSearch={kanjiSearch}
+            onChangeKanjiSearch={setKanjiSearch}
+            onSubmitSearch={handleSubmitSearch}
+            isSearching={isSearching}
+            searchError={searchError}
+            onClearSearch={handleClearSearch}
+            selectedKanjiId={selectedKanjiId}
+            onOpenCompose={handleOpenCompose}
           />
         }
         renderItem={({ item }) => {
@@ -367,16 +366,7 @@ export default function Journal() {
             </View>
           )
         }}
-        ListEmptyComponent={
-          listLoading || !selectedKanjiId ? null : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No hook yet</Text>
-              <Text style={styles.emptySubtitle}>
-                Open this kanji from Browse and tap “Build a hook”, or write your own here
-              </Text>
-            </View>
-          )
-        }
+        ListEmptyComponent={listEmptyContent}
         ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
       />
 
@@ -415,43 +405,137 @@ export default function Journal() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Compose modal — notebook entries (observations / settled decisions) */}
-      <Modal visible={entryModal.visible} animationType="slide" transparent>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {entryModal.mode === 'edit' ? 'Edit note' : 'Add a note'}
-              </Text>
-              <TouchableOpacity onPress={() => setEntryModal(CLOSED_ENTRY_MODAL)}>
-                <Ionicons name="close" size={22} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              style={styles.composeInput}
-              placeholder="What did you notice, or what did you decide?"
-              placeholderTextColor={colors.textMuted}
-              value={entryModal.text}
-              onChangeText={(text) => setEntryModal((prev) => ({ ...prev, text }))}
-              multiline
-              autoFocus
-            />
-            <TouchableOpacity
-              style={[styles.saveBtn, (!entryModal.text.trim() || entrySaving) && styles.disabled]}
-              onPress={handleEntrySave}
-              disabled={!entryModal.text.trim() || entrySaving}
-            >
-              <Text style={styles.saveBtnText}>{entrySaving ? 'Saving…' : 'Save note'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* Compose/edit modal — notebook entries (observations / settled
+          decisions). Extracted to NotebookEntryModal (fix pass 1, review
+          finding 2) — a pure presentational component under
+          src/components/notebook, with its own tests. */}
+      <NotebookEntryModal
+        visible={entryModal.visible}
+        entry={entryModal.entry}
+        saving={entrySaving}
+        onSubmit={handleEntrySubmit}
+        onDelete={handleEntryModalDelete}
+        onCancel={handleEntryModalCancel}
+      />
     </SafeAreaView>
+  )
+}
+
+// ─── JournalListHeader ──────────────────────────────────────────────────────
+// Defined outside Journal's render body so its identity never changes across
+// renders — only the props do. Passed to FlatList as `ListHeaderComponent`
+// (an element, not a fresh factory function) so React reconciles it as an
+// update to the same mounted subtree rather than unmounting and remounting
+// it — which would otherwise steal focus from the search TextInput on every
+// keystroke (review finding 1).
+
+function JournalListHeader({
+  notebookLoaded,
+  notebookError,
+  notebookView,
+  onNotebookAdd,
+  onNotebookEdit,
+  onNotebookDelete,
+  kanjiSearch,
+  onChangeKanjiSearch,
+  onSubmitSearch,
+  isSearching,
+  searchError,
+  onClearSearch,
+  selectedKanjiId,
+  onOpenCompose,
+}: {
+  notebookLoaded: boolean
+  notebookError: string | null
+  notebookView: NotebookView | null
+  onNotebookAdd: (sectionKey: NotebookSection['key']) => void
+  onNotebookEdit: (entry: NotebookEntry) => void
+  onNotebookDelete: (entry: NotebookEntry) => void
+  kanjiSearch: string
+  onChangeKanjiSearch: (text: string) => void
+  onSubmitSearch: () => void
+  isSearching: boolean
+  searchError: string | null
+  onClearSearch: () => void
+  selectedKanjiId: number | null
+  onOpenCompose: () => void
+}) {
+  return (
+    <View>
+      {/* Cold load with nothing cached yet (B-227's failure mode, repeated
+          here deliberately: a store that never leaves hasLoaded false,
+          rendered distinctly at each of its three states so this screen
+          never appears unbuilt). */}
+      {!notebookLoaded && (
+        <View style={styles.notebookLoading}>
+          <ActivityIndicator color={colors.primary} size="large" />
+          <Text style={styles.notebookLoadingText}>Loading Buddy's notebook…</Text>
+        </View>
+      )}
+
+      {notebookLoaded && notebookError && (
+        <View style={styles.notebookErrorBanner}>
+          <Ionicons name="cloud-offline-outline" size={18} color={colors.error} />
+          <Text style={styles.notebookErrorText}>{notebookError}</Text>
+        </View>
+      )}
+
+      {/* NotebookBody's own root carries `flex: 1` (styled for a screen
+          where it's the only body). As a direct child of this column it
+          would greedily claim every pixel of remaining height and push
+          "Your hooks" off the bottom of the screen — this plain wrapping
+          View (no flex of its own) gives Yoga an undefined-height parent,
+          so NotebookBody sizes to its content instead of growing. */}
+      {notebookLoaded && notebookView && (
+        <View>
+          <NotebookBody
+            view={notebookView}
+            onAdd={onNotebookAdd}
+            onEdit={onNotebookEdit}
+            onDelete={onNotebookDelete}
+          />
+        </View>
+      )}
+
+      <Text style={styles.sectionTitle}>Your hooks</Text>
+
+      {/* Search / filter bar */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchInput}>
+          <Ionicons name="search" size={16} color={colors.textMuted} />
+          <TextInput
+            style={styles.searchText}
+            placeholder="Type a kanji or ID…"
+            placeholderTextColor={colors.textMuted}
+            value={kanjiSearch}
+            onChangeText={onChangeKanjiSearch}
+            onSubmitEditing={onSubmitSearch}
+            returnKeyType="search"
+          />
+          {isSearching ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : kanjiSearch.length > 0 ? (
+            <TouchableOpacity onPress={onClearSearch}>
+              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {selectedKanjiId && (
+          <TouchableOpacity
+            style={styles.composeBtn}
+            onPress={onOpenCompose}
+          >
+            <Ionicons name="add" size={20} color="#fff" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Search error */}
+      {searchError && (
+        <Text style={styles.searchError}>{searchError}</Text>
+      )}
+    </View>
   )
 }
 
