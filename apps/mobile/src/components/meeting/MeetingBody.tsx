@@ -284,6 +284,7 @@ function WhyAnswer({
         placeholder="What are you into? (comma-separated)"
         placeholderTextColor={colors.textMuted}
         editable={!busy}
+        maxLength={80}
       />
       {showHint && (
         <Text testID="why-hint" style={styles.whyHint}>

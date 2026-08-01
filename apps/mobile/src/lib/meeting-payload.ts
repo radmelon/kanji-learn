@@ -17,6 +17,22 @@ import { collectedRuler, transcriptToMessages, type TranscriptItem } from './mee
 // a stashed payload can never reproduce a 400 it cannot recover from.
 const TRANSCRIPT_CONTENT_MAX = 2000
 
+// Same lockout class as above, for reasons/interests: completeSchema caps
+// both at z.string().max(80), .max(12) items. The interests free-text input
+// has no per-item cap, so a long typed interest (or, defensively, more than
+// 12 collected reasons/interests) would 400 /complete forever via the same
+// stash-and-replay path. Clamp here so a stashed payload can never reproduce
+// a 400 it cannot recover from.
+const REASON_INTEREST_MAX_LEN = 80
+const REASON_INTEREST_MAX_ITEMS = 12
+
+function clampItems(items: string[]): string[] {
+  return items
+    .slice(0, REASON_INTEREST_MAX_ITEMS)
+    .map((item) => item.slice(0, REASON_INTEREST_MAX_LEN))
+    .filter((item) => item.length > 0)
+}
+
 export function buildCompletePayload(
   collected: CollectedState,
   transcript: TranscriptItem[],
@@ -25,8 +41,8 @@ export function buildCompletePayload(
   const messages = outcome === 'conversation' ? transcriptToMessages(transcript, 60) : null
   return {
     outcome,
-    reasons: collected.reasons,
-    interests: collected.interests,
+    reasons: clampItems(collected.reasons),
+    interests: clampItems(collected.interests),
     ruler: collectedRuler(collected),
     dailyGoal: collected.dailyGoal,
     buddyDay: collected.buddyDay,

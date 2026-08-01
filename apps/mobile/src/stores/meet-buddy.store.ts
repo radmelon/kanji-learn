@@ -153,6 +153,12 @@ export const useMeetBuddyStore = create<MeetBuddyState>((set, get) => ({
       if (Object.keys(profilePatch).length > 0) await api.patch('/v1/user/profile', profilePatch)
       if (learnerPatch) await api.patch('/v1/user/learner-profile', learnerPatch)
       await api.post('/v1/buddy/meet/complete', completePayload)
+      // Seam 2 (fix-wave): a stale stash from an earlier failed finish()/
+      // skip() must not survive a later successful completion — revisit
+      // mode (F3) allows a live meeting to coexist with an unflushed stash,
+      // so without this a future flush could resurrect stale data over a
+      // newer completion.
+      await AsyncStorage.removeItem(KEY_PENDING_MEET)
       await refreshProfile()
     } catch {
       // Offline close: stash and move on — never a spinner on first launch.
@@ -175,6 +181,8 @@ export const useMeetBuddyStore = create<MeetBuddyState>((set, get) => ({
     )
     try {
       await api.post('/v1/buddy/meet/complete', payload)
+      // Seam 2 (fix-wave): see the matching comment in finish() above.
+      await AsyncStorage.removeItem(KEY_PENDING_MEET)
       await refreshProfile()
     } catch {
       await AsyncStorage.setItem(

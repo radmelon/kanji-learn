@@ -52,4 +52,46 @@ describe('buildCompletePayload', () => {
     expect(p.transcript![0]!.content).toHaveLength(2000)
     expect(p.transcript![0]!.content).toBe('x'.repeat(2000))
   })
+
+  // Seam 1 (fix-wave): same lockout class as the transcript clamp above, but
+  // for reasons/interests. The interests free-text input has no per-item cap
+  // and no maxLength; completeSchema (meet.ts) caps both arrays at
+  // z.string().max(80), .max(12) items. A >80-char interest, or more than 12
+  // items, → /complete 400 → finish()/skip() stash the payload → every
+  // future flush replays the same 400 forever, permanently locking that
+  // device out of completing onboarding server-side. Clamp at the source, as
+  // buildCompletePayload already does for transcript content.
+  it('clamps every reasons/interests item to 80 chars and both arrays to 12 items', () => {
+    const longReason = 'r'.repeat(100)
+    const manyReasons = Array.from({ length: 14 }, (_, i) => `reason${i}`)
+    const longInterest = 'i'.repeat(100)
+    const manyInterests = Array.from({ length: 14 }, (_, i) => `interest${i}`)
+    const p = buildCompletePayload(
+      {
+        ...collected,
+        reasons: [longReason, ...manyReasons],
+        interests: [longInterest, ...manyInterests],
+      },
+      [],
+      'skipped',
+    )
+    expect(p.reasons).toHaveLength(12)
+    expect(p.reasons[0]).toHaveLength(80)
+    expect(p.reasons[0]).toBe('r'.repeat(80))
+    expect(p.reasons[11]).toBe('reason10')
+    expect(p.interests).toHaveLength(12)
+    expect(p.interests[0]).toHaveLength(80)
+    expect(p.interests[0]).toBe('i'.repeat(80))
+    expect(p.interests[11]).toBe('interest10')
+  })
+
+  it('drops items that are empty after clamping instead of sending a value the API would reject', () => {
+    const p = buildCompletePayload(
+      { ...collected, reasons: ['', 'JLPT exam'], interests: ['', 'cooking'] },
+      [],
+      'skipped',
+    )
+    expect(p.reasons).toEqual(['JLPT exam'])
+    expect(p.interests).toEqual(['cooking'])
+  })
 })
