@@ -1,6 +1,135 @@
-# Session Handoff — 2026-07-31 later (**both slices merged, migrated, and DEPLOYED — one device walkthrough owed**)
+# Session Handoff — 2026-07-31 night (**Phase 6 built on a branch — 24 commits, unmerged, undeployed**)
 
 > **Canonical URL — hand this to a new session:**
+> https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
+>
+> *(This line is deliberately part of the artifact. A handoff that cannot state
+> its own address makes every reader reassemble it from a bare path. Carry it
+> forward into each new handoff section.)*
+
+## START HERE — 2026-07-31 (night)
+
+> ## 🟡 Phase 6 — Buddy's home — is on branch `buddy-home-notebook`, pushed, not merged
+>
+> ```bash
+> git checkout main && git merge buddy-home-notebook
+> ```
+>
+> 24 commits. PR: https://github.com/radmelon/kanji-learn/pull/new/buddy-home-notebook
+>
+> | Lane | Result |
+> |---|---|
+> | `pnpm -r typecheck` | clean, 4/4 |
+> | `packages/shared` | **279** |
+> | `apps/api` | **417 passing**, 2 failing |
+> | `apps/mobile` pure | **163** |
+> | `apps/mobile` components | **40** |
+>
+> The two API failures are `learner-state-refresh` and `rls-coverage`, both
+> pre-existing. **B-210 passed this run**, which confirms its order dependence
+> rather than a fix — the failure set now rotates between three names across
+> runs. Three runs today gave 2, 3 and 1 failures. **Enumerate, never count.**
+>
+> Specs: [Phase 6](superpowers/specs/2026-07-31-buddy-home-notebook-design.md) ·
+> [Phase 7](superpowers/specs/2026-07-31-onboarding-meeting-buddy-design.md) ·
+> Plan: [Phase 6](superpowers/plans/2026-07-31-buddy-home-notebook.md)
+>
+> ### 🔴 The whole-branch review found ten defects. Per-task reviews found none of them.
+>
+> Twelve tasks, each implemented by a fresh subagent and reviewed by another.
+> Several were sent back — including a **Critical** unfiltered `SELECT` over
+> `tutor_notes` on every notebook open. Every task ended green.
+>
+> **Then the whole-branch review returned NOT READY with ten defects that exist
+> only in the seams.** That is the second consecutive branch where this
+> happened, and the pattern is now established well enough to plan around:
+> *a plan executed task-by-task with clean per-task reviews still assembles
+> into something broken.*
+>
+> The four worst, all fixed:
+>
+> - **Editing Buddy's introduction always returned 404.** The partial unique
+>   index lacked `AND superseded_at IS NULL` and `supersedeEntry` copied
+>   `source` verbatim, so the replacement collided with the original, 23505
+>   rolled the transaction back, and the route reported "not found". The one
+>   entry every learner has was the only one they could not edit — and joint
+>   authorship is the spec's central decision.
+> - **Every tutor note rendered twice**, and the duplicate was a `Pressable`
+>   wired to the edit path, PATCHing a `tutor_notes` UUID. The rule that
+>   *nobody but the tutor may supersede a tutor note* was violated by the UI.
+>   `editableBy` was computed correctly and **read by no component at all.**
+> - **A commitment nobody agreed to rendered as "THIS WEEK".** `source`
+>   distinguishes `session` / `rolled_forward` / `default`, and nothing branched
+>   on it, so the hourly pass's `default` row was presented to a brand-new
+>   learner as their promise.
+> - **Re-saving a commitment appended a second contradictory observation** —
+>   the commitment upsert is idempotent, the notebook write beside it was not.
+>
+> **Why the tests missed the tutor-note duplication is the transferable part:**
+> every `NotebookBody` fixture hand-built its `sections` array in a shape
+> `assembleNotebook` never actually produces. The component was tested against
+> imagined input. The fix routes a test through the real function.
+>
+> ### 🔴 A colour test that could not fail — twice in two days
+>
+> B146 shipped a screen that rendered perfectly and was **entirely invisible**:
+> `BuddySessionBody` had no styling at all, and React Native defaults `Text` to
+> black against `colors.bg` = `#0F0F1A`. Seven component tests passed
+> throughout, because `getByText` finds text whatever colour it is.
+>
+> The assertion added to prevent recurrence **then failed the same way**: it
+> only inspected the render state its single fixture produced, leaving four
+> styled branches unguarded. You could delete their `color` keys and every test
+> still passed. Now parameterised over five fixtures, with all four removal
+> probes producing real failures.
+>
+> **The rule this yields:** an assertion over "what is currently on screen" is
+> scoped by the fixture, not by the component. Enumerate the states.
+>
+> ### 🟡 Deliberately unbuilt — gaps, not bugs
+>
+> Owner's call, with a trip next week:
+>
+> | | |
+> |---|---|
+> | **The archive** | nothing writes `buddy_commitments.superseded_at`, and `section.archived` / `pastAgreements` have **no renderer**. Computed and discarded. Spec §3 and §11 depend on it |
+> | **Offline caching** | `load()` still sets `view: null` on failure, wiping the notebook instead of showing it read-only. `OfflineBanner` exists and is unused here. Spec §11 |
+> | **Translation escape hatch** | no endpoint, never wired. `TutorNote` correctly hides the control rather than showing a dead button. Spec §6.2 |
+> | **`tutor_notes.language`** | never set by any authoring path, and `onSpeak` hardcodes `ja-JP` — an English note is read aloud in a Japanese voice. Spec §5.3 |
+> | **Virtualisation** | live entries render unbounded inside a `ListHeaderComponent`, which cannot virtualise |
+>
+> ### 🛑 `checkTutorConstraint` was deliberately not built — do not re-invent it
+>
+> Spec §6.3's rule (Buddy defers to a live tutor note) has no caller until slice
+> 2, so building it now would have shipped dead code. **It is written down in
+> the spec and nowhere in the codebase.** Slice 2 must implement *that* rule
+> rather than inventing a second one. Verified absent: no `'ask' | 'propose'`
+> logic exists anywhere on this branch.
+>
+> ### 🛑 Before any build: one API commit is unshipped
+>
+> `2cab737` on `main` — the placement seeding fix — postdates the 13:29 deploy.
+> `git log --since=<last deploy> -- apps/api packages/shared` returns it, which
+> is exactly the SOP's pre-build gate. **Deploy before building**, or seeding is
+> inert in the binary — the B144 failure precisely.
+>
+> Phase 6 additionally needs migration `0032` applied to live before its API
+> deploys, and `docs/local-test-db.md` now lists `0031` and `0032` (`0031` was
+> never added when it shipped).
+>
+> ### What is still owed
+>
+> 1. **The B146 device walkthrough** — still not done. Both slices deployed
+>    today are unproven on a real device.
+>    [Test plan](b146-test-plan.md).
+> 2. **Phase 7** — specced, unplanned, unbuilt.
+> 3. **The five gaps above**, if the notebook is to match its spec.
+>
+> ---
+
+# Previous — 2026-07-31 later (**both slices merged, migrated, and DEPLOYED — one device walkthrough owed**)
+
+> **Canonical URL:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
 >
 > *(This line is deliberately part of the artifact. A handoff that cannot state
