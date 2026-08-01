@@ -29,6 +29,38 @@ build.
 - [ ] Old-build interaction is safe: `/complete` stamps `onboarding_completed_at`
       too, so a conversation-onboarded account opening B146 is not re-gated.
 
+### 🛑 Completing a session burns the whole period — plan the order of your testing
+
+Hit on 2026-08-01 and worth an explicit warning, because it silently costs a day.
+
+Tapping **"That works"** completes the session and sets `lastSessionDate`. The next
+appointment is then anchored to *that completed session*, not to the calendar:
+
+```
+nextDueAfter('2026-08-01', 7, Monday)  →  08-08  →  next Monday  =  2026-08-10
+```
+
+And the due-check gate is:
+
+```
+anchorIsNewPeriod = daysBetween(lastSessionDate, anchor) >= periodDays
+```
+
+So after completing a session, **no weekday you choose makes another one due inside
+7 days.** Changing `buddy_day` changes *which* date you wait for, not *whether* you
+wait — on 2026-08-01 that moved the target from 08-08 to 08-10 and no closer.
+
+**Consequence:** you get **one** weekly-session walkthrough per period, per account.
+Do the session tests you care about in a single sitting, or use a second account.
+
+To re-arm within the period, the `buddy_commitments` row for that `week_start` with
+`source = 'session'` must be deleted or backdated — a deliberate production write,
+not something to do casually.
+
+Unaffected by this, and testable any day: the **daily reminder** push (fires on
+`reminder_hour` independently — the clean way to prove a device's push token works),
+placement, the notebook, and the meeting.
+
 ### ✅ `504b1ea` is deployed — §4b is unblocked
 
 Deployed 2026-08-01 16:00:12, image `sha256:67edd74f…`, operation `bcb9c6eb`
