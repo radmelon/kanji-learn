@@ -77,6 +77,50 @@ describe('NotebookService', () => {
       kind: 'observation', body: 'mine', author: 'buddy',
     })
     const other = '00000000-0000-0000-0000-0000000000e2'
-    await expect(service.supersedeEntry(other, id, 'theirs')).rejects.toThrow()
+    await expect(service.supersedeEntry(other, id, 'theirs')).rejects.toThrow('NOT_FOUND')
+
+    const rows = await db.select().from(schema.notebookEntries)
+      .where(eq(schema.notebookEntries.userId, USER))
+    const mine = rows.find((r) => r.id === id)!
+    expect(mine.supersededAt).toBeNull()
+    expect(mine.supersededBy).toBeNull()
+  })
+
+  it('two concurrent supersedes of the same entry: exactly one wins, no orphaned replacement', async () => {
+    const { id } = await service.createEntry(USER, {
+      kind: 'observation', body: 'racy', author: 'buddy',
+    })
+
+    const results = await Promise.allSettled([
+      service.supersedeEntry(USER, id, 'winner A'),
+      service.supersedeEntry(USER, id, 'winner B'),
+    ])
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled')
+    const rejected = results.filter((r) => r.status === 'rejected')
+    expect(fulfilled).toHaveLength(1)
+    expect(rejected).toHaveLength(1)
+    expect((rejected[0] as PromiseRejectedResult).reason.message).toBe('ALREADY_SUPERSEDED')
+
+    const rows = await db.select().from(schema.notebookEntries)
+      .where(eq(schema.notebookEntries.userId, USER))
+
+    // No orphans: every non-superseded row other than the original supersede
+    // target must be reachable — i.e. it's either the original (now
+    // superseded) or is pointed at by some row's supersededBy.
+    const supersededByTargets = new Set(rows.map((r) => r.supersededBy).filter(Boolean))
+    const live = rows.filter((r) => r.supersededAt === null)
+    for (const row of live) {
+      const isOriginalEntry = row.id === id
+      const isReachableReplacement = supersededByTargets.has(row.id)
+      expect(isOriginalEntry || isReachableReplacement).toBe(true)
+    }
+
+    // Exactly one replacement row should exist for this original entry.
+    const original = rows.find((r) => r.id === id)!
+    expect(original.supersededAt).not.toBeNull()
+    const replacementRows = rows.filter((r) => r.id !== id)
+    expect(replacementRows).toHaveLength(1)
+    expect(replacementRows[0].id).toBe(original.supersededBy)
   })
 })

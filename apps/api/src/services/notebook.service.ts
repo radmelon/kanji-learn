@@ -1,5 +1,5 @@
 // apps/api/src/services/notebook.service.ts
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import {
   notebookEntries, buddyCommitments, userProfiles, tutorNotes, tutorShares,
 } from '@kanji-learn/db'
@@ -22,7 +22,10 @@ export class NotebookService {
     ])
 
     const accepted = shares.filter((s) => s.status === 'accepted')
-    const noteRows = accepted.length === 0 ? [] : await this.db.select().from(tutorNotes)
+    const noteRows = accepted.length === 0
+      ? []
+      : await this.db.select().from(tutorNotes)
+        .where(inArray(tutorNotes.shareId, accepted.map((s) => s.id)))
     const byShare = accepted.map((s) => ({
       shareId: s.id,
       tutorLabel: s.teacherEmail,
@@ -94,9 +97,20 @@ export class NotebookService {
       replacementId = row.id
     }
 
-    await this.db.update(notebookEntries)
+    const updated = await this.db.update(notebookEntries)
       .set({ supersededAt: new Date(), supersededBy: replacementId })
       .where(and(eq(notebookEntries.id, id), isNull(notebookEntries.supersededAt)))
+      .returning({ id: notebookEntries.id })
+
+    if (updated.length === 0) {
+      // Someone else superseded this entry between our check and our
+      // update. Our replacement row (if any) has nothing pointing at it —
+      // delete it rather than leave it orphaned.
+      if (replacementId !== null) {
+        await this.db.delete(notebookEntries).where(eq(notebookEntries.id, replacementId))
+      }
+      throw new Error('ALREADY_SUPERSEDED')
+    }
 
     return { id: replacementId }
   }
