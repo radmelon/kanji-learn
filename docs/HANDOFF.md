@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-01 (**Phase 6 merged and DEPLOYED — the notebook API is live; a build and the walkthrough are next**)
+# Session Handoff — 2026-08-01 evening (**Phase 7 built, merged and DEPLOYED — one build now carries two phases; the walkthrough debt has doubled**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,115 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-01
+## START HERE — 2026-08-01 (evening)
+
+> ## ✅ Phase 7 — Meeting Buddy — is on `main` and its API is live
+>
+> Built in one session, same day the phase was planned: spec → plan (14 tasks)
+> → subagent-driven execution → whole-branch review → two fix waves → merge →
+> deploy. 28 commits, fast-forward to `6541a8f`.
+>
+> | | |
+> |---|---|
+> | Merge | fast-forward, `main` = `6541a8f` |
+> | Migration `0033` on live | applied; `met_buddy_at` timestamptz NULL, **0 rows stamped** — the designed state: every learner meets Buddy on next launch of the new build (spec decision #7) |
+> | API deploy | image `sha256:c55b2f64…`, operation `ea7b2266` `SUCCEEDED` 14:11:17 → 14:15:30 |
+> | Canary | `POST /v1/buddy/meet/complete` and `/turn` both **404 → 401** against a pre-state captured before deploying; `/v1/buddy/meet/nonexistent` still 404 |
+> | Lanes on merged `main` | typecheck 4/4 · shared **320** · mobile pure **187** · components **63** · API failing set is the three documented rotating names, **enumerated**: `learner-state-refresh`, `rls-coverage`, B-210 (reconfirmed order-dependent: 11/11 solo, fails only in-suite) |
+>
+> **What shipped:** onboarding is now a first meeting with Buddy. Pure beat
+> engine in `packages/shared/src/buddy/` (`frame.ts` — resolveFrame from the
+> Arc design, `meeting.ts`, `beats.ts`, `meeting-copy.ts`); cloud tier over the
+> existing `BuddyLLMRouter` (`POST /v1/buddy/meet/turn`, stateless, every
+> failure → `{fallback:true}` at 200); `POST /v1/buddy/meet/complete`
+> (first-wins `met_buddy_at` + `onboarding_completed_at` stamps, page one via
+> supersede-by-source-kind — four entries: `onboarding_intro` observation,
+> `first_open` decision, `onboarding_appointment`, `onboarding_reasons` —
+> transcript archived to `buddy_conversations`); mobile reducer/store with an
+> offline completion stash; gate switched to `metBuddyAt`; the old stepper
+> preserved at `/onboarding-form` as the skip-to-form escape; `MeetingBody`
+> conversation surface; Profile re-entry via `/onboarding?revisit=1`; and the
+> §9 seeding guard test, red-proven against both redundant layers.
+>
+> ### 🔴 The whole-branch review found 4 HIGH seam defects — third branch in a row
+>
+> Per-task reviews: 14/14 passed (two caught real defects mid-stream — a
+> plan-code bug in beat selection, a frozen-screen failure path in the form).
+> The whole-branch review then returned NOT READY with defects only the
+> composition shows, **three of four traceable to the plan's own text**:
+>
+> - **The template floor could not complete.** Completeness required interests;
+>   the interests input rendered on cloud tier only. The offline first launch —
+>   the exact scenario the floor exists for — had no completing path at all.
+> - **A free-text reply at the ask beat dead-ended the conversation** — the
+>   `done` beat had no surface, no finish CTA, and typing again 400'd into a
+>   template flip that removed the composer too.
+> - **The Profile "Meet Buddy" row was 100% inert** — `begin()` bailed
+>   `'already_done'` for everyone who could see the row.
+> - **An unflushable stash looped the gate forever**, and an over-long pasted
+>   message made the stash permanently 400 — an unrecoverable onboarding
+>   lockout on that device.
+>
+> **The new lesson this branch adds:** the fix wave itself then violated its
+> own invariant one field over — the transcript clamp was proven red, while the
+> interests field (which the first fix had just promoted onto the floor's
+> critical path) stayed unclamped and recreated the same lockout. **A fix wave
+> needs its own adversarial verification pass**; the verification review caught
+> it by re-running every original failure scenario against the fixed code.
+> Everything is closed (`6541a8f`), each fix red-first.
+>
+> ### 🛑 Process incident, and the guard now in place
+>
+> A cheap-tier fix agent ran `git add -A` and swept `.codex/`, personal notes
+> and `supabase/` CLI state into a commit on this public repo. Caught in
+> review, history rewritten before any push, `.gitignore` now guards those
+> paths, and every later dispatch carried an explicit prohibition. Two rules
+> reconfirmed: **verify every reported SHA against git log** (a fix agent also
+> reported once against a stale report file), and dispatch prompts are not the
+> brief — a reviewer flagged a "fabricated" quotation that was actually the
+> controller's own dispatch text, misattributed.
+>
+> ### 🟡 NOTHING of Phase 6 or Phase 7 is user-visible yet — the build is the gate
+>
+> Both phases' mobile halves sit on `main`, in no build. B146 (current
+> TestFlight) predates both. The next EAS build carries: the notebook (Phase
+> 6), the meeting (Phase 7), and the gate change that walks **every existing
+> learner** through the meeting on first launch — deliberate, spec decision #7,
+> but worth knowing before cutting. Before the cut: re-run the SOP pre-build
+> gate (clean as of this deploy), `EXPO_NO_CAPABILITY_SYNC=1`, allowance renews
+> **2026-08-04**. Old-build interaction is safe: `/complete` stamps
+> `onboarding_completed_at` too, so a conversation-onboarded user opening B146
+> is not re-gated.
+>
+> ### What is owed, in order
+>
+> 1. **The device walkthrough debt is now TWO phases deep.** The B146 plan
+>    ([test plan](b146-test-plan.md), LA-timezone account) still stands, and
+>    the next build adds: template-floor airplane-mode end-to-end (finish
+>    offline → relaunch → stash flushes → page one appears in the Journal),
+>    the cloud conversation with a real LLM, revisit from Profile,
+>    skip-to-form, and placement-from-ask.
+> 2. **Cut the build** (one build, both phases, all walkthroughs).
+> 3. **Known gaps, recorded not hidden:** offline revisit demotes to a blank
+>    first-run walk; the pending-offline screen copy says "offline" for any
+>    flush failure; an LLM reply >1000 chars 400s the next `/turn` and silently
+>    flips to template; Task 9's test leaves `kanji_difficulty` rows mutated
+>    (b=-3.5) in the local test DB across suite runs; the tier-2 daily cap has
+>    not been sized against ~a-dozen-turns-per-onboarding.
+> 4. **The fixture-isolation session** — B-210 reconfirmed order-dependent
+>    today; the rotating three-name failure set is stable but corrosive.
+> 5. Open decisions carried forward unchanged: `weekStart` validation,
+>    `[BuddyDay]` alerting, and the weekly review's slice 2 (which slice 7's
+>    `buddy_conversations` transcripts now feed).
+>
+> ---
+
+# Previous — 2026-08-01 morning (**Phase 6 merged and DEPLOYED — the notebook API is live; a build and the walkthrough are next**)
+
+> **Canonical URL:**
+> https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
+
+## START HERE — 2026-08-01 (morning, superseded by the section above)
 
 > ## ✅ Phase 6 is on `main`, and the API serving it is live
 >
