@@ -38,7 +38,7 @@ export async function flushPendingMeetBuddy(): Promise<boolean> {
 interface MeetBuddyState {
   ui: MeetingUiState | null
   error: string | null
-  begin: (opts?: { revisit?: boolean }) => Promise<'ready' | 'already_done'>
+  begin: (opts?: { revisit?: boolean }) => Promise<'ready' | 'already_done' | 'pending_offline'>
   sendText: (text: string) => Promise<void>
   answer: (patch: ExtractedPatch) => void
   finish: () => Promise<void>
@@ -56,8 +56,16 @@ export const useMeetBuddyStore = create<MeetBuddyState>((set, get) => ({
     // stash flushed first, since a stale local queue must not silently ride
     // along into a fresh conversation.
     if (await AsyncStorage.getItem(KEY_PENDING_MEET)) {
-      await flushPendingMeetBuddy()
-      if (!revisit) return 'already_done'
+      const flushed = await flushPendingMeetBuddy()
+      // F4(a) fix (whole-branch review, HIGH): this used to return
+      // 'already_done' unconditionally, which the screen reads as "go to
+      // tabs" — even when the flush just failed (still offline) and the
+      // stash is still sitting there. The learner got bounced to tabs with
+      // no notice, and _layout.tsx's onboarding gate (which checks
+      // profile.metBuddyAt, untouched by a failed flush) would immediately
+      // send them right back to /onboarding: an infinite redirect loop.
+      // 'pending_offline' tells the screen to stop and show something.
+      if (!revisit) return flushed ? 'already_done' : 'pending_offline'
     }
     try {
       const [profile, learner] = await Promise.all([

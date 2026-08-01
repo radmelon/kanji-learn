@@ -115,6 +115,16 @@ describe('MeetingBody — every beat surface renders visibly', () => {
     expect(queryByTestId('meeting-composer')).toBeNull()
   })
 
+  // F4(b) (whole-branch review, HIGH): the composer had no maxLength, so a
+  // learner could type a message longer than the API's z.string().max(2000)
+  // transcript-item cap. buildCompletePayload now clamps it (F4c), but the
+  // input itself should not invite the problem in the first place.
+  it('composer caps input length so a message cannot exceed the API cap', () => {
+    const cloud = { ...at('why'), tier: 'cloud' as const }
+    const { getByPlaceholderText } = render(<MeetingBody ui={cloud} {...noop} />)
+    expect(getByPlaceholderText('Or just tell Buddy…').props.maxLength).toBe(1000)
+  })
+
   it('busy shows a typing indicator', () => {
     const busy = { ...at('why'), tier: 'cloud' as const, busy: true }
     const { getByTestId } = render(<MeetingBody ui={busy} {...noop} />)

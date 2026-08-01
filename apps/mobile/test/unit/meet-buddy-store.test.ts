@@ -81,3 +81,43 @@ describe('useMeetBuddyStore.begin — re-entry (F3, whole-branch review HIGH)', 
     expect(result).toBe('ready')
   })
 })
+
+const STASH_JSON = JSON.stringify({
+  profilePatch: {},
+  learnerPatch: null,
+  completePayload: {
+    outcome: 'skipped', reasons: [], interests: [], ruler: null,
+    dailyGoal: null, buddyDay: null, buddyIntervalWeeks: 1, transcript: null,
+  },
+})
+
+// F4(a) (whole-branch review, HIGH): a non-revisit begin() with a pending
+// stash always returned 'already_done', which the screen treats as "go to
+// tabs" — regardless of whether flushPendingMeetBuddy actually succeeded.
+// A learner still offline got bounced to tabs every launch with no visible
+// notice and no way to retry: the queue was invisible and the redirect gate
+// (_layout.tsx checks !profile.metBuddyAt) would keep sending them right
+// back to /onboarding, since the server was never told. Infinite loop.
+describe('useMeetBuddyStore.begin — a failed stash flush must not bounce silently (F4a)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    useMeetBuddyStore.setState({ ui: null, error: null })
+  })
+
+  it('returns pending_offline, not already_done, when a stash exists and the flush fails', async () => {
+    ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(STASH_JSON)
+    ;(api.patch as jest.Mock).mockRejectedValue(new Error('offline'))
+    const result = await useMeetBuddyStore.getState().begin()
+    expect(result).toBe('pending_offline')
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled()
+  })
+
+  it('still returns already_done when the stash exists and the flush succeeds — control', async () => {
+    ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(STASH_JSON)
+    ;(api.patch as jest.Mock).mockResolvedValue({})
+    ;(api.post as jest.Mock).mockResolvedValue({})
+    const result = await useMeetBuddyStore.getState().begin()
+    expect(result).toBe('already_done')
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith(KEY_PENDING_MEET)
+  })
+})

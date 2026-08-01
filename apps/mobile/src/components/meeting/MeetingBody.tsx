@@ -116,6 +116,7 @@ export function MeetingBody({
             editable={!ui.busy}
             onSubmitEditing={handleSend}
             returnKeyType="send"
+            maxLength={1000}
           />
           <Pressable
             testID="meeting-composer-send"

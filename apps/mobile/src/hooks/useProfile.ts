@@ -46,6 +46,28 @@ export function clearProfileCache() {
   notifyListeners(null)
 }
 
+/** Read the module cache without subscribing — used by tests and by
+ *  markMetBuddyLocally's own callers to confirm the optimistic write took. */
+export function getCachedProfile(): UserProfile | null {
+  return _cache
+}
+
+/**
+ * F4(a): optimistic, LOCAL-ONLY stamp for a confirmed-failed stash flush.
+ * begin() can return 'pending_offline' when a learner's completed meeting is
+ * still stuck in the local queue (still offline) — the onboarding screen
+ * offers "Continue anyway", which calls this before navigating so
+ * _layout.tsx's gate (`!profile.metBuddyAt`) stops sending them straight
+ * back to /onboarding for the rest of this session. The server is still the
+ * source of truth: the stash is unaffected and keeps trying to flush on the
+ * next begin(), and the real metBuddyAt is what actually lands once it does.
+ */
+export function markMetBuddyLocally(): void {
+  if (!_cache) return
+  _cache = { ..._cache, metBuddyAt: new Date().toISOString() }
+  notifyListeners(_cache)
+}
+
 /** Re-fetch the profile into the module cache and notify all listeners.
  *  Used after POST /v1/buddy/meet/complete so the routing gate sees
  *  metBuddyAt without waiting for a remount. */
