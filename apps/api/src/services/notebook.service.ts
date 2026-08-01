@@ -122,6 +122,27 @@ export class NotebookService {
     if (existing.supersededAt !== null) throw new Error('ALREADY_SUPERSEDED')
 
     const replacementId = await this.db.transaction(async (tx) => {
+      // Supersede the old row FIRST, before inserting its replacement. The
+      // replacement copies `existing.source` (so editing the seeded
+      // first-open intro still reads as a first-open row downstream) —
+      // notebook_entries_first_open_unique (migration 0032) only allows one
+      // LIVE row per user per source kind, so if the insert ran first, the
+      // old row (still live) and the new row would both be live and both
+      // match the index predicate at the same instant, and Postgres would
+      // reject the insert with 23505 regardless of statement order within
+      // the transaction. Marking the old row superseded first means it no
+      // longer matches "live" by the time the replacement is inserted.
+      const updated = await tx.update(notebookEntries)
+        .set({ supersededAt: new Date() })
+        .where(and(eq(notebookEntries.id, id), isNull(notebookEntries.supersededAt)))
+        .returning({ id: notebookEntries.id })
+
+      if (updated.length === 0) {
+        // Someone else superseded this entry between our check and our
+        // update. Throwing here rolls back the whole transaction.
+        throw new Error('ALREADY_SUPERSEDED')
+      }
+
       let replacementId: string | null = null
       if (replacementBody !== null) {
         const [row] = await tx.insert(notebookEntries).values({
@@ -129,18 +150,10 @@ export class NotebookService {
           author: 'learner', weekStart: existing.weekStart, source: existing.source,
         }).returning({ id: notebookEntries.id })
         replacementId = row.id
-      }
 
-      const updated = await tx.update(notebookEntries)
-        .set({ supersededAt: new Date(), supersededBy: replacementId })
-        .where(and(eq(notebookEntries.id, id), isNull(notebookEntries.supersededAt)))
-        .returning({ id: notebookEntries.id })
-
-      if (updated.length === 0) {
-        // Someone else superseded this entry between our check and our
-        // update. Throwing here rolls back the whole transaction, including
-        // the replacement insert above — no compensating delete needed.
-        throw new Error('ALREADY_SUPERSEDED')
+        await tx.update(notebookEntries)
+          .set({ supersededBy: replacementId })
+          .where(eq(notebookEntries.id, id))
       }
 
       return replacementId

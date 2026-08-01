@@ -86,6 +86,26 @@ describe('NotebookService', () => {
     expect(mine.supersededBy).toBeNull()
   })
 
+  it('superseding the seeded first-open intro replaces it rather than 23505ing on the partial unique index', async () => {
+    const { id } = await service.createEntry(USER, {
+      kind: 'decision', author: 'buddy',
+      body: "This is where we'll keep track of what we decide together.",
+      source: { kind: 'first_open' },
+    })
+
+    const { id: replacement } = await service.supersedeEntry(USER, id, 'Edited intro text')
+    expect(replacement).not.toBeNull()
+
+    const rows = await db.select().from(schema.notebookEntries).where(eq(schema.notebookEntries.userId, USER))
+    const old = rows.find((r) => r.id === id)!
+    expect(old.supersededAt).not.toBeNull()
+    expect(old.supersededBy).toBe(replacement)
+
+    const replacementRow = rows.find((r) => r.id === replacement)!
+    expect(replacementRow.body).toBe('Edited intro text')
+    expect(replacementRow.supersededAt).toBeNull()
+  })
+
   it('two concurrent supersedes of the same entry: exactly one wins, no orphaned replacement', async () => {
     const { id } = await service.createEntry(USER, {
       kind: 'observation', body: 'racy', author: 'buddy',

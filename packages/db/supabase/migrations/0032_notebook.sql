@@ -36,12 +36,16 @@ CREATE INDEX IF NOT EXISTS notebook_entries_user_live_idx
 -- check-then-act with no transaction or lock between the two steps, so two
 -- concurrent GET /v1/buddy/notebook requests (same learner, two devices, or
 -- two effect-driven calls racing on one) can both read "no introduction" and
--- both attempt the insert. This partial unique index permits exactly one
--- first-open row per user; the losing insert relies on it to fail with a
--- constraint violation, which the service catches via onConflictDoNothing().
+-- both attempt the insert. This partial unique index permits exactly one LIVE
+-- first-open row per user (superseded_at IS NULL) — not one ever, or editing
+-- the seeded intro (NotebookService.supersedeEntry inserts a replacement that
+-- copies the original's source) would collide with its own predecessor and
+-- roll back with a 23505. The losing insert of a genuine race still relies on
+-- this to fail with a constraint violation, which the service catches via
+-- onConflictDoNothing().
 CREATE UNIQUE INDEX IF NOT EXISTS notebook_entries_first_open_unique
   ON notebook_entries (user_id)
-  WHERE source->>'kind' = 'first_open';
+  WHERE source->>'kind' = 'first_open' AND superseded_at IS NULL;
 
 ALTER TABLE public.notebook_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notebook_entries FORCE ROW LEVEL SECURITY;
