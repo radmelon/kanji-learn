@@ -6,6 +6,13 @@ import {
 import type { Db } from '@kanji-learn/db'
 import { assembleNotebook, type NotebookView } from '@kanji-learn/shared'
 
+export interface KeyedEntryInput {
+  sourceKind: string
+  kind: 'observation' | 'decision'
+  body: string
+  weekStart?: string | null
+}
+
 export class NotebookService {
   constructor(private db: Db) {}
 
@@ -110,37 +117,26 @@ export class NotebookService {
   }
 
   /**
-   * Write-back for a just-agreed weekly commitment (buddy-session.ts).
-   * CommitmentService.setForWeek is an idempotent upsert keyed on
-   * (user_id, week_start) — saving a commitment twice in one session
-   * updates the same row. This write-back needs the same idempotence: a
-   * bare createEntry insert here left two live observations ("Agreed 4
-   * days, 15 minutes." and "Agreed 5 days, 20 minutes.") both rendered,
-   * the stale one never superseded. Supersede any existing LIVE commitment
-   * observation for the same week rather than appending a second — the
-   * replacement stays buddy-authored, unlike NotebookService.supersedeEntry
-   * (which is the learner-edit path and always attributes the replacement
-   * to 'learner').
+   * Idempotent buddy-authored write keyed on source->>'kind' (optionally +
+   * weekStart): supersede any LIVE entry with the same key rather than
+   * appending a second. The replacement stays buddy-authored — unlike
+   * supersedeEntry, which is the learner-edit path.
    */
-  async writeCommitmentObservation(
-    userId: string,
-    weekStart: string,
-    body: string,
-  ): Promise<void> {
+  async writeKeyedEntry(userId: string, input: KeyedEntryInput): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const existing = await tx.query.notebookEntries.findFirst({
-        where: and(
-          eq(notebookEntries.userId, userId),
-          eq(notebookEntries.kind, 'observation'),
-          eq(notebookEntries.weekStart, weekStart),
-          isNull(notebookEntries.supersededAt),
-          sql`${notebookEntries.source}->>'kind' = 'commitment'`,
-        ),
-      })
+      const conditions = [
+        eq(notebookEntries.userId, userId),
+        eq(notebookEntries.kind, input.kind),
+        isNull(notebookEntries.supersededAt),
+        sql`${notebookEntries.source}->>'kind' = ${input.sourceKind}`,
+      ]
+      if (input.weekStart != null) conditions.push(eq(notebookEntries.weekStart, input.weekStart))
+
+      const existing = await tx.query.notebookEntries.findFirst({ where: and(...conditions) })
 
       const [row] = await tx.insert(notebookEntries).values({
-        userId, kind: 'observation', body, author: 'buddy',
-        weekStart, source: { kind: 'commitment' },
+        userId, kind: input.kind, body: input.body, author: 'buddy',
+        weekStart: input.weekStart ?? null, source: { kind: input.sourceKind },
       }).returning({ id: notebookEntries.id })
 
       if (existing) {
@@ -149,6 +145,20 @@ export class NotebookService {
           .where(and(eq(notebookEntries.id, existing.id), isNull(notebookEntries.supersededAt)))
       }
     })
+  }
+
+  /**
+   * Write-back for a just-agreed weekly commitment (buddy-session.ts).
+   * CommitmentService.setForWeek is an idempotent upsert keyed on
+   * (user_id, week_start) — saving a commitment twice in one session
+   * updates the same row. This write-back needs the same idempotence: a
+   * bare createEntry insert here left two live observations ("Agreed 4
+   * days, 15 minutes." and "Agreed 5 days, 20 minutes.") both rendered,
+   * the stale one never superseded. Delegates to writeKeyedEntry, which
+   * does the superseding.
+   */
+  async writeCommitmentObservation(userId: string, weekStart: string, body: string): Promise<void> {
+    await this.writeKeyedEntry(userId, { sourceKind: 'commitment', kind: 'observation', body, weekStart })
   }
 
   /** Editing IS superseding. `replacementBody: null` is a delete. */

@@ -143,4 +143,35 @@ describe('NotebookService', () => {
     expect(replacementRows).toHaveLength(1)
     expect(replacementRows[0].id).toBe(original.supersededBy)
   })
+
+  it('writeKeyedEntry supersedes the live entry of the same source kind instead of appending', async () => {
+    const svc = new NotebookService(db)
+    await svc.writeKeyedEntry(USER, {
+      sourceKind: 'onboarding_appointment', kind: 'decision', body: 'We meet on Sundays, every week. You picked the day.',
+    })
+    await svc.writeKeyedEntry(USER, {
+      sourceKind: 'onboarding_appointment', kind: 'decision', body: 'We meet on Wednesdays, every other week. You picked the day.',
+    })
+    const rows = await db.query.notebookEntries.findMany({
+      where: (t, { and, eq, sql }) => and(eq(t.userId, USER), sql`${t.source}->>'kind' = 'onboarding_appointment'`),
+    })
+    expect(rows).toHaveLength(2)
+    const live = rows.filter((r) => r.supersededAt === null)
+    expect(live).toHaveLength(1)
+    expect(live[0]!.body).toContain('Wednesdays')
+    expect(live[0]!.author).toBe('buddy')
+    const superseded = rows.find((r) => r.supersededAt !== null)!
+    expect(superseded.supersededBy).toBe(live[0]!.id)
+  })
+
+  it('writeKeyedEntry does NOT cross source kinds — a different kind is left live', async () => {
+    const svc = new NotebookService(db)
+    await svc.writeKeyedEntry(USER, { sourceKind: 'onboarding_reasons', kind: 'decision', body: "You're here for: Travel." })
+    await svc.writeKeyedEntry(USER, { sourceKind: 'onboarding_appointment', kind: 'decision', body: 'We meet on Sundays, every week. You picked the day.' })
+    const live = await db.query.notebookEntries.findMany({
+      where: (t, { and, eq, isNull }) => and(eq(t.userId, USER), isNull(t.supersededAt)),
+    })
+    expect(live.map((r) => (r.source as { kind: string }).kind).sort())
+      .toEqual(expect.arrayContaining(['onboarding_appointment', 'onboarding_reasons']))
+  })
 })
