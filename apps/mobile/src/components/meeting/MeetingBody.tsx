@@ -142,7 +142,7 @@ function AnswerSurface({
   onAnswer: (patch: ExtractedPatch) => void
   onFinish: (dest: 'placement' | 'home') => void
 }) {
-  const { beat, tier, busy } = ui
+  const { beat, busy } = ui
 
   switch (beat.kind) {
     case 'intro':
@@ -155,7 +155,7 @@ function AnswerSurface({
     case 'why':
       return (
         <View testID="answer-why" style={styles.answerSurface}>
-          <WhyAnswer tier={tier} busy={busy} onAnswer={onAnswer} />
+          <WhyAnswer busy={busy} onAnswer={onAnswer} />
         </View>
       )
     case 'frame_ask':
@@ -208,29 +208,31 @@ function AnswerSurface({
 }
 
 function WhyAnswer({
-  tier,
   busy,
   onAnswer,
 }: {
-  tier: MeetingUiState['tier']
   busy: boolean
   onAnswer: (patch: ExtractedPatch) => void
 }) {
   const [selected, setSelected] = useState<string[]>([])
   const [interestsText, setInterestsText] = useState('')
+  const [showHint, setShowHint] = useState(false)
 
   const toggle = (chip: string) => {
     setSelected((prev) => (prev.includes(chip) ? prev.filter((c) => c !== chip) : [...prev, chip]))
   }
 
   const submit = () => {
-    // Interests may be empty here — the completeness check (nextRequirement)
-    // brings the why beat straight back if so. Template tier has no free-text
-    // row at all, so it always submits interests: [].
     const interests = interestsText
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
+    // F1 fix: the interests row renders on BOTH tiers now (see below), so an
+    // empty result here means the learner really did submit nothing, not
+    // that the tier hid the only way to answer. The why beat will not
+    // advance without at least one interest (nextRequirement) — say so,
+    // rather than silently re-showing the same surface.
+    setShowHint(interests.length === 0)
     onAnswer({ reasons: selected, interests })
   }
 
@@ -254,15 +256,24 @@ function WhyAnswer({
           )
         })}
       </View>
-      {tier === 'cloud' && (
-        <TextInput
-          style={styles.interestsInput}
-          value={interestsText}
-          onChangeText={setInterestsText}
-          placeholder="What are you into? (comma-separated)"
-          placeholderTextColor={colors.textMuted}
-          editable={!busy}
-        />
+      {/* F1 fix (whole-branch review, HIGH): this used to be `tier === 'cloud'`
+          only, so the template floor — every offline/rate-limited/outage
+          path per spec §7 — had no way to produce a non-empty `interests`
+          array. The why beat could never advance: a permanent softlock on
+          first launch. Interests are a required output (spec §4); the input
+          that produces them cannot be tier-gated. */}
+      <TextInput
+        style={styles.interestsInput}
+        value={interestsText}
+        onChangeText={setInterestsText}
+        placeholder="What are you into? (comma-separated)"
+        placeholderTextColor={colors.textMuted}
+        editable={!busy}
+      />
+      {showHint && (
+        <Text testID="why-hint" style={styles.whyHint}>
+          One interest is all it takes — type anything you're into.
+        </Text>
       )}
       <PrimaryButton label="Done" disabled={busy} onPress={submit} />
     </View>
@@ -481,6 +492,8 @@ const styles = StyleSheet.create({
   chipUnselected: { backgroundColor: 'transparent', borderColor: colors.border },
   chipTextSelected: { ...typography.bodySmall, color: colors.textPrimary },
   chipTextUnselected: { ...typography.bodySmall, color: colors.textSecondary },
+
+  whyHint: { ...typography.caption, color: colors.warning },
 
   interestsInput: {
     backgroundColor: colors.bgCard,

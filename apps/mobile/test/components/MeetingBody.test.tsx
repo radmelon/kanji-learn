@@ -2,7 +2,7 @@ import React from 'react'
 import { render, fireEvent } from '@testing-library/react-native'
 import { MeetingBody } from '../../src/components/meeting/MeetingBody'
 import { initMeeting, meetingReducer, type MeetingUiState } from '../../src/lib/meeting-state'
-import type { CollectedState } from '@kanji-learn/shared'
+import type { CollectedState, ExtractedPatch } from '@kanji-learn/shared'
 
 const emptyCollected: CollectedState = {
   reasons: [], interests: [], explicitRuler: null, dailyGoal: null,
@@ -104,5 +104,75 @@ describe('MeetingBody — every beat surface renders visibly', () => {
     const busy = { ...at('why'), tier: 'cloud' as const, busy: true }
     const { getByTestId } = render(<MeetingBody ui={busy} {...noop} />)
     getByTestId('meeting-busy')
+  })
+
+  it('Done with no interests typed shows an inline hint, not a silent stall', () => {
+    const { getByText, getByTestId, queryByTestId } = render(<MeetingBody ui={at('why')} {...noop} />)
+    expect(queryByTestId('why-hint')).toBeNull()
+    fireEvent.press(getByText('JLPT exam'))
+    fireEvent.press(getByText('Done'))
+    getByTestId('why-hint')
+  })
+})
+
+// F1 (whole-branch review, HIGH): template tier had no way to satisfy the
+// interests requirement — the free-text row was gated `tier === 'cloud'`, so
+// a learner offline (or after a permanent cloud_failed) could select reasons
+// but never produce a non-empty `interests` array, and the why beat could
+// never advance. This is a real state-driven walk (reducer wired through
+// React state, exactly like the store), interacting ONLY with surfaces the
+// template tier renders — chips, pills, and Done/primary buttons — and
+// explicitly asserting the composer never appears. It must reach 'ask'.
+function TemplateWalkHarness() {
+  const [ui, setUi] = React.useState<MeetingUiState>(() =>
+    initMeeting({ collected: emptyCollected, restDay: null, tier: 'template' }),
+  )
+  const onAnswer = (patch: ExtractedPatch) =>
+    setUi((s) => meetingReducer(s, { type: 'answered', patch }))
+  return (
+    <MeetingBody
+      ui={ui}
+      onAnswer={onAnswer}
+      onSendText={jest.fn()}
+      onFinish={jest.fn()}
+      onSkipToForm={jest.fn()}
+      onSkipOutright={jest.fn()}
+    />
+  )
+}
+
+describe('MeetingBody — template tier can complete the whole walk without the cloud (F1)', () => {
+  it('reaches ask using only chips, pills and buttons — the composer never renders', () => {
+    const { getByTestId, getByText, getByPlaceholderText, queryByTestId } = render(
+      <TemplateWalkHarness />,
+    )
+
+    getByTestId('answer-intro')
+    expect(queryByTestId('meeting-composer')).toBeNull()
+    fireEvent.press(getByText('Got it')) // intro -> orientation
+
+    getByTestId('answer-orientation')
+    fireEvent.press(getByText('Got it')) // orientation -> why
+
+    getByTestId('answer-why')
+    expect(queryByTestId('meeting-composer')).toBeNull()
+    fireEvent.press(getByText('JLPT exam')) // reasons chip — unambiguous, skips frame_ask
+    fireEvent.changeText(
+      getByPlaceholderText('What are you into? (comma-separated)'),
+      'cooking',
+    )
+    fireEvent.press(getByText('Done'))
+
+    getByTestId('answer-meaning')
+    fireEvent.press(getByText('15'))
+    fireEvent.press(getByText('Sounds good'))
+
+    getByTestId('answer-meet')
+    fireEvent.press(getByText('Sun'))
+    fireEvent.press(getByText('Weekly'))
+    fireEvent.press(getByText('Sounds good'))
+
+    getByTestId('answer-ask')
+    expect(queryByTestId('meeting-composer')).toBeNull()
   })
 })
