@@ -39,6 +39,17 @@ describe('selectBeat', () => {
       kind: 'meaning', ruler: 'jlpt', proposedGoal: 20,
     })
   })
+  it('meaning: the proposed goal follows the ruler the learner disambiguated to', () => {
+    const s = {
+      ...onFile,
+      reasons: ['JLPT exam', 'Heritage'], // ambiguous on their own
+      explicitRuler: 'jlpt' as const,     // resolved via frame_ask
+      dailyGoal: null,
+    }
+    expect(selectBeat(s, ['intro', 'orientation'], null)).toEqual({
+      kind: 'meaning', ruler: 'jlpt', proposedGoal: 20,
+    })
+  })
   it('meet proposes the day after the rest day, or Sunday without one', () => {
     expect(selectBeat(onFile, ['intro', 'orientation'], 5)).toEqual({ kind: 'meet', proposedDay: 6 })
     expect(selectBeat(onFile, ['intro', 'orientation'], null)).toEqual({ kind: 'meet', proposedDay: 0 })

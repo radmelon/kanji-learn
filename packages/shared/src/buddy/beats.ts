@@ -21,9 +21,10 @@ export type Beat =
   | { kind: 'done' }
 
 /** Exam- and work-driven learners get a slightly firmer default. Values are
- *  from the onboarding daily-target options [5, 10, 15, 20, 30]. */
-export function proposeDailyGoal(reasons: string[]): number {
-  const frame = resolveFrame({ reasons })
+ *  from the onboarding daily-target options [5, 10, 15, 20, 30]. If explicitRuler
+ *  is provided, it takes precedence; otherwise the ruler is derived from reasons. */
+export function proposeDailyGoal(reasons: string[], explicitRuler?: Ruler | null): number {
+  const frame = resolveFrame({ explicitRuler, reasons })
   return frame.kind !== 'ask' && frame.ruler === 'jlpt' ? 20 : 15
 }
 
@@ -43,7 +44,7 @@ export function selectBeat(
     // 'ask' is unreachable here (the frame requirement sorts first); collapse
     // defensively the same way milestoneFocusFromReasons does.
     const ruler: Ruler = frame.kind === 'ask' ? 'jlpt' : frame.ruler
-    return { kind: 'meaning', ruler, proposedGoal: proposeDailyGoal(s.reasons) }
+    return { kind: 'meaning', ruler, proposedGoal: proposeDailyGoal(s.reasons, s.explicitRuler) }
   }
   if (req === 'buddy_day') return { kind: 'meet', proposedDay: defaultBuddyDay(restDay) ?? 0 }
 
