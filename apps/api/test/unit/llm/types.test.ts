@@ -49,6 +49,10 @@ describe('classifyTier', () => {
     expect(classifyTier({ ...base, context: 'social_nudge' })).toBe(2)
   })
 
+  it('onboarding_conversation classifies tier 2 — paid, capped, never tier 3', () => {
+    expect(classifyTier({ context: 'onboarding_conversation', userId: 'u', messages: [] })).toBe(2)
+  })
+
   it('preferredTier overrides context-based classification', () => {
     // context would classify as tier 1, but preferredTier forces 3
     expect(

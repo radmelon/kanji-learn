@@ -12,6 +12,7 @@ export type RequestContext =
   | 'mnemonic_cocreation'
   | 'deep_diagnostic'
   | 'social_nudge'
+  | 'onboarding_conversation'
 
 export interface BuddyRequest {
   context: RequestContext

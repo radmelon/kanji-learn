@@ -50,6 +50,8 @@ import postgres from 'postgres'
 import * as schema from '@kanji-learn/db'
 import { NudgeService } from '../../src/services/buddy/nudge.service'
 import { NotificationService } from '../../src/services/notification.service'
+import type { BuddyLLMRouter } from '../../src/services/llm/router'
+import { BuddyLLMError } from '../../src/services/llm/types'
 
 const TEST_USER_HEADER = 'x-test-user-id'
 
@@ -62,7 +64,18 @@ type RouteSpec =
       opts: FastifyRegisterOptions<FastifyPluginOptions>
     }
 
+export interface TestAppOverrides {
+  buddyLLM?: Pick<BuddyLLMRouter, 'route'>
+}
+
 export async function buildTestApp(
+  ...routes: RouteSpec[]
+): Promise<FastifyInstance> {
+  return buildTestAppWith({}, ...routes)
+}
+
+export async function buildTestAppWith(
+  overrides: TestAppOverrides,
   ...routes: RouteSpec[]
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false })
@@ -73,6 +86,14 @@ export async function buildTestApp(
   const notificationService = new NotificationService(db)
   const nudgeService = new NudgeService(db, notificationService)
   app.decorate('nudgeService', nudgeService)
+  app.decorate(
+    'buddyLLM',
+    (overrides.buddyLLM ?? {
+      route: async () => {
+        throw new BuddyLLMError('buddyLLM not stubbed in this test app')
+      },
+    }) as BuddyLLMRouter,
+  )
 
   // Match production: `req.userId` / `req.userEmail` are decorated so TS and
   // Fastify know the shape before the prehandler runs.
