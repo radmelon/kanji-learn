@@ -80,6 +80,17 @@ export class NotebookService {
    * Spec §8. Phase 7 writes page one during onboarding, but if Phase 6 ships
    * first — or for any learner who onboarded before it — the notebook would open
    * blank. Idempotent: keyed on the existence of any buddy-authored decision.
+   *
+   * The findFirst below is a fast path only — it avoids a pointless insert
+   * attempt on every open — and does NOT by itself make this safe under
+   * concurrency: it is check-then-act with no transaction or lock between
+   * the read and the write. Two concurrent callers (two devices, or two
+   * effect-driven calls on one) can both read "no introduction" and both
+   * reach the insert. What actually enforces idempotence is the database:
+   * the partial unique index notebook_entries_first_open_unique (migration
+   * 0032) allows only one row per user with source->>'kind' = 'first_open',
+   * so the losing insert hits that constraint. onConflictDoNothing() lets
+   * it lose silently instead of throwing a 500 on a notebook read.
    */
   async ensureFirstOpen(userId: string): Promise<void> {
     const existing = await this.db.query.notebookEntries.findFirst({
@@ -91,11 +102,11 @@ export class NotebookService {
     })
     if (existing) return
 
-    await this.createEntry(userId, {
-      kind: 'decision', author: 'buddy',
+    await this.db.insert(notebookEntries).values({
+      userId, kind: 'decision', author: 'buddy',
       body: "This is where we'll keep track of what we decide together — what you're working on, what we're trying, and what's actually helping.",
       source: { kind: 'first_open' },
-    })
+    }).onConflictDoNothing()
   }
 
   /** Editing IS superseding. `replacementBody: null` is a delete. */

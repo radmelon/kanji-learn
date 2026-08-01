@@ -149,13 +149,20 @@ export async function buddySessionRoutes(server: FastifyInstance) {
 
     // Template copy only — Slice 1 has no LLM, and the notebook must still
     // render on the template tier every offline/rate-limited/outage path
-    // falls back to (spec decision #11).
-    await notebook.createEntry(req.userId!, {
-      kind: 'observation', author: 'buddy',
-      weekStart: commitment.weekStart,
-      body: `Agreed ${commitment.daysCommitted} days, ${commitment.minutesPerDay} minutes.`,
-      source: { kind: 'commitment' },
-    })
+    // falls back to (spec decision #11). The commitment above is the
+    // session's one guaranteed outcome — it must never be lost — so the
+    // notebook write is guarded: a failure here is logged, not surfaced,
+    // and never turns an already-saved commitment into a 500.
+    try {
+      await notebook.createEntry(req.userId!, {
+        kind: 'observation', author: 'buddy',
+        weekStart: commitment.weekStart,
+        body: `Agreed ${commitment.daysCommitted} days, ${commitment.minutesPerDay} minutes.`,
+        source: { kind: 'commitment' },
+      })
+    } catch (err) {
+      req.log.error({ err, userId: req.userId }, '[BuddySession] notebook write failed after commitment saved')
+    }
 
     return reply.send({ ok: true, data: commitment })
   })

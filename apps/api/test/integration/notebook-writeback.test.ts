@@ -45,6 +45,28 @@ describe('NotebookService write-back', () => {
     expect(intros).toHaveLength(1)
   })
 
+  // ensureFirstOpen is findFirst-then-insert with no transaction or lock
+  // between the two steps. Two sequential awaited calls only prove the
+  // `if (existing) return` guard works — they never overlap, so they can't
+  // exercise the race. This fires several calls concurrently, the way two
+  // devices' GET /v1/buddy/notebook requests genuinely can, and checks what
+  // actually landed in the database: idempotence here is enforced by the
+  // partial unique index notebook_entries_first_open_unique (migration
+  // 0032), not by the findFirst guard.
+  it('tolerates concurrent first opens and writes exactly one introduction', async () => {
+    await Promise.all([
+      service.ensureFirstOpen(USER),
+      service.ensureFirstOpen(USER),
+      service.ensureFirstOpen(USER),
+    ])
+
+    const rows = await db.execute(sql`
+      SELECT id FROM notebook_entries
+      WHERE user_id = ${USER} AND source->>'kind' = 'first_open'
+    `)
+    expect(rows).toHaveLength(1)
+  })
+
   it('writes an observation when a commitment is agreed', async () => {
     await service.createEntry(USER, {
       kind: 'observation', body: 'Agreed 4 days, 15 minutes.', author: 'buddy',

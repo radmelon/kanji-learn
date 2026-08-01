@@ -31,6 +31,18 @@ COMMENT ON COLUMN notebook_entries.superseded_by IS
 CREATE INDEX IF NOT EXISTS notebook_entries_user_live_idx
   ON notebook_entries (user_id, kind) WHERE superseded_at IS NULL;
 
+-- This is what makes NotebookService.ensureFirstOpen idempotent under
+-- concurrency, not just under sequential calls. Its findFirst-then-insert is
+-- check-then-act with no transaction or lock between the two steps, so two
+-- concurrent GET /v1/buddy/notebook requests (same learner, two devices, or
+-- two effect-driven calls racing on one) can both read "no introduction" and
+-- both attempt the insert. This partial unique index permits exactly one
+-- first-open row per user; the losing insert relies on it to fail with a
+-- constraint violation, which the service catches via onConflictDoNothing().
+CREATE UNIQUE INDEX IF NOT EXISTS notebook_entries_first_open_unique
+  ON notebook_entries (user_id)
+  WHERE source->>'kind' = 'first_open';
+
 ALTER TABLE public.notebook_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notebook_entries FORCE ROW LEVEL SECURITY;
 
