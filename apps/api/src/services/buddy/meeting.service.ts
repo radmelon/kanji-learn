@@ -8,7 +8,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { buddyConversations, userProfiles } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
-import { appointmentEntryBody, reasonsEntryBody } from '@kanji-learn/shared'
+import { appointmentEntryBody, introEntryBody, reasonsEntryBody } from '@kanji-learn/shared'
 import { NotebookService } from '../notebook.service.js'
 
 const TRANSCRIPT_RETENTION_DAYS = 365
@@ -54,6 +54,16 @@ export class MeetingService {
 
     if (input.outcome === 'conversation') {
       await this.notebook.ensureFirstOpen(userId) // BEFORE any decision write — see header comment
+
+      // F6 fix (whole-branch review, MED, spec §6): the intro bullet was
+      // never written as its own entry — ensureFirstOpen's decision is about
+      // the notebook itself, not Buddy introducing himself. Files under
+      // "What Buddy notices" (kind 'observation') per assembleNotebook.
+      await this.notebook.writeKeyedEntry(userId, {
+        sourceKind: 'onboarding_intro',
+        kind: 'observation',
+        body: introEntryBody(),
+      })
 
       if (input.buddyDay !== null) {
         await this.notebook.writeKeyedEntry(userId, {

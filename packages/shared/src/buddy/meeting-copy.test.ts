@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { beatCopy, appointmentEntryBody, reasonsEntryBody, DAY_NAMES } from './meeting-copy'
+import { beatCopy, appointmentEntryBody, reasonsEntryBody, introEntryBody, DAY_NAMES } from './meeting-copy'
 import type { Beat } from './beats'
 
 const EVERY_BEAT: Beat[] = [
@@ -42,6 +42,16 @@ describe('page-one entry bodies (spec §6)', () => {
     const body = reasonsEntryBody(['Travel', 'JLPT exam'], 'jlpt')
     expect(body).toContain('Travel')
     expect(body).toContain('JLPT exam')
+  })
+  // F6 (whole-branch review, MED, spec §6): the intro bullet ("Buddy's
+  // introduction, under What Buddy notices") was mapped onto ensureFirstOpen
+  // in Phase 6, which writes a decision about the notebook itself — not an
+  // observation in Buddy's own first-person voice. This is the real
+  // introduction, reusing the intro beat's exact copy so the transcript and
+  // the notebook agree on what Buddy actually said.
+  it('intro entry body matches the intro beat\'s own first-person voice', () => {
+    const body = introEntryBody()
+    expect(body).toBe(beatCopy({ kind: 'intro' }))
   })
   it('DAY_NAMES is Sunday-first with 7 entries — index IS buddy_day', () => {
     expect(DAY_NAMES).toHaveLength(7)

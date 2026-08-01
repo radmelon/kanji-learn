@@ -70,3 +70,12 @@ export function reasonsEntryBody(reasons: string[], ruler: Ruler): string {
   const measure = ruler === 'jlpt' ? 'JLPT level' : 'school grade'
   return `You're here for: ${reasons.join(', ')}. We measure progress by ${measure}.`
 }
+
+// F6 (whole-branch review, MED, spec §6): "Buddy's introduction, under What
+// Buddy notices — authored buddy" is its own page-one bullet, distinct from
+// ensureFirstOpen's decision about the notebook itself (Phase 6, unchanged).
+// Reuses the intro beat's exact copy so the transcript and the notebook
+// never disagree about what Buddy said.
+export function introEntryBody(): string {
+  return beatCopy({ kind: 'intro' })
+}

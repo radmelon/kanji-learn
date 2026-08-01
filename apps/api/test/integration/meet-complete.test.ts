@@ -6,6 +6,7 @@ import postgres from 'postgres'
 import * as schema from '@kanji-learn/db'
 import { buildTestApp } from '../helpers/test-app'
 import { meetRoutes } from '../../src/routes/meet'
+import { introEntryBody } from '@kanji-learn/shared'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
@@ -52,7 +53,7 @@ describe('POST /v1/buddy/meet/complete', () => {
     await client.end()
   })
 
-  it('conversation outcome writes page one: intro, appointment, reasons — every field read back', async () => {
+  it('conversation outcome writes page one: first-open, intro, appointment, reasons — every field read back', async () => {
     const res = await post(CONVERSATION_PAYLOAD)
     expect(res.statusCode).toBe(200)
     expect(res.json().data.metBuddyAt).toBeTruthy()
@@ -62,11 +63,21 @@ describe('POST /v1/buddy/meet/complete', () => {
     })
     const byKind = (k: string) => entries.find((e) => (e.source as { kind: string }).kind === k)
 
-    // Enumerate the three page-one entries — never count.
-    const intro = byKind('first_open')!
+    // Enumerate the FOUR page-one entries — never count.
+    const firstOpen = byKind('first_open')!
+    expect(firstOpen).toBeDefined()
+    expect(firstOpen.author).toBe('buddy')
+    expect(firstOpen.kind).toBe('decision')
+
+    // F6 (whole-branch review, MED, spec §6): Buddy's own introduction,
+    // distinct from ensureFirstOpen's decision about the notebook itself
+    // (Phase 6, unchanged) — filed under "What Buddy notices" via kind
+    // 'observation', reusing the intro beat's exact copy.
+    const intro = byKind('onboarding_intro')!
     expect(intro).toBeDefined()
+    expect(intro.body).toBe(introEntryBody())
     expect(intro.author).toBe('buddy')
-    expect(intro.kind).toBe('decision')
+    expect(intro.kind).toBe('observation')
 
     const appointment = byKind('onboarding_appointment')!
     expect(appointment.body).toBe('We meet on Sundays, every week. You picked the day.')
