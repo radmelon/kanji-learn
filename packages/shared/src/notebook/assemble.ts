@@ -7,7 +7,11 @@ const TITLES = {
 
 export function assembleNotebook(input: NotebookInput): NotebookView {
   const live = input.commitments.filter((c) => c.supersededAt === null)
-  const agreement = live[0] ?? null
+  // 'default' means seeded with no prior — the learner agreed nothing, so it
+  // must never render as "THIS WEEK". 'rolled_forward' IS a real commitment
+  // carried over from a previous session and does count.
+  const agreementCandidate = live[0] ?? null
+  const agreement = agreementCandidate?.source === 'default' ? null : agreementCandidate
   const pastAgreements = input.commitments.filter((c) => c.supersededAt !== null)
   const experiment = live.find((c) => c.experimentUntil !== null) ?? null
 

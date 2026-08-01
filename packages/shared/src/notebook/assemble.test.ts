@@ -12,6 +12,11 @@ const commitment = (weekStart: string, supersededAt: string | null, experimentUn
   source: 'session' as const, supersededAt, experimentUntil,
 })
 
+const commitmentWithSource = (source: 'session' | 'rolled_forward' | 'default') => ({
+  weekStart: '2026-07-27', daysCommitted: 4, minutesPerDay: 15, focus: null,
+  source, supersededAt: null, experimentUntil: null,
+})
+
 const entry = (id: string, kind: 'observation' | 'decision', supersededAt: string | null) => ({
   id, kind, body: `body ${id}`, author: 'buddy' as const,
   createdAt: '2026-08-01T00:00:00Z', editableBy: [] as never[], supersededAt,
@@ -32,6 +37,23 @@ describe('assembleNotebook', () => {
     })
     expect(view.agreement?.weekStart).toBe('2026-07-27')
     expect(view.pastAgreements.map((c) => c.weekStart)).toEqual(['2026-07-20'])
+  })
+
+  it('does not treat a default-seeded commitment as an agreement the learner made', () => {
+    const view = assembleNotebook({
+      ...base,
+      commitments: [commitmentWithSource('default')],
+    })
+    expect(view.agreement).toBeNull()
+  })
+
+  it('does treat a rolled-forward commitment as a real agreement', () => {
+    const view = assembleNotebook({
+      ...base,
+      commitments: [commitmentWithSource('rolled_forward')],
+    })
+    expect(view.agreement).not.toBeNull()
+    expect(view.agreement?.weekStart).toBe('2026-07-27')
   })
 
   it('surfaces a commitment carrying experimentUntil as the live experiment', () => {
