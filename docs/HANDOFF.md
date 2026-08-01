@@ -1,4 +1,4 @@
-# Session Handoff — 2026-07-31 night (**Phase 6 built on a branch — 24 commits, unmerged, undeployed**)
+# Session Handoff — 2026-08-01 (**Phase 6 merged and DEPLOYED — the notebook API is live; a build and the walkthrough are next**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -6,6 +6,85 @@
 > *(This line is deliberately part of the artifact. A handoff that cannot state
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
+
+## START HERE — 2026-08-01
+
+> ## ✅ Phase 6 is on `main`, and the API serving it is live
+>
+> | | |
+> |---|---|
+> | Merge | `1bd57fb` — clean, zero conflicts (`docs/HANDOFF.md` was byte-identical on both sides) |
+> | Verified | all five lanes, **twice** — on the branch, then again on merged `main`, identical results |
+> | Migration `0032` on live | applied and verified by object inspection, below |
+> | API deploy | image `sha256:26e0e944…`, operation `9436d70f` `START_DEPLOYMENT SUCCEEDED` 07:40:07 → 07:44:16 |
+> | Canary | `GET /v1/buddy/notebook` **404 → 401** against a pre-state captured before deploying; `/v1/buddy/nonexistent-route` still 404 |
+> | Also shipped | `2cab737`, the placement seeding fix flagged last night as unshipped — same image. **The SOP pre-build gate returns empty as of this deploy** |
+>
+> Lanes on merged `main`: typecheck 4/4 · shared **279** · API **417 passing**,
+> 2 failing — **enumerated**: `learner-state-refresh` (the documented
+> `setImmediate`/50ms race) and `rls-coverage` (the documented legacy tables).
+> B-210 passed both runs this session, so its order dependence stands unproven
+> either way today. · mobile pure **163** · components **40**.
+>
+> Migration `0032` verified on live by content, not exit code: `notebook_entries`
+> exists with RLS **enabled and forced**, both policies, and the first-open
+> partial unique index; `tutor_notes.language`, `tutor_notes.body_translations`
+> and `tutor_shares.language` all present; `study_log_entries` dropped — checked
+> before dropping: it existed on live with **0 rows**, exactly as the
+> migration's header claimed.
+>
+> The canary route cannot be shadow-matched: the old image's only buddy routes
+> were `/v1/buddy/session` and `/v1/buddy/session/commitment`, nothing
+> parametric under `/v1/buddy`. The 401 carries the app's own body
+> (`{"ok":false,…,"code":"UNAUTHORIZED"}`), which the old image cannot produce
+> for that path.
+>
+> The local branch is deleted. `origin/buddy-home-notebook` still exists on
+> GitHub if a reference point beyond the merge commit is ever wanted.
+>
+> ### 🛑 `drizzle-kit push` cannot run against an already-provisioned test DB
+>
+> The rebuild recipe's `push` step works **only on a fresh database**. Once
+> migration `0025`'s expression indexes exist, drizzle-kit 0.22.8 introspection
+> dies with a ZodError on `buddy_nudges_streak_dedupe` (`expression: null` —
+> it cannot parse an index over `action_payload->>'milestone'`). On a database
+> that already has them, skip push and verify schema currency directly in
+> `information_schema` — this session confirmed the branch's three new tutor
+> columns and the full `notebook_entries` shape that way, then re-applied
+> `0031`/`0032`, which are idempotent by design. Recorded in
+> `docs/local-test-db.md`.
+>
+> ### What is owed next, in order
+>
+> 1. **The B146 device walkthrough** — unchanged from last night, still not
+>    done. Both slices deployed yesterday are unproven on a real device.
+>    [Test plan](b146-test-plan.md). Run it on an `America/Los_Angeles`
+>    account — a `'UTC'` row is skipped by design and reads as breakage.
+> 2. **A build to carry Phase 6 mobile** — the notebook screens are on `main`
+>    and in no build. Re-run the SOP pre-build gate before cutting (clean as of
+>    this deploy), `EXPO_NO_CAPABILITY_SYNC=1` on every profile. ~7 medium
+>    builds remain; the allowance renews **2026-08-04**.
+> 3. **Phase 7** — specced, unplanned.
+>    [Spec](superpowers/specs/2026-07-31-onboarding-meeting-buddy-design.md)
+> 4. **The five deliberate gaps** (archive renderer, offline caching, the
+>    translation endpoint, `tutor_notes.language` authoring + the hardcoded
+>    `ja-JP` voice, virtualisation) — detailed in last night's section below.
+>
+> ### Unchanged from last night — read there rather than re-deciding here
+>
+> - 🛑 `checkTutorConstraint` deliberately unbuilt; slice 2 implements spec
+>   §6.3's rule, which lives **only in the spec** — do not invent a second one.
+> - The fixture-isolation session, now three items (B-210 order dependence,
+>   `learner-state-refresh` race, the unreachable fitted-weights branch).
+> - Open decisions: `weekStart` validation, `[BuddyDay]` alerting, and
+>   `buddy_day` discoverability before slice 2.
+>
+> ---
+
+# Previous — 2026-07-31 night (**Phase 6 built on a branch — 24 commits, unmerged, undeployed**)
+
+> **Canonical URL:**
+> https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
 
 ## START HERE — 2026-07-31 (night)
 

@@ -85,6 +85,14 @@ reliable move is `drizzle-kit push` straight from `schema.ts`.
 > `process.env.DATABASE_URL`, which points at **live Supabase**. Use a config
 > with the test URL hardcoded, and run it with `env -u DATABASE_URL`.
 
+> ⚠️ **`push` only works against a FRESH database** (found 2026-08-01). Once
+> migration `0025`'s expression indexes exist, drizzle-kit 0.22.8 introspection
+> crashes with a ZodError on `buddy_nudges_streak_dedupe` — it cannot parse an
+> index column that is an expression (`expression: null`). On a database that
+> has already been provisioned, skip the push and verify schema currency
+> directly instead: check the newest tables/columns in `information_schema`,
+> then re-apply any new migration files, which are written to be idempotent.
+
 **3. Push cannot express everything.** `schema.ts` carries tables, columns and
 plain indexes — but not RLS policies, and not migration 0025's partial unique
 indexes, whose targets are SQL expressions (`action_payload->>'milestone'`)
