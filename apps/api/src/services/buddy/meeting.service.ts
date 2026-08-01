@@ -32,9 +32,22 @@ export class MeetingService {
 
   async complete(userId: string, input: MeetingCompleteInput): Promise<{ metBuddyAt: string }> {
     // First-wins: re-meeting Buddy must not move the date we met.
+    //
+    // F5 fix (whole-branch review, MED): onboardingCompletedAt used to be
+    // left untouched by every path through this method — conversation, form
+    // AND skipped — so a learner who completes via the conversation (rather
+    // than the /onboarding-form escape, which presumably stamps it
+    // elsewhere) or skips outright never gets it set. initialCollected's
+    // hadPriorData discriminator reads onboardingCompletedAt !== null, so
+    // that learner permanently re-answers every beat on a later re-entry.
+    // Same COALESCE, same first-wins semantics, for the same reason.
     const [row] = await this.db
       .update(userProfiles)
-      .set({ metBuddyAt: sql`COALESCE(${userProfiles.metBuddyAt}, now())`, updatedAt: new Date() })
+      .set({
+        metBuddyAt: sql`COALESCE(${userProfiles.metBuddyAt}, now())`,
+        onboardingCompletedAt: sql`COALESCE(${userProfiles.onboardingCompletedAt}, now())`,
+        updatedAt: new Date(),
+      })
       .where(eq(userProfiles.id, userId))
       .returning({ metBuddyAt: userProfiles.metBuddyAt })
     if (!row) throw new Error('NOT_FOUND')

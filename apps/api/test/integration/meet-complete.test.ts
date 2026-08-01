@@ -78,8 +78,15 @@ describe('POST /v1/buddy/meet/complete', () => {
     expect(reasons.body).toContain('JLPT level')
 
     // The stamp, read back from the table — not from the response alone.
-    const [profile] = await db.execute(sql`SELECT met_buddy_at FROM user_profiles WHERE id = ${USER}`)
+    const [profile] = await db.execute(
+      sql`SELECT met_buddy_at, onboarding_completed_at FROM user_profiles WHERE id = ${USER}`,
+    )
     expect(profile.met_buddy_at).not.toBeNull()
+    // F5 (whole-branch review, MED): conversation/skip paths never stamped
+    // this, so an existing learner who re-onboards on an old build (or one
+    // whose row predates onboarding_completed_at entirely) permanently reads
+    // hadPriorData false and gets re-asked everything they already answered.
+    expect(profile.onboarding_completed_at).not.toBeNull()
 
     // The transcript, archived for slice 2's mining pass.
     const convs = await db.query.buddyConversations.findMany({
@@ -108,17 +115,31 @@ describe('POST /v1/buddy/meet/complete', () => {
     // met_buddy_at is first-wins: re-meeting does not move the date we met.
     const again = await post(CONVERSATION_PAYLOAD)
     expect(again.json().data.metBuddyAt).toBe(firstStamp)
+
+    // onboarding_completed_at is first-wins too, via the same COALESCE.
+    const [profile] = await db.execute(
+      sql`SELECT onboarding_completed_at FROM user_profiles WHERE id = ${USER}`,
+    )
+    expect(new Date(profile.onboarding_completed_at as string).toISOString()).toBe(firstStamp)
   })
 
-  it('form and skipped outcomes stamp met_buddy_at and write NO notebook entries', async () => {
+  it('form and skipped outcomes stamp met_buddy_at AND onboarding_completed_at, and write NO notebook entries', async () => {
     for (const outcome of ['form', 'skipped'] as const) {
       await db.execute(sql`DELETE FROM notebook_entries WHERE user_id = ${USER}`)
-      await db.execute(sql`UPDATE user_profiles SET met_buddy_at = NULL WHERE id = ${USER}`)
+      await db.execute(
+        sql`UPDATE user_profiles SET met_buddy_at = NULL, onboarding_completed_at = NULL WHERE id = ${USER}`,
+      )
       const res = await post({ outcome })
       expect(res.statusCode).toBe(200)
       expect(res.json().data.metBuddyAt).toBeTruthy()
       const entries = await db.query.notebookEntries.findMany({ where: (t, { eq }) => eq(t.userId, USER) })
       expect(entries).toEqual([])
+      // F5 (whole-branch review, MED): these two outcomes never stamped this
+      // before — read directly from the table, not from the response.
+      const [profile] = await db.execute(
+        sql`SELECT onboarding_completed_at FROM user_profiles WHERE id = ${USER}`,
+      )
+      expect(profile.onboarding_completed_at).not.toBeNull()
     }
   })
 
