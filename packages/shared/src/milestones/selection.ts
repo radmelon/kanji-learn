@@ -15,6 +15,7 @@ import {
   nextStreakThreshold,
 } from './constants';
 import { gradeTierRule, jlptTierRule } from './tier-rules';
+import { resolveFrame } from '../buddy/frame';
 
 const TIER_ORDER: Record<string, number> = { bronze: 0, silver: 1, gold: 2 };
 
@@ -186,14 +187,12 @@ export function computeUpNext(input: UpNextInput): UpNextEntry[] {
  */
 export type MilestoneFocus = 'jlpt' | 'grade';
 
+/** Thin wrapper over resolveFrame that collapses `ask` to its historical
+ *  default. Arc design: the ask itself is asked in the meeting-Buddy
+ *  conversation; every non-conversational surface keeps the old behaviour. */
 export function milestoneFocusFromReasons(reasons: string[]): MilestoneFocus {
-  const norm = (reasons ?? []).map(r => r.toLowerCase().trim());
-  const has = (needles: string[]) => norm.some(r => needles.some(n => r.includes(n)));
-
-  // JLPT checked first so it wins when both groups are present.
-  if (has(['jlpt', 'work', 'business'])) return 'jlpt';
-  if (has(['heritage', 'curiosity'])) return 'grade';
-  return 'jlpt';
+  const frame = resolveFrame({ reasons })
+  return frame.kind === 'ask' ? 'jlpt' : frame.ruler
 }
 
 export function formatAchievedAt(achievedAt: string): string {
