@@ -124,7 +124,13 @@ function NotebookSectionView({
         </Pressable>
       </View>
       {section.live.map((entry) => (
-        <Pressable key={entry.id} style={styles.entry} onPress={() => onEdit(entry)}>
+        <Pressable
+          key={entry.id}
+          style={styles.entry}
+          accessibilityRole="button"
+          accessibilityLabel="Edit entry"
+          onPress={() => onEdit(entry)}
+        >
           <Text style={styles.entryBody}>{entry.body}</Text>
           {entry.author !== 'tutor' && (
             <Pressable
