@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen } from '@testing-library/react-native'
+import { fireEvent, render, screen } from '@testing-library/react-native'
 import { NotebookBody } from '../../src/components/notebook/NotebookBody'
 import { assembleNotebook } from '@kanji-learn/shared'
 import type { NotebookSection, NotebookView } from '@kanji-learn/shared'
@@ -187,5 +187,28 @@ describe('NotebookBody', () => {
     // A tutor note must never be reachable through the learner-edit path —
     // there must be no "Edit entry" Pressable wrapping it.
     expect(screen.queryAllByRole('button', { name: 'Edit entry' })).toHaveLength(0)
+  })
+
+  // notebook-cadence-control had testID/accessibilityRole/accessibilityLabel/
+  // hitSlop and no onPress — a dead button. Same discipline as onTranslate in
+  // TutorNote: the control renders only when a caller actually supplies a
+  // handler, never as a control that does nothing.
+  it('omits the cadence control when no onChangeCadence handler is supplied', () => {
+    render(<NotebookBody view={empty} onAdd={noop} onEdit={noop} onDelete={noop} />)
+    expect(screen.queryByTestId('notebook-cadence-control')).toBeNull()
+  })
+
+  it('renders the cadence control and calls the handler when onChangeCadence is supplied', () => {
+    const onChangeCadence = jest.fn()
+    render(
+      <NotebookBody
+        view={empty} onAdd={noop} onEdit={noop} onDelete={noop}
+        onChangeCadence={onChangeCadence}
+      />
+    )
+    const control = screen.getByTestId('notebook-cadence-control')
+    expect(control).toBeTruthy()
+    fireEvent.press(control)
+    expect(onChangeCadence).toHaveBeenCalledTimes(1)
   })
 })

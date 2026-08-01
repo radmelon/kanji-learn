@@ -281,6 +281,12 @@ export default function Journal() {
     Speech.speak(text, { language: 'ja-JP' })
   }, [])
 
+  // buddy_day and the check-in interval are already editable on the Profile
+  // tab — no new editor here, just a way to reach it (Task 8 brief).
+  const handleChangeCadence = useCallback(() => {
+    router.push('/(tabs)/profile')
+  }, [router])
+
   const displayItems = selectedKanjiId ? mnemonics : hooks
   const listLoading = selectedKanjiId ? isLoading : hooksLoading
   const refreshList = selectedKanjiId ? load : loadHooks
@@ -365,6 +371,7 @@ export default function Journal() {
             onNotebookDelete={handleNotebookDelete}
             onNotebookLookupKanji={handleNotebookLookupKanji}
             onNotebookSpeak={handleNotebookSpeak}
+            onChangeCadence={handleChangeCadence}
             kanjiSearch={kanjiSearch}
             onChangeKanjiSearch={setKanjiSearch}
             onSubmitSearch={handleSubmitSearch}
@@ -477,6 +484,7 @@ function JournalListHeader({
   onNotebookDelete,
   onNotebookLookupKanji,
   onNotebookSpeak,
+  onChangeCadence,
   kanjiSearch,
   onChangeKanjiSearch,
   onSubmitSearch,
@@ -494,6 +502,7 @@ function JournalListHeader({
   onNotebookDelete: (entry: NotebookEntry) => void
   onNotebookLookupKanji: (character: string) => void
   onNotebookSpeak: (text: string) => void
+  onChangeCadence: () => void
   kanjiSearch: string
   onChangeKanjiSearch: (text: string) => void
   onSubmitSearch: () => void
@@ -538,6 +547,7 @@ function JournalListHeader({
             onDelete={onNotebookDelete}
             onLookupKanji={onNotebookLookupKanji}
             onSpeak={onNotebookSpeak}
+            onChangeCadence={onChangeCadence}
           />
         </View>
       )}

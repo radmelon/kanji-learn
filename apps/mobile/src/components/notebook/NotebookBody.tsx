@@ -31,31 +31,37 @@ export function NotebookBody({
   onLookupKanji,
   onSpeak,
   onTranslate,
+  onChangeCadence,
 }: {
   view: NotebookView
   onAdd: (sectionKey: NotebookSection['key']) => void
   onEdit: (entry: NotebookEntry) => void
   onDelete: (entry: NotebookEntry) => void
-  /** All three are I/O and belong to the screen, not this pure component
-   *  (see NotebookBody/TutorNote header comments). `onTranslate` is left
-   *  unwired here on purpose — there is no translation endpoint yet, and
-   *  TutorNote only shows the control when it is actually supplied. */
+  /** All are I/O and belong to the screen, not this pure component (see
+   *  NotebookBody/TutorNote header comments). `onTranslate` is left unwired
+   *  here on purpose — there is no translation endpoint yet — and
+   *  `onChangeCadence` likewise: both controls render only when a caller
+   *  actually supplies a handler, never as a control that does nothing. */
   onLookupKanji?: (char: string) => void
   onSpeak?: (text: string) => void
   onTranslate?: (noteId: string) => void
+  onChangeCadence?: () => void
 }) {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
         <Text style={styles.cadenceText}>{cadenceLine(view.cadence)}</Text>
-        <Pressable
-          testID="notebook-cadence-control"
-          accessibilityRole="button"
-          accessibilityLabel="Change check-in schedule"
-          hitSlop={12}
-        >
-          <Text style={styles.cadenceControl}>Change</Text>
-        </Pressable>
+        {onChangeCadence && (
+          <Pressable
+            testID="notebook-cadence-control"
+            accessibilityRole="button"
+            accessibilityLabel="Change check-in schedule"
+            hitSlop={12}
+            onPress={onChangeCadence}
+          >
+            <Text style={styles.cadenceControl}>Change</Text>
+          </Pressable>
+        )}
       </View>
 
       {view.agreement ? (
