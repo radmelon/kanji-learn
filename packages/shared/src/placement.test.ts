@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   THETA_GRID, GUESSING_C, probCorrect, initPosterior, updatePosterior,
   thetaMean, thetaAtQuantile, pKnows, credibleIntervalWidth, shouldStop,
-  inferredLevel,
+  inferredLevel, levelBands,
 } from './placement'
 
 describe('probCorrect', () => {
@@ -128,6 +128,65 @@ describe('inferredLevel', () => {
   })
   it('theta between two boundaries lands on the level between them', () => {
     expect(inferredLevel(0.5, boundaries, [...levels])).toBe('N2')
+  })
+})
+
+describe('levelBands', () => {
+  const LEVELS = ['N5', 'N4', 'N3', 'N2', 'N1'] as const
+  const corpus = [
+    { b: -2, level: 'N5' as const }, { b: -2.5, level: 'N5' as const },
+    { b: -1, level: 'N4' as const },
+    { b: 0, level: 'N3' as const },
+    { b: 1, level: 'N2' as const },
+    { b: 2, level: 'N1' as const },
+  ]
+
+  it('returns one fewer boundary than the levels it separates', () => {
+    const bands = levelBands(corpus, LEVELS)
+    expect(bands.levels).toEqual(['N5', 'N4', 'N3', 'N2', 'N1'])
+    expect(bands.boundaries).toHaveLength(4)
+  })
+
+  it('a boundary is the midpoint of two adjacent levels’ MEAN difficulty', () => {
+    // N5 mean is (-2 + -2.5)/2 = -2.25; N4 mean is -1. Midpoint: -1.625.
+    expect(levelBands(corpus, LEVELS).boundaries[0]).toBeCloseTo(-1.625, 6)
+  })
+
+  it('drops a level with no entries from BOTH arrays, keeping them aligned', () => {
+    const noN4 = corpus.filter((e) => e.level !== 'N4')
+    const bands = levelBands(noN4, LEVELS)
+    expect(bands.levels).toEqual(['N5', 'N3', 'N2', 'N1'])
+    expect(bands.boundaries).toHaveLength(3)
+  })
+
+  it('ignores entries whose level is unknown', () => {
+    const bands = levelBands([...corpus, { b: 99, level: null }], LEVELS)
+    expect(bands.levels).toEqual(['N5', 'N4', 'N3', 'N2', 'N1'])
+  })
+
+  it('an empty corpus yields no bands at all', () => {
+    expect(levelBands([], LEVELS)).toEqual({ boundaries: [], levels: [] })
+  })
+
+  // The B146 device report: "level N4 even though I got most of the kanji
+  // correct". The adaptive engine maximises Fisher information, so a strong
+  // learner is asked only hard items and N5/N4 never appear in the asked set.
+  // Deriving bands from the ASKED items then produced boundaries for three
+  // levels while the label was still read out of the full five-level list —
+  // so index 1 meant "N2" but was reported as "N4". The better the learner
+  // did, the lower the level they were told.
+  it('a strong learner asked only N3/N2/N1 is not labelled from the full list', () => {
+    const asked = corpus.filter((e) => ['N3', 'N2', 'N1'].includes(e.level))
+    const bands = levelBands(asked, LEVELS)
+
+    // Bands separate three levels, so there are two boundaries: 0.5 and 1.5.
+    expect(bands.levels).toEqual(['N3', 'N2', 'N1'])
+    expect(bands.boundaries).toEqual([0.5, 1.5])
+
+    // theta = 1.2 sits between them. Paired with its own levels: N2.
+    expect(inferredLevel(1.2, bands.boundaries, bands.levels)).toBe('N2')
+    // Paired with the full list — the shipped bug — it read as N4.
+    expect(inferredLevel(1.2, bands.boundaries, [...LEVELS])).toBe('N4')
   })
 })
 

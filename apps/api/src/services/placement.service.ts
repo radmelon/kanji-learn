@@ -192,7 +192,7 @@ export async function getQuestionsWithDistractors(db: any, kanjiIds: number[]) {
 
 import {
   THETA_GRID, initPosterior, updatePosterior, thetaMean, credibleIntervalWidth,
-  pKnows, inferredLevel as deriveInferredLevel,
+  pKnows, inferredLevel as deriveInferredLevel, levelBands,
   seedFromProbability, widenForStaleness,
 } from '@kanji-learn/shared'
 import type { PlacementResponse, JlptLevel } from '@kanji-learn/shared'
@@ -247,13 +247,23 @@ export async function completePlacement(
 
   const kanjiIds = [...new Set(responses.map((r) => r.kanjiId))]
 
-  const [difficultyRows, kanjiRows, prior] = await Promise.all([
-    db.select().from(kanjiDifficulty).where(inArray(kanjiDifficulty.kanjiId, kanjiIds)),
-    db.select({ id: kanji.id, jlptLevel: kanji.jlptLevel }).from(kanji).where(inArray(kanji.id, kanjiIds)),
+  // The whole difficulty corpus, with each kanji's level attached. Loaded once
+  // and reused three times below: the per-response `b`, the level bands, and
+  // seeding. Seeding already read the full table unconditionally further down,
+  // so this is one query where there were three — not a new cost.
+  const [corpus, prior] = await Promise.all([
+    db
+      .select({
+        kanjiId: kanjiDifficulty.kanjiId,
+        b: kanjiDifficulty.b,
+        readingOffset: kanjiDifficulty.readingOffset,
+        level: kanji.jlptLevel,
+      })
+      .from(kanjiDifficulty)
+      .innerJoin(kanji, eq(kanji.id, kanjiDifficulty.kanjiId)),
     getSessionPrior(db, userId),
   ])
-  const difficultyById = new Map(difficultyRows.map((r) => [r.kanjiId, r]))
-  const levelById = new Map(kanjiRows.map((r) => [r.id, r.jlptLevel]))
+  const difficultyById = new Map(corpus.map((r) => [r.kanjiId, r]))
 
   // ── Authoritative recompute — never trust a client-sent theta ──────────
   let posterior = prior.hasPrior ? posteriorFromSummary(prior.theta, prior.se) : initPosterior(0)
@@ -269,18 +279,28 @@ export async function completePlacement(
   const theta = thetaMean(posterior)
   const se = posteriorToSe(posterior)
 
-  // Level bands from each JLPT level's mean b (spec §7.5).
-  const levelMeanB = new Map<JlptLevel, number>()
-  for (const level of JLPT_LEVELS) {
-    const rowsAtLevel = difficultyRows.filter((r) => levelById.get(r.kanjiId) === level)
-    if (rowsAtLevel.length > 0) {
-      levelMeanB.set(level, rowsAtLevel.reduce((a, r) => a + r.b, 0) / rowsAtLevel.length)
-    }
-  }
-  const orderedMeans = JLPT_LEVELS.map((l) => levelMeanB.get(l)).filter((v): v is number => v != null)
-  const boundaries: number[] = []
-  for (let i = 0; i < orderedMeans.length - 1; i++) boundaries.push((orderedMeans[i] + orderedMeans[i + 1]) / 2)
-  const level = orderedMeans.length > 0 ? deriveInferredLevel(theta, boundaries, JLPT_LEVELS) : null
+  // ── Level bands come from the CORPUS, not the asked items (B147) ─────────
+  //
+  // Same mistake, same file, one function over from the seeding bug 2cab737
+  // fixed. These means were computed from the ~10 items the test asked, then
+  // `.filter()`ed to drop levels with no representative — leaving boundaries
+  // for a SHORTER ladder while the label was still read out of the full
+  // five-level list. The index and the labels disagreed by however many levels
+  // had dropped out below.
+  //
+  // Item selection maximises Fisher information, so it asks near the learner's
+  // ability: a strong learner is never asked an N5 item, so N5/N4 drop out,
+  // and their index-1 band — really N2 — was reported as N4. The stronger the
+  // learner, the fewer easy levels survive, the lower the level they are told.
+  // That is the B146 device report ("N4 even though I got most correct"), and
+  // it is inverted, not merely noisy.
+  //
+  // levelBands returns boundaries and labels as one aligned pair so the two
+  // cannot be sourced separately again. Bands are a property of the corpus;
+  // deriving them from an adaptive sample makes each learner's yardstick their
+  // own answers.
+  const bands = levelBands(corpus, JLPT_LEVELS)
+  const level = bands.levels.length > 0 ? deriveInferredLevel(theta, bands.boundaries, bands.levels) : null
 
   // ── Persist the session + per-item results ───────────────────────────
   const [session] = await db
@@ -303,7 +323,7 @@ export async function completePlacement(
   const resultRows = Array.from(byKanji.entries()).map(([kanjiId, res]) => ({
     sessionId: session.id,
     kanjiId,
-    jlptLevel: levelById.get(kanjiId) ?? 'N5',
+    jlptLevel: difficultyById.get(kanjiId)?.level ?? 'N5',
     passed: Boolean(res.meaningCorrect && res.readingCorrect),
     meaningCorrect: res.meaningCorrect ?? null,
     readingCorrect: res.readingCorrect ?? null,
@@ -373,7 +393,7 @@ export async function completePlacement(
   // The ability estimate generalises across the corpus by construction — that is
   // what a latent-trait model is for — so the posterior is the right thing to
   // evaluate every kanji against, not just the sample that produced it.
-  const allDifficulty = await db.select().from(kanjiDifficulty)
+  // `corpus`, loaded once at the top — this used to be a second full-table read.
 
   // Everything the learner already has, not just the asked set. Stricter than
   // the reviewLogs predicate above and it subsumes it: a row is protected
@@ -387,7 +407,7 @@ export async function completePlacement(
   for (const k of hasHistory) alreadyHas.add(k)
 
   const seedsByKanji = new Map<number, ReturnType<typeof seedFromProbability>>()
-  for (const diff of allDifficulty) {
+  for (const diff of corpus) {
     if (alreadyHas.has(diff.kanjiId)) continue
     const seed = seedFromProbability(pKnows(posterior, diff.b), diff.b)
     if (seed) seedsByKanji.set(diff.kanjiId, seed)

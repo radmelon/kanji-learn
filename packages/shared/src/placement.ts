@@ -107,6 +107,48 @@ export function inferredLevel(theta: number, boundaries: number[], levels: JlptL
   return levels[idx]
 }
 
+export interface LevelBands {
+  boundaries: number[]
+  /** The levels those boundaries separate — ALWAYS pass this to inferredLevel,
+   *  never the caller's full level list. */
+  levels: JlptLevel[]
+}
+
+/**
+ * Level bands from each level's mean difficulty (spec §7.5), returning the
+ * boundaries and their labels as one aligned pair.
+ *
+ * The pairing is the whole point. A level with no entries cannot have a mean,
+ * so it drops out — and when it does, `boundaries` describes a SHORTER ladder
+ * than the caller's full level list. Reading the resulting index out of the
+ * full list is off by however many levels were dropped below it: B146 shipped
+ * exactly that, and a strong learner (asked only N3/N2/N1, because item
+ * selection maximises Fisher information near their ability) was told N4.
+ *
+ * Callers should pass the whole difficulty CORPUS, not the items a test
+ * happened to ask. Bands are a property of the corpus; deriving them from an
+ * adaptive sample makes every learner's yardstick their own answers.
+ */
+export function levelBands(
+  entries: readonly { b: number; level: JlptLevel | null }[],
+  levels: readonly JlptLevel[],
+): LevelBands {
+  const bandLevels: JlptLevel[] = []
+  const means: number[] = []
+
+  for (const level of levels) {
+    const at = entries.filter((e) => e.level === level)
+    if (at.length === 0) continue
+    bandLevels.push(level)
+    means.push(at.reduce((sum, e) => sum + e.b, 0) / at.length)
+  }
+
+  const boundaries: number[] = []
+  for (let i = 0; i < means.length - 1; i++) boundaries.push((means[i] + means[i + 1]) / 2)
+
+  return { boundaries, levels: bandLevels }
+}
+
 // ─── Adaptive engine ────────────────────────────────────────────────────────
 
 export interface AskedItem {
