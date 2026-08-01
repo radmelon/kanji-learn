@@ -35,7 +35,11 @@ const collectedSchema = z.object({
   dailyGoal: z.number().int().min(5).max(200).nullable(),
   buddyDay: z.number().int().min(0).max(6).nullable(),
   buddyIntervalWeeks: z.number().int().min(1).max(2).nullable(),
-  timezone: z.string().nullable(),
+  // F10 (whole-branch review, LOW): timezone flowed unbounded into
+  // buildMeetingPrompt's system prompt — a real IANA zone is short, but
+  // nothing enforced that server-side. Generous enough for the longest real
+  // IANA names ("America/Argentina/ComodRivadavia" is 33 chars).
+  timezone: z.string().max(64).nullable(),
   hadPriorData: z.boolean(),
 })
 

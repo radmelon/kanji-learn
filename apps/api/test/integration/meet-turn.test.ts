@@ -93,4 +93,23 @@ describe('POST /v1/buddy/meet/turn', () => {
     })
     expect(res.statusCode).toBe(400)
   })
+
+  // F10 (whole-branch review, LOW): collected.timezone flowed unbounded from
+  // the client straight into buildMeetingPrompt's system prompt (a device
+  // IANA zone is normally short, but nothing enforced that server-side).
+  it('rejects a collected.timezone longer than 64 chars — it flows unbounded into the prompt otherwise', async () => {
+    app = await buildTestAppWith(
+      { buddyLLM: { route: async () => ok('{"reply":"x","patch":{}}') } as never },
+      { plugin: meetRoutes, opts: { prefix: '/v1/buddy/meet' } },
+    )
+    const res = await app.inject({
+      method: 'POST', url: '/v1/buddy/meet/turn',
+      headers: { 'x-test-user-id': USER },
+      payload: {
+        ...TURN_PAYLOAD,
+        collected: { ...TURN_PAYLOAD.collected, timezone: 'x'.repeat(65) },
+      },
+    })
+    expect(res.statusCode).toBe(400)
+  })
 })
