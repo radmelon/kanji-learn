@@ -131,16 +131,6 @@ const INFO_QUIZ_PERF: InfoSection[] = [
   },
 ]
 
-const INFO_QUIZ_WEAK: InfoSection[] = [
-  {
-    body: 'Kanji you most frequently get wrong in quizzes, requiring a minimum of 3 quiz attempts to appear. Miss rate = wrong answers ÷ total quiz attempts for that character.',
-  },
-  {
-    title: 'What to do with this',
-    body: 'These characters need deliberate attention. Look them up in the Kanji Browser, review their stroke order and readings, and pay close attention when they appear in SRS reviews. Repeated quiz misses are a strong signal the SRS alone isn\'t enough — try writing the character by hand a few times.',
-  },
-]
-
 const INFO_WRITING: InfoSection[] = [
   {
     body: 'Writing practice tracks your stroke-by-stroke accuracy when drawing kanji by hand. Unlike SRS flashcards, writing practice isolates motor memory and spatial recall — knowing a kanji visually is very different from being able to produce it from scratch.',
@@ -376,24 +366,6 @@ export default function ProgressScreen() {
                     </View>
                   )}
                 </Section>
-                {quizData.weakestKanji.length > 0 && (
-                  <Section
-                    title="Quiz Weak Spots"
-                    right={<InfoButton id="quizWeak" activeInfo={activeInfo} onToggle={toggleInfo} />}
-                  >
-                    {activeInfo === 'quizWeak' && <InfoPanel sections={INFO_QUIZ_WEAK} />}
-                    <Text style={styles.sectionNote}>Kanji you most often miss in quizzes (min 3 attempts)</Text>
-                    {quizData.weakestKanji.map((k) => (
-                      <View key={k.kanjiId} style={styles.worstKanjiRow}>
-                        <Text style={styles.worstKanjiChar}>{k.character}</Text>
-                        <View style={styles.worstKanjiBar}>
-                          <View style={[styles.worstKanjiBarFill, { width: `${k.missRate}%`, backgroundColor: k.missRate >= 50 ? colors.error : colors.warning }]} />
-                        </View>
-                        <Text style={styles.worstKanjiPct}>{k.missRate}%</Text>
-                      </View>
-                    ))}
-                  </Section>
-                )}
               </>
             )}
 

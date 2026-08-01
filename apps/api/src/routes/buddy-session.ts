@@ -20,6 +20,7 @@ import {
 } from '@kanji-learn/shared'
 import { z } from 'zod'
 import { CommitmentService } from '../services/buddy/commitment.service.js'
+import { NotebookService } from '../services/notebook.service.js'
 
 const commitmentBodySchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -47,6 +48,7 @@ function defaultShape(weekStart: string): Commitment {
 
 export async function buddySessionRoutes(server: FastifyInstance) {
   const service = new CommitmentService(server.db)
+  const notebook = new NotebookService(server.db)
 
   server.get('/', { preHandler: [server.authenticate] }, async (req, reply) => {
     const profile = await server.db.query.userProfiles.findFirst({
@@ -144,6 +146,23 @@ export async function buddySessionRoutes(server: FastifyInstance) {
     }
 
     await service.setForWeek(req.userId!, commitment)
+
+    // Template copy only — Slice 1 has no LLM, and the notebook must still
+    // render on the template tier every offline/rate-limited/outage path
+    // falls back to (spec decision #11). The commitment above is the
+    // session's one guaranteed outcome — it must never be lost — so the
+    // notebook write is guarded: a failure here is logged, not surfaced,
+    // and never turns an already-saved commitment into a 500.
+    try {
+      await notebook.writeCommitmentObservation(
+        req.userId!,
+        commitment.weekStart,
+        `Agreed ${commitment.daysCommitted} days, ${commitment.minutesPerDay} minutes.`,
+      )
+    } catch (err) {
+      req.log.error({ err, userId: req.userId }, '[BuddySession] notebook write failed after commitment saved')
+    }
+
     return reply.send({ ok: true, data: commitment })
   })
 }

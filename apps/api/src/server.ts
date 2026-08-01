@@ -39,6 +39,7 @@ import { NotificationService } from './services/notification.service.js'
 import { loadKanjiReadingsIndex } from './services/kanji-readings-index.js'
 import { buddyNudgesRoutes } from './routes/buddy-nudges.js'
 import { buddySessionRoutes } from './routes/buddy-session.js'
+import { notebookRoutes } from './routes/notebook.js'
 
 export async function buildServer() {
   const server = Fastify({
@@ -155,6 +156,7 @@ export async function buildServer() {
   await server.register(interventionRoutes, { prefix: '/v1' })
   await server.register(buddyNudgesRoutes, { prefix: '/v1/buddy/nudges' })
   await server.register(buddySessionRoutes, { prefix: '/v1/buddy/session' })
+  await server.register(notebookRoutes, { prefix: '/v1/buddy/notebook' })
   await server.register(kanjiRoutes, { prefix: '/v1/kanji' })
   await server.register(placementRoutes, { prefix: '/v1/placement' })
   await server.register(testRoutes, { prefix: '/v1/tests' })

@@ -89,14 +89,6 @@ export const mnemonicGenerationMethodEnum = pgEnum('mnemonic_generation_method',
 
 export const llmTierEnum = pgEnum('llm_tier', ['tier1', 'tier2', 'tier3'])
 
-export const studyLogMoodEnum = pgEnum('study_log_mood', [
-  'aha',
-  'struggle',
-  'breakthrough',
-  'fun',
-  'confused',
-])
-
 // ─── kanji ────────────────────────────────────────────────────────────────────
 
 export const kanji = pgTable(
@@ -763,40 +755,25 @@ export const buddyCommitments = pgTable(
   })
 )
 
-// ─── study_log_entries ────────────────────────────────────────────────────────
-// Enhanced journal entries with photos, sentences, audio, mood, tags.
+// ─── notebook_entries ─────────────────────────────────────────────────────────
+// Prose sections of Buddy's home notebook. Migration 0032 replaces the old
+// Phase 6 photo/audio/mood scrapbook (study_log_entries), not revises it.
 
-export const studyLogEntries = pgTable(
-  'study_log_entries',
+export const notebookEntries = pgTable(
+  'notebook_entries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => userProfiles.id, { onDelete: 'cascade' }),
-    kanjiId: integer('kanji_id')
-      .notNull()
-      .references(() => kanji.id, { onDelete: 'cascade' }),
-    mnemonicId: uuid('mnemonic_id').references(() => mnemonics.id, { onDelete: 'set null' }),
-    userNote: text('user_note'),
-    exampleSentence: text('example_sentence'),
-    sentenceReading: text('sentence_reading'),
-    sentenceTranslation: text('sentence_translation'),
-    photoUrls: jsonb('photo_urls').$type<string[]>().notNull().default([]),
-    audioNoteUrl: text('audio_note_url'),
-    locationLat: real('location_lat'),
-    locationLng: real('location_lng'),
-    locationName: text('location_name'),
-    tags: jsonb('tags').$type<string[]>().notNull().default([]),
-    mood: studyLogMoodEnum('mood'),
-    sharedWithFriends: boolean('shared_with_friends').notNull().default(false),
+    userId: uuid('user_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    body: text('body').notNull(),
+    author: text('author').notNull(),
+    weekStart: date('week_start'),
+    source: jsonb('source'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-    lastViewedAt: timestamp('last_viewed_at', { withTimezone: true }),
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+    supersededBy: uuid('superseded_by'),
   },
-  (t) => ({
-    userCreatedIdx: index('study_log_user_created_idx').on(t.userId, t.createdAt),
-    userKanjiIdx: index('study_log_user_kanji_idx').on(t.userId, t.kanjiId),
-  })
+  (t) => ({ userLiveIdx: index('notebook_entries_user_live_idx').on(t.userId, t.kind) })
 )
 
 // ─── shared_goals ─────────────────────────────────────────────────────────────
@@ -1010,6 +987,7 @@ export const tutorShares = pgTable(
     teacherEmail: text('teacher_email').notNull(),
     token: text('token').notNull(),
     status: tutorShareStatusEnum('status').notNull().default('pending'),
+    language: text('language').notNull().default('en'),
     termsAcceptedAt: timestamp('terms_accepted_at', { withTimezone: true }),
     declinedAt: timestamp('declined_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -1032,6 +1010,8 @@ export const tutorNotes = pgTable(
       .notNull()
       .references(() => tutorShares.id, { onDelete: 'cascade' }),
     noteText: text('note_text').notNull(),
+    language: text('language').notNull().default('en'),
+    bodyTranslations: jsonb('body_translations'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
