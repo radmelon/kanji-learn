@@ -6,6 +6,94 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-229) Every meaning question — placement AND quiz — is keyed on the ALPHABETICALLY first gloss, so 土 is "Turkey" and 子 is "11PM-1AM"** — Reported by the owner from B146/B147 (2026-08-01): *"the placement test uses 'down' as the answer"* for 毛. **Confirmed against live data 2026-08-02, and it is systemic, not a bad row.**
+
+  ### The live data
+
+  ```
+  毛  N2  meanings = ["down", "feather", "fur", "hair"]   → keyed answer: "down"
+  ```
+
+  kanjiapi.dev, the seed source, returns `['fur','hair','feather','down']`. The
+  stored order is not the source order — it is **alphabetical**. Verified across
+  the corpus:
+
+  > **1,925 of 1,999 multi-gloss kanji (96.3%)** have `meanings->>0` equal to the
+  > alphabetically smallest gloss.
+
+  ASCII sort puts digits and capitalised proper nouns ahead of lowercase words,
+  so zodiac hours and country names systematically win the keyed slot:
+
+  | Kanji | Keyed answer | What the learner actually knows |
+  |---|---|---|
+  | 土 | **Turkey** | earth, soil |
+  | 子 | **11PM-1AM** | child |
+  | 日 | **Japan** | sun, day |
+  | 午 | **11AM-1PM** | noon |
+  | 名 | **distinguished** | name |
+  | 休 | **day off** | rest |
+  | 来 | **become** | come |
+
+  All seven are **N5** — the first kanji anyone meets.
+
+  ### Both instruments are affected
+
+  - `apps/api/src/services/placement.service.ts:119` — `const correctMeaning = (k.meanings as string[])[0] ?? ''`
+  - `apps/api/src/services/test.service.ts:151` — `const primaryMeaning = meanings[0] ?? ''`
+
+  Distractors in both come from *other* kanji's `meanings[0]`, so the wrong-key
+  problem contaminates the options as well as the answer.
+
+  ### Why this is a measurement bug, not a content gripe
+
+  The learner knows 土 = earth. "earth" is **not among the four options** — it is
+  `meanings[1]`. They pick something or guess, are scored **incorrect**, and
+  `updatePosterior(posterior, b, false)` pushes θ **down**.
+
+  **The test measures "do you know our alphabetically-first gloss", not "do you
+  know this kanji"** — and it penalises knowledgeable learners specifically. That
+  is the same direction as the level-band defect fixed in `504b1ea`, and the two
+  compounded to produce the owner's original report. Fixing the bands corrected
+  the label; this corrupts the *evidence the label is computed from*, so it is
+  the more fundamental of the two.
+
+  It also poisons downstream data: `placement_results.passed`, `abilityTheta`,
+  seeding decisions via `pKnows`, and — once quiz results are used to calibrate
+  item difficulty — `kanji_difficulty.b` itself.
+
+  ### Fix — two layers, ship the first immediately
+
+  **(1) Stop keying on one gloss.** Render the correct option as a gloss set —
+  *"earth / ground / soil"* — and build distractors from other kanji's gloss sets.
+  Anyone who knows any sense can identify it. This is a small change in two
+  services, needs no migration and no new content, and it removes the defect for
+  every kanji at once. **Cap the set** (3 glosses) so the option stays readable,
+  and prefer shorter glosses when trimming.
+
+  **(2) Rank the glosses properly.** A curated or frequency-ranked primary sense
+  per kanji, which is the "curated fact store" already scoped as the next spec.
+  Layer 1 makes the test valid; layer 2 makes it good.
+
+  **Do NOT "fix" this by re-running the seed.** The alphabetical order is stable
+  and reproducible; a re-seed from kanjiapi.dev would restore *that* source's
+  order, which is not pedagogically ranked either — it only looks better for 毛
+  by coincidence.
+
+  ### Verification — required before closing
+
+  1. `SELECT` against live confirming the chosen option set for the seven kanji
+     in the table above contains the sense a learner would name.
+  2. A test asserting that **no meaning item can be keyed on a gloss matching
+     `^[0-9A-Z]`** unless every gloss for that kanji does.
+  3. Re-run the corpus check; the 96.3% figure is the before-measurement and the
+     fix must move the *option set*, not that number (the stored order may stay
+     alphabetical — layer 1 does not depend on reordering it).
+
+  **Affected files:** `apps/api/src/services/placement.service.ts`,
+  `apps/api/src/services/test.service.ts`.
+
+  `[Effort: S for layer 1 — two services, no migration]` `[Impact: HIGH — corrupts placement θ and quiz scores corpus-wide; penalises learners who DO know the kanji]` `[Backend: Yes — API deploy]` `[Status: 🐛 Active — confirmed against live data 2026-08-02]`
+
 - [ ] **(B-228) The grade buttons and the SRS status bar still teach SM-2 mechanics FSRS does not have — and still credit Woźniak** — Reported by the owner from **B146/B147** (2026-08-01): *"We still have many vestige references to SRS in the Progress section… Is this intentional?"*
 
   **The reported symptom is NOT a defect — see the defence below. But investigating it found a real one the original sweep missed, in the same bug class it was created to eliminate.**

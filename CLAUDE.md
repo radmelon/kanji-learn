@@ -103,6 +103,45 @@ Verify a deploy with **both**:
 Full detail in
 https://github.com/radmelon/kanji-learn/blob/main/docs/SOP.md
 
+## You DO have live database access — use the wrapper
+
+**Never say "I don't have DB credentials." You do.** They are in
+`packages/db/.env` (gitignored), and there is a wrapper that loads them without
+printing, echoing, or leaving them in shell history:
+
+```bash
+./scripts/with-live-db.sh psql -c "SELECT count(*) FROM mnemonics"
+```
+
+`psql`, `pg_dump` and `pg_restore` get the URI appended automatically; anything
+else (node scripts) inherits `DATABASE_URL` in its environment. **Never handle
+the value yourself** — the live password was once printed to a transcript in
+plaintext because a redaction regex missed the `postgresql://` scheme, and
+rotation is still outstanding (`docs/secrets-rotation.md`).
+
+**Default to read-only.** `SELECT` freely to answer a question about real data.
+A write, migration, or `pg_restore` against live is a separate decision that
+needs the owner's explicit go-ahead in the moment.
+
+**Why this section exists.** On 2026-08-01 a session told the owner it could not
+verify a production row "no DB credentials here" — twice — and closed a real bug
+investigation on that basis. The capability existed the whole time. It was
+documented in eight files, none of which a session opens by default, and the
+most relevant one is named **`local-test-db.md`** — a file about the *test*
+database, which is exactly where nobody looks for *production* access.
+
+The wrong answer cost a day: 毛's live row is
+`["down","feather","fur","hair"]`, so the placement test keys it on **"down"**.
+One `SELECT` would have confirmed the owner's report immediately instead of
+producing a defence of the wrong conclusion.
+
+**Two databases, do not confuse them:**
+
+| | Connection | Use |
+|---|---|---|
+| **Live** | `./scripts/with-live-db.sh` | Answering questions about real data. Read-only by default |
+| **Local test** | `localhost:5433/kanji_buddy_test`, see below | Running the API suite. Holds **7 kanji**, not 2,294 |
+
 ## Before judging API test results
 
 Rebuild the local test database first — see
