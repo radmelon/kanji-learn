@@ -36,8 +36,25 @@ const SEARCH_ROOTS = [
  * a spaced repetition system, and generic category use of "SRS" is accurate and
  * owner-approved (see B-228's defence of the reported symptom).
  */
-const FALSE_CLAIMS =
-  /ease factor|SM-2|SM2|Woźniak|Wozniak|interval doubl|1\/3\/6|fixed interval|resets? to (1|one) day/i
+const FALSE_CLAIMS = new RegExp(
+  [
+    'ease factor',
+    'SM-2', 'SM2', 'Woźniak', 'Wozniak',
+    'interval doubl', '1/3/6', 'fixed interval',
+    // The reset family. The first version of this list was
+    // `resets? to (1|one) day`, which requires exact adjacency — so it missed
+    // "resets to day 1" (study.tsx), "resets the interval back to 1 day"
+    // (progress.tsx) and "resets the card's interval" (progress.tsx), all
+    // three of which were shipping while this test passed. A search narrower
+    // than its bug class is the whole of B-228; do not re-narrow it.
+    'resets?[^.!?]{0,40}\\bday 1\\b',
+    'resets?[^.!?]{0,40}\\b(1|one) day\\b',
+    'resets?[^.!?]{0,40}\\binterval\\b',
+    'back to (day )?(1|one)\\b',
+    'start(s|ing)? over from (day )?(1|one)\\b',
+  ].join('|'),
+  'i',
+)
 
 /**
  * Rendered strings that match the pattern but are accurate. Each needs a reason
@@ -72,15 +89,86 @@ function walk(path: string, out: string[] = []): string[] {
   return out
 }
 
-/** True when the match sits inside a comment rather than in rendered copy. */
+/**
+ * True when the match sits inside a comment rather than in rendered copy.
+ *
+ * The naive version — "is there a `//` anywhere before the match" — grants
+ * amnesty to any rendered string containing a URL:
+ *
+ *   body: 'Read more at https://x.com — your ease factor decreases.'
+ *
+ * So `//` only counts when it is NOT inside a string literal. Quotes are
+ * tracked left to right; anything after an unclosed quote is string content.
+ */
 function isComment(line: string, matchIndex: number): boolean {
-  const before = line.slice(0, matchIndex)
-  return (
-    before.includes('//') ||
-    before.includes('/*') ||
-    before.trimStart().startsWith('*')
-  )
+  if (line.trimStart().startsWith('*')) return true
+
+  let quote: string | null = null
+  for (let i = 0; i < matchIndex; i++) {
+    const ch = line[i]!
+    if (ch === '\\') { i++; continue }
+    if (quote) {
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue }
+    if (ch === '/' && (line[i + 1] === '/' || line[i + 1] === '*')) return true
+  }
+  return false
 }
+
+/**
+ * Tests for the detector itself.
+ *
+ * The first version of this file proved only that the *harness* worked, by
+ * reinjecting "ease factor" — a string the pattern already matched. It said
+ * nothing about the pattern's coverage, and the pattern was in fact missing
+ * three claims that were live in the app at the time. These cases pin the
+ * exact strings that escaped, so re-narrowing the pattern fails here.
+ */
+describe('the detector', () => {
+  const ESCAPED_B228 = [
+    // study.tsx:999 — the second grade-help surface
+    "{ label: 'Again', color: colors.error, desc: 'Complete blank — resets to day 1' },",
+    // progress.tsx:64 — "What is Spaced Repetition?"
+    "body: 'A wrong answer resets the interval back to 1 day.',",
+    // progress.tsx:82 — "How confidence is measured"
+    "body: '• Again — you forgot it; resets the card\\'s interval (not confident)',",
+  ]
+
+  it.each(ESCAPED_B228)('matches a claim that slipped past the first pattern: %s', (line) => {
+    expect(FALSE_CLAIMS.test(line)).toBe(true)
+  })
+
+  it('does not fire on the corrected wording that replaced them', () => {
+    for (const line of [
+      "desc: 'Complete blank — stability shrinks, but not to day 1'",
+      "body: 'A wrong answer shrinks that memory strength rather than resetting it'",
+      "body: '• Again — you forgot it; shrinks the card\\'s interval'",
+      "body: 'Stability grows the most and the card gets marked easier'",
+    ]) {
+      expect(FALSE_CLAIMS.test(line)).toBe(false)
+    }
+  })
+
+  it('does not treat a URL inside rendered copy as a comment', () => {
+    const line = "  body: 'Read more at https://example.com — your ease factor decreases.',"
+    const match = FALSE_CLAIMS.exec(line)!
+    expect(match).toBeTruthy()
+    expect(isComment(line, match.index)).toBe(false)
+  })
+
+  it('still recognises real comments', () => {
+    const real = "// B-228: this used to claim an ease factor"
+    expect(isComment(real, FALSE_CLAIMS.exec(real)!.index)).toBe(true)
+    const jsx = "            {/* B-228: this credited SM-2 */}"
+    expect(isComment(jsx, FALSE_CLAIMS.exec(jsx)!.index)).toBe(true)
+    const trailing = "  quality: number   // SM-2 0–5"
+    expect(isComment(trailing, FALSE_CLAIMS.exec(trailing)!.index)).toBe(true)
+    const block = "     * describes an ease factor"
+    expect(isComment(block, FALSE_CLAIMS.exec(block)!.index)).toBe(true)
+  })
+})
 
 describe('B-228 — no user-facing string claims mechanics FSRS does not have', () => {
   const files = SEARCH_ROOTS.flatMap((root) => walk(root)).filter(
@@ -129,6 +217,12 @@ describe('B-228 — no user-facing string claims mechanics FSRS does not have', 
 
     // The grade help modal, reachable from every review.
     expect(grade).toContain('Stability shrinks')
-    expect(grade).toContain('not reset to day 1')
+    expect(grade).toContain('proportional rather than a wipe')
+
+    // The second grade-help surface — the study-tab onboarding modal. It said
+    // "resets to day 1" while pointing the learner at the copy above, so the
+    // two contradicted each other. Both must stay corrected.
+    const studyTab = readFileSync(join(REPO, 'apps/mobile/app/(tabs)/study.tsx'), 'utf8')
+    expect(studyTab).toContain('stability shrinks, but not to day 1')
   })
 })

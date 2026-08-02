@@ -29,7 +29,12 @@ const GRADE_HELP = [
     quality: 1,
     label: 'Again',
     color: colors.error,
-    description: 'Complete blank — you couldn\'t recall anything. Stability shrinks and the card gets marked harder, but it is not reset to day 1: the drop is proportional, so a kanji you had held for months still comes back later than a brand-new one.',
+    // Deliberately not phrased as "not reset to day 1". That is a denial, so
+    // it trips the B-228 sweep, and it is also not quite true: a card with
+    // little stability lands on the 1-day interval floor anyway. The
+    // proportional framing is accurate for every card — a 180-day card lapses
+    // to roughly a week, not to tomorrow.
+    description: 'Complete blank — you couldn\'t recall anything. Stability shrinks and the card gets marked harder, but the drop is proportional rather than a wipe: a kanji you had held for months comes back in about a week.',
   },
   {
     quality: 3,

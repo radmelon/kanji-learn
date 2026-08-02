@@ -996,10 +996,14 @@ function StudySession() {
             <View style={onboardStyles.section}>
               <Text style={onboardStyles.sectionTitle}>Grade buttons</Text>
               {[
-                { label: 'Again', color: colors.error, desc: 'Complete blank — resets to day 1' },
-                { label: 'Hard', color: colors.warning, desc: 'Struggled — interval grows slowly' },
+                // B-228: this is the SECOND grade-help surface. It said
+                // "resets to day 1" — the same false claim GradeButtons was
+                // fixed for — while the note below points the learner at that
+                // corrected copy. Keep the two in agreement.
+                { label: 'Again', color: colors.error, desc: 'Complete blank — stability shrinks, but not to day 1' },
+                { label: 'Hard', color: colors.warning, desc: 'Struggled — stability still grows, just slowly' },
                 { label: 'Good', color: colors.success, desc: 'Correct with effort — normal progression' },
-                { label: 'Easy', color: colors.accent, desc: 'Perfect recall — interval grows faster' },
+                { label: 'Easy', color: colors.accent, desc: 'Perfect recall — stability grows the most' },
               ].map(({ label, color, desc }) => (
                 <View key={label} style={onboardStyles.gradeRow}>
                   <View style={[onboardStyles.gradeDot, { backgroundColor: color }]} />

@@ -61,7 +61,11 @@ const INFO_ACTIVITY: InfoSection[] = [
   },
   {
     title: 'What is Spaced Repetition?',
-    body: 'A scheduling technique that times each review at the exact moment your brain is about to forget the material. A correct answer pushes the next review further out (e.g. 1 day → 4 days → 2 weeks…). A wrong answer resets the interval back to 1 day. Over time, kanji you know well drift to monthly reviews while difficult ones stay in daily rotation.',
+    // B-228: said "a wrong answer resets the interval back to 1 day". FSRS
+    // shrinks stability proportionally and caps it at the pre-lapse value —
+    // a card held for months returns in about a week, not tomorrow. Wording
+    // matches index.tsx:72, which already had this right.
+    body: 'A scheduling technique that times each review at the exact moment your brain is about to forget the material. A correct answer pushes the next review further out (e.g. 3 days → 2 weeks → 6 weeks…). A wrong answer shrinks that memory strength rather than resetting it, so a kanji you had held for months comes back in days, not tomorrow. Over time, kanji you know well drift to monthly reviews while difficult ones stay in frequent rotation.',
   },
   {
     title: 'Why consistency beats volume',
@@ -79,7 +83,9 @@ const INFO_CONFIDENCE: InfoSection[] = [
   },
   {
     title: 'How confidence is measured',
-    body: 'After revealing a card you self-grade using 4 buttons:\n\n• Again — you forgot it; resets the card\'s interval (not confident)\n• Hard — you remembered with difficulty (not confident; interval still advances)\n• Good — solid recall (confident)\n• Easy — effortless recall; boosts the next interval (confident)\n\nGood and Easy count as confident; Again and Hard count as not confident.',
+    // B-228: "resets the card's interval" — it shrinks, capped at the
+    // pre-lapse value. See srs.ts calculateNextReview.
+    body: 'After revealing a card you self-grade using 4 buttons:\n\n• Again — you forgot it; shrinks the card\'s interval (not confident)\n• Hard — you remembered with difficulty (not confident; interval still advances)\n• Good — solid recall (confident)\n• Easy — effortless recall; boosts the next interval (confident)\n\nGood and Easy count as confident; Again and Hard count as not confident.',
   },
   {
     title: 'What is a good confidence level?',
