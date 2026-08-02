@@ -124,6 +124,63 @@
 >    B-229 and B-228 must be in place *before* the cut, or the build ships a
 >    known-wrong placement test to a trip where it will actually be used.
 >
+> ### 📦 What else to pull into the trip build (surveyed 2026-08-02)
+>
+> Beyond B-229 and B-228, in order of value:
+>
+> - **B-227 — the Journal blank screen. Strong yes.** `[Effort: XS]`, mobile-only,
+>   and **the fix pattern already exists**: `selectMeetingScreen`
+>   (`src/lib/meeting-screen-state.ts`, shipped in `89f3e89`) is the same shape
+>   and can be copied almost mechanically. This is the **third** instance of
+>   "blank is not a state" and the second read as *"the feature was never built."*
+> - **B-226 — Session Complete persists when you leave by tab.** Core daily study
+>   loop, mobile-only, and it will be hit every day on the trip.
+> - **B-202 — `srsEaseFactor` carries FSRS difficulty.** Optional. Adjacent to
+>   B-228's code so it is cheap to fold in, but it is a coordinated API+mobile
+>   rename, not free.
+>
+> **Defer explicitly:** B-223 (migration + backfill, `[Effort: M]` — too much
+> before a trip), B-225 (needs the owner's ear, all three options are trade-offs),
+> B-207 (cosmetic), B-208 (infrastructure/region, not a two-day fix).
+>
+> **Sequencing:** B-229 is API-side, so **deploy and verify BEFORE cutting the
+> build** — otherwise the build ships against an API that still mis-keys. Cut
+> early enough on 2026-08-03 to leave room for a second build; the owner has
+> authorised the ~$2 overage precisely so a re-cut is never the wrong call.
+>
+> ### ✈️ Trip-specific issues that are NOT in the bug tracker
+>
+> 1. **The timezone will not follow the owner to Japan.** **No route writes
+>    `user_profiles.timezone`** — verified. Live spread: LA 2, UTC 2, Tokyo 1
+>    (the schema's "every row still carries the 'UTC' default" comment is stale).
+>    If the owner's row says `America/Los_Angeles`, then in Beppu a `reminder_hour`
+>    of 20 fires at **noon JST the following day**, and `runBuddyDayPass` gates the
+>    weekly Buddy invitation on the same hour. Cheap answer: a one-row `UPDATE` to
+>    `Asia/Tokyo` on arrival and back on return. **Do not rush a device-writes-
+>    timezone feature into this build** — it touches the reminder system days
+>    before the trip that depends on it.
+> 2. **Latency will likely be WORSE in Japan, not better.** The path is phone (JP)
+>    → API (`us-east-1`) → Supabase (`ap-southeast-2`, Sydney). Both legs are long
+>    from Japan, where from the US only the second is. B-208's 10–15s Progress tab
+>    may degrade further. Nothing to fix in two days — but set expectations rather
+>    than diagnosing it as a new bug on the road.
+> 3. **Check hook-location consent BEFORE flying.** `attach_location_to_hooks`
+>    defaults to **false** and only **1 of 5** profiles has it ON (7 of 9
+>    co-created hooks carry coordinates, so it is probably the owner's). If it is
+>    off on the account used in Beppu, **every hook built there loses its
+>    coordinates permanently** — and Beppu is exactly where they would be worth
+>    having, both for the hooks themselves and for the parked Watch/geofencing
+>    idea.
+>
+> ### ✅ B-210 closed — and it was blocking the retake
+>
+> Verified 2026-08-02: `applyPlacementResults` (the function B-210 describes) **no
+> longer exists**; `alreadyHas` now covers every owned kanji at any status; the
+> write is `onConflictDoNothing()`. The IRT rebuild dissolved it, as its own
+> design doc predicted. **This was contradicting the standing advice to retake the
+> placement test** — anyone reading BUGS.md would reasonably have refused. A
+> retake is safe.
+>
 > **Credential rotation: deferred to October by the owner.** Viable, with one
 > caveat now on record: the three LLM keys (Anthropic, Groq, Gemini) were issued
 > 2026-07-28 and **expire 2026-10-26** — the same date `docs/secrets-rotation.md`

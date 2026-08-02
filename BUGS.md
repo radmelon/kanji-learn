@@ -504,7 +504,20 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: M — segmentation utility + adoption]` `[Impact: Med-High — the reading is half the hook, and it is the half being dropped]` `[Backend: No]` `[Status: ✅ Partly fixed 2026-07-28 — (a) speakMixed and (c) voice cache done; (b) awaiting owner re-test with Enhanced voices]`
 
-- [ ] **(B-210) Retaking the placement test destroys FSRS state on in-progress kanji** — Found 2026-07-27 while designing the Profile page reorganisation (owner asked whether retakes are supported and whether results are kept). Nothing has hit this yet because nobody retakes — but the Profile page has an **unguarded** `router.push('/placement')` row ([profile.tsx:633](apps/mobile/app/(tabs)/profile.tsx)) and `POST /v1/placement/complete` has no "already placed" check, so any learner can trigger it at any time.
+- [x] **(B-210) RESOLVED by the IRT rebuild, not by a fix — verified 2026-08-02.** The bug is dissolved exactly as the placement handoff predicted: *"Under an estimation model a retest is additional evidence refining a posterior — nothing is replaced, so nothing is destroyed, and B-210 cannot occur."*
+
+  **Verified in code, three independent guards:**
+  1. `applyPlacementResults` — the function this entry describes, with its status-branching overwrite — **no longer exists**.
+  2. `alreadyHas` now covers **every** kanji in `user_kanji_progress` regardless of status (not just `remembered`/`burned`), plus everything with `review_logs` history. The seeding loop `continue`s on all of them.
+  3. The write is `.insert(...).onConflictDoNothing()`, so an existing row is structurally untouchable even if the predicate were wrong.
+
+  **This mattered more than housekeeping.** The entry sat Active while the current recommendation to the owner was *"retake the placement test to verify the level fix"* — directly contradictory. Anyone reading BUGS.md would reasonably have refused. **A retake is safe.**
+
+  Two things it does NOT do, recorded so they are not mistaken for regressions: a retake cannot *repair* the 44 legacy rows carrying a B-210 placement stamp with no `review_logs` (correcting those needs seeding to update rows without history — a separate decision about user data), and it does not retroactively fix an existing `placement_sessions` row.
+
+  Original entry preserved below.
+
+- [ ] **(B-210 — original report, superseded by the entry above) Retaking the placement test destroys FSRS state on in-progress kanji** — Found 2026-07-27 while designing the Profile page reorganisation (owner asked whether retakes are supported and whether results are kept). Nothing has hit this yet because nobody retakes — but the Profile page has an **unguarded** `router.push('/placement')` row ([profile.tsx:633](apps/mobile/app/(tabs)/profile.tsx)) and `POST /v1/placement/complete` has no "already placed" check, so any learner can trigger it at any time.
 
   **Symptom:** a learner who has been studying for months retakes the placement test. For every kanji they pass, `applyPlacementResults` ([placement.service.ts:220-247](apps/api/src/services/placement.service.ts)) branches on existing progress:
 
