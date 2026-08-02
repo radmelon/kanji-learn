@@ -72,15 +72,23 @@ describe('LearnerStateService refresh hook', () => {
     ]
     await srs.submitReview(TEST_USER_ID, results, /* studyTimeMs */ 5_000)
 
-    // Refresh is non-blocking via setImmediate; flush the microtask queue
-    // (one tick is enough — setImmediate runs in the same event loop turn).
+    // Refresh is non-blocking via setImmediate, so the row appears some time
+    // after submitReview resolves. This used to be `setTimeout(…, 50)`, which
+    // is a bet on machine speed: it passes on an idle laptop and fails under
+    // load, leaving a permanently red lane that hides real regressions. Poll
+    // for the condition instead — fast when the write is fast, patient when
+    // it is not.
     await new Promise((resolve) => setImmediate(resolve))
-    // Also yield to allow the awaited persist() inside refreshState to finish.
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    const deadline = Date.now() + 5_000
+    let cached = undefined as Awaited<ReturnType<typeof db.query.learnerStateCache.findFirst>>
+    while (Date.now() < deadline) {
+      cached = await db.query.learnerStateCache.findFirst({
+        where: eq(schema.learnerStateCache.userId, TEST_USER_ID),
+      })
+      if (cached) break
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    }
 
-    const cached = await db.query.learnerStateCache.findFirst({
-      where: eq(schema.learnerStateCache.userId, TEST_USER_ID),
-    })
     expect(cached).toBeTruthy()
     expect(cached?.userId).toBe(TEST_USER_ID)
   })
