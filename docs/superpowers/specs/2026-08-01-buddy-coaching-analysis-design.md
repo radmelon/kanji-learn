@@ -308,15 +308,27 @@ with December booked is the thing a coach exists to say.
 
 ## 11. Open decisions
 
-1. **How many findings per surface?** 2–3 proposed. Untested against real copy.
-2. **Does companion mode need its own beat engine**, or is it a single
+> **All four were reviewed by the owner on 2026-08-02. See §14 for the
+> decisions and their consequences — statuses below are a summary only.**
+
+1. ✅ **How many findings per surface?** 2–3 proposed. Untested against real
+   copy. → **Accepted for v1, but as a tunable parameter rather than a
+   constant.** Buddy self-tuning deferred: it needs a delivery-outcome signal
+   that does not exist yet. See §14.
+2. ✅ **Does companion mode need its own beat engine**, or is it a single
    free-conversation prompt with the snapshot as context? Leaning the latter for
-   v1.
-3. **Tier-2 daily cap** — flagged unsized in the 2026-08-01 handoff and still
+   v1. → **Closed: the single prompt. No separate beat engine in v1.**
+3. 🔴 **Tier-2 daily cap** — flagged unsized in the 2026-08-01 handoff and still
    unsized. Companion mode is conversational and will be the common path, so
-   this needs a number before launch, not after.
-4. **`hook_coverage` phrasing** when coverage is zero. "You've built no hooks"
-   is true and useless. Needs copy that invites rather than scores.
+   this needs a number before launch, not after. → **Still unsized. §14 records
+   what the cap is, that production runs the default of 50/user/day, and that
+   the day boundary is UTC.** The number itself is still owed.
+4. ✅ **`hook_coverage` phrasing** when coverage is zero. "You've built no hooks"
+   is true and useless. Needs copy that invites rather than scores. →
+   **Dissolved rather than answered: the finding becomes an offer to co-author
+   a hook on a named kanji the data says the learner is failing.** Promotes it
+   to a `Direct` finding. One interaction with `CoCreationSheet` still to
+   design — see §14.
 
 ## 12. Suggested slicing
 
@@ -347,3 +359,140 @@ Slices 1–2 are the spine. 5 and 6 can be reordered freely.
 - Spec 2 (content quality) would materially improve `level_estimate`'s inputs —
   the placement item key is currently `meanings[0]` from an unranked dictionary
   order — but this spec does not wait on it.
+
+---
+
+## 14. Owner review — 2026-08-02
+
+Feedback on §11 (open decisions) and §8. Recorded verbatim in substance; the
+commentary under each item is the implementation consequence, not the owner's
+words.
+
+### §11.1 — findings per surface: **2–3 accepted, but make it a dial**
+
+> *"Sounds ok to start with. Should we make this a dial we can tune later on?
+> Maybe something that Buddy can tune himself?"*
+
+**Resolved for v1: accepted, as configuration rather than a constant.** The
+selection policy in §4 must take the count as a parameter, not hardcode 2–3, so
+changing it is a config edit and not a code change. Cheap now, expensive to
+retrofit once three surfaces read it.
+
+**"Buddy tunes it himself" is deferred, and the reason is worth stating:
+self-tuning needs a signal to tune against, and we do not have one.** To raise
+or lower the count on its own the system needs to know whether a surface landed
+— dismissals, time-on-surface, whether a finding was acted on, session length
+after delivery. None of that is instrumented today. Adding the dial in v1 is
+what makes the loop *possible* later; building the loop now would tune against
+nothing.
+
+Sequencing that falls out of this: **instrument delivery outcomes when the
+surfaces ship (slices 2–4)**, even before anything reads them. That is the
+input a v2 auto-tuner needs, and it is near-free while the surfaces are being
+written.
+
+### §11.2 — companion mode beat engine: **CLOSED**
+
+> *"Accepting the '…a single free-conversation prompt with the snapshot as
+> context' for v1."*
+
+No separate beat engine. Decision closed; §5's leaning is now the spec.
+
+### §11.3 — tier-2 daily cap: **explained, still unsized**
+
+The owner asked what this is. Answering it here so the next reader does not
+have to re-derive it, verified against the running system 2026-08-02:
+
+Buddy's LLM router (`apps/api/src/services/llm/router.ts`) has three tiers —
+**1** on-device, **2** cloud (Groq primary, Gemini secondary), **3** Claude
+(opt-in). Each user gets a per-day call budget per tier, enforced in
+`apps/api/src/services/llm/rate-limit.ts` by a single atomic
+`INSERT … ON CONFLICT DO UPDATE … WHERE call_count < cap` against
+`buddy_llm_usage`; zero rows returned is the "blocked" signal, so there is no
+race window and no compensating write.
+
+| | Env var | Default | Live value |
+|---|---|---|---|
+| Tier 2 | `BUDDY_TIER2_DAILY_CAP_PER_USER` | 50 | **50** |
+| Tier 3 | `BUDDY_TIER3_DAILY_CAP_PER_USER` | 5 | **5** |
+
+**Neither is set as a runtime environment variable on App Runner** (checked
+2026-08-02), so production runs the `env.ts` defaults.
+
+**Why this is the item that could make the feature expensive before anyone
+notices:** every other Buddy surface costs *one* call per event. Companion mode
+is a conversation — **each turn is a tier-2 call.** 50/user/day was sized for
+occasional structured beats, not for chat, and it has never been revisited.
+A number chosen deliberately for a conversational surface is still owed, and it
+is owed *before* launch, not after the first bill.
+
+**Also worth knowing, and newly relevant:** the day boundary is **UTC**, not the
+learner's timezone — an explicit Phase 0 simplification documented in
+`rate-limit.ts`. In Japan that means the cap resets at **9am JST**, mid-morning.
+This compounds with the timezone issue recorded in the 2026-08-02 handoff
+(no route writes `user_profiles.timezone`).
+
+### §11.4 — `hook_coverage`: **reframed from a report into an offer**
+
+The owner replaced the phrasing question with a rule:
+
+> *"If 0 or no new since 2 buddy sessions ago, pick a kanji that data suggests
+> is Hard or Again or repeatedly failed on Quizzes and offer to co-author a hook
+> during Buddy session."*
+
+**This resolves the open decision by dissolving it.** §11.4 asked how to phrase
+"you've built no hooks" so it invites rather than scores. The answer is not to
+say it at all — the finding becomes an **action with a named kanji attached**.
+
+Consequences for the taxonomy:
+
+- **Trigger:** `hookCount == 0` **OR** no hook created since the
+  session-before-last. The second half is the important one — it catches the
+  learner who built three hooks in week one and none since, whom a pure
+  zero-check never fires for.
+- **The finding must carry a specific kanji**, chosen from grading and quiz
+  evidence: repeated Again/Hard, or repeated quiz failures. This is a
+  `Direct`-class finding (priority 1), not `Motivate` — it changes behaviour
+  and names what to do.
+- **The data exists.** `review_logs` carries per-kanji quality history and
+  `test_results` carries quiz outcomes; §13's "no blocking dependencies" holds.
+  Picking the kanji is a shared-lane pure function over that evidence and
+  should be tested as one.
+- **It hands companion mode something to do.** Co-authoring a hook is a
+  concrete activity for the common path, which otherwise has only free
+  conversation.
+
+⚠️ **One interaction to design, not assume:** co-creation already has its own
+entry points and its own `CoCreationSheet`. Offering it *inside* a Buddy session
+needs a decision about whether the sheet opens over the session or the session
+hands off to it — and B-224's history says the co-creation commit path is
+subtle. Size this before slicing it.
+
+### §8 — the frankness escalator is missing a third option
+
+The owner asked whether *"narrow the scope"* at `< 2 months` means:
+
+> *"Let's target N3 level for the next JLPT window. You're solidly in the range
+> now, and with a little more effort you can crush it on the JLPT at N3."*
+
+**No — and the question exposes a gap.** The table's two options each hold one
+variable fixed:
+
+| Move | Sitting | Target level | Coverage |
+|---|---|---|---|
+| Narrow the scope | same | same | **reduced** |
+| Shift to the next sitting | **moved** | same | same |
+| **Lower the target level** ← missing | either | **moved** | same |
+
+The owner's phrasing is the third row, and it is the one a coach reaches for
+first, because it is the only one that can be delivered as **good news**: it
+requires knowing the learner is *already solidly in range* for the lower level
+— which is exactly what θ and the level bands provide, and which `504b1ea` had
+to fix before the claim could be trusted.
+
+**Add it to the §8 table as a first-class option**, and note the register
+difference: the existing rows are framed as concessions ("this target isn't
+reachable"), the owner's is framed as a target being *claimed*. Same arithmetic,
+opposite emotional direction, and the second one is more likely to be acted on.
+
+`goal_pace_gap` (v2) is what computes which of the three to offer.
