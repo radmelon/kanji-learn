@@ -25,9 +25,10 @@ const SEGMENTS = [
 ]
 
 // Each stage represents a band of SRS (Spaced Repetition System) review intervals.
-// The SRS is based on the SM-2 algorithm developed by Piotr Woźniak (SuperMemo, 1987),
-// which expands review intervals each time you answer correctly, letting well-known
-// cards drift to months-long gaps while keeping difficult ones in frequent rotation.
+// B-228: this comment used to credit SM-2 / Woźniak. The scheduler is FSRS
+// (packages/shared/src/srs.ts), which estimates a per-card memory *stability*
+// from review history — the interval is that stability in days — so well-known
+// cards drift to months-long gaps while difficult ones stay in frequent rotation.
 const SEGMENT_DESCRIPTIONS: Record<string, string> = {
   learning: 'Interval < 7 days. New or recently failed cards — still building the initial memory trace. The SRS will increase the gap each time you answer correctly.',
   reviewing: '7–20 day interval. Memory is forming; you\'ve answered correctly several times and the SRS has stretched the interval to weeks.',
@@ -87,9 +88,14 @@ export function SrsStatusBar({ counts }: Props) {
               is about to forget the character. The longer you answer correctly, the further
               the next review is pushed into the future.
             </Text>
+            {/* B-228: this credited SM-2 / Woźniak, which is not the scheduler
+                this app runs. Wording matches the approved FSRS attribution in
+                about.tsx; Ebbinghaus is retained because the forgetting curve
+                genuinely underlies it. */}
             <Text style={[styles.introText, styles.introCredit]}>
-              Based on the Forgetting Curve described by Hermann Ebbinghaus (1885) and the
-              SM-2 algorithm developed by Piotr Woźniak in SuperMemo (1987).
+              Based on the Forgetting Curve described by Hermann Ebbinghaus (1885), and
+              scheduled by FSRS (Free Spaced Repetition Scheduler), the open-source
+              algorithm led by Jarrett Ye and the Open Spaced Repetition community.
             </Text>
           </View>
 

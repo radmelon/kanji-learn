@@ -19,30 +19,35 @@ const GRADES = [
   { quality: 5 as const, grade: 'easy' as const, label: 'Easy', sublabel: 'Perfect', color: colors.accent },
 ]
 
+// B-228: these described an SM-2 ease factor and a hard reset to day 1. The
+// scheduler is FSRS (packages/shared/src/srs.ts) — it has no ease factor, and a
+// lapse shrinks stability proportionally, capped at the pre-lapse value, never
+// to day 1. Each description below states what `calculateNextReview` does for
+// that rating: `ratingFromQuality` maps quality 1→Again, 3→Hard, 4→Good, 5→Easy.
 const GRADE_HELP = [
   {
     quality: 1,
     label: 'Again',
     color: colors.error,
-    description: 'Complete blank — you couldn\'t recall anything. Resets the card to day 1 and decreases your ease factor.',
+    description: 'Complete blank — you couldn\'t recall anything. Stability shrinks and the card gets marked harder, but it is not reset to day 1: the drop is proportional, so a kanji you had held for months still comes back later than a brand-new one.',
   },
   {
     quality: 3,
     label: 'Hard',
     color: colors.warning,
-    description: 'You recalled it, but with real difficulty. The interval advances slowly and your ease factor decreases slightly.',
+    description: 'You recalled it, but with real difficulty. Stability still grows — just less than Good would give it — and the card gets marked harder, so its intervals open up more slowly from here.',
   },
   {
     quality: 4,
     label: 'Good',
     color: colors.success,
-    description: 'Correct with some effort. Normal interval progression — this is the most common answer.',
+    description: 'Correct with some effort. Stability grows by the standard amount and the card\'s difficulty holds roughly steady — this is the most common answer.',
   },
   {
     quality: 5,
     label: 'Easy',
     color: colors.accent,
-    description: 'Perfect, instant recall. Interval grows faster and your ease factor increases.',
+    description: 'Perfect, instant recall. Stability grows the most and the card gets marked easier, pushing the next review furthest out.',
   },
 ]
 
@@ -98,7 +103,7 @@ export function GradeButtons({ onGrade, hintUsed = false }: Props) {
               </TouchableOpacity>
             </View>
             <Text style={styles.sheetIntro}>
-              After revealing a card, rate how well you recalled it. Your answer adjusts when the card appears next.
+              After revealing a card, rate how well you recalled it. FSRS tracks two numbers per card — how long the memory should last, and how hard the card is for you — and your answer moves both, which sets when the card comes back.
             </Text>
             {GRADE_HELP.map(({ quality, label, color, description }) => (
               <View key={quality} style={styles.helpRow}>

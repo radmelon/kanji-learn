@@ -87,6 +87,9 @@ const INFO_CONFIDENCE: InfoSection[] = [
   },
   {
     title: 'Confidence vs retention',
+    // B-228 grep note: the "1/3/6-month" string below is a DENIAL of that
+    // schedule, not a claim that we use one. Accurate as written — do not
+    // "fix" it on a lexical match.
     body: 'High confidence today doesn\'t mean permanent retention. FSRS, the scheduling algorithm behind your reviews, only marks a kanji burned once its computed memory stability crosses roughly 6 months — reached through a sequence of confident recalls (Good/Easy) at gradually widening intervals, not a fixed 1/3/6-month checklist.',
   },
 ]
