@@ -6,6 +6,76 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-228) The grade buttons and the SRS status bar still teach SM-2 mechanics FSRS does not have — and still credit Woźniak** — Reported by the owner from **B146/B147** (2026-08-01): *"We still have many vestige references to SRS in the Progress section… Is this intentional?"*
+
+  **The reported symptom is NOT a defect — see the defence below. But investigating it found a real one the original sweep missed, in the same bug class it was created to eliminate.**
+
+  ### The real defect — two rendered surfaces, both wrong
+
+  **1. `GradeButtons.tsx` — the grade help modal, reachable from every review.** `GRADE_HELP` is rendered at line 103 (`GRADE_HELP.map(… <Text style={styles.helpDesc}>{description}</Text>`)). Three of four descriptions describe an **ease factor**, which FSRS does not have, and one describes a **hard reset to day 1**, which `srs.ts` does not do:
+
+  - *"Resets the card to day 1 and decreases your ease factor"* (Again)
+  - *"The interval advances slowly and your ease factor decreases slightly"* (Hard)
+  - *"Interval grows faster and your ease factor increases"* (Easy)
+
+  These are the *precise* claims `957fab7` says it corrected elsewhere: *"three factually wrong mechanics claims: fixed 1/3/6-month retention checkpoints, ~2x interval doubling, and a hard reset to 1 day on a lapse. srs.ts does none of these — stability shrinks proportionally, capped at the pre-lapse value."*
+
+  **2. `SrsStatusBar.tsx:91–93` — rendered `<Text>`, not a comment:**
+
+  > *"Based on the Forgetting Curve described by Hermann Ebbinghaus (1885) and the SM-2 algorithm developed by Piotr Woźniak in SuperMemo (1987)."*
+
+  This is the **same false attribution** `957fab7` called its "substantive fix" for removing from `index.tsx`. It was fixed on one screen and left standing on another. The app has credited the wrong algorithm to users continuously since migration `0024`.
+
+  ### Why the first sweep missed it — the lesson worth keeping
+
+  The sweep's plan ([2026-07-29-terminology-attribution-sweep.md](docs/superpowers/plans/2026-07-29-terminology-attribution-sweep.md)) defined the bug class **semantically** — *"strings that describe fixed-interval, ease-factor, or SM-2-style mechanics FSRS does not have"* — and then derived its file list **lexically, by searching for `SRS`**.
+
+  Those do not coincide. `GradeButtons.tsx` never says "SRS"; it says *"ease factor"*. `SrsStatusBar.tsx` matches `SRS` only in its filename and identifiers, so it was triaged into the same bucket as `browse.tsx`/`study.tsx` ("internal variable names and code comments, never rendered") — but unlike those, it renders a paragraph of prose.
+
+  **The sweep searched for the right word instead of for the wrong claims.** A file can be wrong about FSRS without ever mentioning FSRS or SRS.
+
+  ### Fix
+
+  1. `GradeButtons.tsx` — rewrite all four `GRADE_HELP.description` strings against what `srs.ts` actually does. No ease factor; no day-1 reset. Describe stability and difficulty as FSRS actually adjusts them.
+  2. `SrsStatusBar.tsx:91–93` — replace the SM-2/Woźniak credit with FSRS (Jarrett Ye, Open Spaced Repetition), matching the wording already approved in `about.tsx`. Retain Ebbinghaus.
+  3. Leave the generic "SRS" category usage alone, per the defence below.
+
+  ### ⚠️ Resolution requires a MANDATORY review, and comprehensiveness must be VERIFIED — not asserted
+
+  This bug exists because a previous sweep was declared complete on a scope that was never tested for completeness. **Do not close this one the same way.** Closure requires all three:
+
+  **(a) The acceptance criterion is a command whose output must be empty**, not a file list. Search for the *wrong claims*, not the right word, across every user-facing surface:
+
+  ```bash
+  grep -rniE "ease factor|SM-2|SM2|Woźniak|Wozniak|interval doubl|1/3/6|fixed interval|resets? to (1|one) day" \
+    apps/mobile/app apps/mobile/src apps/watch README.md \
+    | grep -viE "\.test\.|__tests__"
+  ```
+
+  Any surviving hit must be either fixed or annotated inline with why it is accurate. `packages/db/src/schema.ts`'s `// 0–5 SM-2 quality` comments are acceptable — the 0–5 scale genuinely is SM-2's, it is a code comment, and it is never rendered. Record that exemption in the closing note so the next runner does not re-litigate it.
+
+  **(b) A reviewer other than the implementer must confirm the search was run against the final tree** and that every hit was dispositioned. The Phase 7 lesson applies directly: a fix wave violated its own invariant one field over, and only an adversarial verification pass caught it.
+
+  **(c) The closing note must state which files were changed AND which matched-but-were-left**, with reasons. "Swept" without an enumeration is what produced B-228 in the first place.
+
+  ### 🛡️ Defence of the reported symptom — the "SRS" references are NOT vestiges
+
+  The owner asked to be corrected if wrong. On the specific items reported — Kanji Breakdown, Activity, Confidence, Velocity, Quiz Performance, Writing practice, Session history — **the generic "SRS" usage is deliberate, documented, and was approved by the owner.**
+
+  The sweep's plan, line 13:
+
+  > *"**'SRS' as a category term is not wrong and should not be blanket-replaced.** FSRS *is* a spaced repetition system; describing the status ladder or a review session generically as 'SRS' is accurate. … Leave generic, accurate 'SRS' usage alone — **do not manufacture churn.**"*
+
+  And `957fab7`'s commit message: *"Generic accurate uses of 'SRS' and internal `SRS_*` identifiers left unchanged — FSRS is a spaced repetition system."*
+
+  Checked individually, every reported string is either a correct generic category use (*"the number of SRS flashcard reviews completed that day"*, *"Unlike SRS reviews, quiz answers have no effect on your card intervals"*, *"Quiz vs SRS"*) or correctly names FSRS where the algorithm's own behaviour is described (`progress.tsx:34`, `:90`; `index.tsx:34`, `:46`). **None of them makes a false mechanical claim.** Mixing the two terms is intentional: FSRS is the scheduler, SRS is the category it belongs to.
+
+  **One legitimate concern survives, as a separate question:** the Progress screen never explains that FSRS *is* an SRS, so a learner meeting both terms may reasonably assume they are different systems. That is a copy/clarity issue, not a terminology bug, and it should be filed as an enhancement rather than folded into this fix. It also becomes near-free once the IRT explainer section lands in Profile ([coaching spec §7](docs/superpowers/specs/2026-08-01-buddy-coaching-analysis-design.md)), which establishes the pattern of explaining the app's own methods.
+
+  **Affected files:** `apps/mobile/src/components/study/GradeButtons.tsx`, `apps/mobile/src/components/ui/SrsStatusBar.tsx`.
+
+  `[Effort: S — copy only, no logic]` `[Impact: Med — the app teaches users mechanics it does not use, and credits the wrong author, on a screen reachable from every review]` `[Backend: No]` `[Status: 🐛 Active — found 2026-08-01 while investigating a reported symptom that was itself not a defect]`
+
 - [ ] **(B-227) The Journal shows a blank screen while it loads, so it reads as broken** — Found on-device in **B145** (owner, 2026-07-28): *"I was about to ask 'When will the Journal section be ready for testing?' because every time I go to that section I saw nothing. I now realize that it takes a few moments for the UI to pull data and populate."*
 
   **The learner concluded the feature was unbuilt.** That is the cost measured precisely: not a cosmetic wait, but a working feature read as absent.
