@@ -116,15 +116,22 @@
 > 3. **The B147 device walkthrough — still two phases deep.**
 >    [Test plan](b147-test-plan.md), LA-timezone account. The airplane-mode
 >    template floor is the part most likely to surprise us
-> 4. **Spec 2 — kanji content quality.** Agreed as next, and it holds a live
->    validity bug: `placement.service.ts:119` keys every meaning item on
->    `meanings[0]` from **kanjiapi.dev's unranked order**, with distractors drawn
->    from other kanji's `meanings[0]`. Any kanji whose first gloss is unusual is
->    **mis-keyed** — the learner knows it, cannot find their answer, is scored
->    wrong, and θ moves down. Lead the spec with the cheap fix: render the correct
->    option as its **gloss set** ("fur / hair / feather"). Example-sentence
->    complaints have the same root — `seed-sentences.ts` scores Tatoeba by length
->    with no similarity dedup and no sense coverage
+> 4. **🔴 B-229 — fix this before spec 2, it is worse than "content quality".**
+>    Confirmed against live data 2026-08-02. `meanings` is stored
+>    **alphabetically**: 1,925 of 1,999 multi-gloss kanji (**96.3%**) have
+>    `meanings->>0` equal to the alphabetically smallest gloss. ASCII sort puts
+>    digits and capitalised proper nouns first, so **土 is keyed "Turkey", 子 is
+>    "11PM-1AM", 日 is "Japan", 午 is "11AM-1PM"** — all N5. Both
+>    `placement.service.ts:119` and `test.service.ts:151` key on it, and
+>    distractors come from other kanji's `meanings[0]`, so the options are
+>    contaminated too. A learner who knows 土 = earth is never shown "earth", is
+>    scored wrong, and θ moves **down**. `504b1ea` fixed the label; **this
+>    corrupts the evidence the label is computed from**, so it is the more
+>    fundamental half of the owner's original report. Layer-1 fix is small and
+>    needs no migration: key on a **gloss set** ("earth / ground / soil") in both
+>    services. Layer 2 — proper ranking — is spec 2. Example-sentence complaints
+>    are separate and have their own root: `seed-sentences.ts` scores Tatoeba by
+>    length with no similarity dedup and no sense coverage
 > 5. **B-228** — [BUGS.md](../BUGS.md). Closure requires a mandatory
 >    non-implementer review; the acceptance criterion is a **grep for the wrong
 >    claims that must return empty**, not a file list
@@ -146,6 +153,15 @@
 > - **Blank is not a state.** Three occurrences now. Any screen with a
 >   "don't show the empty state until loaded" guard and no loading state has this
 >   latent
+> - **🔴 "I don't have DB credentials" was false, and cost a day.**
+>   `scripts/with-live-db.sh` has existed since 2026-07-27 and works. It was
+>   documented in eight files — none loaded by default, and the most relevant
+>   named `local-test-db.md`, which is where nobody looks for *production*
+>   access. **CLAUDE.md now says so explicitly**, because a capability absent
+>   from the always-loaded file is a capability the next session will not know it
+>   has. One `SELECT` would have confirmed the owner's 毛 report immediately;
+>   instead a defence of the wrong conclusion got written. **Check before
+>   asserting a limit**
 >
 > ### 📎 Captured to Open Brain (not in the repo)
 >
