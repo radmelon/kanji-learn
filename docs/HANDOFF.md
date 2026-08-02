@@ -101,6 +101,37 @@
 > Consequence for testing: **one weekly-session walkthrough per period, per
 > account.** Batch them or use a second account. Recorded in the B147 test plan.
 >
+> ### 🎯 Owner's directives for the NEXT session (2026-08-02)
+>
+> **The goal is a Buddy-rebuilt app ready for the Beppu trip next week.** That is
+> what the next build is for; sequence everything against it.
+>
+> 1. **Fix the known bugs, then cut a build.** In severity order: **B-229**
+>    (gloss keying — corrupts θ corpus-wide, layer-1 fix is small and API-side),
+>    then **B-228** (SM-2 mechanics + Woźniak credit still rendered), then the
+>    already-queued `89f3e89` meeting blank-screen fix which needs the build
+>    anyway.
+> 2. **Build budget — authorised.** ~1.5 builds remain on the basic EAS
+>    subscription. **The owner authorises additional builds as needed through the
+>    evening of 2026-08-03.** Overage is roughly **$2 per build**, not a
+>    subscription upgrade — cheap enough that a second cut to fix a mistake is
+>    never the wrong call.
+> 3. **Worth knowing before paying for one:** the allowance **renews 2026-08-04**.
+>    A build cut on the 4th is free; one cut on the 3rd is ~$2. If the trip
+>    timeline tolerates a day, wait. If it does not, spend the $2 — the
+>    authorisation above exists precisely so nobody dithers over it.
+> 4. **B-229 is API-side**, so it also needs a **deploy**, not just a build. Both
+>    B-229 and B-228 must be in place *before* the cut, or the build ships a
+>    known-wrong placement test to a trip where it will actually be used.
+>
+> **Credential rotation: deferred to October by the owner.** Viable, with one
+> caveat now on record: the three LLM keys (Anthropic, Groq, Gemini) were issued
+> 2026-07-28 and **expire 2026-10-26** — the same date `docs/secrets-rotation.md`
+> schedules the rotation for, i.e. **zero margin**. Expiry degrades *silently*:
+> `/v1/buddy/meet/turn` returns `{fallback:true}` at 200 on any failure, so an
+> expired key does not error, it quietly drops Buddy to template tier. **Rotate
+> in early October, not on the 26th.**
+>
 > ### 📋 What is owed, in order
 >
 > 1. **Owner is reviewing the coaching spec** —
