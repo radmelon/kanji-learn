@@ -46,6 +46,55 @@ psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_test?sslmode=disable" 
 Result as of 2026-07-26: **287 of 293 tests pass.** The 6 residual failures are
 documented at the bottom — they are environment gaps, not product bugs.
 
+Result as of 2026-08-02: **446 of 448 pass, 2 skipped, zero failures**, after
+the repair below.
+
+### 🛑 Re-running that migration list on an existing DB makes things WORSE
+
+**Learned the hard way 2026-08-02, mid-session.** Those files open with `BEGIN`
+and are not idempotent. On a database that already has them, the first
+`CREATE POLICY` hits *"policy … already exists"*, the transaction aborts, and
+**every `ALTER TABLE … FORCE ROW LEVEL SECURITY` that succeeded before the
+error is rolled back with it.** `psql` without `-v ON_ERROR_STOP=1` prints the
+error in the middle of a wall of output and exits **0**, so a loop over the
+list reports every file "ok" while quietly stripping protection.
+
+Observed: `rls-coverage.test.ts` went from **4 unprotected tables to 7** as a
+direct result of re-applying the list to "fix" it.
+
+**If the RLS coverage test is failing, do not re-run the migrations. Repair the
+state directly** — this is a local test database, and the invariant the test
+asserts is simply enable + force on every public table:
+
+```bash
+psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_test?sslmode=disable" -v ON_ERROR_STOP=1 <<'SQL'
+DO $$
+DECLARE t text;
+BEGIN
+  FOR t IN
+    SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind = 'r'
+      AND (c.relrowsecurity = false OR c.relforcerowsecurity = false)
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('ALTER TABLE public.%I FORCE  ROW LEVEL SECURITY', t);
+    RAISE NOTICE 'protected %', t;
+  END LOOP;
+END $$;
+SQL
+```
+
+Safe because the test role (`kanji`) has `rolbypassrls` — confirm with
+`SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = 'kanji'` before
+forcing RLS anywhere, or every test that writes will start failing instead.
+
+**Why this matters beyond the annoyance:** on 2026-08-01 a session recorded the
+`placement-service` B-210 failure as *"confirmed pre-existing"* — true, but it
+read as a standing product defect. It was **this**: a stale test database. Once
+the migration list and RLS were restored it passed on a clean tree and with
+changes applied. A red lane that is really an environment gap does not stay
+inert; it gets reasoned about as product state.
+
 ## Why it is not just "run the migrations"
 
 Three things bite, in order.

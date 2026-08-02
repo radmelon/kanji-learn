@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-01 night (**B147 is in TestFlight — and the bugs it surfaced were worth more than the build**)
+# Session Handoff — 2026-08-02 (**B148 is cut and submitted. Next session starts the coaching analyzer.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,244 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-01 (night)
+## START HERE — 2026-08-02
+
+> ## ▶️ What the next session does
+>
+> **Execute slice 1 of the coaching plan.** Everything it needs is written:
+>
+> **https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/plans/2026-08-02-coaching-analyzer-slice1.md**
+>
+> Ten TDD tasks, complete code in every step, `packages/shared/src/coaching/`
+> only. **No database, no LLM, no API, no surfaces** — it runs entirely in the
+> shared lane, which is sub-second and green today. Use
+> `superpowers:subagent-driven-development` (a fresh subagent per task, review
+> between) or `superpowers:executing-plans`.
+>
+> **Do not widen it.** The spec's §12 says outright it *"should not become one
+> undifferentiated plan"* and names six slices; this is the first. Slices 2–6
+> get their own plans, written against the real shapes slice 1 produces.
+>
+> Nothing in slice 1 is user-visible, and that is the point: every number the
+> coaching feature will ever say to a learner is computed there.
+
+### ✅ B148 is cut, submitted, and carries every bug fixed today
+
+| | |
+|---|---|
+| Build | `da575c43-f647-4351-ad8a-ee9a63825452`, buildNumber **148** (EAS `autoIncrement`, never hand-bumped) |
+| Content | `297d301`; bump recorded as `d80625e` |
+| Submission | `42077dae-bca9-433b-b033-b66ea4171cd2` — `finished`, `distribution: store` |
+| Pre-build gate | All green. **The API-behind check returned empty** — the B-214 trap the SOP exists for |
+| API on live | `sha256:9fce6c9e…`, operation `e6cb4717` **SUCCEEDED** 10:19:33 → 10:23:25, `/health` 200 in 0.49s |
+| `main` | `c303451`, pushed, tree clean |
+
+Lanes at end of session: typecheck **4/4** · shared **343** · mobile pure
+**207** · components **63** · **API 446 passed, zero failures.**
+
+**That last number is new.** The API lane has had standing red for weeks. Both
+failures were environmental, not product — see "the test lane was lying" below.
+
+### 🔴 B-229 — the placement test measured the wrong thing, corpus-wide
+
+`e3e762e`, **deployed and in the build.** `kanji.meanings` is stored
+alphabetically, and ASCII sort puts digits and capitalised proper nouns first,
+so `meanings[0]` — what both instruments keyed on — was a clock hour or a
+country name for the most common kanji in the language:
+
+| kanji | before | after |
+|---|---|---|
+| 土 | Turkey | soil / earth / ground |
+| 子 | 11PM-1AM | child / sign of the rat |
+| 日 | Japan | day / sun / counter for days |
+| 午 | 11AM-1PM | noon / sign of the horse |
+| 毛 | down | fur / down / hair |
+
+A learner who knows 土 = earth was never shown "earth", was scored **wrong**,
+and `updatePosterior` pushed θ **down**. Layer 1 keys on a gloss set instead:
+`packages/shared/src/gloss.ts`.
+
+**Verified against the full live corpus** (2,294 kanji, read-only, using the
+shipped helper): keyed on a digit/capital gloss **98 → 10**, and all 10
+remaining are unavoidable — every gloss that kanji has is one. Criterion-2
+violations: **0**. Stored order deliberately unchanged.
+
+**Two things beyond the filed scope, flagged rather than smuggled:**
+distractors are now rejected when their glosses *intersect* the answer's —
+with sets rather than single glosses an unfiltered distractor can be **also
+correct**, which would have traded a wrong key for an ambiguous item. And
+three *display* surfaces used `rankGlosses(...)[0]`, so the detail page no
+longer reads "Turkey" while the quiz reads "soil / earth / ground".
+
+**Layer 2 — a curated primary sense — is still owed and is spec 2.**
+
+### 🔴 B-228 took THREE rounds, and the reason is the bug itself
+
+`a2c4fab`, `328ceb9`, `2f848e1`. **The entry's own file list named two files.
+Six carried the defect.** Each round was declared done and each was
+incomplete, caught only by the mandatory non-implementer review.
+
+- **Round 1** found a third instance the file list missed, by running the
+  acceptance grep instead of the file list.
+- **Round 2** — the review **FAILED** it. The guard test passed the whole time
+  while three rendered claims shipped. The pattern was
+  `resets? to (1|one) day`, requiring exact adjacency, so `resets to day 1`,
+  `resets the interval back to 1 day` and `resets the card's interval` all
+  walked through. **A search narrower than its bug class, written by the fix
+  for a bug about searches narrower than their bug class.** Worst of the three
+  was a *second grade-help surface* in `study.tsx` contradicting the one just
+  corrected, inside a modal that tells the learner to go read it.
+- **Round 3** — the same instinct once more: the corrected copy said *"not
+  reset to day 1"*, which is both a denial (trips the sweep) and not quite
+  true, since a low-stability card hits the 1-day interval floor regardless.
+
+Closing note is in [BUGS.md](../BUGS.md) with the full enumeration, the
+matched-but-left exemptions, and the guard's known coverage limits.
+
+**The guard is `apps/mobile/test/unit/fsrs-copy-claims.test.ts`.** Run it with
+`pnpm --filter @kanji-learn/mobile test -- -t "B-228"`. The `describe` blocks
+are named for the bug **on purpose** — named anything else, that command
+silently skips the regression pins and runs 3 of 10 tests.
+
+### ✅ B-226 fixed, B-227 was already fixed
+
+**B-226** (`03bf48a`): the Dashboard's "Start Today's Reviews" re-opened a
+*finished* session. The obvious fix is a trap — `study-screen.ts` returns
+`sessionComplete` **first**, deliberately, so an incidental `reset()` (a
+profile PATCH mid-session) cannot dismiss it; that was B-216. So the signal is
+an **explicit** `requestFreshSession()`, and the rule lives in a pure
+`shouldEndStudySession`. Second invariant the original sketch missed: an
+**in-progress** session must survive — tapping the CTA mid-session means
+"take me back to it".
+
+**B-227 needed no code.** `a6b3e2d` fixed it and is an ancestor of `main`.
+**Both BUGS.md and the 2026-08-02 trip survey listed it as open work to pull
+into this build** — a planned session-day against a bug that did not exist.
+An unchecked box is not evidence; the code is.
+
+### 🟡 The test lane was lying, in both directions
+
+Worth internalising before trusting a red lane again.
+
+1. **The `placement-service` B-210 failure recorded on 2026-08-01 as
+   "confirmed pre-existing" was a stale test database.** True that it predated
+   that session's change — but it read as a standing product defect. After
+   re-applying the documented migration list and restoring RLS it passes on a
+   clean tree *and* with changes applied.
+2. **`learner-state-refresh` was a timing race**, not a product fault: it slept
+   50ms for a fire-and-forget `setImmediate`. Confirmed by raising it to
+   1500ms. Now condition-polled (`871d652`).
+
+**And a trap I walked into repairing #1:** re-running the migration list on an
+existing DB makes it **worse**. Those files open with `BEGIN`, are not
+idempotent, and abort on an already-existing policy — rolling back every
+`FORCE ROW LEVEL SECURITY` that succeeded before the error. Without
+`-v ON_ERROR_STOP=1`, `psql` exits 0 and every file reports "ok". Unprotected
+tables went **4 → 7** as a direct result of trying to fix it. The repair
+recipe is now in
+[local-test-db.md](local-test-db.md#-re-running-that-migration-list-on-an-existing-db-makes-things-worse).
+
+### 📋 Coaching spec — owner review recorded, 3 of 4 decisions closed
+
+[Spec §14](superpowers/specs/2026-08-01-buddy-coaching-analysis-design.md).
+
+| | |
+|---|---|
+| **§11.1** findings per surface | 2–3 accepted **as a parameter, not a constant**. Buddy self-tuning deferred with a reason: it needs a delivery-outcome signal (dismissals, time-on-surface, acted-on) that is not instrumented. **Consequence: instrument those when slices 2–4 ship**, even before anything reads them |
+| **§11.2** companion beat engine | **Closed** — single free-conversation prompt, no separate engine |
+| **§11.3** tier-2 daily cap | **Still unsized, and it is the owner's call.** Production runs the `env.ts` defaults — **50 tier-2 calls/user/day**, 5 tier-3; neither is set on App Runner. Every other Buddy surface is one call per event; **companion mode is a conversation, so each turn is a call.** Also: the day boundary is **UTC**, so in Japan the cap resets at 9am JST |
+| **§11.4** `hook_coverage` | **Dissolved rather than answered.** Now an *offer* to co-author a hook on a named kanji drawn from Again/Hard grades and quiz failures, triggering on zero hooks **OR** none since the session-before-last. Promoted to a `Direct` finding |
+
+**§8 gained a third option.** The frankness escalator offered "narrow the
+scope" (same sitting, less coverage) and "shift the sitting" (same target,
+later date). The owner's phrasing — *"let's target N3 for the next JLPT
+window"* — **lowers the target level**, which is neither, and is the only one
+of the three deliverable as **good news**. It depends on knowing the learner
+is already in range for the lower level, which is what `504b1ea` had to fix
+before the claim could be trusted.
+
+### 📌 New: B-230
+
+`c303451`. `progress.tsx` states the SRS bands as 1–3 days / 1–4 weeks / 1–3
+months; `constants.ts:69-71` says **<7 / 7–20 / 21–179**, and
+`SrsStatusBar.tsx` already renders it correctly — two screens, two answers.
+
+**Deliberately not folded into B-228:** wrong arithmetic about FSRS's *own*
+ladder is a different class from an SM-2 vestige, and B-228's acceptance grep
+structurally cannot detect it. Folding it in would have made that bug's class
+wider than its test — the exact defect B-228 exists to document.
+
+Writing it up found a third problem neither review caught: **the bands do not
+tile with each other.** Learning tops at 3 days, Reviewing starts at 7, so a
+card on a 5-day interval is in no status at all. Fix proposed is to *derive*
+the copy from the exported constants — the root cause is that two screens
+hand-copied the same numbers and one drifted.
+
+### ✈️ Still open for the Beppu trip — none of it fixable by a build
+
+1. **Retake the placement test on B148.** The only behavioural proof B-229
+   worked. The corpus sweep proves the *helper* is right and the running image
+   is confirmed to contain it; neither proves the device path. Expect 土 to
+   offer "soil / earth / ground", and the level to move **up** with
+   performance. **An existing placement row is not retroactively repaired.**
+2. **The timezone will not follow you to Japan.** No route writes
+   `user_profiles.timezone` — verified. A `reminder_hour` of 20 on an LA row
+   fires at **noon JST the following day**, and `runBuddyDayPass` gates the
+   weekly invitation on the same hour. Cheap answer: a one-row `UPDATE` to
+   `Asia/Tokyo` on arrival, back on return. **Do not rush a
+   device-writes-timezone feature** days before the trip that depends on it.
+3. **Check `attach_location_to_hooks` BEFORE flying.** Defaults **false**, and
+   only **1 of 5** profiles has it on. If it is off on the account used in
+   Beppu, **every hook built there loses its coordinates permanently** — and
+   Beppu is exactly where they are worth having.
+4. **Latency will likely be worse in Japan, not better.** Phone (JP) → API
+   (`us-east-1`) → Supabase (`ap-southeast-2`). Both legs are long from Japan.
+   Set expectations rather than diagnosing it as a new bug on the road.
+5. **Only one weekly-session walkthrough per period, per account** —
+   completing a session burns the whole period; no choice of `buddy_day` makes
+   another due inside 7 days.
+
+### 🗓️ Housekeeping
+
+- **EAS allowance renews 2026-08-04.** B148 was cut on the 2nd, so it used the
+  ~$2 overage. A build on the 4th or later is free.
+- **Credential rotation deferred to October by the owner.** One caveat on
+  record: the three LLM keys expire **2026-10-26**, the same date
+  `docs/secrets-rotation.md` schedules rotation for — **zero margin.** Expiry
+  degrades *silently*: `/v1/buddy/meet/turn` returns `{fallback:true}` at 200,
+  so an expired key does not error, it quietly drops Buddy to template tier.
+  **Rotate in early October, not on the 26th.**
+- **Four branches are fully merged into `main` and can be deleted**:
+  `claude/cranky-torvalds-7d4f85`, `phase-5-cocreation-flow`,
+  `weekly-buddy-review-spec`. (`fix/trip-build-bugs` was this session's and is
+  already gone.) Eleven others are unmerged parked work — left alone.
+
+### 🧠 Lessons this session added
+
+- **🔴 A fix for "your search was narrower than your bug class" reproduced the
+  bug three times.** Every round of B-228 was declared complete on a search
+  that had not been tested for completeness. What broke the loop was not
+  better intentions — it was an adversarial reviewer with no stake in the fix
+  being done, run against the final tree, twice.
+- **Proving a guard works by reinjecting a string it already matches proves
+  nothing.** Round 1 did exactly that and passed while three claims shipped.
+  A guard is only tested by reverting a *real* fix and watching it fail.
+- **An unchecked box is not evidence of a bug.** B-227 was already fixed and
+  had a session-day of work planned against it. Check the code.
+- **A red test lane does not stay inert — it gets reasoned about as product
+  state.** Both standing API failures were environmental, and one of them had
+  already been written into a handoff as a product-level fact.
+- **`git add -A` at the end of a task sweeps in whatever else you were
+  working on.** The coaching plan landed inside a B-228 commit whose message
+  never mentioned it. Split before pushing; `--amend` cannot fix a commit that
+  cites its own hash.
+
+---
+
+# Previous — 2026-08-01 night (**B147 in TestFlight — the bugs it surfaced were worth more than the build**)
+
+> **Canonical URL:**
+> https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
 
 > ## ✅ B147 is cut, submitted, and on the owner's device
 >
