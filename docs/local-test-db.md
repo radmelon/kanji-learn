@@ -46,8 +46,9 @@ psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_test?sslmode=disable" 
 Result as of 2026-07-26: **287 of 293 tests pass.** The 6 residual failures are
 documented at the bottom — they are environment gaps, not product bugs.
 
-Result as of 2026-08-02: **446 of 448 pass, 2 skipped, zero failures**, after
-the repair below.
+Result as of 2026-08-02: **448 of 448 pass, zero skipped, zero failures** — after
+the RLS repair below AND importing the real kanji corpus (see that section). Two
+tests that had been skipping for corpus-size reasons now run for real.
 
 ### 🛑 Re-running that migration list on an existing DB makes things WORSE
 
@@ -200,24 +201,69 @@ location**. Run it from a worktree and it looks for the worktree's copy, which
 is gitignored and therefore absent by design — copy the file in for the
 duration of the task, then delete it.
 
-## The test DB holds 7 kanji, not the full corpus
+## The kanji corpus: import it from production (2026-08-02)
 
-`drizzle-kit push` creates the schema; it does not seed reference data. So
-`kanji` has **7 rows** locally against **2294** in production, and any test whose
-behaviour depends on corpus size is either meaningless or impossible here.
+`drizzle-kit push` creates the schema; it does not seed reference data. The test
+DB therefore started life with **7 kanji** against **2,294** in production, and
+any test whose behaviour depends on corpus size was either meaningless or
+impossible.
 
-Found on 2026-07-30 by the placement work: `selectNextItems` orders candidates by
-`ABS(b - theta)`, takes the nearest `CANDIDATE_POOL_SIZE = 20`, then shuffles that
-pool. With 7 kanji the pool swallows the entire corpus, so every `theta` returns
-the same candidate set and the shuffle decides the outcome — a test asserting
-"picks items near theta" passes or fails at random. That test now checks the
-precondition and skips with an explanatory message rather than flaking; it starts
-running for real as soon as the corpus is seeded.
+**Import the real corpus.** `kanji` is reference data — public, no user rows —
+so this carries no privacy cost:
 
-If you add tests that depend on realistic reference data — difficulty spread,
-distractor pools, level distributions — seed `kanji` first or assert the
-precondition explicitly. A silently-passing test on a 7-row corpus is worse than
-a skipped one.
+```bash
+./scripts/with-live-db.sh pg_dump -t kanji --data-only --no-owner --no-privileges > /tmp/kanji-corpus.sql
+
+# pg_dump 18 emits directives PG16 does not understand. Strip only these:
+grep -vE '^SET transaction_timeout|^\\(restrict|unrestrict)' /tmp/kanji-corpus.sql > /tmp/kanji-pg16.sql
+
+psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_test?sslmode=disable" -v ON_ERROR_STOP=1 \
+  -c "TRUNCATE kanji CASCADE" -f /tmp/kanji-pg16.sql \
+  -c "SELECT setval('kanji_id_seq', (SELECT max(id) FROM kanji))"
+```
+
+`TRUNCATE ... CASCADE` clears eight dependent fixture tables. That is fine —
+every suite seeds its own — and `user_profiles` is not among them. Verify with
+`jsonb_typeof(meanings)`, never appearance: the double-encoding bug has bitten
+this repo twice.
+
+**Do NOT import user tables.** `user_profiles`, `mnemonics`,
+`user_kanji_progress`, `review_logs`. Two independent reasons: hooks carry the
+learner's own words and, for most rows, **GPS coordinates**; and several suites
+scan whole tables (the UKG backfill iterates every row), so real data would
+break them rather than strengthen them.
+
+### What the corpus changed, and what it exposed
+
+Two tests that had been **skipping** since 2026-07-30 now run for real —
+`selectNextItems`' Fisher-information ordering, and the adaptive loop's
+floor/cap convergence. Both need a corpus larger than `CANDIDATE_POOL_SIZE`
+(20) and `capCharacters` (24) respectively; with 7 kanji they were asserting
+shuffle noise, so they checked a precondition and skipped instead.
+
+It also exposed three defects that 7 rows had been hiding:
+
+1. **`refreshKanjiDifficulty` was an N+1** — one `INSERT` per kanji, 2,294
+   sequential round-trips, which blew the 15s test timeout and was equally slow
+   against production. Now a chunked multi-row upsert: **that suite went from
+   five timeouts to 2.7s.**
+2. **The suite was never idempotent across runs.** `placement-adaptive`'s
+   second test runs `completePlacement`, which seeds corpus-wide by design
+   (`2cab737`), and cleaned up nothing — leaving **2,283** review_logs and UKG
+   rows. On the *next* run that broke three unrelated-looking suites: the
+   adaptive loop (its candidate pool collapsed to ~11, so it stopped at 6
+   characters against a floor of 8 and read as a convergence failure),
+   placement-difficulty's "fewer than 300 pooled rows" test, and every backfill
+   test. Fixed with `beforeEach` + `afterAll` cleanup in that suite.
+3. **Two tests asserted opposite things about seeding and both passed.**
+   `placement-adaptive` required `appliedCount <= charactersAsked` (the
+   pre-`2cab737` rule) while `placement-service` required a never-asked kanji to
+   be seeded (the post-`2cab737` rule). With 7 kanji, 7 <= 9 satisfied both. The
+   adaptive one was wrong and has been rewritten.
+
+**The general lesson:** a fixture small enough to be convenient is a fixture
+small enough to satisfy contradictory assertions. Where a test's correctness
+depends on corpus size, assert the precondition — several here now do.
 
 ## Known residual failures (6)
 

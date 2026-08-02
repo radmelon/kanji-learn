@@ -140,15 +140,28 @@ export async function refreshKanjiDifficulty(db: Db): Promise<RefreshResult> {
     }
   })
 
-  for (const row of upsertValues) {
+  // Batched upsert. This was one INSERT per kanji — 2,294 sequential
+  // round-trips on the real corpus, which took the operational job well past
+  // 15s and was invisible locally only because the test database held 7 rows.
+  // `excluded.*` reads the row being inserted, so the SET clause no longer has
+  // to be rebuilt per row.
+  const now = new Date()
+  const CHUNK = 500 // keeps the bound-parameter count per statement well clear of Postgres's 65535 limit
+  for (let i = 0; i < upsertValues.length; i += CHUNK) {
+    const chunk = upsertValues.slice(i, i + CHUNK)
+    if (chunk.length === 0) continue
     await db
       .insert(kanjiDifficulty)
-      .values({ ...row, updatedAt: new Date() })
+      .values(chunk.map((row) => ({ ...row, updatedAt: now })))
       .onConflictDoUpdate({
         target: kanjiDifficulty.kanjiId,
         set: {
-          bPrior: row.bPrior, bObserved: row.bObserved, observedN: row.observedN,
-          b: row.b, readingOffset: row.readingOffset, updatedAt: new Date(),
+          bPrior: sql`excluded.b_prior`,
+          bObserved: sql`excluded.b_observed`,
+          observedN: sql`excluded.observed_n`,
+          b: sql`excluded.b`,
+          readingOffset: sql`excluded.reading_offset`,
+          updatedAt: sql`excluded.updated_at`,
         },
       })
   }

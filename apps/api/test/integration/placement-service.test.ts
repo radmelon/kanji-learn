@@ -95,8 +95,23 @@ describe('selectNextItems', () => {
       stability: 21, difficulty: 5, totalReviews: 1,
     })
 
+    // Pin b = theta so the stamped kanji is guaranteed inside the candidate
+    // pool. selectNextItems orders by ABS(b - theta) and keeps only the nearest
+    // CANDIDATE_POOL_SIZE (20), so `count = 200` does NOT mean "consider
+    // everything" — against the 2,294-kanji corpus an arbitrary kanji is
+    // essentially never in the top 20, and this test failed for that reason
+    // alone while the behaviour it checks was working. It passed against the
+    // old 7-kanji corpus only because 7 < 20 put every kanji in the pool.
+    // Same idiom as the b = -3 pin in the seeding test below.
+    await db.execute(sql`
+      UPDATE kanji_difficulty SET b = 0, b_prior = 0 WHERE kanji_id = ${stamped.id}
+    `)
+
     const items = await selectNextItems(db, TEST_USER, 0, [], 200)
-    expect(items.some((i) => i.kanjiId === stamped.id)).toBe(true)
+    expect(
+      items.some((i) => i.kanjiId === stamped.id),
+      'a kanji carrying only a placement stamp was excluded from selection — B-210 has regressed',
+    ).toBe(true)
   })
 
   it('excludes ids passed in `exclude` (already asked this session)', async () => {
