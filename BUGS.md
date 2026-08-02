@@ -6,7 +6,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
-- [ ] **(B-229) Every meaning question — placement AND quiz — is keyed on the ALPHABETICALLY first gloss, so 土 is "Turkey" and 子 is "11PM-1AM"** — Reported by the owner from B146/B147 (2026-08-01): *"the placement test uses 'down' as the answer"* for 毛. **Confirmed against live data 2026-08-02, and it is systemic, not a bad row.**
+- [x] **(B-229) Every meaning question — placement AND quiz — is keyed on the ALPHABETICALLY first gloss, so 土 is "Turkey" and 子 is "11PM-1AM"** — Reported by the owner from B146/B147 (2026-08-01): *"the placement test uses 'down' as the answer"* for 毛. **Confirmed against live data 2026-08-02, and it is systemic, not a bad row.** **✅ Layer 1 fixed 2026-08-02 — resolution at the end of this entry.**
 
   ### The live data
 
@@ -92,7 +92,53 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   **Affected files:** `apps/api/src/services/placement.service.ts`,
   `apps/api/src/services/test.service.ts`.
 
-  `[Effort: S for layer 1 — two services, no migration]` `[Impact: HIGH — corrupts placement θ and quiz scores corpus-wide; penalises learners who DO know the kanji]` `[Backend: Yes — API deploy]` `[Status: 🐛 Active — confirmed against live data 2026-08-02]`
+  ### ✅ RESOLUTION — layer 1 shipped 2026-08-02 (`e3e762e`)
+
+  `packages/shared/src/gloss.ts` is the new seam. `rankGlosses` orders a
+  kanji's glosses best-first — demoting `^[0-9A-Z]` artifacts, then preferring
+  shorter, with stored order as the final tiebreak — and `glossKey` renders up
+  to 3 of them within a 48-character budget. Both services key on that set.
+
+  **Distractors are filtered on gloss-set INTERSECTION, not string
+  inequality.** This was not in the original fix sketch and it matters: with
+  sets rather than single glosses, a distractor drawn from another kanji can
+  contain one of the answer's own senses, so it would be *also correct*. That
+  would have traded a wrong key for an ambiguous item.
+
+  All three verification criteria met, against the **full live corpus**
+  (2,294 kanji, read-only, using the shipped helper):
+
+  | kanji | before | after |
+  |---|---|---|
+  | 土 | Turkey | soil / earth / ground |
+  | 子 | 11PM-1AM | child / sign of the rat |
+  | 日 | Japan | day / sun / counter for days |
+  | 午 | 11AM-1PM | noon / sign of the horse |
+  | 名 | distinguished | name / noted / reputation |
+  | 休 | day off | rest / sleep / retire |
+  | 来 | become | due / come / next |
+  | 毛 | down | fur / down / hair |
+
+  - Keyed on a digit/capital gloss: **98 → 10**, and all 10 remaining are
+    unavoidable — every gloss that kanji has is one.
+  - **Criterion-2 violations: 0.** Asserted three ways: a unit test over the
+    verbatim live rows (`packages/shared/src/gloss.test.ts`), an integration
+    test that seeds those rows and calls `getQuestionsWithDistractors`
+    (`placement-service.test.ts`), and the corpus sweep above.
+  - Stored order deliberately unchanged (98.3% still alphabetical). Layer 1
+    does not reorder, exactly as specified.
+  - Option length: median 21, p95 33, max 48 — readable on a phone.
+
+  **Also fixed, same root cause, beyond the filed scope:** three *display*
+  surfaces rendered `meanings[0]` directly, so the detail page said 土 =
+  "Turkey" while the quiz said "soil / earth / ground". `apps/mobile/app/kanji/[id].tsx`,
+  `apps/mobile/src/components/writing/WritingPractice.tsx` and the
+  `/v1/kanji/:id/related` route now use `rankGlosses(...)[0]`.
+
+  **Layer 2 — a curated or frequency-ranked primary sense — is still owed**
+  and remains the next spec. `gloss.ts` is where it plugs in.
+
+  `[Effort: S for layer 1 — two services, no migration]` `[Impact: HIGH — corrupts placement θ and quiz scores corpus-wide; penalises learners who DO know the kanji]` `[Backend: Yes — API deploy]` `[Status: ✅ Layer 1 fixed 2026-08-02 (`e3e762e`). Layer 2 open — see spec 2]`
 
 - [ ] **(B-228) The grade buttons and the SRS status bar still teach SM-2 mechanics FSRS does not have — and still credit Woźniak** — Reported by the owner from **B146/B147** (2026-08-01): *"We still have many vestige references to SRS in the Progress section… Is this intentional?"*
 
@@ -164,7 +210,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S — copy only, no logic]` `[Impact: Med — the app teaches users mechanics it does not use, and credits the wrong author, on a screen reachable from every review]` `[Backend: No]` `[Status: 🐛 Active — found 2026-08-01 while investigating a reported symptom that was itself not a defect]`
 
-- [ ] **(B-227) The Journal shows a blank screen while it loads, so it reads as broken** — Found on-device in **B145** (owner, 2026-07-28): *"I was about to ask 'When will the Journal section be ready for testing?' because every time I go to that section I saw nothing. I now realize that it takes a few moments for the UI to pull data and populate."*
+- [x] **(B-227) The Journal shows a blank screen while it loads, so it reads as broken** — **✅ ALREADY FIXED — this entry was stale, see the resolution at the end.** Found on-device in **B145** (owner, 2026-07-28): *"I was about to ask 'When will the Journal section be ready for testing?' because every time I go to that section I saw nothing. I now realize that it takes a few moments for the UI to pull data and populate."*
 
   **The learner concluded the feature was unbuilt.** That is the cost measured precisely: not a cosmetic wait, but a working feature read as absent.
 
@@ -178,7 +224,26 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/app/(tabs)/journal.tsx`, `apps/mobile/src/hooks/useMnemonics.ts` (`useUserHooks`).
 
-  `[Effort: XS]` `[Impact: Med — a shipped feature reads as unbuilt]` `[Backend: No]` `[Status: 🐛 Active — found in B145]`
+  ### ✅ RESOLUTION — already fixed by `a6b3e2d`; this entry was stale (verified 2026-08-02)
+
+  No code change was needed. `a6b3e2d` ("fix(mobile): B-227 — Journal rendered
+  nothing while loading") is an ancestor of `main` and shipped exactly the fix
+  described above, plus more than was asked for:
+
+  - `apps/mobile/src/lib/journal-list-state.ts` — the three body states as a
+    pure, exhaustive decision, so no input combination renders nothing.
+  - A cold-load spinner ("Loading your hooks…") mirroring the Study tab.
+  - The cached list still paints immediately: `journalListState` returns
+    `'list'` whenever `hookCount > 0`, ahead of the loading branch.
+  - `apps/mobile/test/unit/journal-list-state.test.ts`, 5 cases, passing.
+
+  **Worth noting for whoever prunes this file next:** this entry, *and* the
+  2026-08-02 trip survey in HANDOFF.md, both listed B-227 as open work to pull
+  into the trip build — a full session-day of planned effort against a bug
+  that was already fixed. A `[ ]` in this file is not evidence that something
+  is broken; the code is. Check before scheduling.
+
+  `[Effort: XS]` `[Impact: Med — a shipped feature reads as unbuilt]` `[Backend: No]` `[Status: ✅ Fixed by `a6b3e2d`; entry was stale, corrected 2026-08-02]`
 
 - [ ] **(B-223) The teaching beat always says "beside", even when a component sits above or inside another** — Found on-device in **B145** (owner, 2026-07-28): *"The statement explaining a kanji's radicals or components seems to always use the preposition 'beside' when often above or under would be more appropriate."*
 
@@ -265,7 +330,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S–M depending on option]` `[Impact: Low-Med — quality, not correctness]` `[Backend: No]` `[Status: 🐛 Active — found in B145]`
 
-- [ ] **(B-226) Session Complete persists when you leave by tapping another tab — "Start Today's Reviews" then reopens it** — Found on-device in **B145** (owner, 2026-07-28): *"Start Today's Review takes me to the Session Complete page with options to keep studying, Drill, go back to dashboard."*
+- [x] **(B-226) Session Complete persists when you leave by tapping another tab — "Start Today's Reviews" then reopens it** — **✅ Fixed 2026-08-02 (`03bf48a`) — resolution at the end.** Found on-device in **B145** (owner, 2026-07-28): *"Start Today's Review takes me to the Session Complete page with options to keep studying, Drill, go back to dashboard."*
 
   **This is a re-opening of a bug marked fixed in B123** ("Session Complete screen persists after returning to Study tab", verified 2026-04-19 — see Fixed Bugs below). That fix made `onDone` clear `sessionSummary`, call `reset()` and set `phase` to `'ready'` before navigating. It works — **for the exits that run `onDone`.**
 
@@ -279,7 +344,39 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/app/(tabs)/index.tsx` (`handleStudy`), `apps/mobile/app/(tabs)/study.tsx` (`onDone` teardown, worth extracting).
 
-  `[Effort: S]` `[Impact: Med — the app's primary call to action shows a stale screen]` `[Backend: No]` `[Status: 🐛 Active — found in B145; re-opens a B123 fix]`
+  ### ✅ RESOLUTION — 2026-08-02 (`03bf48a`)
+
+  **The obvious version of this fix is a trap, and the trap is B-216.** The
+  sketch above says "clear `sessionSummary`, `reset()`, set `phase` to
+  'ready'". But `sessionSummary` and `phase` are **local state in
+  `study.tsx`** — the Dashboard cannot reach them. The tempting workaround is
+  to have the Dashboard call the store's `reset()` and let `selectStudyScreen`
+  notice the store is empty. That is exactly what
+  [study-screen.ts](apps/mobile/src/lib/study-screen.ts) forbids, in its own
+  words: Session Complete is returned **first** so that a finished session
+  "must survive anything that empties the queue beneath it — including a
+  profile PATCH firing the store's reset". Keying on emptiness would have
+  reintroduced the B-216 strand.
+
+  So the signal has to be an **explicit request**, distinguishable from an
+  incidental reset:
+
+  - `requestFreshSession()` / `clearFreshSessionRequest()` on the review
+    store — a one-shot the Dashboard raises and `study.tsx` consumes.
+    Deliberately **not** folded into `reset()`.
+  - `endStudySession()` in `study.tsx` — the single teardown both exits now
+    run, so the next exit route added does not have to remember.
+  - [study-session-exit.ts](apps/mobile/src/lib/study-session-exit.ts) — the
+    rule as a pure function, mirroring `journalListState`, with tests.
+
+  **The second invariant, which the original sketch missed:** an
+  **in-progress** session must survive the request. Tapping "Start Today's
+  Reviews" mid-session means *"take me back to it"*; tearing down a
+  partly-graded queue would be a worse bug than the one being fixed. Only a
+  *finished* session (`sessionSummary !== null`) is stale. Both directions are
+  asserted in `apps/mobile/test/unit/study-session-exit.test.ts`.
+
+  `[Effort: S]` `[Impact: Med — the app's primary call to action shows a stale screen]` `[Backend: No]` `[Status: ✅ Fixed 2026-08-02 (`03bf48a`)]`
 
 - [x] **(B-221) Daily reminders fired at :54 past the hour, not on the hour — and an hour could be skipped entirely** — Found by log inspection (owner, 2026-07-28): *"I was expecting to see a daily reminder today at 8am, but didn't get one."* It did fire — at **8:54am**.
 
