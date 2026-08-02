@@ -38,6 +38,58 @@ Copied verbatim from the spec. Every task's requirements implicitly include thes
 - **Findings per surface is a parameter, not a constant (§14.1).** The owner accepted 2–3 for v1 *"as a dial we can tune later"*. `select()` takes the count as an argument with a default.
 - **No new dependencies.** The shared package has exactly one devDependency beyond TypeScript.
 
+## Calibration against live data — 2026-08-02
+
+Every threshold below was checked against production before this plan was
+executed. **This is not calibration in the statistical sense** — there are five
+learners and one of them is the owner. It is a *plausibility check*, and its
+value is narrow and specific: catching thresholds that make a detector
+**structurally unable to fire**. A dead detector is indistinguishable from a
+healthy one with nothing to report, which is the silent-failure mode this
+codebase keeps meeting (B-229 keyed on a gloss no learner sees; B-228's grep
+matched nothing; a question-type inventory whose six values have zero rows).
+
+It found two detectors that could never have spoken.
+
+| Constant | Planned | Live says | Verdict |
+|---|---|---|---|
+| `LAPSE_THRESHOLD` | 4 | **max lapses in the whole DB is 4**, on one card. p50–p95 all **0**; 32 of 995 cards have ≥1 | 🔴 **dead — rewritten, see Task 3** |
+| `REGRESSION_THRESHOLD` | 2 | **zero** `remembered→learning` transitions, ever | 🔴 **dead — removed** |
+| `COUNT_SCALE` (leeches) | 6 | corpus contains 1 | 🔴 **dead — rewritten** |
+| placement `readingOffset` | per-item | **constant 0.4 for every kanji**, and in *logits* while the gap is a probability | 🔴 **dead — see Task 2** |
+| `PRAISE_CEILING` | 2.5 | `difficulty_at_ask` max **2.00**, p90 1.17 | 🟡 top of range unreachable → **2.0** |
+| `SE_TIGHT` / `SE_LOOSE` | 0.3 / 1.2 | real `ability_se`: 0.35, 0.43, 0.55 | 🟡 hedging inert above 0.55; left as-is, it fails safe |
+| `SPEEDUP_FLOOR` | 0.1 | review `response_ms` p25/p50/p75 = **7.7s / 15.8s / 30.4s** | 🟡 noise-dominated; see Task 7 note |
+| `POPULATION_QUIZ_READING_GAP` | 0.073 | measured: meaning .8848 (n=1,641) vs reading .8117 (n=563) | ✅ measured |
+| `GLOSS_SET_CAP` / length | 3 / 48 | median 21, p95 33, max 48 over 2,294 kanji | ✅ measured (B-229) |
+| `NOVELTY_FLOOR`, `NOVELTY_HALFLIFE_DAYS` | 0.25, 14 | **not measurable — no finding has ever been raised** | ⚪ product judgement, see below |
+
+**`NOVELTY_HALFLIFE_DAYS` cannot be calibrated and should not pretend to be.**
+There is no history of raised findings, so there is nothing to fit. It is a
+judgement about how often Buddy may repeat himself, and the one real input is
+the Buddy cadence: sessions are **weekly**, so a 14-day halflife means a
+finding raised last session has recovered about half its novelty by the session
+after next. That is the argument for 14 — not data. Revisit once the notebook
+has a few weeks of superseded entries, which is the first time the question
+becomes empirical.
+
+### Fillability of `LearnerSnapshot` — checked before building it
+
+Every field is a promise Postgres can supply it. Four cannot be kept as written.
+
+| Field | Status |
+|---|---|
+| 🔴 **`priorFindings`** | **NOT FILLABLE.** `notebook_entries.body` is `text`, kinds in use are `decision`/`observation`. There is nowhere to read `kind` + `since` back from. **§4's entire decay mechanism depends on this** — without it every finding is permanently novel and the escalation in §4 cannot happen. **Slice 2 must add a JSONB column or a findings table.** Slice 1 defines the type and `select()` handles an empty array correctly, so it is not a blocker for building — but it *is* a blocker for the feature working. |
+| 🟡 `PlacementItemOutcome.readingOffset` | Fillable, but from `kanji_difficulty`, not `placement_results` — and it is the same constant for every kanji. |
+| 🟡 `CommitmentSnapshot.promisedMinutes` | Computed, not stored: `minutes_per_day × days_committed` from `buddy_commitments`. Actual comes from `SUM(daily_stats.study_time_ms)`. |
+| 🟡 `HookSnapshot.sessionDates` | **No `buddy_sessions` table exists.** Candidates are `buddy_conversations.created_at` (2 rows) or `buddy_commitments.week_start`. **Slice 2 must pin this down**; `hook_coverage`'s staleness trigger depends on it and silently degrades to the zero-hooks branch without it. |
+| ✅ everything else | `placement_results` supplies meaning/reading/difficulty_at_ask; `user_kanji_progress` has `reading_stage` and `lapses`; `review_logs` has `prev_status`/`next_status` and response times; `kl_test_results` supplies the quiz half. |
+
+**Also worth knowing:** 4 of 5 learners have **zero** co-created hooks, so
+`hook_coverage` fires immediately for most of them. That is correct behaviour,
+but it will dominate selection until hooks exist — expect it to be the finding
+everyone sees first.
+
 ## File Structure
 
 ```
@@ -304,6 +356,30 @@ export const MEANING_QUESTION_TYPES: readonly string[] = [
  */
 export const POPULATION_QUIZ_READING_GAP = 0.073
 
+/**
+ * The same thing for PLACEMENT items, and it points the other way.
+ *
+ * Measured across every placement item with a reading asked (live,
+ * 2026-08-02): readings came out **0.033 BETTER** than meanings. Per session:
+ * -0.182, 0.000, +0.100 over n = 11, 9, 10.
+ *
+ * The likely reason is instrument, not learner: placement readings are
+ * four-option multiple choice with a 25% guess floor, while quiz
+ * `reading_recall` is typed. Whatever the cause, it is the baseline a
+ * placement gap must be measured against.
+ *
+ * ⚠️ **Do NOT use `kanji_difficulty.readingOffset` for this.** The plan
+ * originally averaged it per item. It is (a) a single constant 0.4 for every
+ * kanji — the per-item framing is fiction — and (b) in **logits**, while an
+ * accuracy gap is a probability. Subtracting 0.4 from a gap that averages
+ * -0.03 means the learner would need a >50-point accuracy gap before this
+ * finding could fire. It was as dead as `leech`, for the same reason, and was
+ * caught the same way.
+ *
+ * n = 30 items total. Thin. Recompute as placements accumulate.
+ */
+export const POPULATION_PLACEMENT_READING_GAP = -0.033
+
 export interface ReviewSnapshot {
   cards: CardSnapshot[]
   quiz: QuizOutcome[]
@@ -421,10 +497,15 @@ git commit -m "feat(coaching): Finding contract, LearnerSnapshot, and per-kind m
 
 The two halves are measured against **different** population baselines and must not be pooled naively:
 
-| Source | Baseline | Why |
+| Source | Baseline | Measured on live |
 |---|---|---|
-| Placement items | per-item `readingOffset`, averaged | Each item carries its own, in **logits** |
-| Quiz rows | `POPULATION_QUIZ_READING_GAP` (0.073) | Measured directly as a **probability** |
+| Placement items | `POPULATION_PLACEMENT_READING_GAP` | **−0.033** — readings run slightly *better*, probably the 4-option guess floor |
+| Quiz rows | `POPULATION_QUIZ_READING_GAP` | **+0.073** — readings run behind |
+
+Both are **probabilities**, measured the same way, and subtract cleanly from an
+observed accuracy gap. The plan originally used `kanji_difficulty.readingOffset`
+for the placement half; that is a constant 0.4 **in logits** and made the
+detector unfirable. See the constants for the full story.
 
 Compute an excess per source, then combine weighted by observation count.
 
@@ -471,15 +552,14 @@ describe('detectReadingLag', () => {
     expect(detectReadingLag(snap([item({ readingCorrect: null })]))).toBeNull()
   })
 
-  it('THE CORE CASE: no finding when the gap is only the population offset', () => {
-    // Meanings 100%, readings 70%. Mean readingOffset 0.3 in logit terms maps
-    // to an expected accuracy gap of exactly 0.3 here, so the excess is 0.
+  it('THE CORE CASE: no finding when the gap is only the population baseline', () => {
+    // Readings 3 points better than meanings, i.e. right on
+    // POPULATION_PLACEMENT_READING_GAP (-0.033). Excess ~0, no finding.
     const items = [
-      ...Array.from({ length: 7 }, (_, i) => item({ kanjiId: i, readingCorrect: true })),
-      ...Array.from({ length: 3 }, (_, i) => item({ kanjiId: 100 + i, readingCorrect: false })),
+      ...Array.from({ length: 97 }, (_, i) => item({ kanjiId: i, meaningCorrect: true, readingCorrect: true })),
+      ...Array.from({ length: 3 }, (_, i) => item({ kanjiId: 100 + i, meaningCorrect: false, readingCorrect: true })),
     ]
-    const f = detectReadingLag(snap(items))
-    expect(f).toBeNull()
+    expect(detectReadingLag(snap(items))).toBeNull()
   })
 
   it('fires when readings trail by MORE than the population offset', () => {
@@ -620,7 +700,8 @@ Expected: FAIL — `Failed to resolve import "./reading-lag"`.
 // packages/shared/src/coaching/detectors/reading-lag.ts
 import type { Evidence, Finding, LearnerSnapshot } from '../types'
 import {
-  MEANING_QUESTION_TYPES, READING_QUESTION_TYPES, POPULATION_QUIZ_READING_GAP,
+  MEANING_QUESTION_TYPES, READING_QUESTION_TYPES,
+  POPULATION_QUIZ_READING_GAP, POPULATION_PLACEMENT_READING_GAP,
 } from '../types'
 import { confidenceFromCount, normaliseLinear } from '../magnitude'
 
@@ -665,9 +746,13 @@ function placementExcess(snapshot: LearnerSnapshot): SourceExcess | null {
 
   const meaningAccuracy = asked.filter((i) => i.meaningCorrect).length / asked.length
   const readingAccuracy = asked.filter((i) => i.readingCorrect === true).length / asked.length
-  const expectedGap = asked.reduce((sum, i) => sum + i.readingOffset, 0) / asked.length
 
-  return { excess: meaningAccuracy - readingAccuracy - expectedGap, n: asked.length }
+  // Measured probability baseline — NOT the per-item readingOffset, which is a
+  // constant 0.4 in logits and made this detector unfirable. See the constant.
+  return {
+    excess: meaningAccuracy - readingAccuracy - POPULATION_PLACEMENT_READING_GAP,
+    n: asked.length,
+  }
 }
 
 /** Excess lag from quiz history, or null when either side has no answers. */
@@ -706,7 +791,7 @@ export function detectReadingLag(snapshot: LearnerSnapshot): Finding | null {
     evidence.push(
       { label: 'meaning accuracy', value: round2(asked.filter((i) => i.meaningCorrect).length / asked.length) },
       { label: 'reading accuracy', value: round2(asked.filter((i) => i.readingCorrect === true).length / asked.length) },
-      { label: 'expected reading penalty', value: round2(asked.reduce((s, i) => s + i.readingOffset, 0) / asked.length) },
+      { label: 'expected reading penalty', value: POPULATION_PLACEMENT_READING_GAP },
       { label: 'items with a reading asked', value: asked.length },
     )
   }
@@ -794,50 +879,79 @@ describe('detectLeech', () => {
     expect(detectLeech(snap([]))).toBeNull()
   })
 
-  it('returns null when nothing is lapsing', () => {
-    expect(detectLeech(snap([card({ lapses: 1 }), card({ kanjiId: 2, lapses: 0 })]))).toBeNull()
+  it('returns null when nothing has lapsed at all', () => {
+    expect(detectLeech(snap([card(), card({ kanjiId: 2 })]))).toBeNull()
   })
 
-  it('fires on a card past the lapse threshold', () => {
-    const f = detectLeech(snap([card({ kanjiId: 9, character: '難', lapses: 6 })]))!
-    expect(f.kind).toBe('leech')
-    expect(f.magnitude).toBeGreaterThan(0)
-  })
-
-  it('counts a remembered→learning regression as evidence too', () => {
-    const f = detectLeech(snap([card({ kanjiId: 9, character: '難', lapses: 4, regressions: 3 })]))!
+  /**
+   * THE CASE THAT KILLED THE FIRST VERSION. Live data has a maximum of 4
+   * lapses on one card and zero regressions ever, so `lapses >= 4` fired for
+   * nobody. A single lapsed card in a small deck must register.
+   */
+  it('fires on ONE lapsed card when the deck is small — relative, not absolute', () => {
+    const cards = [card({ kanjiId: 1, character: '難', lapses: 1 }), card({ kanjiId: 2 }), card({ kanjiId: 3 })]
+    const f = detectLeech(snap(cards))!
     expect(f).not.toBeNull()
-    const worst = f.evidence.find((e) => e.character === '難')
-    expect(worst).toBeDefined()
+    expect(f.kind).toBe('leech')
+  })
+
+  it('stays quiet when trouble is a negligible share of a large deck', () => {
+    // 1 troubled card in 200 = 0.5%, below TROUBLE_FLOOR (2%).
+    const cards = [
+      card({ kanjiId: 1, lapses: 3 }),
+      ...Array.from({ length: 199 }, (_, i) => card({ kanjiId: 100 + i })),
+    ]
+    expect(detectLeech(snap(cards))).toBeNull()
+  })
+
+  it('scales with the FRACTION of the deck in trouble, not the raw count', () => {
+    const smallDeckBadly = snap([
+      ...Array.from({ length: 5 }, (_, i) => card({ kanjiId: i, lapses: 2 })),
+      ...Array.from({ length: 15 }, (_, i) => card({ kanjiId: 100 + i })),
+    ]) // 25%
+    const bigDeckMildly = snap([
+      ...Array.from({ length: 5 }, (_, i) => card({ kanjiId: i, lapses: 2 })),
+      ...Array.from({ length: 495 }, (_, i) => card({ kanjiId: 100 + i })),
+    ]) // 1%
+    expect(detectLeech(smallDeckBadly)!.magnitude)
+      .toBeGreaterThan(detectLeech(bigDeckMildly)?.magnitude ?? 0)
+  })
+
+  it('counts a remembered→learning regression as trouble too', () => {
+    const cards = [card({ kanjiId: 9, character: '難', regressions: 1 }), card({ kanjiId: 2 }), card({ kanjiId: 3 })]
+    expect(detectLeech(snap(cards))).not.toBeNull()
   })
 
   it('names the worst offenders, worst first, capped at 3', () => {
     const cards = [
-      card({ kanjiId: 1, character: '一', lapses: 5 }),
-      card({ kanjiId: 2, character: '二', lapses: 9 }),
-      card({ kanjiId: 3, character: '三', lapses: 7 }),
-      card({ kanjiId: 4, character: '四', lapses: 6 }),
+      card({ kanjiId: 1, character: '一', lapses: 1 }),
+      card({ kanjiId: 2, character: '二', lapses: 4 }),
+      card({ kanjiId: 3, character: '三', lapses: 3 }),
+      card({ kanjiId: 4, character: '四', lapses: 2 }),
     ]
-    const f = detectLeech(snap(cards))!
-    const named = f.evidence.filter((e) => e.character !== undefined)
+    const named = detectLeech(snap(cards))!.evidence.filter((e) => e.character !== undefined)
     expect(named).toHaveLength(3)
     expect(named[0]!.character).toBe('二')
     expect(named[1]!.character).toBe('三')
   })
 
-  it('grows with the number of leeches, not just the worst one', () => {
-    const one = detectLeech(snap([card({ kanjiId: 1, lapses: 5 })]))!
-    const many = detectLeech(snap(
-      Array.from({ length: 12 }, (_, i) => card({ kanjiId: i, lapses: 5 })),
-    ))!
-    expect(many.magnitude).toBeGreaterThan(one.magnitude)
+  it('ignores burned and unseen cards in BOTH the numerator and the denominator', () => {
+    expect(detectLeech(snap([card({ lapses: 8, status: 'burned' })]))).toBeNull()
+    expect(detectLeech(snap([card({ lapses: 8, status: 'unseen' })]))).toBeNull()
   })
 
-  it('ignores burned cards — a mastered kanji that lapsed long ago is history', () => {
-    expect(detectLeech(snap([card({ lapses: 8, status: 'burned' })]))).toBeNull()
+  it('is deterministic on a tie', () => {
+    const cards = [
+      card({ kanjiId: 7, character: '七', lapses: 2 }),
+      card({ kanjiId: 3, character: '三', lapses: 2 }),
+      card({ kanjiId: 9 }),
+    ]
+    const first = detectLeech(snap(cards))!.evidence.filter((e) => e.character).map((e) => e.character)
+    for (let i = 0; i < 3; i++) {
+      expect(detectLeech(snap(cards))!.evidence.filter((e) => e.character).map((e) => e.character)).toEqual(first)
+    }
   })
 })
-```
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -849,42 +963,67 @@ Expected: FAIL — `Failed to resolve import "./leech"`.
 ```ts
 // packages/shared/src/coaching/detectors/leech.ts
 import type { CardSnapshot, Evidence, Finding, LearnerSnapshot } from '../types'
-import { confidenceFromCount, normaliseSaturating } from '../magnitude'
+import { confidenceFromCount, normaliseLinear } from '../magnitude'
 
 /**
- * Cards that keep falling over: high lapse counts, or repeated
- * remembered→learning regressions.
+ * Cards that keep falling over.
  *
- * MAGNITUDE MAPPING (this kind's own scale, per §2): saturating in the NUMBER
- * of leeches, not in the worst one's lapse count. Ten cards lapsing four times
- * is a study-strategy problem; one card lapsing forty times is one bad card.
- * The first is what a coach should raise.
+ * ⚠️ THIS WAS REWRITTEN AFTER MEASURING LIVE (2026-08-02). The first version
+ * used `lapses >= 4` OR `regressions >= 2`. Against production both are
+ * unfirable: the maximum lapse count in the entire database is **4, on one
+ * card**, p50 through p95 are all **0**, and there have been **zero**
+ * `remembered→learning` regressions ever. That detector would have passed
+ * every unit test — its fixtures used lapses of 5, 6 and 9 — and then never
+ * spoken, which is indistinguishable from a healthy detector with nothing to
+ * report.
+ *
+ * An ABSOLUTE threshold is the wrong instrument here. Tuned for today's data
+ * it fires on noise; tuned for a mature deck it is dead. A RELATIVE rule has a
+ * sensible answer at any data volume, and it is what a coach actually means:
+ * *"these are the ones giving you trouble."*
+ *
+ * MAGNITUDE MAPPING (this kind's own scale, per §2): the FRACTION of the
+ * learner's active deck that is giving trouble, linear from TROUBLE_FLOOR to
+ * TROUBLE_CEILING. On live today that is 32/995 ≈ 3.2%, which lands just above
+ * the floor — the finding fires quietly, which is correct: there is mild
+ * trouble and it deserves a mention, not an alarm.
  */
-const LAPSE_THRESHOLD = 4
-const REGRESSION_THRESHOLD = 2
-/** Reaches ~63% magnitude at 6 leeches. */
-const COUNT_SCALE = 6
+/** Any lapse or regression at all makes a card a candidate. */
+const MIN_TROUBLE_SCORE = 1
+/** Below this share of the deck, trouble is noise. */
+const TROUBLE_FLOOR = 0.02
+/** A quarter of the active deck lapsing is a serious study-strategy problem. */
+const TROUBLE_CEILING = 0.25
 const CONFIDENCE_SCALE = 8
 const MAX_NAMED = 3
 
-function leechScore(c: CardSnapshot): number {
+function troubleScore(c: CardSnapshot): number {
   return c.lapses + c.regressions
 }
 
-function isLeech(c: CardSnapshot): boolean {
-  // A burned card is out of rotation; its history is not actionable advice.
-  if (c.status === 'burned') return false
-  return c.lapses >= LAPSE_THRESHOLD || c.regressions >= REGRESSION_THRESHOLD
+/** A burned card is out of rotation; its history is not actionable advice. */
+function isActive(c: CardSnapshot): boolean {
+  return c.status !== 'unseen' && c.status !== 'burned'
 }
 
 export function detectLeech(snapshot: LearnerSnapshot): Finding | null {
-  const leeches = snapshot.reviews.cards.filter(isLeech)
-  if (leeches.length === 0) return null
+  const active = snapshot.reviews.cards.filter(isActive)
+  if (active.length === 0) return null
 
-  const worst = [...leeches].sort((a, b) => leechScore(b) - leechScore(a))
+  const troubled = active.filter((c) => troubleScore(c) >= MIN_TROUBLE_SCORE)
+  if (troubled.length === 0) return null
+
+  const troubledFraction = troubled.length / active.length
+  const magnitude = normaliseLinear(troubledFraction, TROUBLE_FLOOR, TROUBLE_CEILING)
+  if (magnitude === 0) return null
+
+  const worst = [...troubled].sort(
+    (a, b) => troubleScore(b) - troubleScore(a) || a.kanjiId - b.kanjiId,
+  )
 
   const evidence: Evidence[] = [
-    { label: 'kanji lapsing repeatedly', value: leeches.length },
+    { label: 'kanji giving trouble', value: troubled.length },
+    { label: 'active kanji', value: active.length },
     ...worst.slice(0, MAX_NAMED).map((c): Evidence => ({
       label: 'lapses',
       value: c.lapses,
@@ -895,8 +1034,8 @@ export function detectLeech(snapshot: LearnerSnapshot): Finding | null {
 
   return {
     kind: 'leech',
-    magnitude: normaliseSaturating(leeches.length, COUNT_SCALE),
-    confidence: confidenceFromCount(snapshot.reviews.cards.length, CONFIDENCE_SCALE),
+    magnitude,
+    confidence: confidenceFromCount(active.length, CONFIDENCE_SCALE),
     evidence,
     since: null,
   }
@@ -906,13 +1045,13 @@ export function detectLeech(snapshot: LearnerSnapshot): Finding | null {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/leech.test.ts`
-Expected: PASS, 7 tests.
+Expected: PASS, 9 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add packages/shared/src/coaching/detectors/leech.ts packages/shared/src/coaching/detectors/leech.test.ts
-git commit -m "feat(coaching): leech — scaled by how MANY cards lapse, not the worst one"
+git commit -m "feat(coaching): leech — relative to the deck, because the absolute threshold was unfirable"
 ```
 
 ---
@@ -1684,6 +1823,14 @@ import { confidenceFromCount, normaliseLinear } from '../magnitude'
  * mean response time, linear from 0 at SPEEDUP_FLOOR to 1 at SPEEDUP_CEILING.
  */
 const ACCURACY_SLACK = 0.05
+/**
+ * ⚠️ Measured 2026-08-02: review `response_time_ms` on live runs p25 7.7s,
+ * p50 15.8s, p75 30.4s. That spread is wide enough that a 10% shift in a
+ * per-card mean is well inside noise for a card with few reviews. The
+ * confidence scale below is the hedge — a fluency claim from 3 cards must not
+ * be spoken like one from 50 — but if this finding turns out to fire on
+ * nothing but jitter, RAISE THE FLOOR rather than adding cleverness.
+ */
 const SPEEDUP_FLOOR = 0.1
 const SPEEDUP_CEILING = 0.5
 const CONFIDENCE_SCALE = 15
@@ -1938,7 +2085,9 @@ import { widenForStaleness } from '../../placement-difficulty'
  * Below the floor, clearing it is not news.
  */
 const PRAISE_FLOOR = -1
-const PRAISE_CEILING = 2.5
+// Measured 2026-08-02: difficulty_at_ask maxes at 2.00 on live, p90 = 1.17.
+// A ceiling of 2.5 would have made full marks unreachable.
+const PRAISE_CEILING = 2.0
 
 export function detectHardestCleared(snapshot: LearnerSnapshot): Finding | null {
   const p = snapshot.placement
@@ -2581,6 +2730,8 @@ git commit -m "feat(coaching): analyze() composes the detectors; template floor 
 | §10 no finding with confidence > 0 on absent data | 10 |
 | §14.1 count is a dial | 9 (`select`'s `count` parameter) |
 | §14.4 `hook_coverage` is an offer on a named kanji | 5 |
+| Thresholds checked against live before building | Calibration section |
+| `LearnerSnapshot` verified fillable from Postgres | Calibration section (4 gaps found) |
 
 **Deliberately out of this slice, each with its own plan:** §5 two modes, §6 cadence and triggers, §7 the Profile IRT section, §8 goal collection, and snapshot assembly from Postgres. §14.2 (companion mode's single prompt) and the §8 third escalator option land in slices 3–4 and 6 respectively.
 
@@ -2592,7 +2743,7 @@ git commit -m "feat(coaching): analyze() composes the detectors; template floor 
 
 ## Two risks worth naming before execution
 
-**1. The thresholds in this plan are reasoned, not calibrated.** `LAPSE_THRESHOLD = 4`, `NOVELTY_HALFLIFE_DAYS = 14`, `SE_LOOSE = 1.2` and their siblings are defensible starting points, not measured ones. They are all named constants at the top of their modules for exactly that reason. Expect to tune them against real snapshots once slice 2 can produce them — and prefer tuning to rewriting.
+**1. The thresholds were plausibility-checked against live on 2026-08-02, not statistically calibrated.** See the calibration section above for what each one was measured against. That pass caught two detectors that could never have fired (`leech`, and `reading_lag`'s placement half) — both now rewritten. What it cannot do is tell you whether the *surviving* values are well-chosen: there are five learners and one is the owner. `NOVELTY_HALFLIFE_DAYS` and `NOVELTY_FLOOR` were not measurable at all, because no finding has ever been raised. Every threshold is a named constant at the top of its module. Re-run the sweep once slice 2 can produce real snapshots, and prefer tuning to rewriting.
 
 **2. The PLACEMENT half of `reading_lag` mixes units; the quiz half does not.** Task 2 treats the mean `readingOffset` as directly comparable to an accuracy gap. `readingOffset` is stored in **logits** (`bReading = b + readingOffset`); an accuracy difference is a **probability**. Over a placement's narrow range they track closely enough for a threshold comparison, and the fixtures are written in those terms — but verify the magnitudes look sane on a live snapshot in slice 2 before trusting them. If they do not, convert through `probCorrect(theta, b)` from `packages/shared/src/placement.ts` rather than adjusting `LAG_FLOOR` until it looks right.
 
