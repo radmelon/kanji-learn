@@ -43,6 +43,7 @@ import { CompoundCard } from '../../src/components/study/CompoundCard'
 import { GradeButtons } from '../../src/components/study/GradeButtons'
 import { SessionComplete } from '../../src/components/study/SessionComplete'
 import { selectStudyScreen } from '../../src/lib/study-screen'
+import { shouldEndStudySession } from '../../src/lib/study-session-exit'
 import { CoCreationSheet } from '../../src/components/mnemonics/CoCreationSheet'
 import { ReinforceSheet } from '../../src/components/mnemonics/ReinforceSheet'
 import { WritingLeg } from '../../src/components/study/WritingLeg'
@@ -58,7 +59,7 @@ const HELP_KEY = 'kl_has_seen_study_help'
 
 function StudySession() {
   const router = useRouter()
-  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset, studyStartMs, goalMinutes, leg, recallKanjiId, completeWritingLeg, completeSpeakingLeg, passQuizLeg, failQuizLeg, completeRecallLeg } =
+  const { queue, currentIndex, isLoading, isComplete, error, isOfflineQueue, isWeakDrill, loadQueue, loadMissedQueue, submitResult, undoLastResult, finishSession, syncPendingSessions, reset, studyStartMs, goalMinutes, leg, recallKanjiId, completeWritingLeg, completeSpeakingLeg, passQuizLeg, failQuizLeg, completeRecallLeg, freshSessionRequested, clearFreshSessionRequest } =
     useReviewStore()
   // Respect the user's onboarding choice (5/10/15/20/30 minutes). Falls back
   // to 15 until the profile finishes loading on first mount.
@@ -274,6 +275,30 @@ function StudySession() {
   }, [profile])
 
   useEffect(() => () => reset(), [])
+
+  // B-226. The one teardown every exit from a finished session runs. Session
+  // Complete's `onDone` used to be the only path that cleared this state, so
+  // leaving by tapping another tab left `sessionSummary` set and `phase` at
+  // 'active' — and the Dashboard's "Start Today's Reviews" re-rendered the
+  // finished session instead of starting one.
+  const endStudySession = useCallback(() => {
+    clearBuddyMoment()
+    setSessionSummary(null)
+    reset()
+    setPhase('ready')
+  }, [clearBuddyMoment, reset])
+
+  // The Dashboard cannot reach `sessionSummary`/`phase` — they are local to
+  // this screen — so it raises a one-shot request on the store and this
+  // consumes it. `shouldEndStudySession` holds the rule about which sessions
+  // are stale; an in-progress one must survive.
+  useEffect(() => {
+    if (!freshSessionRequested) return
+    clearFreshSessionRequest()
+    if (shouldEndStudySession({ freshSessionRequested, hasSessionSummary: sessionSummary !== null })) {
+      endStudySession()
+    }
+  }, [freshSessionRequested, sessionSummary, endStudySession, clearFreshSessionRequest])
 
   // Only meaningful once the queue is empty again — see selectStudyScreen.
   useEffect(() => {
@@ -668,14 +693,13 @@ function StudySession() {
           {...sessionSummary}
           onDone={() => {
             // Clear local summary + Zustand review state BEFORE navigating so
-            // re-entering the Study tab (via Dashboard → Start Today's Reviews)
-            // mounts a fresh queue instead of re-rendering the stale Session
-            // Complete screen. Expo Router tabs stay mounted across navigations,
-            // so without this reset the state survives and the user gets stuck.
-            clearBuddyMoment()
-            setSessionSummary(null)
-            reset()
-            setPhase('ready')
+            // re-entering the Study tab mounts a fresh queue instead of
+            // re-rendering the stale Session Complete screen. Expo Router tabs
+            // stay mounted across navigations, so without this the state
+            // survives and the user gets stuck. Shared with the Dashboard's
+            // entry point via endStudySession (B-226) — this was the only path
+            // that ran it, and leaving by tab bypassed it entirely.
+            endStudySession()
             router.replace('/(tabs)')
           }}
           onReview={() => {

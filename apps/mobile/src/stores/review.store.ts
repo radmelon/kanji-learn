@@ -79,6 +79,17 @@ interface ReviewState {
   recallKanjiId: number | null
   /** Per-modality rep counts for the current session (Session Complete §5). */
   modalityCounts: ModalityCounts
+  /**
+   * One-shot: the learner asked for a session from *outside* the Study tab
+   * (the Dashboard's "Start Today's Reviews"). The Study tab owns `phase` and
+   * `sessionSummary` as local state, so the Dashboard cannot clear them
+   * directly — it raises this instead and study.tsx consumes it. B-226.
+   *
+   * Deliberately NOT folded into `reset()`: reset also fires incidentally (a
+   * profile PATCH mid-session, sign-out), and dismissing Session Complete on
+   * that signal is the B-216 defect. See src/lib/study-screen.ts.
+   */
+  freshSessionRequested: boolean
 
   loadQueue: (goalMinutes: number) => Promise<void>
   submitResult: (result: ReviewResult) => void
@@ -88,6 +99,11 @@ interface ReviewState {
   syncPendingSessions: () => Promise<void>
   loadMissedQueue: () => boolean
   reset: () => void
+  /** Raise the one-shot fresh-session request. Called by any entry point
+   *  outside the Study tab that promises to *start* a session. */
+  requestFreshSession: () => void
+  /** Lower it. Called by study.tsx once it has acted on the request. */
+  clearFreshSessionRequest: () => void
   /** Advance past the current kanji: bump the index, run the time-box check,
    *  reset the leg. Called when a kanji's full path is done. */
   endKanji: () => void
@@ -122,6 +138,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   leg: 'flashcard',
   recallKanjiId: null,
   modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 },
+  freshSessionRequested: false,
 
   loadQueue: async (goalMinutes) => {
     set({ isLoading: true, isComplete: false, currentIndex: 0, results: [], error: null, isOfflineQueue: false, isWeakDrill: false, goalMinutes, leg: 'flashcard', recallKanjiId: null, modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
@@ -451,4 +468,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     storage.removeItem(KEY_PROGRESS)
     set({ queue: [], currentIndex: 0, results: [], isComplete: false, studyStartMs: 0, isOfflineQueue: false, isWeakDrill: false, goalMinutes: 0, leg: 'flashcard', recallKanjiId: null, modalityCounts: { flashcard: 0, writing: 0, speaking: 0, quiz: 0 } })
   },
+
+  // B-226. Note this does NOT call reset(): the Study tab decides whether the
+  // request applies (a finished session is stale, an in-progress one is not),
+  // and tears down both halves itself. See src/lib/study-session-exit.ts.
+  requestFreshSession: () => set({ freshSessionRequested: true }),
+  clearFreshSessionRequest: () => set({ freshSessionRequested: false }),
 }))

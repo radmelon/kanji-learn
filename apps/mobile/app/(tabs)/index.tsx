@@ -204,11 +204,17 @@ export default function Dashboard() {
     setActiveInfo((prev) => (prev === id ? null : id))
   }, [])
 
-  const { loadWeakQueue } = useReviewStore()
+  const { loadWeakQueue, requestFreshSession } = useReviewStore()
 
   const handleStudy = useCallback(() => {
+    // B-226. Expo Router keeps the Study tab mounted, so a session finished
+    // and left by tapping another tab is still on screen there. Without this
+    // the app's primary call to action re-opens a *finished* session. The
+    // request is explicit rather than a blanket reset() because an in-progress
+    // session must survive it — see src/lib/study-session-exit.ts.
+    requestFreshSession()
     router.push('/(tabs)/study')
-  }, [router])
+  }, [router, requestFreshSession])
 
   const handleQuiz = useCallback(() => {
     router.push('/test')
