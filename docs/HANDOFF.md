@@ -36,6 +36,12 @@
 > **Slice 1 needs no database.** The corpus import below matters for the API
 > lane, not for this work — `pnpm --filter @kanji-learn/shared test` is the
 > only lane it touches.
+>
+> **Read the plan's "Calibration against live data" section before Task 3.**
+> Every threshold was checked against production on 2026-08-02 and **two
+> detectors could never have fired**. Both are rewritten, but the section also
+> records which constants are still guesses and which four `LearnerSnapshot`
+> fields are not fillable as written.
 
 ### ✅ B148 is cut, submitted, and carries every bug fixed today
 
@@ -195,6 +201,54 @@ failures traced to them:
 — anything in the thousands is a suite that failed to clean up, and the
 symptoms will appear in a different file from the cause.
 
+### 🎯 The slice-1 thresholds were checked against live — two detectors were dead
+
+Done before execution rather than after, because a threshold is cheapest to fix
+before anything is built on it. Full table in the plan's **Calibration against
+live data** section; `86b5eff`.
+
+**This is a plausibility check, not calibration** — five learners, one of them
+the owner. Its value is narrow and it delivered exactly that: catching
+thresholds that make a detector **structurally unable to fire**, which looks
+identical to a healthy detector with nothing to report. The same silent-failure
+shape as B-229 and B-228.
+
+| Detector | What live said | Outcome |
+|---|---|---|
+| `leech` | `LAPSE_THRESHOLD = 4` against a DB whose **maximum lapse count is 4**, on one card, p50–p95 all **0**. **Zero** `remembered→learning` regressions ever | 🔴 **rewritten as relative** — the fraction of the learner's deck in trouble, which works at any data volume |
+| `reading_lag` (placement half) | subtracted `readingOffset` — a **constant 0.4** for every kanji, in **logits**, against an accuracy gap. Needed a >50-point gap to fire | 🔴 **rewritten** — measured probability baseline instead |
+| `hardest_cleared` | `difficulty_at_ask` maxes at **2.00**; ceiling was 2.5 | 🟡 ceiling lowered to 2.0 |
+| `fluency_gain` | response times p50 **15.8s**, p75 **30.4s** | 🟡 noise-prone; raise the floor if it fires on jitter |
+| `NOVELTY_HALFLIFE_DAYS` | **not measurable** — no finding has ever been raised | ⚪ product judgement; the argument for 14 is the weekly cadence, not data |
+
+**A sign worth remembering:** placement readings run **0.033 better** than
+meanings, while quiz readings run **0.073 worse**. Same learner population,
+opposite direction — almost certainly the instrument, since placement readings
+are four-option multiple choice with a 25% guess floor and quiz
+`reading_recall` is typed. Anything comparing the two must not pool them.
+
+### 🔴 `priorFindings` is not fillable — the decay mechanism has no memory yet
+
+Checked every `LearnerSnapshot` field against Postgres before building the
+type. Four cannot be filled as written, and one of them matters a lot:
+
+**`notebook_entries.body` is `text`**, with kinds `decision` and `observation`.
+There is nowhere to read a finding's `kind` + `since` back from. **Spec §4's
+entire decay-and-escalation mechanism depends on that history** — without it
+every finding is permanently novel and Buddy can never say *"readings again."*
+
+**Slice 1 is not blocked** — it defines the type, and `select()` handles an
+empty `priorFindings` array correctly. But the feature does not *work* until
+**slice 2 adds a JSONB column or a findings table.** Decide which when slice 2
+is planned; do not let it be discovered late.
+
+Also: **no `buddy_sessions` table exists**, so `HookSnapshot.sessionDates` has
+no confirmed source (`buddy_conversations.created_at` and
+`buddy_commitments.week_start` are the candidates). `hook_coverage`'s staleness
+trigger silently degrades to the zero-hooks branch without it. And 4 of 5
+learners have **zero** co-created hooks, so that finding will dominate
+selection until hooks exist.
+
 ### 📋 Coaching spec — owner review recorded, 3 of 4 decisions closed
 
 [Spec §14](superpowers/specs/2026-08-01-buddy-coaching-analysis-design.md).
@@ -299,6 +353,17 @@ hand-copied the same numbers and one drifted.
 - **Test pollution surfaces in a different file from its cause.** The 2,283
   rows one suite left behind broke three others, and the loudest symptom looked
   like an algorithm failing to converge.
+- **🔴 Check a threshold against real data BEFORE building on it.** Two of the
+  coaching plan's detectors could never have fired, and both would have passed
+  every unit test — the fixtures were written to match the thresholds rather
+  than the world. Cost of catching it before execution: twenty minutes of
+  read-only `SELECT`s. Cost after: a shipped feature that is silently mute.
+- **"Per-item" is a claim about data, and it was false.** `readingOffset` reads
+  like a per-kanji quantity and is a single constant. Check the column, not the
+  name.
+- **A field in a type is a promise the database can supply it.** Four fields in
+  `LearnerSnapshot` could not be kept. Verifying that took one query each and
+  happened before the type was built, which is the only cheap time to find out.
 
 ---
 
