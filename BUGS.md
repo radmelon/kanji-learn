@@ -140,7 +140,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S for layer 1 — two services, no migration]` `[Impact: HIGH — corrupts placement θ and quiz scores corpus-wide; penalises learners who DO know the kanji]` `[Backend: Yes — API deploy]` `[Status: ✅ Layer 1 fixed 2026-08-02 (`e3e762e`). Layer 2 open — see spec 2]`
 
-- [x] **(B-228) The grade buttons and the SRS status bar still teach SM-2 mechanics FSRS does not have — and still credit Woźniak** — **✅ Fixed 2026-08-02 over THREE rounds (`a2c4fab`, `328ceb9`, and the round-3 commit below) — closing note at the end.** Reported by the owner from **B146/B147** (2026-08-01): *"We still have many vestige references to SRS in the Progress section… Is this intentional?"*
+- [x] **(B-228) The grade buttons and the SRS status bar still teach SM-2 mechanics FSRS does not have — and still credit Woźniak** — **✅ Fixed 2026-08-02 over THREE rounds (`a2c4fab`, `328ceb9`, `2f848e1`) — closing note at the end.** Reported by the owner from **B146/B147** (2026-08-01): *"We still have many vestige references to SRS in the Progress section… Is this intentional?"*
 
   **The reported symptom is NOT a defect — see the defence below. But investigating it found a real one the original sweep missed, in the same bug class it was created to eliminate.**
 
