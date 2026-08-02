@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { sql, and, eq, asc, inArray } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
-import { selectNextItems } from '../../src/services/placement.service'
+import { selectNextItems, getQuestionsWithDistractors } from '../../src/services/placement.service'
 import { refreshKanjiDifficulty } from '../../src/services/placement-difficulty.service'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
@@ -445,5 +445,99 @@ describe('completePlacement seeding scope', () => {
       'an easy kanji outside the asked set was not seeded — seeding is still scoped to responses',
     ).toBe(1)
     expect(result.appliedCount).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * B-229. The local test corpus is 7 kanji with empty `meanings`, so it cannot
+ * express this defect on its own — these fixtures carry the **verbatim live
+ * rows** for the seven kanji in the bug report, alphabetical order included.
+ * Without them the assertions below would pass vacuously.
+ */
+const B229_FIXTURES: { character: string; level: 'N5' | 'N2'; meanings: string[] }[] = [
+  { character: '土', level: 'N5', meanings: ['Turkey', 'earth', 'ground', 'soil'] },
+  { character: '子', level: 'N5', meanings: ['11PM-1AM', 'child', 'first sign of Chinese zodiac', 'sign of the rat'] },
+  { character: '日', level: 'N5', meanings: ['Japan', 'counter for days', 'day', 'sun'] },
+  { character: '午', level: 'N5', meanings: ['11AM-1PM', 'noon', 'seventh sign of Chinese zodiac', 'sign of the horse'] },
+  { character: '名', level: 'N5', meanings: ['distinguished', 'name', 'noted', 'reputation'] },
+  { character: '休', level: 'N5', meanings: ['day off', 'rest', 'retire', 'sleep'] },
+  { character: '来', level: 'N5', meanings: ['become', 'cause', 'come', 'due', 'next'] },
+  { character: '毛', level: 'N2', meanings: ['down', 'feather', 'fur', 'hair'] },
+]
+
+/** The sense a learner who knows the character would actually name. */
+const KNOWN_SENSE: Record<string, string> = {
+  土: 'earth', 子: 'child', 日: 'day', 午: 'noon',
+  名: 'name', 休: 'rest', 来: 'come', 毛: 'hair',
+}
+
+describe('getQuestionsWithDistractors — B-229 gloss keying', () => {
+  const ids = new Map<string, number>()
+
+  beforeAll(async () => {
+    for (const f of B229_FIXTURES) {
+      const [row] = (await db.execute(sql`
+        INSERT INTO kanji (character, jlpt_level, jlpt_order, stroke_count, meanings)
+        VALUES (${f.character}, ${f.level}::jlpt_level, 9000, 4, ${JSON.stringify(f.meanings)}::jsonb)
+        ON CONFLICT (character) DO UPDATE SET meanings = EXCLUDED.meanings
+        RETURNING id
+      `)) as unknown as { id: number }[]
+      ids.set(f.character, row.id)
+    }
+  })
+
+  afterAll(async () => {
+    if (ids.size > 0) {
+      await db.execute(sql`DELETE FROM kanji WHERE id IN ${sql`(${sql.join([...ids.values()].map((i) => sql`${i}`), sql`, `)})`}`)
+    }
+  })
+
+  it('keys each item on a gloss set containing the sense a learner would name', async () => {
+    const questions = await getQuestionsWithDistractors(db, [...ids.values()])
+    expect(questions).toHaveLength(B229_FIXTURES.length)
+
+    for (const q of questions) {
+      const keyed = q.meaningOptions[q.correctMeaningIndex]
+      expect(keyed, `${q.character} produced no keyed meaning`).toBeTruthy()
+      expect(
+        keyed,
+        `${q.character} is keyed "${keyed}" — a learner who knows it as "${KNOWN_SENSE[q.character]}" would be scored wrong`,
+      ).toContain(KNOWN_SENSE[q.character])
+    }
+  })
+
+  /**
+   * B-229 verification criterion #2. Every fixture has at least one plain
+   * lowercase gloss, so none of them may lead with a digit or a capital.
+   */
+  it('never keys an item on a digit/capital gloss when a plain sense exists', async () => {
+    const questions = await getQuestionsWithDistractors(db, [...ids.values()])
+    for (const q of questions) {
+      const keyed = q.meaningOptions[q.correctMeaningIndex]
+      expect(keyed, `${q.character} keyed on the alphabetical artifact "${keyed}"`).not.toMatch(/^[0-9A-Z]/)
+    }
+    // The pre-fix behaviour, stated so a regression is unambiguous.
+    const doQ = questions.find((q: any) => q.character === '土')!
+    expect(doQ.meaningOptions[doQ.correctMeaningIndex]).not.toBe('Turkey')
+  })
+
+  it('offers no distractor that shares a sense with the answer', async () => {
+    const questions = await getQuestionsWithDistractors(db, [...ids.values()])
+    const byCharacter = new Map(B229_FIXTURES.map((f) => [f.character, f.meanings.map((m) => m.toLowerCase())]))
+
+    for (const q of questions) {
+      const answerSenses = byCharacter.get(q.character)!
+      const options = q.meaningOptions as string[]
+      const distractors = options.filter((_, i) => i !== q.correctMeaningIndex)
+      for (const d of distractors) {
+        if (d === '—') continue
+        for (const gloss of d.split(' / ')) {
+          expect(
+            answerSenses,
+            `${q.character}: distractor "${d}" contains "${gloss}", which is also a correct answer`,
+          ).not.toContain(gloss.toLowerCase())
+        }
+      }
+    }
   })
 })

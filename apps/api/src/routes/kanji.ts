@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { eq, and, ilike, sql, asc } from 'drizzle-orm'
 import { kanji, userKanjiProgress } from '@kanji-learn/db'
-import { snoozeUntil } from '@kanji-learn/shared'
+import { snoozeUntil, rankGlosses } from '@kanji-learn/shared'
 
 // Defensive array coercion. `?? []` only catches null/undefined, but a
 // jsonb column can hold a scalar (e.g. a corrupted string that was once an
@@ -224,7 +224,8 @@ export async function kanjiRoutes(server: FastifyInstance) {
           id: r.id,
           character: r.character,
           jlptLevel: r.jlptLevel,
-          meaning: toArr<string>(r.meanings)[0] ?? '',
+          // B-229: alphabetical storage makes `[0]` "Turkey" for 土.
+          meaning: rankGlosses(toArr<string>(r.meanings))[0] ?? '',
           srsStatus: r.srsStatus ?? 'unseen',
         })),
       })

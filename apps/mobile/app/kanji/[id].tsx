@@ -19,6 +19,7 @@ import { StrokeOrderAnimation } from '../../src/components/writing/StrokeOrderAn
 import { api } from '../../src/lib/api'
 import { colors, spacing, radius, typography } from '../../src/theme'
 import type { SrsStatus } from '@kanji-learn/shared'
+import { rankGlosses } from '@kanji-learn/shared'
 import { getRadicalName } from '../../src/constants/radicals'
 import { useMnemonics } from '../../src/hooks/useMnemonics'
 import { getBestVoice } from '../../src/utils/tts'
@@ -298,7 +299,8 @@ export default function KanjiDetail() {
                 <Text style={styles.strokeText}>{kanji.strokeCount} strokes</Text>
               </View>
             </View>
-            <Text style={styles.primaryMeaning}>{kanji.meanings[0] ?? ''}</Text>
+            {/* B-229: alphabetical storage makes `[0]` "Turkey" for 土. */}
+            <Text style={styles.primaryMeaning}>{rankGlosses(kanji.meanings)[0] ?? ''}</Text>
           </View>
 
           {/* Review Progress */}

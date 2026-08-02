@@ -2,6 +2,7 @@
 export * from './types'
 export * from './constants'
 export * from './srs'
+export * from './gloss'
 export * from './placement'
 export * from './placement-difficulty'
 export * from './placement-difficulty-fit'

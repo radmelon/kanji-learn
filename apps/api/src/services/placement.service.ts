@@ -7,6 +7,7 @@ import {
   userKanjiProgress,
   userProfiles,
 } from '@kanji-learn/db'
+import { glossKey, glossesOverlap } from '@kanji-learn/shared'
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
@@ -116,7 +117,11 @@ export async function getQuestionsWithDistractors(db: any, kanjiIds: number[]) {
   const questions = []
 
   for (const k of kanjiRows) {
-    const correctMeaning = (k.meanings as string[])[0] ?? ''
+    // B-229: `meanings` is stored alphabetically, so `meanings[0]` keys 土 on
+    // "Turkey" and 子 on "11PM-1AM" — a learner who knows the kanji is scored
+    // wrong and θ moves down. Key on a gloss set instead.
+    const correctGlosses = (k.meanings as string[]) ?? []
+    const correctMeaning = glossKey(correctGlosses)
 
     // Meaning distractors from same level
     const mDistRows = await db
@@ -127,7 +132,11 @@ export async function getQuestionsWithDistractors(db: any, kanjiIds: number[]) {
       .limit(20)
 
     const mDistractors = mDistRows
-      .map((r: any) => (r.meanings as string[])[0])
+      // A distractor that shares a sense with the answer would be correct too —
+      // with sets rather than single glosses that becomes reachable, so filter
+      // on the full gloss lists, not on the rendered strings.
+      .filter((r: any) => !glossesOverlap(correctGlosses, (r.meanings as string[]) ?? []))
+      .map((r: any) => glossKey((r.meanings as string[]) ?? []))
       .filter((m: string) => m && m !== correctMeaning)
 
     const dedupedMeanings = [...new Set(mDistractors)].slice(0, 3)

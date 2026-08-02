@@ -8,6 +8,7 @@ import { scoreStrokes } from '../../lib/strokeScoring'
 import type { StrokeScore, FeedbackItem, UserStroke } from '../../lib/strokeScoring'
 import { api } from '../../lib/api'
 import { colors, spacing, radius, typography } from '../../theme'
+import { rankGlosses } from '@kanji-learn/shared'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,7 +99,8 @@ export function WritingPractice({
     setCurrentStrokeCount(0)
   }, [])
 
-  const primaryMeaning = meanings[0] ?? ''
+  // B-229: `meanings` is stored alphabetically, so `[0]` labels 土 "Turkey".
+  const primaryMeaning = rankGlosses(meanings)[0] ?? ''
   const jlptColor = (colors as any)[jlptLevel.toLowerCase()] ?? colors.textMuted
 
   return (

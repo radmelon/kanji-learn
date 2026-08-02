@@ -1,6 +1,7 @@
 import { and, eq, ne, sql, desc } from 'drizzle-orm'
 import { userKanjiProgress, kanji, testSessions, testResults } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
+import { glossKey, glossesOverlap } from '@kanji-learn/shared'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,7 +149,10 @@ export class TestService {
     const kunReadings = (qk.kunReadings as string[]) ?? []
     const onReadings = (qk.onReadings as string[]) ?? []
     const exampleVocab = (qk.exampleVocab as { word: string; reading: string; meaning: string }[]) ?? []
-    const primaryMeaning = meanings[0] ?? ''
+    // B-229: `meanings` is stored alphabetically, so `meanings[0]` keys 土 on
+    // "Turkey" and 子 on "11PM-1AM". Key on a gloss set instead, so a learner
+    // who knows any sense of the kanji can identify it.
+    const primaryMeaning = glossKey(meanings)
     const cleanReading = (r: string) => r.replace(/\..+$/, '')
 
     const shuffle = <T>(arr: T[]): T[] => {
@@ -184,14 +188,22 @@ export class TestService {
     switch (type) {
       case 'meaning_recall': {
         if (!primaryMeaning) return null
-        const distractors = pickDistractors(primaryMeaning, (k) => ((k.meanings as string[]) ?? [])[0] ?? null)
+        const distractors = pickDistractors(primaryMeaning, (k) => {
+          const other = (k.meanings as string[]) ?? []
+          // A distractor sharing a sense with the answer would be correct too.
+          return glossesOverlap(meanings, other) ? null : glossKey(other) || null
+        })
         const { options, correctIndex } = makeOptions(primaryMeaning, distractors)
         return { kanjiId: qk.kanjiId, character: qk.character, jlptLevel: qk.jlptLevel, primaryMeaning, options, correctIndex, questionType: 'meaning_recall', prompt: qk.character }
       }
 
       case 'kanji_from_meaning': {
         if (!primaryMeaning) return null
-        const distractors = pickDistractors(qk.character, (k) => k.character)
+        // Same guard in reverse: the prompt is now a set of senses, so a
+        // distractor character that shares one of them is also a right answer.
+        const distractors = pickDistractors(qk.character, (k) =>
+          glossesOverlap(meanings, (k.meanings as string[]) ?? []) ? null : k.character,
+        )
         const { options, correctIndex } = makeOptions(qk.character, distractors)
         return { kanjiId: qk.kanjiId, character: qk.character, jlptLevel: qk.jlptLevel, primaryMeaning, options, correctIndex, questionType: 'kanji_from_meaning', prompt: primaryMeaning }
       }
