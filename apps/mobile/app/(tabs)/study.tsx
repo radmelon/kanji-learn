@@ -1000,7 +1000,7 @@ function StudySession() {
                 // "resets to day 1" — the same false claim GradeButtons was
                 // fixed for — while the note below points the learner at that
                 // corrected copy. Keep the two in agreement.
-                { label: 'Again', color: colors.error, desc: 'Complete blank — stability shrinks, but not to day 1' },
+                { label: 'Again', color: colors.error, desc: 'Complete blank — the drop is proportional, not a wipe' },
                 { label: 'Hard', color: colors.warning, desc: 'Struggled — stability still grows, just slowly' },
                 { label: 'Good', color: colors.success, desc: 'Correct with effort — normal progression' },
                 { label: 'Easy', color: colors.accent, desc: 'Perfect recall — stability grows the most' },

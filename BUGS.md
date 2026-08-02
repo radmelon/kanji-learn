@@ -140,7 +140,7 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   `[Effort: S for layer 1 — two services, no migration]` `[Impact: HIGH — corrupts placement θ and quiz scores corpus-wide; penalises learners who DO know the kanji]` `[Backend: Yes — API deploy]` `[Status: ✅ Layer 1 fixed 2026-08-02 (`e3e762e`). Layer 2 open — see spec 2]`
 
-- [ ] **(B-228) The grade buttons and the SRS status bar still teach SM-2 mechanics FSRS does not have — and still credit Woźniak** — Reported by the owner from **B146/B147** (2026-08-01): *"We still have many vestige references to SRS in the Progress section… Is this intentional?"*
+- [x] **(B-228) The grade buttons and the SRS status bar still teach SM-2 mechanics FSRS does not have — and still credit Woźniak** — **✅ Fixed 2026-08-02 over THREE rounds (`a2c4fab`, `328ceb9`, and the round-3 commit below) — closing note at the end.** Reported by the owner from **B146/B147** (2026-08-01): *"We still have many vestige references to SRS in the Progress section… Is this intentional?"*
 
   **The reported symptom is NOT a defect — see the defence below. But investigating it found a real one the original sweep missed, in the same bug class it was created to eliminate.**
 
@@ -208,7 +208,96 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
   **Affected files:** `apps/mobile/src/components/study/GradeButtons.tsx`, `apps/mobile/src/components/ui/SrsStatusBar.tsx`.
 
-  `[Effort: S — copy only, no logic]` `[Impact: Med — the app teaches users mechanics it does not use, and credits the wrong author, on a screen reachable from every review]` `[Backend: No]` `[Status: 🐛 Active — found 2026-08-01 while investigating a reported symptom that was itself not a defect]`
+  ### ✅ CLOSING NOTE — 2026-08-02. It took three rounds, and the reason is the bug itself.
+
+  **The file list above was wrong.** Two files were named; **six** carried the
+  defect. Each round was declared done and each round was incomplete, caught
+  only by the mandatory review in §(b). That is not incidental — it is B-228's
+  own thesis reproducing itself under the fix.
+
+  | Round | Found | By |
+  |---|---|---|
+  | 1 (`a2c4fab`) | The two named surfaces, **plus a third** — `SrsStatusBar.tsx:28`, a header comment still crediting Woźniak 60 lines above the paragraph being fixed | Running the acceptance grep instead of the file list |
+  | 2 (`328ceb9`) | **Three more rendered claims** the grep pattern could not see | Non-implementer review — the guard test passed the whole time |
+  | 3 | One reintroduced imprecision + three guard holes | Non-implementer re-review |
+
+  **Round 2 is the one worth reading.** The pattern was
+  `resets? to (1|one) day`, which requires exact adjacency, so all three of
+  these walked straight through a test that reported green:
+
+  ```
+  study.tsx     'Complete blank — resets to day 1'
+  progress.tsx  'A wrong answer resets the interval back to 1 day.'
+  progress.tsx  '• Again — … resets the card's interval'
+  ```
+
+  `study.tsx` was the worst: a **second grade-help surface** contradicting the
+  one just corrected, inside a modal that tells the learner to go read it.
+  **A search narrower than its bug class — written by the fix for a bug about
+  searches narrower than their bug class.**
+
+  Round 3 caught the same instinct once more: the corrected copy said *"not
+  reset to day 1"*, which is a denial (so it trips the sweep) **and not quite
+  true** — a low-stability card lands on the `Math.max(1, intervalDays)` floor
+  regardless, and the onboarding modal's audience is exactly that band. Both
+  surfaces now say *"the drop is proportional, not a wipe"*.
+
+  #### Files changed
+
+  | File | Change |
+  |---|---|
+  | `GradeButtons.tsx` | All four `GRADE_HELP` descriptions rewritten against `srs.ts`; `sheetIntro` names stability and difficulty |
+  | `SrsStatusBar.tsx` | Rendered SM-2/Woźniak attribution → FSRS (matching `about.tsx`), Ebbinghaus retained; header comment corrected |
+  | `study.tsx` | The second grade-help surface, all four descriptions |
+  | `progress.tsx` | "What is Spaced Repetition?" and "How confidence is measured" bodies; interval ladder corrected to `3 days → 11 days → 5 weeks` (verified against a real new-card Good progression: 3.17 → 11.13 → 35.17) |
+  | `test/unit/fsrs-copy-claims.test.ts` | New — the acceptance grep as CI |
+
+  #### Matched by the acceptance grep and deliberately left
+
+  - **`progress.tsx` — "not a fixed 1/3/6-month checklist".** A *denial* of that
+    schedule. Verified accurate (`STATUS_REMEMBERED_MAX_DAYS = 180`, and
+    `intervalDays == stability` at target 0.9). Annotated inline, allowlisted
+    with a reason.
+  - **`VoiceEvaluator.tsx:71` and `ReviewResult.swift:7` — `// SM-2 0–5`.** The
+    0–5 quality scale genuinely *is* SM-2's; both are non-rendered code
+    comments. **Same exemption this file already records for `schema.ts` — do
+    not re-litigate.**
+  - The remaining hits are the B-228 annotations themselves.
+
+  #### The guard, and what it still cannot see
+
+  `apps/mobile/test/unit/fsrs-copy-claims.test.ts` turns the acceptance command
+  into a test: it classifies comment vs rendered matches, requires an
+  allowlist entry with a reason, and pins the three escaped strings as
+  regression cases so re-narrowing the pattern fails there. It was proved to
+  fail by reverting a real fix — not by reinjecting a string the pattern
+  already matched, which is all round 1 demonstrated.
+
+  **Known coverage limits, recorded so the next reader does not assume more:**
+
+  - Scans `.ts`, `.tsx`, `.swift`, `.md` only.
+  - Roots are `apps/mobile/app`, `apps/mobile/src`, `apps/watch`, `README.md`.
+    **`packages/shared/src` and `apps/api/src` are not scanned** — both swept by
+    hand 2026-08-02, code comments only, nothing rendered.
+  - Primarily line-by-line. A whole-file whitespace-collapsed second pass now
+    runs, but per-line remains the main path.
+  - `ALLOWED_RENDERED` matches the approved excerpt, not the whole line.
+
+  **Run it with `pnpm --filter @kanji-learn/mobile test -- -t "B-228"`.** The
+  `describe` blocks are named for the bug on purpose: named anything else,
+  that command silently skips the regression pins and runs 3 of 10 tests.
+
+  #### Separate entry owed
+
+  `progress.tsx:42/47/52` state the status-ladder bands as 1–3 days / 1–4 weeks
+  / 1–3 months. `constants.ts:69-71` says **<7 / 7–20 / 21–179 days**, which
+  `SrsStatusBar.tsx:33-36` already renders correctly — two screens, two
+  answers. **Deliberately not folded in:** it is wrong *arithmetic about FSRS's
+  own ladder*, not an SM-2 vestige, and B-228's acceptance criterion
+  structurally cannot detect it. Folding it in would recreate the exact
+  coupling — a class wider than its test — that produced this bug.
+
+  `[Effort: S — copy only, no logic]` `[Impact: Med — the app teaches users mechanics it does not use, and credits the wrong author, on a screen reachable from every review]` `[Backend: No]` `[Status: ✅ Fixed 2026-08-02 — three rounds, two non-implementer reviews]`
 
 - [x] **(B-227) The Journal shows a blank screen while it loads, so it reads as broken** — **✅ ALREADY FIXED — this entry was stale, see the resolution at the end.** Found on-device in **B145** (owner, 2026-07-28): *"I was about to ask 'When will the Journal section be ready for testing?' because every time I go to that section I saw nothing. I now realize that it takes a few moments for the UI to pull data and populate."*
 

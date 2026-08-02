@@ -112,6 +112,10 @@ function isComment(line: string, matchIndex: number): boolean {
       continue
     }
     if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue }
+    // `https://` in BARE JSX TEXT is not a string literal, so quote tracking
+    // alone does not save us — the `//` would read as a comment opener and
+    // grant amnesty to the whole line. A scheme separator is never a comment.
+    if (ch === '/' && line[i + 1] === '/' && line[i - 1] === ':') { i++; continue }
     if (ch === '/' && (line[i + 1] === '/' || line[i + 1] === '*')) return true
   }
   return false
@@ -126,7 +130,11 @@ function isComment(line: string, matchIndex: number): boolean {
  * three claims that were live in the app at the time. These cases pin the
  * exact strings that escaped, so re-narrowing the pattern fails here.
  */
-describe('the detector', () => {
+// Named for B-228 deliberately: BUGS.md's acceptance command is
+// `jest -t "B-228"`, which matches on describe text. Called anything else,
+// this entire block — where the regression pins live — is silently skipped by
+// the very command the bug prescribes for verifying itself.
+describe('the B-228 detector', () => {
   const ESCAPED_B228 = [
     // study.tsx:999 — the second grade-help surface
     "{ label: 'Again', color: colors.error, desc: 'Complete blank — resets to day 1' },",
@@ -140,9 +148,21 @@ describe('the detector', () => {
     expect(FALSE_CLAIMS.test(line)).toBe(true)
   })
 
+  it('catches a claim split across a line break once whitespace is collapsed', () => {
+    // The sweep scans line by line, and JSX prose in this repo wraps freely,
+    // so a claim broken at a newline is invisible to it. A whole-file scan
+    // currently finds zero live instances — latent, not present — but the
+    // mitigation is three lines, so the sweep runs it anyway.
+    const wrapped = "        <Text>a wrong answer resets\n          the interval</Text>"
+    // The sweep splits on newlines first, so it never sees the whole claim.
+    expect(wrapped.split('\n').some((l) => FALSE_CLAIMS.test(l))).toBe(false)
+    // Collapsed, it is plain. This is why the sweep runs a second pass.
+    expect(FALSE_CLAIMS.test(wrapped.replace(/\s+/g, ' '))).toBe(true)
+  })
+
   it('does not fire on the corrected wording that replaced them', () => {
     for (const line of [
-      "desc: 'Complete blank — stability shrinks, but not to day 1'",
+      "desc: 'Complete blank — the drop is proportional, not a wipe'",
       "body: 'A wrong answer shrinks that memory strength rather than resetting it'",
       "body: '• Again — you forgot it; shrinks the card\\'s interval'",
       "body: 'Stability grows the most and the card gets marked easier'",
@@ -189,11 +209,25 @@ describe('B-228 — no user-facing string claims mechanics FSRS does not have', 
         if (!match) return
         if (isComment(line, match.index)) return
         const allowed = ALLOWED_RENDERED.some(
-          (a) => relative(a.file, file) === '' && line.includes(a.contains),
+          (a) =>
+            relative(a.file, file) === '' &&
+            line.includes(a.contains) &&
+            // The allowance covers the approved excerpt, not the whole line —
+            // otherwise an allowlisted line that later gains a SECOND,
+            // different false claim gets in free.
+            a.contains.toLowerCase().includes(match[0].toLowerCase()),
         )
         if (allowed) return
         offenders.push(`${file}:${i + 1}  ${line.trim().slice(0, 140)}`)
       })
+
+      // Second pass: the same pattern over the whole file with whitespace
+      // collapsed, which catches a claim broken across a line break. Reported
+      // separately because there is no line number to give.
+      const collapsed = readFileSync(join(REPO, file), 'utf8').replace(/\s+/g, ' ')
+      if (FALSE_CLAIMS.test(collapsed) && !lines.some((l) => FALSE_CLAIMS.test(l))) {
+        offenders.push(`${file}  (claim visible only when wrapped lines are joined)`)
+      }
     }
 
     if (offenders.length > 0) {
@@ -222,7 +256,11 @@ describe('B-228 — no user-facing string claims mechanics FSRS does not have', 
     // The second grade-help surface — the study-tab onboarding modal. It said
     // "resets to day 1" while pointing the learner at the copy above, so the
     // two contradicted each other. Both must stay corrected.
+    // Both surfaces use the SAME proportional framing. "not to day 1" is
+    // avoided on purpose: a low-stability card lands on the 1-day interval
+    // floor regardless, and the onboarding modal's audience is exactly that
+    // band, so the claim fails hardest where it is read most.
     const studyTab = readFileSync(join(REPO, 'apps/mobile/app/(tabs)/study.tsx'), 'utf8')
-    expect(studyTab).toContain('stability shrinks, but not to day 1')
+    expect(studyTab).toContain('the drop is proportional, not a wipe')
   })
 })
