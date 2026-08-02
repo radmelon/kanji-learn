@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-01 evening (**Phase 7 built, merged and DEPLOYED — one build now carries two phases; the walkthrough debt has doubled**)
+# Session Handoff — 2026-08-01 night (**B147 is in TestFlight — and the bugs it surfaced were worth more than the build**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,173 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-01 (evening)
+## START HERE — 2026-08-01 (night)
+
+> ## ✅ B147 is cut, submitted, and on the owner's device
+>
+> | | |
+> |---|---|
+> | Build | `0eb38925-1e58-41ef-8b0f-b37eed274a06`, buildNumber **147** (EAS `autoIncrement`, never hand-bumped), 14:21:40 → 14:28:08 |
+> | Content | `c32ac7c`; bump recorded as `ebbdd35` |
+> | Pre-build gate | all five green. **The API-behind check returned empty** — the B-214 trap the SOP exists for |
+> | API on live | `sha256:67edd74f…`, operation `bcb9c6eb` **SUCCEEDED** 15:56:09 → 16:00:12, `/health` 200 |
+> | `main` | `fc6464b`, pushed, tree clean |
+>
+> Lanes at end of session: typecheck **4/4** · shared **326** · mobile pure
+> **193** · components **63** · API's one placement failure (B-210) confirmed
+> **pre-existing** by stashing the change and re-running — identical failure,
+> same assertion.
+>
+> ### 🔴 The three B146 reports resolved — two were already fixed, one was new and inverted
+>
+> | Report | Verdict |
+> |---|---|
+> | *"No notification"* | **Not a fault.** The whole chain verified healthy (EventBridge ENABLED → Lambda hourly → API `200 {"ok":true}` → Expo accepted, zero receipt errors). It fired **on the iPhone** while testing happened on the iPad. `sendToUserTokens` fans out to every registered token, so a silent device has **none registered**. `delivered=0` in those logs is documented-normal — receipts are async and polled immediately |
+> | *"Buddy session is a black screen"* | **Already fixed in B147** (`1817efb`, not an ancestor of B146's `1a4aaf3`). Confirmed on device: the owner could read text off the screen that previously showed nothing |
+> | *"0 kanji recognized, and N4 despite getting most right"* | **Two independent bugs.** The seeding half was already live-fixed (`2cab737`). **The level half was new — and inverted** |
+>
+> ### 🔴 The placement level bug — the same mistake as `2cab737`, one function over
+>
+> `504b1ea`, fixed and **deployed**. Level boundaries were computed from the ~10
+> items the test **asked**, then `.filter()`ed to drop levels with no
+> representative — leaving boundaries for a shorter ladder while the label was
+> still read out of the full five-level list.
+>
+> Item selection maximises Fisher information, so it asks near the learner's
+> ability. **A strong learner is never asked an N5 item**, so N5/N4 drop out, and
+> their index-1 band — really N2 — was reported as N4. **The better you did, the
+> lower the level you were told.** Reproduced with the real `inferredLevel`:
+> asked N3/N2/N1 at θ=1.2 → reported N4, correct answer N2. At θ=1.2 asked only
+> N2/N1 → **N5**.
+>
+> `2cab737` moved *seeding* onto the corpus and left the *bands* on the asked
+> subset. `levelBands()` now returns boundaries and labels as one aligned pair so
+> they cannot be sourced separately again. The corpus is loaded once and reused
+> three times — one query where there were three.
+>
+> ### 🟡 Deploy verification when there is no canary — read this before the next API deploy
+>
+> This fix changes **computed values, not response shape**, and `/health` carries
+> no version. So the SOP's "a field only the new build returns" does not exist
+> here, and `/v1/placement/complete` returns 401 on every build ever shipped.
+>
+> What was done instead, and what to repeat:
+> 1. **ECR digest changed** `c55b2f64…` → `67edd74f…`. This is the check that
+>    rules out a `start-deployment` against the image already running — which
+>    would record a SUCCEEDED operation dated today and ship nothing
+> 2. **The running image was inspected directly** — `export function levelBands`
+>    present in `packages/shared/src/placement.ts`, call site at
+>    `placement.service.ts:302`
+> 3. Local image digest identical to the ECR digest App Runner pulled
+>
+> **None of that proves the level is correct** — only that the code computing it
+> shipped. The behavioural proof is the device walk.
+>
+> ### 🔴 The meeting screen rendered an empty view — the THIRD instance of one pattern
+>
+> `89f3e89`, **queued for B148, not in B147.** Retaking placement led to a blank
+> screen: `onboarding.tsx` had `if (!ui) return <SafeAreaView style={styles.root} />`
+> — a literally empty view — covering the whole of `begin()`'s network
+> round-trip, and covering it **forever** when the request hung, because
+> `api.ts` called `fetch` with no signal and no timeout.
+>
+> **This is the third time this shape has been reported** (B-227 Journal, B146
+> buddy session, B147 meeting), and the second time it was read as *"the feature
+> was never built."* `selectSessionBody` was hardened against it after B-227 with
+> the note *"surfacing an error beats falling through to a blank screen"* — and
+> the meeting screen had the identical hole. It now goes through
+> `selectMeetingScreen`, with a test asserting **no combination of inputs renders
+> nothing**.
+>
+> The 30s timeout bounds a **hang, not latency**: `POST /v1/placement/complete`
+> legitimately took **5.18s** on live. Anything tighter aborts real work.
+>
+> ### 🟡 Completing a weekly session burns the whole period
+>
+> Found while diagnosing "why is my Buddy page blank". Tapping **"That works"**
+> completes the session and sets `lastSessionDate`; `evaluateAppointment` then
+> anchors the next appointment to *that completed session*
+> (`anchorIsNewPeriod = daysBetween(lastSessionDate, anchor) >= periodDays`).
+>
+> **No choice of `buddy_day` makes another due inside 7 days.** Moving the day
+> Saturday → Monday moved the target from 08-08 to **08-10 — further away**.
+>
+> Consequence for testing: **one weekly-session walkthrough per period, per
+> account.** Batch them or use a second account. Recorded in the B147 test plan.
+>
+> ### 📋 What is owed, in order
+>
+> 1. **Owner is reviewing the coaching spec** —
+>    [2026-08-01-buddy-coaching-analysis-design.md](superpowers/specs/2026-08-01-buddy-coaching-analysis-design.md).
+>    On approval the next step is `writing-plans`. **Open decision #3 (the tier-2
+>    daily cap) is still unsized** and companion mode is the common path — that is
+>    the one item that could make the feature expensive before anyone notices
+> 2. **Retake the placement test on B147.** The only thing today's deploy
+>    changed, and the only fix with no behavioural proof yet. Expect N3+ when
+>    answering most items correctly, and the level moving *up* with performance.
+>    Direction is the test, not the band. **An existing placement row is not
+>    retroactively repaired** — a retake is required to see it
+> 3. **The B147 device walkthrough — still two phases deep.**
+>    [Test plan](b147-test-plan.md), LA-timezone account. The airplane-mode
+>    template floor is the part most likely to surprise us
+> 4. **Spec 2 — kanji content quality.** Agreed as next, and it holds a live
+>    validity bug: `placement.service.ts:119` keys every meaning item on
+>    `meanings[0]` from **kanjiapi.dev's unranked order**, with distractors drawn
+>    from other kanji's `meanings[0]`. Any kanji whose first gloss is unusual is
+>    **mis-keyed** — the learner knows it, cannot find their answer, is scored
+>    wrong, and θ moves down. Lead the spec with the cheap fix: render the correct
+>    option as its **gloss set** ("fur / hair / feather"). Example-sentence
+>    complaints have the same root — `seed-sentences.ts` scores Tatoeba by length
+>    with no similarity dedup and no sense coverage
+> 5. **B-228** — [BUGS.md](../BUGS.md). Closure requires a mandatory
+>    non-implementer review; the acceptance criterion is a **grep for the wrong
+>    claims that must return empty**, not a file list
+> 6. **B148** carries the meeting fix. EAS allowance renews **2026-08-04**
+>
+> ### 🧠 Lessons this session added
+>
+> - **A sweep must search for the wrong claims, not the right word.** B-228's
+>   sweep defined its bug class semantically ("ease-factor / SM-2 mechanics") then
+>   derived its file list lexically by grepping `SRS`. `GradeButtons.tsx` never
+>   says SRS — it says *"ease factor"* — and still ships SM-2 mechanics and a
+>   Woźniak credit to users
+> - **The reported symptom is not always the defect, and saying so is the job.**
+>   The owner asked to be corrected if wrong about "vestige SRS references". He
+>   was — that usage is deliberate and he approved it — and the investigation
+>   found a real defect anyway
+> - **When there is no content canary, verify the artifact.** Digest changed +
+>   inspect the running image. A status code proves nothing
+> - **Blank is not a state.** Three occurrences now. Any screen with a
+>   "don't show the empty state until loaded" guard and no loading state has this
+>   latent
+>
+> ### 📎 Captured to Open Brain (not in the repo)
+>
+> - Apple Watch as Buddy's presence layer, triggered by hook location — **plus a
+>   verified amendment**: coordinates *are* stored (`mnemonics.latitude/longitude`),
+>   the city name is merely the only part displayed. Consent is already granular
+>   (`attachLocationToHooks` separate from milestones). Partial coverage —
+>   typed place names have no coords — and ~100m precision
+> - Using **Take a Quiz** results to calibrate placement item difficulty. Quiz
+>   selection is `ORDER BY RANDOM()`, which is *ideal* for unbiased calibration;
+>   `b_observed` today is a **proxy** (mean FSRS difficulty), not observed
+>   responses. `kl_test_results` holds the native `(person, item, correct)` triple,
+>   and `questionType` could ground per-type offsets where the model has one
+>
+> ### 🧹 Housekeeping note
+>
+> Nine stale local branches remain (`claude/*`, `feat/phase-1-quick-wins` whose
+> upstream is gone, `feature/speaking-progressive-hints`). Not deleted — that is
+> the owner's call. `git branch -vv` lists them.
+>
+> ---
+
+# Previous — 2026-08-01 evening (**Phase 7 built, merged and DEPLOYED — one build now carries two phases; the walkthrough debt has doubled**)
+
+> **Canonical URL:**
+> https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
+
+## 2026-08-01 (evening, superseded by the section above)
 
 > ## ✅ Phase 7 — Meeting Buddy — is on `main` and its API is live
 >
