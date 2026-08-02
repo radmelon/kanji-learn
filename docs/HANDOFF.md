@@ -27,6 +27,15 @@
 >
 > Nothing in slice 1 is user-visible, and that is the point: every number the
 > coaching feature will ever say to a learner is computed there.
+>
+> ⚠️ **The plan was amended after it was first written** (`ca1303b`). Tasks 1
+> and 2 changed: `reading_lag` now takes **two** evidence sources, and the quiz
+> question-type vocabulary is pinned to what actually exists on live. If you
+> read the plan before that commit, re-read those two tasks.
+>
+> **Slice 1 needs no database.** The corpus import below matters for the API
+> lane, not for this work — `pnpm --filter @kanji-learn/shared test` is the
+> only lane it touches.
 
 ### ✅ B148 is cut, submitted, and carries every bug fixed today
 
@@ -37,13 +46,15 @@
 | Submission | `42077dae-bca9-433b-b033-b66ea4171cd2` — `finished`, `distribution: store` |
 | Pre-build gate | All green. **The API-behind check returned empty** — the B-214 trap the SOP exists for |
 | API on live | `sha256:9fce6c9e…`, operation `e6cb4717` **SUCCEEDED** 10:19:33 → 10:23:25, `/health` 200 in 0.49s |
-| `main` | `c303451`, pushed, tree clean |
+| `main` | `ca1303b`, pushed, tree clean |
 
 Lanes at end of session: typecheck **4/4** · shared **343** · mobile pure
-**207** · components **63** · **API 446 passed, zero failures.**
+**207** · components **63** · **API 448 passed, 0 failed, 0 skipped** — run
+twice back to back to prove idempotence.
 
-**That last number is new.** The API lane has had standing red for weeks. Both
-failures were environmental, not product — see "the test lane was lying" below.
+**That last number is new twice over.** The API lane had standing red for
+weeks; both failures turned out to be environmental. Then the corpus import
+below un-skipped two tests that had never run at all.
 
 ### 🔴 B-229 — the placement test measured the wrong thing, corpus-wide
 
@@ -144,6 +155,46 @@ tables went **4 → 7** as a direct result of trying to fix it. The repair
 recipe is now in
 [local-test-db.md](local-test-db.md#-re-running-that-migration-list-on-an-existing-db-makes-things-worse).
 
+### 🔬 The test DB now holds the real corpus — and it found three defects
+
+The local test database ran on **7 kanji** against production's **2,294**.
+`kanji` is reference data with no user rows, so importing it costs nothing in
+privacy and it is now in place. Procedure and the PG16/PG18 `pg_dump` gotcha
+are in [local-test-db.md](local-test-db.md#the-kanji-corpus-import-it-from-production-2026-08-02).
+
+**Deliberately NOT imported:** `user_profiles`, `mnemonics`,
+`user_kanji_progress`, `review_logs`. Two independent reasons — hooks carry the
+learner's own words and, for most rows, **GPS coordinates**; and several suites
+scan whole tables, so real rows would break them rather than strengthen them.
+
+Two tests that had been **skipping since 2026-07-30** now run for real: Fisher
+-information item selection, and the adaptive loop's floor/cap convergence.
+Neither was being tested locally at all.
+
+It also exposed three things a 7-row fixture had been hiding. All nine
+failures traced to them:
+
+1. **🔴 `refreshKanjiDifficulty` was an N+1** — one `INSERT` per kanji, 2,294
+   sequential round-trips. Now a chunked multi-row upsert (`2b76205`): that
+   suite went from **five 15s timeouts to 2.7s**. Note this is an *operational
+   job*, so the same slowness was hitting production, not just tests.
+2. **The suite was never idempotent across runs.** `placement-adaptive`'s
+   second test seeds corpus-wide by design (`2cab737`) and cleaned up nothing,
+   leaving **2,283** rows. On the *next* run that broke three suites that look
+   entirely unrelated — including the adaptive loop itself, whose candidate
+   pool collapsed to ~11 so it stopped at 6 characters against a floor of 8.
+   **That reads exactly like a convergence failure and is not one.** Fixed with
+   `beforeEach`/`afterAll` cleanup at the source.
+3. **Two tests asserted opposite things about seeding, and both passed.**
+   `placement-adaptive` required `appliedCount <= charactersAsked` (the
+   pre-`2cab737` rule); `placement-service` requires a never-asked kanji to be
+   seeded (the post-`2cab737` rule). With 7 kanji, `7 <= 9` satisfied both.
+
+⚠️ **If the API lane goes red again, suspect leftover fixture rows first.**
+`SELECT user_id, count(*) FROM user_kanji_progress GROUP BY 1 ORDER BY 2 DESC`
+— anything in the thousands is a suite that failed to clean up, and the
+symptoms will appear in a different file from the cause.
+
 ### 📋 Coaching spec — owner review recorded, 3 of 4 decisions closed
 
 [Spec §14](superpowers/specs/2026-08-01-buddy-coaching-analysis-design.md).
@@ -238,6 +289,16 @@ hand-copied the same numbers and one drifted.
   working on.** The coaching plan landed inside a B-228 commit whose message
   never mentioned it. Split before pushing; `--amend` cannot fix a commit that
   cites its own hash.
+- **🔴 A fixture small enough to be convenient is small enough to satisfy
+  contradictory assertions.** Two placement tests asserted opposite rules about
+  seeding and both passed on 7 kanji. Neither was flaky, neither was skipped —
+  they were just never asked a question that could distinguish them.
+- **A cheap test fixture can hide a production performance bug.** The N+1 in
+  `refreshKanjiDifficulty` was invisible at 7 rows and slow at 2,294 — and it
+  runs against 2,294 in production.
+- **Test pollution surfaces in a different file from its cause.** The 2,283
+  rows one suite left behind broke three others, and the loudest symptom looked
+  like an algorithm failing to converge.
 
 ---
 
