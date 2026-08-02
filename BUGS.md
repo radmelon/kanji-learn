@@ -6,6 +6,78 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-230) The Progress screen states the SRS band boundaries wrong — and its own bands do not tile** — Found 2026-08-02 by the adversarial review closing B-228, which correctly refused to fold it in.
+
+  `apps/mobile/app/(tabs)/progress.tsx` explains the status ladder in its info
+  sheets. `packages/shared/src/constants.ts:69-71` defines it. They disagree,
+  and `apps/mobile/src/components/ui/SrsStatusBar.tsx:33-36` — a second screen
+  the same learner can open — already states it correctly.
+
+  | Status | `progress.tsx:42/46/50` says | Truth (`constants.ts`, and `SrsStatusBar` renders it) |
+  |---|---|---|
+  | Learning | 1–3 days | **< 7 days** |
+  | Reviewing | 1–4 weeks (7–28 d) | **7–20 days** |
+  | Remembered | 1–3 months (~30–90 d) | **21–179 days** |
+  | Burned | ~6 months | ≥ 180 days ✅ correct |
+
+  **Remembered is the worst of them.** A learner holding a 120-day card is told
+  they are in a band that tops out at three months. The band is really twice
+  that wide, and its floor is 21 days — not 30 — so the whole of days 21–29 is
+  described as belonging to a band the learner has already left.
+
+  ### The part that makes this more than a typo: the bands do not tile
+
+  Independent of whether they match `constants.ts`, `progress.tsx`'s three
+  ranges are not contiguous **with each other**:
+
+  ```
+  Learning   1–3 days      ← tops out at 3
+                            ⚠️ days 4, 5, 6 belong to no band at all
+  Reviewing  1–4 weeks     ← starts at 7
+  ```
+
+  A card sitting on a 5-day interval is, by this screen's own account, in no
+  status. The real cuts tile exactly (`<7 | 7–20 | 21–179 | ≥180`), which is a
+  good sign that these numbers were written by hand as approximations and never
+  checked against the constants — nor against each other.
+
+  ### Why this was NOT folded into B-228
+
+  Recorded because it will look like an oversight otherwise. B-228's bug class
+  is *"strings that describe fixed-interval, ease-factor, or SM-2-style
+  mechanics FSRS does not have."* These strings describe **FSRS's own ladder
+  with wrong arithmetic** — a different failure mode, and one B-228's
+  acceptance grep structurally cannot detect. Folding it in would have made
+  B-228's class wider than its test, which is the exact defect B-228 exists to
+  document. Keeping it separate is the lesson being applied, not ignored.
+
+  ### Fix
+
+  Restate the three bodies from `constants.ts` rather than from memory, and
+  match the phrasing `SrsStatusBar.tsx:33-36` already uses. Better still,
+  **derive them** — `STATUS_LEARNING_MAX_DAYS`, `STATUS_REVIEWING_MAX_DAYS` and
+  `STATUS_REMEMBERED_MAX_DAYS` are exported from `@kanji-learn/shared`, and
+  interpolating them makes a future threshold change impossible to state
+  wrongly on one screen and rightly on another. That is the actual root cause
+  here: two screens hand-copied the same numbers and one of them drifted.
+
+  ⚠️ **`intervalDays == stability` only at the default 0.9 target retention**
+  (`srs.ts:197-199`). The constants are stability thresholds; calling them
+  "intervals" is accurate today and would quietly stop being accurate if
+  `TARGET_RETENTION` ever moves. Worth a comment wherever the copy is derived.
+
+  ### Verification
+
+  A test asserting the rendered band copy contains the values from
+  `constants.ts` — the same shape as `fsrs-copy-claims.test.ts`, which exists
+  because asserting a sweep was done is not the same as testing it.
+
+  **Affected files:** `apps/mobile/app/(tabs)/progress.tsx` (`INFO_*` band
+  bodies), optionally `apps/mobile/src/components/ui/SrsStatusBar.tsx` if both
+  are switched to derived copy.
+
+  `[Effort: XS — copy, or S if derived from the constants]` `[Impact: Low-Med — no behaviour is wrong, but two screens tell the same learner different things about their own progress, and one leaves a 3-day gap where no status applies]` `[Backend: No]` `[Status: 🐛 Active — found 2026-08-02]`
+
 - [x] **(B-229) Every meaning question — placement AND quiz — is keyed on the ALPHABETICALLY first gloss, so 土 is "Turkey" and 子 is "11PM-1AM"** — Reported by the owner from B146/B147 (2026-08-01): *"the placement test uses 'down' as the answer"* for 毛. **Confirmed against live data 2026-08-02, and it is systemic, not a bad row.** **✅ Layer 1 fixed 2026-08-02 — resolution at the end of this entry.**
 
   ### The live data
@@ -287,15 +359,20 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
   `describe` blocks are named for the bug on purpose: named anything else,
   that command silently skips the regression pins and runs 3 of 10 tests.
 
-  #### Separate entry owed
+  #### Separate entry owed → **filed as B-230**
 
-  `progress.tsx:42/47/52` state the status-ladder bands as 1–3 days / 1–4 weeks
-  / 1–3 months. `constants.ts:69-71` says **<7 / 7–20 / 21–179 days**, which
+  `progress.tsx` states the status-ladder bands as 1–3 days / 1–4 weeks / 1–3
+  months. `constants.ts:69-71` says **<7 / 7–20 / 21–179 days**, which
   `SrsStatusBar.tsx:33-36` already renders correctly — two screens, two
   answers. **Deliberately not folded in:** it is wrong *arithmetic about FSRS's
   own ladder*, not an SM-2 vestige, and B-228's acceptance criterion
   structurally cannot detect it. Folding it in would recreate the exact
   coupling — a class wider than its test — that produced this bug.
+
+  **Filed 2026-08-02 as B-230**, at the top of Active Bugs. Writing it up found
+  a third defect neither review caught: `progress.tsx`'s bands do not tile with
+  *each other* either — a card on a 5-day interval falls in the gap between
+  "1–3 days" and "1–4 weeks" and belongs to no status at all.
 
   `[Effort: S — copy only, no logic]` `[Impact: Med — the app teaches users mechanics it does not use, and credits the wrong author, on a screen reachable from every review]` `[Backend: No]` `[Status: ✅ Fixed 2026-08-02 — three rounds, two non-implementer reviews]`
 
