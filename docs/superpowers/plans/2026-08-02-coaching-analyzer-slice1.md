@@ -248,6 +248,28 @@ export interface CardSnapshot {
   hasCoCreatedHook: boolean
 }
 
+/**
+ * One row of `kl_test_results`.
+ *
+ * ⚠️ `question_type` is a plain TEXT column — **no enum**, nothing enforcing
+ * the vocabulary. A design inventory circulating as of 2026-08-02 lists seven
+ * types (`kunyomi_voice`, `onyomi_voice`, `onyomi_choice`, `write_from_meaning`,
+ * `vocab_context`, `compound_reading`, `meaning_recall`). **Six of those have
+ * zero rows on live.** Verified 2026-08-02, these five are what exists:
+ *
+ * | value | rows | side |
+ * |---|---|---|
+ * | `meaning_recall` | 1,069 | meaning |
+ * | `kanji_from_meaning` | 404 | meaning |
+ * | `reading_recall` | 403 | **reading** |
+ * | `vocab_from_definition` | 168 | meaning |
+ * | `vocab_reading` | 160 | **reading** |
+ *
+ * They match `TestService`'s `QuestionType` union exactly. A detector keyed on
+ * the design list would match nothing and fail silently — the same shape of
+ * defect as B-229. Session `test_type` is likewise only `exit_quiz` and
+ * `loop_check`, not the five in that inventory.
+ */
 export interface QuizOutcome {
   kanjiId: number
   questionType: string
@@ -255,6 +277,32 @@ export interface QuizOutcome {
   /** ISO. */
   answeredAt: string
 }
+
+/** Quiz question types that test a READING. See the caveat on QuizOutcome. */
+export const READING_QUESTION_TYPES: readonly string[] = ['reading_recall', 'vocab_reading']
+
+/** Quiz question types that test a MEANING. `kanji_from_meaning` counts here:
+ *  the prompt is the gloss and the answer is the character, so it is
+ *  meaning-side recall regardless of which way round it is displayed. */
+export const MEANING_QUESTION_TYPES: readonly string[] = [
+  'meaning_recall', 'kanji_from_meaning', 'vocab_from_definition',
+]
+
+/**
+ * The population meaning-vs-reading accuracy gap, **measured** across every
+ * quiz row on live 2026-08-02: meaning 0.8848 (n=1,641) vs reading 0.8117
+ * (n=563). Readings run about seven points behind for everybody, so only the
+ * excess over this is a finding about a particular learner.
+ *
+ * This is the quiz-side counterpart to `kanji_difficulty.readingOffset`, which
+ * placement items carry per-item. Unlike that one it is already a
+ * **probability**, so it is directly comparable to an accuracy gap — no logit
+ * conversion, and none of risk #2 below applies to this half.
+ *
+ * Pooled across all learners and n=563 on the reading side is modest. Recompute
+ * it when the corpus of quiz answers grows.
+ */
+export const POPULATION_QUIZ_READING_GAP = 0.073
 
 export interface ReviewSnapshot {
   cards: CardSnapshot[]
@@ -364,10 +412,21 @@ git commit -m "feat(coaching): Finding contract, LearnerSnapshot, and per-kind m
 - Test: `packages/shared/src/coaching/detectors/reading-lag.test.ts`
 
 **Interfaces:**
-- Consumes: `LearnerSnapshot`, `Finding` (Task 1); `normaliseLinear`, `confidenceFromCount` (Task 1).
+- Consumes: `LearnerSnapshot`, `QuizOutcome`, `Finding`, `READING_QUESTION_TYPES`, `MEANING_QUESTION_TYPES`, `POPULATION_QUIZ_READING_GAP` (Task 1); `normaliseLinear`, `confidenceFromCount` (Task 1).
 - Produces: `detectReadingLag(snapshot: LearnerSnapshot): Finding | null`.
 
 **The subtlety a reviewer must check:** the spec says the gap must be **beyond the population `readingOffset`**. Readings are harder than meanings *for everyone* — `kanji_difficulty.readingOffset` is exactly that population penalty, and `bReading = b + readingOffset`. A learner whose readings trail by the population amount has no finding. Only the excess counts.
+
+**Two evidence sources, not one.** Spec §3 lists both `placement_results` **and** `kl_test_results.questionType` as sources for this finding, and the second matters more than it looks: a placement is ~13 items taken **once**, while quizzes accumulate — 2,204 rows on live today and growing every session. Keying only on placement would mean this finding returns `null` for a learner with hundreds of quiz answers and no placement, and would ignore the more current signal for everyone else.
+
+The two halves are measured against **different** population baselines and must not be pooled naively:
+
+| Source | Baseline | Why |
+|---|---|---|
+| Placement items | per-item `readingOffset`, averaged | Each item carries its own, in **logits** |
+| Quiz rows | `POPULATION_QUIZ_READING_GAP` (0.073) | Measured directly as a **probability** |
+
+Compute an excess per source, then combine weighted by observation count.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -467,6 +526,87 @@ describe('detectReadingLag', () => {
       .toBeLessThan(detectReadingLag(snap(thick))!.confidence)
   })
 })
+
+// ─── Quiz evidence (spec §3's second source) ─────────────────────────────────
+
+function quiz(questionType: string, correct: boolean, i = 0): QuizOutcome {
+  return { kanjiId: i, questionType, correct, answeredAt: '2026-08-01T00:00:00.000Z' }
+}
+
+/** n reading answers and m meaning answers, at the given accuracies. */
+function quizRows(readingN: number, readingAcc: number, meaningN: number, meaningAcc: number): QuizOutcome[] {
+  const out: QuizOutcome[] = []
+  for (let i = 0; i < readingN; i++) out.push(quiz('reading_recall', i < Math.round(readingN * readingAcc), i))
+  for (let i = 0; i < meaningN; i++) out.push(quiz('meaning_recall', i < Math.round(meaningN * meaningAcc), 1000 + i))
+  return out
+}
+
+function quizSnap(rows: QuizOutcome[]): LearnerSnapshot {
+  const s = snap([])
+  s.placement = null
+  s.reviews.quiz = rows
+  return s
+}
+
+describe('detectReadingLag — quiz evidence', () => {
+  it('fires with NO placement at all, on quiz rows alone', () => {
+    // The old version returned null here, throwing away 2,204 live rows in
+    // favour of a ~13-item test the learner may never have taken.
+    const f = detectReadingLag(quizSnap(quizRows(40, 0.4, 40, 0.95)))
+    expect(f).not.toBeNull()
+    expect(f!.kind).toBe('reading_lag')
+  })
+
+  it('does NOT fire when the quiz gap is only the population gap', () => {
+    // meaning 0.90, reading 0.827 → gap 0.073, exactly POPULATION_QUIZ_READING_GAP.
+    expect(detectReadingLag(quizSnap(quizRows(1000, 0.827, 1000, 0.90)))).toBeNull()
+  })
+
+  it('classifies vocab_reading as reading and kanji_from_meaning as meaning', () => {
+    const rows = [
+      ...Array.from({ length: 20 }, (_, i) => quiz('vocab_reading', false, i)),
+      ...Array.from({ length: 20 }, (_, i) => quiz('kanji_from_meaning', true, 100 + i)),
+    ]
+    const f = detectReadingLag(quizSnap(rows))!
+    expect(f).not.toBeNull()
+    expect(f.evidence.find((e) => e.label === 'quiz reading answers')!.value).toBe(20)
+  })
+
+  it('ignores question types that are neither side', () => {
+    const rows = Array.from({ length: 30 }, (_, i) => quiz('kunyomi_voice', false, i))
+    expect(detectReadingLag(quizSnap(rows))).toBeNull()
+  })
+
+  it('needs both sides — reading answers with no meaning answers prove nothing', () => {
+    expect(detectReadingLag(quizSnap(quizRows(30, 0.2, 0, 0)))).toBeNull()
+  })
+
+  it('is MORE confident with both sources than with either alone', () => {
+    const placementOnly = snap([
+      ...Array.from({ length: 2 }, (_, i) => item({ kanjiId: i, readingCorrect: true })),
+      ...Array.from({ length: 8 }, (_, i) => item({ kanjiId: 100 + i, readingCorrect: false })),
+    ])
+    const quizOnly = quizSnap(quizRows(40, 0.4, 40, 0.95))
+    const both = snap(placementOnly.placement!.items)
+    both.reviews.quiz = quizRows(40, 0.4, 40, 0.95)
+
+    expect(detectReadingLag(both)!.confidence)
+      .toBeGreaterThan(detectReadingLag(placementOnly)!.confidence)
+    expect(detectReadingLag(both)!.confidence)
+      .toBeGreaterThan(detectReadingLag(quizOnly)!.confidence)
+  })
+
+  it('reports both sources in evidence so the voice can say which it saw', () => {
+    const both = snap([
+      ...Array.from({ length: 2 }, (_, i) => item({ kanjiId: i, readingCorrect: true })),
+      ...Array.from({ length: 8 }, (_, i) => item({ kanjiId: 100 + i, readingCorrect: false })),
+    ])
+    both.reviews.quiz = quizRows(40, 0.4, 40, 0.95)
+    const labels = detectReadingLag(both)!.evidence.map((e) => e.label)
+    expect(labels).toContain('items with a reading asked')
+    expect(labels).toContain('quiz reading answers')
+  })
+})
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -478,27 +618,45 @@ Expected: FAIL — `Failed to resolve import "./reading-lag"`.
 
 ```ts
 // packages/shared/src/coaching/detectors/reading-lag.ts
-import type { Finding, LearnerSnapshot } from '../types'
+import type { Evidence, Finding, LearnerSnapshot } from '../types'
+import {
+  MEANING_QUESTION_TYPES, READING_QUESTION_TYPES, POPULATION_QUIZ_READING_GAP,
+} from '../types'
 import { confidenceFromCount, normaliseLinear } from '../magnitude'
 
 /**
  * Readings trailing meanings by MORE than the population expects.
  *
- * Readings are harder than meanings for everybody — that is what
- * `kanji_difficulty.readingOffset` measures, and why `bReading = b +
- * readingOffset`. A learner trailing by the population amount is normal and
- * must produce no finding; only the EXCESS is a finding about them.
+ * Readings are harder than meanings for everybody. A learner trailing by the
+ * population amount is normal and must produce no finding; only the EXCESS is
+ * a finding about them.
  *
- * MAGNITUDE MAPPING (this kind's own scale, per §2): the excess accuracy gap,
- * linear from 0 at LAG_FLOOR to 1 at LAG_CEILING. Below the floor the gap is
- * within noise for a ~13-item placement.
+ * TWO SOURCES, per spec §3 — `placement_results` and `kl_test_results`. A
+ * placement is ~13 items taken once; quizzes accumulate indefinitely. Each has
+ * its own population baseline and they are NOT pooled:
+ *
+ *   placement — per-item `readingOffset` (logits), averaged over asked items
+ *   quiz      — POPULATION_QUIZ_READING_GAP (probability), measured on live
+ *
+ * The two excesses are combined weighted by observation count, so whichever
+ * source the learner actually has dominates.
+ *
+ * MAGNITUDE MAPPING (this kind's own scale, per §2): the weighted excess
+ * accuracy gap, linear from 0 at LAG_FLOOR to 1 at LAG_CEILING. Below the
+ * floor the gap is within noise for a ~13-item placement.
  */
 const LAG_FLOOR = 0.1
 const LAG_CEILING = 0.6
-/** Reaches ~63% confidence at 20 answered reading items. */
+/** Reaches ~63% confidence at 20 observations, counting both sources. */
 const CONFIDENCE_SCALE = 20
 
-export function detectReadingLag(snapshot: LearnerSnapshot): Finding | null {
+interface SourceExcess {
+  excess: number
+  n: number
+}
+
+/** Excess lag from the placement, or null when it cannot be measured. */
+function placementExcess(snapshot: LearnerSnapshot): SourceExcess | null {
   const placement = snapshot.placement
   if (!placement) return null
 
@@ -507,29 +665,67 @@ export function detectReadingLag(snapshot: LearnerSnapshot): Finding | null {
 
   const meaningAccuracy = asked.filter((i) => i.meaningCorrect).length / asked.length
   const readingAccuracy = asked.filter((i) => i.readingCorrect === true).length / asked.length
+  const expectedGap = asked.reduce((sum, i) => sum + i.readingOffset, 0) / asked.length
 
-  const observedGap = meaningAccuracy - readingAccuracy
-  if (observedGap <= 0) return null
+  return { excess: meaningAccuracy - readingAccuracy - expectedGap, n: asked.length }
+}
 
-  // The population already predicts SOME gap. Only what exceeds it is theirs.
-  const expectedGap =
-    asked.reduce((sum, i) => sum + i.readingOffset, 0) / asked.length
-  const excess = observedGap - expectedGap
-  if (excess <= 0) return null
+/** Excess lag from quiz history, or null when either side has no answers. */
+function quizExcess(snapshot: LearnerSnapshot): SourceExcess | null {
+  const rows = snapshot.reviews.quiz
+  const reading = rows.filter((r) => READING_QUESTION_TYPES.includes(r.questionType))
+  const meaning = rows.filter((r) => MEANING_QUESTION_TYPES.includes(r.questionType))
+  // A gap needs both sides. Reading answers alone say nothing about a *lag*.
+  if (reading.length === 0 || meaning.length === 0) return null
 
-  const magnitude = normaliseLinear(excess, LAG_FLOOR, LAG_CEILING)
+  const readingAccuracy = reading.filter((r) => r.correct).length / reading.length
+  const meaningAccuracy = meaning.filter((r) => r.correct).length / meaning.length
+
+  return {
+    excess: meaningAccuracy - readingAccuracy - POPULATION_QUIZ_READING_GAP,
+    n: reading.length + meaning.length,
+  }
+}
+
+export function detectReadingLag(snapshot: LearnerSnapshot): Finding | null {
+  const fromPlacement = placementExcess(snapshot)
+  const fromQuiz = quizExcess(snapshot)
+  const sources = [fromPlacement, fromQuiz].filter((s): s is SourceExcess => s !== null)
+  if (sources.length === 0) return null
+
+  const totalN = sources.reduce((sum, s) => sum + s.n, 0)
+  const weightedExcess = sources.reduce((sum, s) => sum + s.excess * s.n, 0) / totalN
+  if (weightedExcess <= 0) return null
+
+  const magnitude = normaliseLinear(weightedExcess, LAG_FLOOR, LAG_CEILING)
   if (magnitude === 0) return null
+
+  const evidence: Evidence[] = []
+  if (fromPlacement) {
+    const asked = snapshot.placement!.items.filter((i) => i.readingCorrect !== null)
+    evidence.push(
+      { label: 'meaning accuracy', value: round2(asked.filter((i) => i.meaningCorrect).length / asked.length) },
+      { label: 'reading accuracy', value: round2(asked.filter((i) => i.readingCorrect === true).length / asked.length) },
+      { label: 'expected reading penalty', value: round2(asked.reduce((s, i) => s + i.readingOffset, 0) / asked.length) },
+      { label: 'items with a reading asked', value: asked.length },
+    )
+  }
+  if (fromQuiz) {
+    const rows = snapshot.reviews.quiz
+    const reading = rows.filter((r) => READING_QUESTION_TYPES.includes(r.questionType))
+    const meaning = rows.filter((r) => MEANING_QUESTION_TYPES.includes(r.questionType))
+    evidence.push(
+      { label: 'quiz reading accuracy', value: round2(reading.filter((r) => r.correct).length / reading.length) },
+      { label: 'quiz meaning accuracy', value: round2(meaning.filter((r) => r.correct).length / meaning.length) },
+      { label: 'quiz reading answers', value: reading.length },
+    )
+  }
 
   return {
     kind: 'reading_lag',
     magnitude,
-    confidence: confidenceFromCount(asked.length, CONFIDENCE_SCALE),
-    evidence: [
-      { label: 'meaning accuracy', value: round2(meaningAccuracy) },
-      { label: 'reading accuracy', value: round2(readingAccuracy) },
-      { label: 'expected reading penalty', value: round2(expectedGap) },
-      { label: 'items with a reading asked', value: asked.length },
-    ],
+    confidence: confidenceFromCount(totalN, CONFIDENCE_SCALE),
+    evidence,
     since: null, // stamped by select() in Task 9
   }
 }
@@ -542,7 +738,7 @@ function round2(n: number): number {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/reading-lag.test.ts`
-Expected: PASS, 7 tests.
+Expected: PASS, 14 tests (7 placement + 7 quiz).
 
 - [ ] **Step 5: Commit**
 
@@ -2377,6 +2573,7 @@ git commit -m "feat(coaching): analyze() composes the detectors; template floor 
 | §2 magnitude normalised per kind | 1, and documented in every detector |
 | §2 confidence hedges honestly | 1, asserted in Tasks 2–8 |
 | §3 all four Direct kinds | 2, 3, 4, 5 |
+| §3 `reading_lag` uses BOTH `placement_results` and `kl_test_results` | 2 |
 | §3 both Orient kinds | 6 |
 | §3 all four Motivate kinds | 7, 8 |
 | §3 `retest_due` reuses `widenForStaleness` | 8 |
@@ -2397,4 +2594,8 @@ git commit -m "feat(coaching): analyze() composes the detectors; template floor 
 
 **1. The thresholds in this plan are reasoned, not calibrated.** `LAPSE_THRESHOLD = 4`, `NOVELTY_HALFLIFE_DAYS = 14`, `SE_LOOSE = 1.2` and their siblings are defensible starting points, not measured ones. They are all named constants at the top of their modules for exactly that reason. Expect to tune them against real snapshots once slice 2 can produce them — and prefer tuning to rewriting.
 
-**2. `readingOffset` semantics need one confirmation in slice 2.** Task 2 treats the mean `readingOffset` as directly comparable to an accuracy gap. `readingOffset` is stored in **logits** (`bReading = b + readingOffset`), and an accuracy difference is a **probability**. Over the narrow range of a placement these track each other closely enough for a threshold comparison, and the test fixtures are written in those terms — but when slice 2 wires real data in, verify the resulting magnitudes look sane on a live snapshot before trusting them. If they do not, convert through `probCorrect(theta, b)` from `packages/shared/src/placement.ts` rather than adjusting `LAG_FLOOR` until it looks right.
+**2. The PLACEMENT half of `reading_lag` mixes units; the quiz half does not.** Task 2 treats the mean `readingOffset` as directly comparable to an accuracy gap. `readingOffset` is stored in **logits** (`bReading = b + readingOffset`); an accuracy difference is a **probability**. Over a placement's narrow range they track closely enough for a threshold comparison, and the fixtures are written in those terms — but verify the magnitudes look sane on a live snapshot in slice 2 before trusting them. If they do not, convert through `probCorrect(theta, b)` from `packages/shared/src/placement.ts` rather than adjusting `LAG_FLOOR` until it looks right.
+
+The quiz half has no such problem: `POPULATION_QUIZ_READING_GAP` was measured directly as a probability (meaning 0.8848 vs reading 0.8117 across every live quiz row, 2026-08-02), so it subtracts cleanly from an observed accuracy gap. It is pooled across all learners and the reading side is only n=563 — recompute it as quiz volume grows.
+
+**3. The quiz question-type vocabulary is unenforced.** `question_type` is plain TEXT with no enum or check constraint, so `READING_QUESTION_TYPES` / `MEANING_QUESTION_TYPES` are the only thing tying the detector to reality, and a renamed or newly-added type would silently fall into neither bucket and be ignored. Slice 2 should add an assertion — or better, a constraint — that every distinct `question_type` on live is classified. A design list circulating on 2026-08-02 named six types that have **zero rows**; keying on that list would have produced a detector that matched nothing and reported nothing wrong.
