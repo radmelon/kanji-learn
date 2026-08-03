@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-03 (**Coaching analyzer slice 2 is MERGED and migration 0034 is live. Not deployed yet — that is the next step.**)
+# Session Handoff — 2026-08-03 (**Coaching analyzer slice 2 is MERGED, migrated and DEPLOYED. One verification step is outstanding and needs a learner request.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -11,15 +11,37 @@
 
 > ## ▶️ What the next session does
 >
-> **Deploy the API and verify slice 2 against real data.** PR #11 is merged
-> (`6fdf02c`) and migration 0034 is applied to live. Nothing is deployed yet, so
-> slice 2 delivers no user-visible value until it is.
+> **Finish the content half of the deploy verification.** Everything else is
+> done: PR #11 merged (`6fdf02c`), migration 0034 applied to live, and the API
+> deployed 2026-08-03 08:33–08:36 PDT.
 >
-> **Verify with BOTH signals per `docs/SOP.md`** — an App Runner operation dated
-> today, AND response content. The canary is a `coaching_analysis` entry
-> appearing in `GET /v1/buddy/notebook` for a learner with a completed, missed
-> commitment period. A 200 from that route is served by every build ever
-> deployed.
+> The artifact chain is proven — ECR digest went `9fce6c9e…` → `2a56d61e…`,
+> pushed 08:33:04, deployment triggered 08:33:06 two seconds later, SUCCEEDED
+> 08:36:54, service RUNNING, `/health` 200. So the new code *is* what is
+> serving, not a redeploy of the old image.
+>
+> **What is NOT yet proven is response content**, which `docs/SOP.md` insists on
+> separately and for good reason. The coaching entry is only written when a
+> learner actually hits a trigger, and that needs authentication no automated
+> check here can supply.
+>
+> **To close it:** have learner `b8503589-1695-4659-b69d-b9e77d1cf655` open the
+> notebook in the app, then confirm a row appears:
+>
+> ```
+> ./scripts/with-live-db.sh psql -c "SELECT body, source->>'analyzedAt' FROM notebook_entries WHERE source->>'kind'='coaching_analysis'"
+> ```
+>
+> That learner was chosen deliberately: 4 completed placements (θ 1.145, N4),
+> 596 cards, 31 lapses — enough to fire `level_estimate`,
+> `mechanics_explainer`, `theta_delta` and probably `leech`. A learner with no
+> data would make "no row" indistinguishable from "feature broken".
+>
+> ⚠️ **`commitment_gap` will NOT fire for them, and that is correct.** Their only
+> session commitment starts 2026-08-01, so its period ends 08-08 and has not
+> completed. Do not read its absence as a fault — it is the rule that exists to
+> stop Buddy greeting a learner with "you studied less than you promised
+> yourself" the moment they commit.
 >
 > Spec:
 > https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-02-coaching-slice2-design.md
