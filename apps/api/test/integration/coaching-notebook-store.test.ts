@@ -253,57 +253,121 @@ describe('NotebookService — coaching payload storage', () => {
       source: { kind: 'coaching_analysis', analyzedAt: 'A', findings: [] },
     })
 
-    const countLockWaiters = async () => {
+    // Scoped to backends transitively blocked behind the blocker's own
+    // backend PID, rather than the previous version's cluster-wide match on
+    // any backend whose query text contained 'notebook_entries' (which
+    // could in principle be satisfied by activity unrelated to this test's
+    // own two competitors).
+    //
+    // pg_blocking_pids(pid) only reports the DIRECT blocker, not the whole
+    // chain — verified empirically (see task-4-report.md, Fix pass 3):
+    // `deleted`'s guarded UPDATE waits directly on the blocker (wait_event
+    // 'transactionid'), but `written`'s guarded UPDATE, once it queues up
+    // behind `deleted`, waits on `deleted`'s backend instead (wait_event
+    // 'tuple') — NOT on the blocker's. That second lock is Postgres's own
+    // mechanism for serializing multiple waiters on one row, and it's what
+    // makes the FIFO ordering below reliable. So a single non-recursive
+    // `pg_blocking_pids(pid) @> ARRAY[blockerPid]` check would only ever
+    // count `deleted`, never `written`. The recursive CTE walks the chain
+    // (blocker -> deleted -> written) to count both.
+    const countLockWaiters = async (blockerPid: number) => {
       const rows = await db.execute(sql`
-        SELECT count(*)::int AS n FROM pg_stat_activity
-        WHERE wait_event_type = 'Lock' AND query ILIKE '%notebook_entries%'`,
+        WITH RECURSIVE chain AS (
+          SELECT ${blockerPid}::int AS pid
+          UNION
+          SELECT a.pid FROM pg_stat_activity a, chain c
+          WHERE c.pid = ANY(pg_blocking_pids(a.pid))
+        )
+        SELECT count(*)::int - 1 AS n FROM chain`,
       ) as any[]
       return rows[0]!.n as number
     }
-    const waitForLockWaiters = async (n: number) => {
+    const waitForLockWaiters = async (blockerPid: number, n: number) => {
       for (let i = 0; i < 200; i++) {
-        if ((await countLockWaiters()) >= n) return
+        if ((await countLockWaiters(blockerPid)) >= n) return
         await new Promise((r) => setTimeout(r, 10))
       }
-      throw new Error(`timed out waiting for ${n} query(ies) blocked on notebook_entries`)
+      throw new Error(`timed out waiting for ${n} query(ies) blocked behind backend ${blockerPid}`)
     }
 
     // Hold row `id` locked so both competitors' guarded UPDATEs queue up
     // behind it instead of racing freely. Their own findFirst SELECTs are
     // unaffected — plain reads never block on a FOR UPDATE lock.
+    //
+    // blockerLocked resolves only once the FOR UPDATE has actually been
+    // granted (and captures the blocker's own backend pid for the waiter
+    // poll above). The race below awaits it before starting `deleted`:
+    // client.begin(...) returning is no guarantee the lock is held yet, and
+    // without waiting for it, the delete's UPDATE could reach the row
+    // before the blocker does — deciding the race by scheduling luck rather
+    // than the FIFO queue this test depends on.
     let release!: () => void
     const held = new Promise<void>((resolve) => { release = resolve })
+    let markLocked!: (pid: number) => void
+    const blockerLocked = new Promise<number>((resolve) => { markLocked = resolve })
     const blocker = client.begin(async (tx) => {
       // tx.unsafe(...), not the tagged-template form: postgres-js types
       // TransactionSql via Omit<Sql<...>, ...>, and Omit drops call
       // signatures, so `tx\`...\`` doesn't typecheck even though it works
       // fine at runtime. unsafe() is a plain method and survives the Omit.
+      const [{ pid }] = await tx.unsafe('SELECT pg_backend_pid() AS pid') as any[]
       await tx.unsafe('SELECT id FROM notebook_entries WHERE id = $1 FOR UPDATE', [id])
+      markLocked(pid)
       await held
     })
+    const blockerPid = await blockerLocked
 
-    // Queue the delete's guarded UPDATE first so Postgres's FIFO lock queue
-    // grants it the row lock first once the blocker releases — guaranteeing
-    // the delete wins.
-    const deleted = service.supersedeEntry(USER, id, null)
-    await waitForLockWaiters(1)
-    const written = service.writeKeyedEntry(USER, {
-      sourceKind: 'coaching_analysis', kind: 'observation', body: 'After the delete',
-      sourcePayload: { analyzedAt: 'B', findings: [] },
-    })
-    await waitForLockWaiters(2)
+    // release() is idempotent (resolving an already-settled promise is a
+    // no-op), so the explicit call before `await blocker` below and this
+    // safety net don't conflict. Without the net, any throw during the race
+    // — e.g. waitForLockWaiters timing out — would leave the blocker's
+    // transaction, and the row lock it holds, open forever: afterAll's
+    // DELETE FROM notebook_entries would then queue up behind that same
+    // lock and hang until the hook itself times out, a slow and confusing
+    // failure far from whatever actually went wrong.
+    try {
+      // Queue the delete's guarded UPDATE first so Postgres's FIFO lock queue
+      // grants it the row lock first once the blocker releases — guaranteeing
+      // the delete wins.
+      const deleted = service.supersedeEntry(USER, id, null)
+      await waitForLockWaiters(blockerPid, 1)
+      const written = service.writeKeyedEntry(USER, {
+        sourceKind: 'coaching_analysis', kind: 'observation', body: 'After the delete',
+        sourcePayload: { analyzedAt: 'B', findings: [] },
+      })
+      await waitForLockWaiters(blockerPid, 2)
 
-    release()
-    await blocker
-    await deleted
-    await written
+      release()
+      await blocker
+      await deleted
+      await written
 
-    const rows = await db.execute(sql`
-      SELECT body, superseded_at FROM notebook_entries
-      WHERE user_id = ${USER} AND source->>'kind' = 'coaching_analysis' AND superseded_at IS NULL`,
-    ) as any[]
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.body).toBe('After the delete')
+      const rows = await db.execute(sql`
+        SELECT body, superseded_at FROM notebook_entries
+        WHERE user_id = ${USER} AND source->>'kind' = 'coaching_analysis' AND superseded_at IS NULL`,
+      ) as any[]
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.body).toBe('After the delete')
+
+      // The gate under test: writeKeyedEntry links the old row to the new
+      // one (`supersededBy = row.id`) only when `written`'s OWN guarded
+      // UPDATE actually matched a row. Here `written`'s findFirst saw `id`
+      // live, but `deleted` won the row lock first, so that guarded UPDATE
+      // affects zero rows and must not claim the link — `written` still
+      // inserts its replacement (asserted above), it just isn't the one
+      // that gets to stamp this row's supersededBy. Ungated (gating on
+      // `existing` instead of on the UPDATE's own result), this row would
+      // end up with supersededAt stamped by `deleted`'s transaction AND
+      // supersededBy stamped by `written`'s — two supersede fields written
+      // by two different transactions, which is exactly the corruption the
+      // gate exists to prevent.
+      const original = await db.execute(
+        sql`SELECT superseded_by FROM notebook_entries WHERE id = ${id}`,
+      ) as any[]
+      expect(original[0]!.superseded_by).toBeNull()
+    } finally {
+      release()
+    }
   })
 
   it('the partial unique index permits only one LIVE coaching row', async () => {
