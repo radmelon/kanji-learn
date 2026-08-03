@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-02 later (**Coaching analyzer slice 1 is BUILT — in PR #9, not merged. Slice 2 is blocked on one missing column.**)
+# Session Handoff — 2026-08-02 later (**Coaching analyzer slice 1 is MERGED. CI is green again after 28 red runs. Slice 2 is blocked on one missing column.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -11,14 +11,49 @@
 
 > ## ▶️ What the next session does
 >
-> **1. Review and land PR #9.** https://github.com/radmelon/kanji-learn/pull/9
-> — branch `coaching-analyzer-slice1`, 10 commits, one per plan task. It is
-> **pushed but NOT merged**, and `main` does not have it. Nothing in it is
-> user-visible; it is the spine every later slice imports.
+> **Write the slice 2 plan — but read the blocker first.** Slice 2 is "snapshot
+> assembly + notebook surface". It cannot be fully built as specified until
+> `priorFindings` has somewhere to live. See ⚠️ below.
 >
-> **2. Then write the slice 2 plan — but read the blocker first.** Slice 2 is
-> "snapshot assembly + notebook surface". It cannot be fully built as specified
-> until `priorFindings` has somewhere to live. See ⚠️ below.
+> Slice 1 is **merged** (PR #9, merge commit `7cc9f09`). `main` has it. Nothing
+> in it is user-visible; it is the spine every later slice imports, and
+> **nothing imports it yet** — that is expected, not an omission.
+>
+> **Do not cut a build to "ship" slice 1.** It is pure, unreferenced shared
+> code; a build would carry a zero-byte user-visible delta. Verified
+> 2026-08-02: the only `apps/mobile` change since B148's content commit
+> (`297d301`) is a behaviour-identical lint fix and a devDependency.
+
+### 🟢 CI is green on `main` again — and it had been red for 28 straight runs
+
+Merged as PR #10 (`7d5c062`). **None of the three failures was a product
+defect, and `main` has no branch protection**, so nothing was ever gated on CI
+— which is exactly how they accumulated unnoticed across two days.
+
+| Check | Had been red since | Real cause |
+|---|---|---|
+| Lint | `2cab737`, 2026-08-01 | `buddy-session.tsx:22` used a ternary as a statement |
+| Typecheck | `d07fff6`, 2026-08-02 | B-228's `fsrs-copy-claims.test.ts` uses `fs`/`__dirname`; `apps/mobile` never declared `@types/node` |
+| EAS Preview | **never passed — 24/24 since 2026-04-13** | `EXPO_TOKEN` has never been set |
+
+⚠️ **The typecheck one is the trap worth remembering: it passed locally and
+failed only in CI.** TypeScript was resolving `@types/node@20.19.37` out of the
+pnpm virtual store — an accident of one machine's install layout that a clean
+`pnpm install --frozen-lockfile` does not reproduce. **`pnpm typecheck` passing
+locally is not evidence that CI typecheck passes for `apps/mobile`.** The
+dependency is now declared, so it is deterministic rather than incidental.
+
+**EAS Preview now SKIPS when `EXPO_TOKEN` is absent** rather than failing —
+deliberately a skip, not a green no-op, because a check reporting success
+without building anything is the false-signal trap `docs/SOP.md` warns about.
+To enable it you must set `EXPO_TOKEN` plus the three `EXPO_PUBLIC_*` secrets,
+which all currently resolve empty. **Note its paths filter includes
+`packages/shared/**`** — once enabled it fires an iOS *and* Android build on
+shared-only PRs, which is most coaching work. Check the EAS allowance first.
+
+**Still open, and it is the root cause:** `main` has **no required status
+checks**. Repairing the lanes without gating on them means this recurs. Left
+undone deliberately — it is an owner decision.
 
 ### ✅ What landed — the pure analyzer, entirely in `packages/shared/src/coaching/`
 
@@ -98,10 +133,15 @@ step was actually run rather than eyeballed as obviously-fine arithmetic.
 
 ### Housekeeping
 
-- Branch `coaching-analyzer-slice1` is pushed and tracked; `main` is untouched
-  and still at `f54b58c`.
-- The plan doc now carries an **"✅ EXECUTED"** section at the top with the
-  defect table — it is amended in the same PR, so it lands with the code.
+- `main` is at `7cc9f09` with both PRs merged (#9 slice 1, #10 the CI repair).
+  Branches `coaching-analyzer-slice1` and `fix/red-ci` are merged and can be
+  deleted.
+- The plan doc carries an **"✅ EXECUTED"** section at the top with the defect
+  table — it landed with the code.
+- **EAS allowance resets 2026-08-04 (Tuesday).** As of 2026-08-02 roughly one
+  build remains inside the allowance; the owner has authorised overage builds
+  (~$2 each) through Tuesday **if there is a reason to cut one**. There was
+  not, at the time of writing — see the "do not cut a build" note above.
 - Local test DB was **not** rebuilt this session; it was left green earlier
   today and the API lane was run against it as-is. `docs/local-test-db.md` is
   emphatic that re-running the migration list on an existing DB *strips RLS* —
