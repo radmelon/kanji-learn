@@ -14,12 +14,9 @@ const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
 
 // NOT '...c7': the brief's own draft used it, but it's already RACE_USER in
-// coaching-refresh.test.ts (isUniqueViolation describe block). fileParallelism
-// is false (vitest.config.ts) so the two files don't race in practice, but
-// reusing an id another file already owns for a different fixture purpose is
-// exactly the collision the task's own environment notes warn about ("check
-// first; an earlier task shipped a collision") -- confirmed via
-// `grep -rl 0000000000c7 apps/api/test`. Verified fresh repo-wide.
+// coaching-refresh.test.ts (isUniqueViolation describe block), and
+// apps/api/vitest.config.ts sets fileParallelism: false -- so reusing it here
+// would be a latent collision, not one that's currently breaking anything.
 const USER = '00000000-0000-0000-0000-0000000000d8'
 
 describe('coaching triggers', () => {
@@ -260,7 +257,24 @@ describe('coaching triggers', () => {
         method: 'GET', url: '/v1/buddy/notebook', headers: { 'x-test-user-id': USER },
       })
       expect(res.statusCode).toBe(200)
-      expect(res.json().ok).toBe(true)
+      const body = res.json()
+      expect(body.ok).toBe(true)
+
+      // Proves the spy actually intercepted a real call -- without this, the
+      // assertions above would pass identically if the route never called
+      // refresh() at all. The notebook route calls it unforced (no second
+      // argument), unlike placement/session below.
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy).toHaveBeenCalledWith(USER)
+
+      // And that the notebook actually rendered through the failure, not
+      // merely that the request avoided a 500 -- mirrors the placement/
+      // session siblings asserting a primary-output field (data.theta,
+      // data.daysCommitted) survived.
+      expect(Array.isArray(body.data.sections)).toBe(true)
+      const observations = body.data.sections.find((s: any) => s.key === 'observations')
+      expect(observations).toBeDefined()
+      expect(Array.isArray(observations.live)).toBe(true)
     } finally {
       spy.mockRestore()
     }
@@ -282,6 +296,12 @@ describe('coaching triggers', () => {
       })
       expect(res.statusCode).toBe(200)
       expect(typeof res.json().data.theta).toBe('number')
+
+      // Proves the spy actually intercepted a real call, called with the
+      // forced contract -- without this, the assertions above would pass
+      // identically if the route never called refresh() at all.
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy).toHaveBeenCalledWith(USER, { force: true })
     } finally {
       spy.mockRestore()
     }
@@ -298,6 +318,12 @@ describe('coaching triggers', () => {
       })
       expect(res.statusCode).toBe(200)
       expect(res.json().data.daysCommitted).toBe(4)
+
+      // Proves the spy actually intercepted a real call, called with the
+      // forced contract -- without this, the assertions above would pass
+      // identically if the route never called refresh() at all.
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy).toHaveBeenCalledWith(USER, { force: true })
     } finally {
       spy.mockRestore()
     }
