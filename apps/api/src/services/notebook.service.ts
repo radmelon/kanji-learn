@@ -11,6 +11,18 @@ export interface KeyedEntryInput {
   kind: 'observation' | 'decision'
   body: string
   weekStart?: string | null
+  /** Merged into `source` after `kind`. Slice 2 uses it for the coaching
+   *  finding memory (`analyzedAt`, `findings`, `correction`). */
+  sourcePayload?: Record<string, unknown>
+}
+
+export interface KeyedEntryRow {
+  id: string
+  author: 'buddy' | 'learner'
+  body: string
+  source: Record<string, unknown>
+  createdAt: string
+  supersededAt: string | null
 }
 
 export class NotebookService {
@@ -134,15 +146,31 @@ export class NotebookService {
 
       const existing = await tx.query.notebookEntries.findFirst({ where: and(...conditions) })
 
+      // Supersede FIRST. Migration 0034 permits one LIVE coaching row per
+      // learner, and the old row still matches that predicate until this
+      // statement runs — so inserting first put two live rows in the index at
+      // the same instant and failed with 23505 on the ordinary second write,
+      // single-threaded, no race required. supersedeEntry documents this exact
+      // hazard below and orders itself the same way.
+      //
+      // supersededBy needs the replacement's id, so linking is a third
+      // statement rather than part of this one.
+      if (existing) {
+        await tx.update(notebookEntries)
+          .set({ supersededAt: new Date() })
+          .where(and(eq(notebookEntries.id, existing.id), isNull(notebookEntries.supersededAt)))
+      }
+
       const [row] = await tx.insert(notebookEntries).values({
         userId, kind: input.kind, body: input.body, author: 'buddy',
-        weekStart: input.weekStart ?? null, source: { kind: input.sourceKind },
+        weekStart: input.weekStart ?? null,
+        source: { kind: input.sourceKind, ...(input.sourcePayload ?? {}) },
       }).returning({ id: notebookEntries.id })
 
       if (existing) {
         await tx.update(notebookEntries)
-          .set({ supersededAt: new Date(), supersededBy: row.id })
-          .where(and(eq(notebookEntries.id, existing.id), isNull(notebookEntries.supersededAt)))
+          .set({ supersededBy: row.id })
+          .where(eq(notebookEntries.id, existing.id))
       }
     })
   }
@@ -212,5 +240,63 @@ export class NotebookService {
     })
 
     return { id: replacementId }
+  }
+
+  /**
+   * The most recent entry with this source kind, SUPERSEDED OR NOT.
+   *
+   * The missing `superseded_at` predicate is deliberate and load-bearing.
+   * `supersedeEntry(userId, id, null)` is the delete path: it marks the row
+   * superseded and never removes it. Filtering to live rows here would mean a
+   * learner deleting Buddy's observation silently resets the coaching memory,
+   * every finding becomes novel again, and §4's decay restarts from nothing.
+   *
+   * `skip` reads further back — used for the coalescing window, where the
+   * previous run is part of the same episode and its stamps must not be
+   * treated as history.
+   */
+  async readLatestKeyed(
+    userId: string,
+    sourceKind: string,
+    skip = 0,
+  ): Promise<KeyedEntryRow | null> {
+    const rows = await this.db.select().from(notebookEntries)
+      .where(and(
+        eq(notebookEntries.userId, userId),
+        sql`${notebookEntries.source}->>'kind' = ${sourceKind}`,
+      ))
+      .orderBy(desc(notebookEntries.createdAt))
+      .limit(1)
+      .offset(skip)
+
+    const row = rows[0]
+    if (!row) return null
+    return {
+      id: row.id,
+      author: row.author as 'buddy' | 'learner',
+      body: row.body,
+      source: (row.source ?? {}) as Record<string, unknown>,
+      createdAt: row.createdAt.toISOString(),
+      supersededAt: row.supersededAt?.toISOString() ?? null,
+    }
+  }
+
+  /**
+   * Rewrite an entry without superseding it — no new row, no chain link.
+   *
+   * Used when an analysis says the same thing as the stored one (only
+   * `analyzedAt` moves) and when two runs coalesce inside the same episode.
+   * Superseding in either case would fill the chain with near-identical rows,
+   * and that chain is what §4 calls the trajectory.
+   */
+  async updateEntryInPlace(
+    userId: string,
+    id: string,
+    body: string,
+    source: Record<string, unknown>,
+  ): Promise<void> {
+    await this.db.update(notebookEntries)
+      .set({ body, source })
+      .where(and(eq(notebookEntries.id, id), eq(notebookEntries.userId, userId)))
   }
 }
