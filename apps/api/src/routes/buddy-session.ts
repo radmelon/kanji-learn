@@ -23,6 +23,7 @@ import { CommitmentService } from '../services/buddy/commitment.service.js'
 import { NotebookService } from '../services/notebook.service.js'
 import { CoachingService } from '../services/buddy/coaching.service.js'
 import { CoachingVoiceService } from '../services/buddy/coaching-voice.service.js'
+import type { CoachingVoice } from '../services/buddy/coaching-voice.service.js'
 
 const commitmentBodySchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -128,7 +129,7 @@ export async function buddySessionRoutes(server: FastifyInstance) {
     // Everything here is best-effort: agreeing the week ahead is the session's
     // one guaranteed outcome and must not be lost to a coaching failure. Same
     // guard as the notebook write below.
-    let voice: { text: string; source: 'llm' | 'template' } | null = null
+    let voice: CoachingVoice | null = null
     try {
       const { findings } = await coaching.refresh(req.userId!, {
         force: true,

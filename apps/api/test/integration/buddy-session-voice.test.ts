@@ -3,6 +3,13 @@
 // This learner has no placement, no reviews and no commitment history, so
 // analyze() yields nothing: the assertion is that the route stays exactly as it
 // was, which is §2's common case and the backward-compatibility guarantee of §8.
+//
+// No test in this file exercises a coaching FAILURE, so the route's try/catch
+// around the coaching block (refresh + voice call) is not proven at this
+// level. The reason is this same fixture: the learner has no findings, so
+// CoachingVoiceService.utteranceFor returns null on its first line, before it
+// does anything that could throw. Anyone changing that try/catch should know
+// it has no regression net here.
 
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import { drizzle } from 'drizzle-orm/postgres-js'
@@ -85,6 +92,7 @@ describe('GET /v1/buddy/session — voice', () => {
     expect(data.state).toBe('due')
     expect(typeof data.opener.text).toBe('string')
     expect(data.proposedCommitment).toBeDefined()
+    expect(data.reckon).toBeNull()
   })
 
   // MUTATION CAUGHT: emitting `voice: null` or an empty-text voice when there
@@ -95,17 +103,5 @@ describe('GET /v1/buddy/session — voice', () => {
   it('omits voice entirely when the analyzer finds nothing', async () => {
     const data = (await get()).json().data
     expect(data.voice).toBeUndefined()
-  })
-
-  // MUTATION CAUGHT: removing the try/catch around the coaching block (the
-  // forced `refresh` plus the voice call) and letting a coaching failure
-  // escape it, 500ing the session. Agreeing the week ahead is the session's
-  // one guaranteed outcome, so this route must degrade, never fail. This
-  // fixture has no findings, so the router stubbed in beforeAll is never
-  // reached here — this test says nothing about the LLM path.
-  it('survives the coaching block (forced refresh + voice call) without 500ing the due session', async () => {
-    const res = await get()
-    expect(res.statusCode).toBe(200)
-    expect(res.json().data.state).toBe('due')
   })
 })
