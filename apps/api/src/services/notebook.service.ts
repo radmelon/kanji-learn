@@ -155,28 +155,21 @@ export class NotebookService {
       //
       // supersededBy needs the replacement's id, so linking is a third
       // statement rather than part of this one.
+      let supersededId: string | null = null
       if (existing) {
         const superseded = await tx.update(notebookEntries)
           .set({ supersededAt: new Date() })
           .where(and(eq(notebookEntries.id, existing.id), isNull(notebookEntries.supersededAt)))
           .returning({ id: notebookEntries.id })
 
-        // Zero rows means a concurrent writer superseded `existing` between
-        // our findFirst and this statement, and — being a separate
-        // transaction — has already committed its own live replacement for
-        // this key by the time our UPDATE's WHERE clause gets re-evaluated.
-        // We did not win the race, so we must not act as though we did:
-        // inserting our own replacement below would leave a second live row
-        // for source kinds with no partial unique index to catch it
-        // (commitment, the onboarding_* kinds in meeting.service.ts), and the
-        // unconditional link further down would overwrite the winner's link
-        // with an id we never actually superseded — a row whose
-        // supersededAt and supersededBy come from two different writers.
-        // Bail out quietly rather than throwing ALREADY_SUPERSEDED the way
-        // supersedeEntry does: this is a system write-back racing itself, not
-        // a user editing one specific entry, and the key is already
-        // satisfied by whoever won.
-        if (superseded.length === 0) return
+        // Zero rows means someone else superseded `existing` between our
+        // findFirst and this statement — another writer's own
+        // supersede-and-insert, or supersedeEntry(..., null) deleting it
+        // outright. Either way, this transaction did not win the supersede,
+        // so it must not claim the link below. It still inserts its own
+        // replacement regardless — withholding the insert is what silently
+        // drops the write.
+        if (superseded.length > 0) supersededId = existing.id
       }
 
       const [row] = await tx.insert(notebookEntries).values({
@@ -185,10 +178,10 @@ export class NotebookService {
         source: { kind: input.sourceKind, ...(input.sourcePayload ?? {}) },
       }).returning({ id: notebookEntries.id })
 
-      if (existing) {
+      if (supersededId) {
         await tx.update(notebookEntries)
           .set({ supersededBy: row.id })
-          .where(eq(notebookEntries.id, existing.id))
+          .where(eq(notebookEntries.id, supersededId))
       }
     })
   }

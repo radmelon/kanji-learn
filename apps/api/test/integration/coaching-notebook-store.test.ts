@@ -119,11 +119,11 @@ describe('NotebookService — coaching payload storage', () => {
     // THE REGRESSION TEST FOR THIS TASK'S REORDER.
     //
     // writeKeyedEntry used to insert the replacement BEFORE superseding the
-    // original (notebook.service.ts:137 before :143). With migration 0034's
-    // partial unique index in place, both rows satisfy the predicate at that
-    // instant, so this second call failed with 23505 — on the ordinary path,
-    // single-threaded, no race required. supersedeEntry documents the same
-    // hazard at :181-186 and orders itself the other way.
+    // original. With migration 0034's partial unique index in place, both
+    // rows satisfy the predicate at that instant, so this second call failed
+    // with 23505 — on the ordinary path, single-threaded, no race required.
+    // supersedeEntry's own doc comment documents the same hazard and orders
+    // itself the other way.
     await service.writeKeyedEntry(USER, {
       sourceKind: 'coaching_analysis', kind: 'observation', body: 'First',
       sourcePayload: { analyzedAt: 'A', findings: [] },
@@ -150,28 +150,39 @@ describe('NotebookService — coaching payload storage', () => {
     expect(newer.superseded_at).toBeNull()
   })
 
-  it('two concurrent writeKeyedEntry calls: the loser no-ops instead of corrupting the link', async () => {
+  it('two concurrent writeKeyedEntry calls: the loser rolls back instead of corrupting the link', async () => {
     // THE REGRESSION TEST FOR THE OPTIMISTIC-CONCURRENCY GUARD.
     //
     // writeKeyedEntry's supersede statement is guarded (WHERE supersededAt IS
     // NULL), but the link statement that follows the insert was not — so a
     // transaction that lost the supersede race (matched zero rows) still
     // inserted its own row and then unconditionally overwrote supersededBy on
-    // the old row with an id it never actually superseded. For coaching_analysis
-    // specifically, migration 0034's unique index catches the second live row
-    // at the INSERT statement, so pre-fix this raced as the loser's promise
-    // rejecting with a raw postgres error rather than resolving — source kinds
-    // with no such index (commitment, onboarding_*) would have silently ended
-    // up with two live rows instead, which is the harder-to-detect version of
-    // the same bug. This file can only exercise the coaching_analysis case.
+    // the old row with an id it never actually superseded.
+    //
+    // The fix (see writeKeyedEntry's inline comment) always inserts and gates
+    // only the link on having actually won the supersede, so the loser here
+    // never touches supersededBy. For coaching_analysis specifically,
+    // migration 0034's unique index then rejects the loser's own INSERT —
+    // the winner's replacement is already the one live row for this key by
+    // the time the loser reaches it — so the loser's whole transaction
+    // aborts and its promise rejects. That is correct: it fails loudly
+    // rather than either corrupting the link (the original bug) or silently
+    // vanishing (a different bug, covered by the delete-race test above).
+    // Source kinds with no such index (commitment, onboarding_*) would
+    // instead end up with two live rows, which is the pre-existing behaviour
+    // for those kinds and unchanged by this fix. This file can only exercise
+    // the coaching_analysis case.
     await service.writeKeyedEntry(USER, {
       sourceKind: 'coaching_analysis', kind: 'observation', body: 'Zero',
       sourcePayload: { analyzedAt: 'ZERO', findings: [] },
     })
 
     // Both calls read `existing` = the row above and race to supersede it.
-    // Whichever interleaving actually happens, neither promise should reject.
-    await Promise.all([
+    // allSettled rather than all: the loser of a genuine race is now expected
+    // to reject (see above), and that must not fail this test via an
+    // unhandled rejection. Only the interleaving where one call fully
+    // finishes before the other's findFirst even runs lets both resolve.
+    const results = await Promise.allSettled([
       service.writeKeyedEntry(USER, {
         sourceKind: 'coaching_analysis', kind: 'observation', body: 'RaceA',
         sourcePayload: { analyzedAt: 'RACE_A', findings: [] },
@@ -181,6 +192,15 @@ describe('NotebookService — coaching payload storage', () => {
         sourcePayload: { analyzedAt: 'RACE_B', findings: [] },
       }),
     ])
+
+    // There is only one contested row, so at most one call's INSERT can find
+    // it already replaced — and any rejection must be that expected
+    // collision, not some other failure.
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+    expect(rejected.length).toBeLessThanOrEqual(1)
+    for (const r of rejected) {
+      expect(String(r.reason)).toMatch(/notebook_entries_coaching_unique/)
+    }
 
     const rows = await db.execute(sql`
       SELECT id, superseded_at, superseded_by FROM notebook_entries
@@ -208,6 +228,82 @@ describe('NotebookService — coaching payload storage', () => {
         expect(ids.has(row.superseded_by)).toBe(true)
       }
     }
+  })
+
+  it('writeKeyedEntry still inserts its replacement when it loses the supersede race to a delete', async () => {
+    // THE REGRESSION TEST FOR THE EARLY-RETURN BUG.
+    //
+    // Reproduces the "we lost to a delete" case: this transaction's findFirst
+    // sees the row live, then a concurrent supersedeEntry(..., null) (the
+    // delete path) commits before this transaction's own guarded UPDATE
+    // re-evaluates its WHERE clause — exactly what a learner deleting
+    // Buddy's live entry mid write-back looks like.
+    //
+    // A plain sequential create -> delete -> write does NOT exercise this:
+    // by the time writeKeyedEntry's own findFirst runs, the delete has
+    // already committed, so `existing` comes back undefined and the guarded
+    // branch is never entered at all (same reason the concurrent-first-opens
+    // test above can't use two sequential calls either). So this forces the
+    // interleaving with an explicit row lock, rather than leaving it to
+    // Promise.all timing the way the race test above does: that test is
+    // fine with either interleaving because both are valid outcomes, but
+    // here only one interleaving exercises the bug, so it must be pinned.
+    const { id } = await service.createEntry(USER, {
+      kind: 'observation', body: 'Original', author: 'buddy',
+      source: { kind: 'coaching_analysis', analyzedAt: 'A', findings: [] },
+    })
+
+    const countLockWaiters = async () => {
+      const rows = await db.execute(sql`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock' AND query ILIKE '%notebook_entries%'`,
+      ) as any[]
+      return rows[0]!.n as number
+    }
+    const waitForLockWaiters = async (n: number) => {
+      for (let i = 0; i < 200; i++) {
+        if ((await countLockWaiters()) >= n) return
+        await new Promise((r) => setTimeout(r, 10))
+      }
+      throw new Error(`timed out waiting for ${n} query(ies) blocked on notebook_entries`)
+    }
+
+    // Hold row `id` locked so both competitors' guarded UPDATEs queue up
+    // behind it instead of racing freely. Their own findFirst SELECTs are
+    // unaffected — plain reads never block on a FOR UPDATE lock.
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const blocker = client.begin(async (tx) => {
+      // tx.unsafe(...), not the tagged-template form: postgres-js types
+      // TransactionSql via Omit<Sql<...>, ...>, and Omit drops call
+      // signatures, so `tx\`...\`` doesn't typecheck even though it works
+      // fine at runtime. unsafe() is a plain method and survives the Omit.
+      await tx.unsafe('SELECT id FROM notebook_entries WHERE id = $1 FOR UPDATE', [id])
+      await held
+    })
+
+    // Queue the delete's guarded UPDATE first so Postgres's FIFO lock queue
+    // grants it the row lock first once the blocker releases — guaranteeing
+    // the delete wins.
+    const deleted = service.supersedeEntry(USER, id, null)
+    await waitForLockWaiters(1)
+    const written = service.writeKeyedEntry(USER, {
+      sourceKind: 'coaching_analysis', kind: 'observation', body: 'After the delete',
+      sourcePayload: { analyzedAt: 'B', findings: [] },
+    })
+    await waitForLockWaiters(2)
+
+    release()
+    await blocker
+    await deleted
+    await written
+
+    const rows = await db.execute(sql`
+      SELECT body, superseded_at FROM notebook_entries
+      WHERE user_id = ${USER} AND source->>'kind' = 'coaching_analysis' AND superseded_at IS NULL`,
+    ) as any[]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.body).toBe('After the delete')
   })
 
   it('the partial unique index permits only one LIVE coaching row', async () => {
