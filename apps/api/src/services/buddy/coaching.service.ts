@@ -127,9 +127,27 @@ export class CoachingService {
     // part of THIS episode: read priors from the row before it, and update it
     // in place rather than superseding, so the chain gains no spurious link
     // for an entry nobody had time to read.
-    const coalescing = sinceLastMs < COALESCE_WINDOW_MINUTES * 60_000
+    //
+    // Keyed on the row's OWN `createdAt`, NOT `analyzedAt`. Rule 3 below
+    // updates a row in place forever while its selection stays unchanged, so
+    // `analyzedAt` moves on every steady-state re-analysis while `createdAt`
+    // never does. A row created many days ago that merely got refreshed in
+    // place 20 minutes ago is the PRE-episode state, not part of a new one --
+    // keying off `analyzedAt` would treat every such row as a fresh
+    // coalescing partner and reset every finding's `since` to now, on every
+    // run, forever.
+    const coalescing = latest !== null
+      && Date.parse(now) - Date.parse(latest.createdAt) < COALESCE_WINDOW_MINUTES * 60_000
+    // `?? latest`: skip=1 reads PAST the row this run would otherwise
+    // coalesce with, on the theory that an even earlier row holds the real
+    // pre-episode state. When there is no earlier row -- this is the very
+    // first analysis ever, or a coalescing chain that runs out of history --
+    // skip=1 finds nothing, and falling through to empty priors would erase
+    // the findings that row was already holding, just because a learner
+    // triggered two events close together early on. The row itself is the
+    // best available prior then, exactly as it is when not coalescing.
     const priorRow = coalescing
-      ? await this.notebook.readLatestKeyed(userId, COACHING_SOURCE_KIND, 1)
+      ? (await this.notebook.readLatestKeyed(userId, COACHING_SOURCE_KIND, 1)) ?? latest
       : latest
     const priors = (priorRow?.source as CoachingAnalysisSource | undefined)?.findings ?? []
 
@@ -155,8 +173,13 @@ export class CoachingService {
 
     // Update in place when this says the same thing, or when it coalesces with
     // a run moments earlier. Both require the row to still be LIVE -- a
-    // superseded row must never be resurrected by an UPDATE.
-    const canUpdate = latest !== null && latest.supersededAt === null
+    // superseded row must never be resurrected by an UPDATE -- and
+    // buddy-authored: a learner-authored latest holds words nobody else
+    // wrote. The superseded chain is the ONLY place a replaced entry's text
+    // survives, and that chain only grows on the INSERT path below, so a
+    // learner-authored latest must always take that path -- it supersedes
+    // their row instead of silently overwriting their words in place.
+    const canUpdate = latest !== null && latest.supersededAt === null && latest.author === 'buddy'
     const unchanged = selectionsMatch(priors, findings)
     if (canUpdate && (coalescing || unchanged)) {
       // Spread into a fresh object rather than passing `source` directly:

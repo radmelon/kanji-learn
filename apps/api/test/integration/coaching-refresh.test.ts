@@ -18,6 +18,26 @@ async function missedPeriod() {
     VALUES (${USER}, '2026-07-20', 4, 15, 'session')`)
 }
 
+/**
+ * Force a row's `created_at` onto the test's own fictional timeline.
+ *
+ * Coalescing is now decided from `created_at` (Critical 2), and every write
+ * path here that inserts a row (`writeKeyedEntry`, `createEntry`,
+ * `supersedeEntry`'s replacement) leaves `created_at` at the column default
+ * `now()` -- real wall-clock at whatever instant the test happens to run --
+ * because none of them take a `now` parameter. Only `source.analyzedAt` is
+ * stamped to the fictional `now` these tests script. Left unstamped,
+ * `created_at` and the `now` arguments passed to `service.refresh()` are two
+ * unrelated clocks, and whether a scenario reads as "10 minutes later" or
+ * "10 minutes ago" to createdAt-based coalescing depends on the real time of
+ * day the suite happens to run -- not on anything the test describes. This
+ * pins `created_at` to the fictional clock so createdAt-based coalescing
+ * exercises the scenario the test actually names.
+ */
+async function stampCreatedAt(id: string, at: string) {
+  await db.execute(sql`UPDATE notebook_entries SET created_at = ${at}::timestamptz WHERE id = ${id}`)
+}
+
 describe('CoachingService.refresh', () => {
   const service = new CoachingService(db)
   const notebook = new NotebookService(db)
@@ -74,6 +94,8 @@ describe('CoachingService.refresh', () => {
   it('an UNCHANGED selection updates in place — no second row', async () => {
     await missedPeriod()
     await service.refresh(USER, { force: true, now: NOW })
+    const inserted = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    await stampCreatedAt(inserted!.id, NOW)   // pins coalescing's clock to this scenario's own
     const later = '2026-08-03T12:00:00.000Z'
     const result = await service.refresh(USER, { force: true, now: later })
 
@@ -108,6 +130,7 @@ describe('CoachingService.refresh', () => {
     await missedPeriod()
     await service.refresh(USER, { force: true, now: NOW })
     const row = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    await stampCreatedAt(row!.id, NOW)
     await notebook.supersedeEntry(USER, row!.id, null)   // the delete path
 
     const later = '2026-08-10T12:00:00.000Z'
@@ -115,6 +138,38 @@ describe('CoachingService.refresh', () => {
 
     const source = ((await liveEntries())[0] as any).source
     // `since` is carried from the superseded row, NOT reset to `later`.
+    expect(source.findings[0].since).toBe(NOW)
+  })
+
+  /**
+   * Important 3. The test above proves canUpdate=false with coalescing=false
+   * (8 days later). Nothing exercised canUpdate=false TOGETHER WITH
+   * coalescing=true -- the learner deletes the entry, then a session
+   * completes minutes later, not days later. That combination hits the
+   * null-priors path from the row (deleted, but still `latest` by
+   * created_at) rather than from `latest` in the ordinary non-coalescing
+   * sense above, so it is a genuinely different code path, not a
+   * restatement of the 8-days-later case.
+   */
+  it('the learner deletes the entry, then a session completes 10 minutes later — finding memory still survives', async () => {
+    await missedPeriod()
+    await service.refresh(USER, { force: true, now: NOW })
+    const row = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    await stampCreatedAt(row!.id, NOW)
+    await notebook.supersedeEntry(USER, row!.id, null)   // the delete path
+
+    const tenMinutesLater = '2026-08-02T12:10:00.000Z'   // inside the 60min coalescing window
+    const result = await service.refresh(USER, { force: true, now: tenMinutesLater })
+
+    // canUpdate is false (the live row is gone) regardless of coalescing, so
+    // this always inserts -- the interesting question is only what `since`
+    // comes out as.
+    expect(result.written).toBe('inserted')
+    const source = ((await liveEntries())[0] as any).source
+    // `since` is carried from the deleted row, NOT reset to `tenMinutesLater`.
+    // Only the `?? latest` fallback (skip=1 finds nothing -- the deleted row
+    // is the only row that ever existed) gets this right; without it priors
+    // would be [] and this would read `tenMinutesLater`.
     expect(source.findings[0].since).toBe(NOW)
   })
 
@@ -132,14 +187,72 @@ describe('CoachingService.refresh', () => {
     expect(source.correction.kinds).toContain('commitment_gap')
   })
 
+  /**
+   * Critical 1. The test above only proves `source.correction` gets set --
+   * true whether the write inserted or overwrote in place, since both paths
+   * build `source` the same way before branching. It says nothing about what
+   * happened to the learner's own row. Concrete failure this guards against:
+   * the learner edits Buddy's observation 5 minutes after it was written,
+   * then a session completes 20 minutes after THAT (still well inside the
+   * 60-minute coalescing window) -- `canUpdate` must not be true for a
+   * learner-authored latest, or `updateEntryInPlace` overwrites the
+   * learner's words with Buddy's new analysis while `author` stays
+   * 'learner' in the row, and their text exists nowhere afterward.
+   */
+  it("a learner's correction survives a later coalescing refresh — superseded, not overwritten", async () => {
+    await missedPeriod()
+    await service.refresh(USER, { force: true, now: NOW })
+    const row = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    // Learner edits 5 minutes later; session completes 20 minutes after that
+    // -- 25 minutes total, inside COALESCE_WINDOW_MINUTES, which is exactly
+    // what drove the in-place overwrite before the fix.
+    await notebook.supersedeEntry(USER, row!.id, 'I was travelling that week.')
+    const sessionCompletes = '2026-08-02T12:25:00.000Z'
+    const result = await service.refresh(USER, { force: true, now: sessionCompletes })
+
+    // A learner-authored latest can never be updated in place, so this must
+    // insert (and supersede the learner's row) regardless of coalescing.
+    expect(result.written).toBe('inserted')
+
+    const rows = await db.execute(sql`SELECT author, body, superseded_at FROM notebook_entries
+      WHERE user_id = ${USER} AND source->>'kind' = 'coaching_analysis' ORDER BY created_at ASC`) as
+      unknown as { author: string; body: string; superseded_at: string | null }[]
+    // Three rows in the chain: Buddy's original (superseded by the learner's
+    // edit), the learner's correction (superseded by this refresh), and
+    // Buddy's new analysis (live).
+    expect(rows.length).toBe(3)
+
+    const learnerRow = rows.find((r) => r.author === 'learner')!
+    // The learner's words still exist, on their own (now superseded) row --
+    // not silently replaced by Buddy's new analysis.
+    expect(learnerRow.body).toBe('I was travelling that week.')
+    expect(learnerRow.superseded_at).not.toBeNull()
+
+    const liveRow = rows.find((r) => r.superseded_at === null)!
+    // The new analysis is Buddy's, on its own live row -- not masquerading
+    // as learner-authored the way an in-place overwrite would leave it.
+    expect(liveRow.author).toBe('buddy')
+  })
+
   it('coalesces two runs inside the window into ONE chain entry', async () => {
     await missedPeriod()
     await service.refresh(USER, { force: true, now: NOW })
+    const inserted = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    await stampCreatedAt(inserted!.id, NOW)
     const tenMinutesLater = '2026-08-02T12:10:00.000Z'
     const result = await service.refresh(USER, { force: true, now: tenMinutesLater })
 
     expect(result.written).toBe('updated')
     expect((await allEntries()).length).toBe(1)
+
+    // This run hits the null-priors path: the row it coalesces with (the one
+    // just inserted above) is the ONLY row that has ever existed, so skip=1
+    // finds nothing before it. Without the `?? latest` fallback, priors would
+    // resolve to [] and commitment_gap's `since` would reset to
+    // tenMinutesLater instead of carrying the ten minutes it already had.
+    const source = ((await liveEntries())[0] as any).source
+    const finding = source.findings.find((f: any) => f.kind === 'commitment_gap')
+    expect(finding.since).toBe(NOW)
   })
 
   /**
@@ -158,6 +271,11 @@ describe('CoachingService.refresh', () => {
     await missedPeriod()
 
     // Row A: older, already superseded -- this is what skip=1 should find.
+    // created_at is stamped explicitly (matching its own analyzedAt) rather
+    // than left at the defaultNow() real wall-clock: coalescing is decided
+    // from created_at now, so it must sit on the SAME fictional timeline as
+    // row B below, or whichever real instant the suite happens to run at
+    // would decide the ordering instead of the scenario this test names.
     const { id: rowAId } = await notebook.createEntry(USER, {
       kind: 'observation', author: 'buddy', body: 'A',
       source: {
@@ -170,25 +288,26 @@ describe('CoachingService.refresh', () => {
         }],
       },
     })
+    await stampCreatedAt(rowAId, '2026-07-01T00:00:00.000Z')
     await notebook.supersedeEntry(USER, rowAId, null)
 
     // Row B: live, the "previous" entry the upcoming refresh will coalesce
     // with. Its own `since` for commitment_gap is deliberately different from
     // row A's, so the assertion below can tell which one was actually read.
-    // created_at is forced strictly later than row A's so ORDER BY created_at
-    // DESC is deterministic rather than dependent on clock resolution -- the
-    // same technique as "readLatestKeyed can skip to the row before the
-    // latest" in coaching-notebook-store.test.ts.
-    await db.execute(sql`INSERT INTO notebook_entries (user_id, kind, body, author, source, created_at)
-      VALUES (${USER}, 'observation', 'B', 'buddy',
-        ${{
-          kind: 'coaching_analysis',
-          analyzedAt: NOW,
-          findings: [{ kind: 'commitment_gap', since: '2026-07-30T00:00:00.000Z', lastRaisedAt: NOW }],
-        }}::jsonb,
-        now() + interval '1 second')`)
+    // created_at is stamped to NOW (matching its own analyzedAt), which also
+    // gives the required ordering for free: NOW is after row A's 2026-07-01,
+    // so ORDER BY created_at DESC is deterministic.
+    const { id: rowBId } = await notebook.createEntry(USER, {
+      kind: 'observation', author: 'buddy', body: 'B',
+      source: {
+        kind: 'coaching_analysis',
+        analyzedAt: NOW,
+        findings: [{ kind: 'commitment_gap', since: '2026-07-30T00:00:00.000Z', lastRaisedAt: NOW }],
+      },
+    })
+    await stampCreatedAt(rowBId, NOW)
 
-    const soon = '2026-08-02T12:10:00.000Z'   // 10 min after row B's analyzedAt -- inside the 60min coalescing window
+    const soon = '2026-08-02T12:10:00.000Z'   // 10 min after row B's created_at -- inside the 60min coalescing window
     const result = await service.refresh(USER, { force: true, now: soon })
 
     expect(result.written).toBe('updated')
@@ -198,6 +317,49 @@ describe('CoachingService.refresh', () => {
     // Row A's stamp -- not row B's ('2026-07-30...') and not a fresh `since:
     // soon` -- proves priors came from skip=1, not from `latest` itself.
     expect(finding.since).toBe('2026-01-01T00:00:00.000Z')
+  })
+
+  /**
+   * Critical 2, the steady-state trace from the brief. A row that has sat
+   * live for a long time, picking up in-place updates on every unchanged
+   * re-analysis, is the PRE-episode state -- not a fresh coalescing partner
+   * -- even when its most recent in-place update landed minutes ago.
+   * `analyzedAt` moves on every one of those updates; `created_at` never
+   * does, which is exactly the distinction Critical 2 turns on.
+   */
+  it('a row updated in place minutes ago, but created long ago, is NOT a coalescing episode — since survives', async () => {
+    await missedPeriod()
+    // missedPeriod's week_start is 2026-07-20 with the default 1-week
+    // interval, so the period itself does not COMPLETE (and commitment_gap
+    // does not fire) until 2026-07-27 -- `created` must be on or after that,
+    // not merely "long before NOW", or this refresh finds nothing at all.
+    const created = '2026-07-28T09:00:00.000Z'   // long before NOW (2026-08-02), after the period completes
+    await service.refresh(USER, { force: true, now: created })
+    const row = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    await stampCreatedAt(row!.id, created)
+
+    // An unforced re-analysis, well past the staleness gate, that finds the
+    // same selection and so updates the SAME row in place -- `created_at`
+    // does not move. Stands in for "days of unforced GETs" in the brief's
+    // trace; one is enough to move analyzedAt away from created_at.
+    const recentUpdate = '2026-08-02T11:40:00.000Z'   // 20 min before NOW
+    const midResult = await service.refresh(USER, { now: recentUpdate })
+    expect(midResult.written).toBe('updated')
+
+    // A forced run 20 minutes after that update -- inside the 60-minute
+    // window measured from `analyzedAt` (the pre-fix, buggy basis) but 13
+    // days outside it measured from `created_at` (the fix).
+    const finalResult = await service.refresh(USER, { force: true, now: NOW })
+    expect(finalResult.written).toBe('updated')
+    expect((await allEntries()).length).toBe(1)   // still the one row -- never superseded
+
+    const source = ((await liveEntries())[0] as any).source
+    const finding = source.findings.find((f: any) => f.kind === 'commitment_gap')
+    // `since` traces back to the original creation 13 days ago, not to
+    // `recentUpdate` (the pre-fix bug: coalescing=true off `analyzedAt`,
+    // skip=1 finds nothing since this row has never been superseded, priors
+    // reset to empty, since re-floors to `now` on every run from here on).
+    expect(finding.since).toBe(created)
   })
 
   /**
@@ -294,17 +456,34 @@ describe('isUniqueViolation — verified against a real driver rejection', () =>
    *  concurrency needed: a single connection inserting the second row
    *  deterministically collides with the first, exactly as the
    *  'the partial unique index permits only one LIVE coaching row' test in
-   *  coaching-notebook-store.test.ts already proved for this same index. */
+   *  coaching-notebook-store.test.ts already proved for this same index.
+   *
+   * Minor 4. The sentinel "expected to violate, but it succeeded" throw used
+   * to live INSIDE the try whose catch returns the error under test -- if the
+   * index ever stopped firing, that catch would swallow the sentinel right
+   * back and hand it out as though it were the real rejection, and a negative
+   * assertion downstream (e.g. "does NOT match a different constraint") would
+   * pass for a completely wrong reason: not because the constraint names
+   * differed, but because no rejection happened at all. A flag set inside the
+   * try and checked after it keeps the sentinel throw outside any catch that
+   * could recapture it -- an index that stops firing now fails the `it()`
+   * outright instead of producing a falsely-passing negative assertion. */
   const provokeRealRejection = async (sourceKind: string): Promise<unknown> => {
     await db.execute(sql`INSERT INTO notebook_entries (user_id, kind, body, author, source)
       VALUES (${RACE_USER}, 'observation', 'One', 'buddy', ${{ kind: sourceKind }}::jsonb)`)
+    let violated = false
+    let caught: unknown
     try {
       await db.execute(sql`INSERT INTO notebook_entries (user_id, kind, body, author, source)
         VALUES (${RACE_USER}, 'observation', 'Two', 'buddy', ${{ kind: sourceKind }}::jsonb)`)
-      throw new Error('expected the second insert to violate the unique index, but it succeeded')
     } catch (err) {
-      return err
+      violated = true
+      caught = err
     }
+    if (!violated) {
+      throw new Error('expected the second insert to violate the unique index, but it succeeded')
+    }
+    return caught
   }
 
   it('the real error carries the constraint name in `constraint_name`, not just in the message', async () => {
