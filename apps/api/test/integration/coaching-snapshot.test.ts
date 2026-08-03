@@ -227,7 +227,14 @@ describe('CoachingService.assembleSnapshot — placement', () => {
 
 describe('CoachingService.assembleSnapshot — reviews', () => {
   const service = new CoachingService(db)
-  const USER_R = '00000000-0000-0000-0000-0000000000c4'
+  // Own UUID -- must NOT collide with WIDE_USER (...c4) above. It worked
+  // before only because Vitest runs top-level `describe` blocks sequentially
+  // in declaration order, so the placement block's `afterAll` tore the c4 row
+  // down before this block's `beforeAll` re-inserted it via `ON CONFLICT DO
+  // NOTHING`. That coupling was undocumented and not something a future
+  // reorder of these blocks (or a switch to per-file parallelism) should be
+  // trusted to preserve.
+  const USER_R = '00000000-0000-0000-0000-0000000000c8'
   let sessionId: string
 
   beforeAll(async () => {
@@ -260,15 +267,24 @@ describe('CoachingService.assembleSnapshot — reviews', () => {
     expect(snap.reviews.cards).toHaveLength(0)
   })
 
-  it('carries status, lapses and reading stage', async () => {
+  it('carries status, lapses, reading stage, and the real character', async () => {
     const [k1] = await kanjiIds(1)
+    // Looked up from the corpus rather than hardcoded, so this can't drift.
+    const rows = await db.execute(sql`SELECT character FROM kanji WHERE id = ${k1}`)
+    const character = (rows[0] as any).character as string
+
     await db.execute(sql`INSERT INTO user_kanji_progress
       (user_id, kanji_id, status, lapses, reading_stage)
       VALUES (${USER_R}, ${k1}, 'learning', 3, 2)`)
     const snap = await service.assembleSnapshot(USER_R, NOW, [])
     expect(snap.reviews.cards).toHaveLength(1)
+    // `character` is filled by a batched SECOND query (fillCharacters), not
+    // by the mapping above it -- hook-coverage.ts puts this field straight
+    // into user-facing evidence as the "suggested kanji" (a broken join key
+    // would ship a hook offer with a blank subject), so it must be pinned to
+    // the real value, not just asserted present.
     expect(snap.reviews.cards[0]).toMatchObject({
-      kanjiId: k1, status: 'learning', lapses: 3, readingStage: 2,
+      kanjiId: k1, status: 'learning', lapses: 3, readingStage: 2, character,
     })
   })
 
@@ -330,6 +346,11 @@ describe('CoachingService.assembleSnapshot — reviews', () => {
     const card = (await service.assembleSnapshot(USER_R, NOW, [])).reviews.cards[0]
     expect(card.responseMsEarly).toBeNull()
     expect(card.responseMsLate).toBeCloseTo(8000)
+    // An empty half must read as "no data" (null), not "answered everything
+    // wrong" (0) -- those are different claims. The late half isn't empty
+    // here, so it should hold a real value (quality 4 passes), for contrast.
+    expect(card.accuracyEarly).toBeNull()
+    expect(card.accuracyLate).toBeCloseTo(1)
   })
 
   it('ignores reviews older than the window', async () => {
@@ -344,6 +365,49 @@ describe('CoachingService.assembleSnapshot — reviews', () => {
     expect(card.recentQualities).toEqual([])
     expect(card.responseMsEarly).toBeNull()
     expect(card.responseMsLate).toBeNull()
+  })
+
+  it('caps recentQualities at 10, keeping the newest, oldest-to-newest', async () => {
+    // The contract (CardSnapshot's own comment) is "recent grades, newest
+    // last" -- i.e. `mine.slice(-10)` over logs already ordered ascending by
+    // reviewedAt. pickHookCandidate (hook-coverage.ts) counts struggle
+    // signals only within this array, so a regression to `.slice(0, 10)`
+    // (oldest 10) or a reversed order would silently change which kanji the
+    // coach flags as struggling for any heavily-reviewed kanji.
+    //
+    // 12 reviews inside the window, one per day, oldest first. `quality`
+    // doubles as a position marker (0..11 in insertion/time order) so the
+    // returned slice's content and order can both be checked directly,
+    // without leaning on the 0-5 SM-2 domain for a value that only needs to
+    // be distinguishable here.
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
+      VALUES (${USER_R}, ${k1}, 'learning')`)
+
+    const total = 12
+    const nowMs = Date.parse(NOW)
+    for (let i = 0; i < total; i++) {
+      const daysAgo = total - i // 12, 11, ..., 1 -- strictly oldest to newest
+      const reviewedAt = new Date(nowMs - daysAgo * 86_400_000).toISOString()
+      await db.execute(sql`INSERT INTO review_logs
+        (session_id, user_id, kanji_id, review_type, quality, response_time_ms,
+         prev_status, next_status, prev_interval, next_interval, reviewed_at)
+        VALUES (${sessionId}, ${USER_R}, ${k1}, 'meaning', ${i}, 1000,
+                'learning', 'learning', 0, 1, ${reviewedAt})`)
+    }
+
+    const card = (await service.assembleSnapshot(USER_R, NOW, [])).reviews.cards[0]
+
+    // Cap: catches a regression that drops the cap entirely (e.g. all 12).
+    expect(card.recentQualities).toHaveLength(10)
+    // Newest 10, not oldest: order-independent set check, so this catches
+    // `.slice(0, 10)` (would keep {0..9}) without also being sensitive to
+    // ordering -- kept orthogonal to the order assertion below.
+    expect([...card.recentQualities].sort((a, b) => a - b)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    // Ordered oldest-to-newest within the slice: catches a reversed order
+    // (e.g. newest-first), which the set check above cannot distinguish from
+    // this correct order since both share the same members.
+    expect(card.recentQualities).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
   })
 
   it('counts remembered to learning regressions inside the window', async () => {
@@ -385,5 +449,22 @@ describe('CoachingService.assembleSnapshot — reviews', () => {
     expect(snap.reviews.quiz[0]).toMatchObject({
       kanjiId: k1, questionType: 'reading_recall', correct: false,
     })
+  })
+
+  it('ignores quiz rows outside the window', async () => {
+    // kl_test_results uses the same gte(..., windowStart) filter as
+    // review_logs (see 'ignores reviews older than the window' above), but
+    // nothing exercised it on the quiz side.
+    const [k1] = await kanjiIds(1)
+    const s = await db.execute(sql`INSERT INTO kl_test_sessions (user_id, test_type)
+      VALUES (${USER_R}, 'exit_quiz') RETURNING test_session_id`)
+    const testSessionId = (s[0] as any).test_session_id
+    const outside = new Date(Date.parse(NOW) - 90 * 86_400_000).toISOString()
+    await db.execute(sql`INSERT INTO kl_test_results
+      (test_session_id, user_id, kanji_id, question_type, correct, created_at)
+      VALUES (${testSessionId}, ${USER_R}, ${k1}, 'reading_recall', false, ${outside})`)
+
+    const snap = await service.assembleSnapshot(USER_R, NOW, [])
+    expect(snap.reviews.quiz).toHaveLength(0)
   })
 })
