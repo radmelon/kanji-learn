@@ -8,6 +8,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { eq } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
+import type { Db } from '@kanji-learn/db'
 import type { Finding } from '@kanji-learn/shared'
 import { CoachingVoiceService } from '../../src/services/buddy/coaching-voice.service'
 import { BuddyLLMError } from '../../src/services/llm/types'
@@ -207,9 +208,14 @@ describe('CoachingVoiceService', () => {
     expect(request.userOptedInPremium).toBeUndefined()
   })
 
-  // MUTATION CAUGHT: passing the unfiltered findings into buildCoachingPrompt
-  // at the call site. Task 2 also filters internally, so this asserts the
-  // property end to end from the service the route actually uses.
+  // MUTATION CAUGHT: this is a defence-in-depth, end-to-end check, not a
+  // call-site-specific one. It only goes red if BOTH filters are removed at
+  // once — the internal re-filter inside buildCoachingPrompt (Task 2) AND the
+  // `spoken` (not `input.findings`) argument passed at this call site —
+  // because either filter alone is already enough to keep mechanics_explainer
+  // out of the outgoing request. On its own, this test cannot tell you which
+  // of the two is missing; verified by experiment (Task 4 report) that
+  // reverting the call site alone to pass unfiltered findings leaves it green.
   it('never sends the mechanics explainer to the router', async () => {
     const { router, route } = stubRouter(ok(SENTINEL))
     const svc = new CoachingVoiceService(db, router)
@@ -236,6 +242,28 @@ describe('CoachingVoiceService', () => {
 
     expect(result?.source).toBe('llm')
     expect(result?.text).toContain(SENTINEL)
+  })
+
+  // MUTATION CAUGHT: removing the try/catch around the cache READ, which
+  // would turn a transient database blip into a thrown error out of a
+  // service documented never to throw. A failed read must degrade to a MISS
+  // and fall through to the router exactly as if no cached row existed —
+  // proven here by asserting the router WAS called, not just that the
+  // promise resolves. The stub `db` throws synchronously from `select()`
+  // (the only method `readCache` calls); `insert()` is stubbed too since the
+  // success path that follows a miss reaches the cache write.
+  it('degrades to a cache miss and still routes when the cache read fails', async () => {
+    const { router, route } = stubRouter(ok(SENTINEL))
+    const throwingDb = {
+      select: () => { throw new Error('cache read boom') },
+      insert: () => ({ values: async () => {} }),
+    } as unknown as Db
+    const svc = new CoachingVoiceService(throwingDb, router)
+    const result = await svc.utteranceFor({ ...base, findings: [leech] })
+
+    expect(result?.source).toBe('llm')
+    expect(result?.text).toContain(SENTINEL)
+    expect(route).toHaveBeenCalledTimes(1)
   })
 
   // MUTATION CAUGHT: calling analysisBody(findings) without `now`. copy.ts:62

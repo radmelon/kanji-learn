@@ -66,7 +66,19 @@ export class CoachingVoiceService {
     // client renders opener + reckon exactly as it does today.
     if (input.findings.length === 0) return null
 
-    const cached = await this.readCache(input.userId, input.weekStart)
+    let cached: string | null
+    try {
+      cached = await this.readCache(input.userId, input.weekStart)
+    } catch (err) {
+      // A failed cache read degrades to a MISS, never an error: a lost read
+      // costs at most one extra LLM call for this session, while letting it
+      // throw costs the learner their coaching entirely. This mirrors how the
+      // cache WRITE failure below is handled — the cache is an optimisation,
+      // and neither direction of a cache failure may take down the surface it
+      // optimises.
+      input.log?.error({ err, userId: input.userId }, '[CoachingVoice] cache read failed; treating as miss')
+      cached = null
+    }
     // A cache hit always implies 'llm' — fallbacks are deliberately not cached,
     // so a transient outage cannot freeze a degraded session for the period.
     if (cached !== null) return { text: cached, source: 'llm' }
