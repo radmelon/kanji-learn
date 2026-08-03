@@ -468,3 +468,164 @@ describe('CoachingService.assembleSnapshot — reviews', () => {
     expect(snap.reviews.quiz).toHaveLength(0)
   })
 })
+
+describe('CoachingService.assembleSnapshot — commitment and hooks', () => {
+  const service = new CoachingService(db)
+  const USER_C = '00000000-0000-0000-0000-0000000000c5'
+
+  beforeAll(async () => {
+    await db.execute(sql`INSERT INTO user_profiles (id, display_name, timezone, buddy_interval_weeks)
+      VALUES (${USER_C}, 'CoachingCommitSnap', 'America/Los_Angeles', 1) ON CONFLICT DO NOTHING`)
+  })
+
+  const wipe = async () => {
+    await db.execute(sql`DELETE FROM buddy_commitments WHERE user_id = ${USER_C}`)
+    await db.execute(sql`DELETE FROM daily_stats WHERE user_id = ${USER_C}`)
+    await db.execute(sql`DELETE FROM mnemonics WHERE user_id = ${USER_C}`)
+    await db.execute(sql`DELETE FROM user_kanji_progress WHERE user_id = ${USER_C}`)
+  }
+  beforeEach(wipe)
+  afterAll(async () => {
+    await wipe()
+    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${USER_C}`)
+  })
+
+  it('commitment is null when the current period has not ended', async () => {
+    // The defect in spec §1: at this instant commitment_gap would otherwise
+    // score the maximum possible and greet a new learner with "you studied
+    // less than you promised".
+    await db.execute(sql`INSERT INTO buddy_commitments
+      (user_id, week_start, days_committed, minutes_per_day, source)
+      VALUES (${USER_C}, '2026-08-01', 4, 15, 'session')`)
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.commitment).toBeNull()
+  })
+
+  it('sums daily_stats study time over a completed period', async () => {
+    await db.execute(sql`INSERT INTO buddy_commitments
+      (user_id, week_start, days_committed, minutes_per_day, source)
+      VALUES (${USER_C}, '2026-07-20', 4, 15, 'session')`)
+    // 600000 ms = 10 minutes, inside the period; the third row is outside it.
+    await db.execute(sql`INSERT INTO daily_stats (user_id, date, study_time_ms)
+      VALUES (${USER_C}, '2026-07-21', 600000),
+             (${USER_C}, '2026-07-22', 600000),
+             (${USER_C}, '2026-07-28', 600000)`)
+
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.commitment).not.toBeNull()
+    expect(snap.commitment!.promisedMinutes).toBe(60)
+    expect(snap.commitment!.actualMinutes).toBeCloseTo(20)
+    expect(snap.commitment!.periodStart).toBe('2026-07-20')
+    expect(snap.commitment!.periodEnd).toBe('2026-07-27')
+  })
+
+  it('counts only co-created hooks, newest first', async () => {
+    const [k1, k2] = await kanjiIds(2)
+    await db.execute(sql`INSERT INTO mnemonics (kanji_id, user_id, type, story_text, generation_method, created_at)
+      VALUES (${k1}, ${USER_C}, 'user', 'a', 'cocreated', '2026-07-10T00:00:00Z'),
+             (${k2}, ${USER_C}, 'system', 'b', 'system', '2026-07-20T00:00:00Z')`)
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.hooks.count).toBe(1)
+    expect(snap.hooks.latestAt).toBe('2026-07-10T00:00:00.000Z')
+  })
+
+  it('sessionDates come from session-sourced commitments, newest first', async () => {
+    await db.execute(sql`INSERT INTO buddy_commitments
+      (user_id, week_start, days_committed, minutes_per_day, source)
+      VALUES (${USER_C}, '2026-07-06', 4, 15, 'session'),
+             (${USER_C}, '2026-07-13', 4, 15, 'rolled_forward'),
+             (${USER_C}, '2026-07-20', 4, 15, 'session')`)
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.hooks.sessionDates).toEqual(['2026-07-20', '2026-07-06'])
+  })
+
+  it('lapse means are null unless BOTH groups exist', async () => {
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status, lapses)
+      VALUES (${USER_C}, ${k1}, 'learning', 2)`)
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.hooks.lapsesWithHook).toBeNull()
+    expect(snap.hooks.lapsesWithoutHook).toBeNull()
+  })
+
+  it('computes both lapse means when both groups exist', async () => {
+    const [k1, k2] = await kanjiIds(2)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status, lapses)
+      VALUES (${USER_C}, ${k1}, 'learning', 1), (${USER_C}, ${k2}, 'learning', 5)`)
+    await db.execute(sql`INSERT INTO mnemonics (kanji_id, user_id, type, story_text, generation_method)
+      VALUES (${k1}, ${USER_C}, 'user', 'a', 'cocreated')`)
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.hooks.lapsesWithHook).toBeCloseTo(1)
+    expect(snap.hooks.lapsesWithoutHook).toBeCloseTo(5)
+  })
+
+  // Self-review additions below -- each closes a boundary the tests above
+  // don't pin, per Task 8's brief.
+
+  it('excludes a daily_stats row exactly on periodEnd, but keeps the day before it', async () => {
+    // "sums daily_stats study time over a completed period" above puts its
+    // out-of-range row a full day PAST periodEnd (2026-07-28 vs periodEnd
+    // 2026-07-27), so it can't tell `lt` from `lte` -- both would exclude
+    // that row. This pins the exact exclusive boundary: 07-26 is the
+    // period's last real day (must count), 07-27 is periodEnd itself
+    // (must NOT count, since periodEnd is exclusive).
+    await db.execute(sql`INSERT INTO buddy_commitments
+      (user_id, week_start, days_committed, minutes_per_day, source)
+      VALUES (${USER_C}, '2026-07-20', 4, 15, 'session')`)
+    await db.execute(sql`INSERT INTO daily_stats (user_id, date, study_time_ms)
+      VALUES (${USER_C}, '2026-07-26', 600000),
+             (${USER_C}, '2026-07-27', 600000)`)
+
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.commitment!.actualMinutes).toBeCloseTo(10)
+  })
+
+  it('lapse means are also null when only the WITH-hook group has data', async () => {
+    // Mirror of "lapse means are null unless BOTH groups exist": that test
+    // only ever populates the WITHOUT group, so a mutant that computed
+    // `bothExist` from `without.length > 0` alone (dropping the withHook
+    // check) would still pass it. This leaves WITHOUT empty instead, to
+    // pin the other half of the AND.
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status, lapses)
+      VALUES (${USER_C}, ${k1}, 'learning', 4)`)
+    await db.execute(sql`INSERT INTO mnemonics (kanji_id, user_id, type, story_text, generation_method)
+      VALUES (${k1}, ${USER_C}, 'user', 'a', 'cocreated')`)
+
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.hooks.lapsesWithHook).toBeNull()
+    expect(snap.hooks.lapsesWithoutHook).toBeNull()
+  })
+
+  it('latestAt is the NEWEST co-created hook, not just any one', async () => {
+    // "counts only co-created hooks, newest first" above has exactly ONE
+    // co-created row, so it can't distinguish a real `ORDER BY created_at
+    // DESC` from a query that returns whatever row it finds first. Two
+    // co-created rows here, older inserted first, so a missing/wrong sort
+    // would surface the older timestamp and fail this assertion.
+    const [k1, k2] = await kanjiIds(2)
+    await db.execute(sql`INSERT INTO mnemonics (kanji_id, user_id, type, story_text, generation_method, created_at)
+      VALUES (${k1}, ${USER_C}, 'user', 'older', 'cocreated', '2026-07-10T00:00:00Z'),
+             (${k2}, ${USER_C}, 'user', 'newer', 'cocreated', '2026-07-25T00:00:00Z')`)
+
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.hooks.count).toBe(2)
+    expect(snap.hooks.latestAt).toBe('2026-07-25T00:00:00.000Z')
+  })
+
+  it('sessionDates excludes source=default as well as rolled_forward', async () => {
+    // "sessionDates come from session-sourced commitments" above only pairs
+    // 'session' against 'rolled_forward'. hooks() delegates the whole read
+    // to CommitmentService.getSessionDates (already covered for 'default'
+    // in coaching-commitment-reads.test.ts), so this is defense in depth
+    // against a future reimplementation at this layer, not a mutation of
+    // the current delegated code.
+    await db.execute(sql`INSERT INTO buddy_commitments
+      (user_id, week_start, days_committed, minutes_per_day, source)
+      VALUES (${USER_C}, '2026-07-20', 4, 15, 'session'),
+             (${USER_C}, '2026-07-27', 4, 15, 'default')`)
+
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.hooks.sessionDates).toEqual(['2026-07-20'])
+  })
+})

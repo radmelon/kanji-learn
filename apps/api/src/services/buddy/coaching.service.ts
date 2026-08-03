@@ -1,14 +1,17 @@
-import { and, desc, eq, gte, inArray, isNotNull, ne } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, lt, ne, sum } from 'drizzle-orm'
 import {
   placementSessions, placementResults, kanji, kanjiDifficulty,
   userKanjiProgress, reviewLogs, testResults, mnemonics,
+  dailyStats, userProfiles,
 } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
+import { CommitmentService } from './commitment.service'
 import {
   levelBands, inferredLevel, JLPT_LEVELS,
   type JlptLevel, type LearnerSnapshot, type PlacementSnapshot,
   type PlacementItemOutcome, type PriorFinding,
   type CardSnapshot, type QuizOutcome, type ReviewSnapshot, type SrsStatus,
+  type CommitmentSnapshot, type HookSnapshot,
 } from '@kanji-learn/shared'
 
 /** Notebook `source->>'kind'` for a coaching analysis. */
@@ -31,7 +34,11 @@ export const COALESCE_WINDOW_MINUTES = 60
 const Z_80 = 1.2816
 
 export class CoachingService {
-  constructor(private readonly db: Db) {}
+  private readonly commitments: CommitmentService
+
+  constructor(private readonly db: Db) {
+    this.commitments = new CommitmentService(db)
+  }
 
   async assembleSnapshot(
     userId: string,
@@ -42,8 +49,8 @@ export class CoachingService {
       now,
       placement: await this.placement(userId),
       reviews: await this.reviews(userId, now),
-      commitment: null,
-      hooks: { count: 0, latestAt: null, sessionDates: [], lapsesWithHook: null, lapsesWithoutHook: null },
+      commitment: await this.commitment(userId, now),
+      hooks: await this.hooks(userId),
       priorFindings: priors,
     }
   }
@@ -255,5 +262,72 @@ export class CoachingService {
       .where(inArray(kanji.id, cards.map((c) => c.kanjiId)))
     const chars = new Map(rows.map((r) => [r.id, r.character]))
     for (const card of cards) card.character = chars.get(card.kanjiId) ?? ''
+  }
+
+  private async commitment(userId: string, now: string): Promise<CommitmentSnapshot | null> {
+    const profile = await this.db.query.userProfiles.findFirst({
+      where: eq(userProfiles.id, userId),
+    })
+    const period = await this.commitments.getLastCompletedPeriod(
+      userId, now, profile?.buddyIntervalWeeks ?? 1,
+    )
+    if (!period) return null
+
+    // daily_stats.date is TEXT 'YYYY-MM-DD', so ISO range comparison is
+    // lexical and correct. periodEnd is exclusive: a period starting on the
+    // 20th covers the 20th to the 26th.
+    const rows = await this.db
+      .select({ total: sum(dailyStats.studyTimeMs) })
+      .from(dailyStats)
+      .where(and(
+        eq(dailyStats.userId, userId),
+        gte(dailyStats.date, period.periodStart),
+        lt(dailyStats.date, period.periodEnd),
+      ))
+
+    const totalMs = Number(rows[0]?.total ?? 0)
+    return {
+      promisedMinutes: period.promisedMinutes,
+      actualMinutes: totalMs / 60_000,
+      periodStart: period.periodStart,
+      periodEnd: period.periodEnd,
+    }
+  }
+
+  private async hooks(userId: string): Promise<HookSnapshot> {
+    const [cocreated, sessionDates, progress] = await Promise.all([
+      this.db.select({ kanjiId: mnemonics.kanjiId, createdAt: mnemonics.createdAt })
+        .from(mnemonics)
+        .where(and(
+          eq(mnemonics.userId, userId),
+          eq(mnemonics.generationMethod, 'cocreated'),
+        ))
+        .orderBy(desc(mnemonics.createdAt)),
+      this.commitments.getSessionDates(userId),
+      this.db.select({ kanjiId: userKanjiProgress.kanjiId, lapses: userKanjiProgress.lapses })
+        .from(userKanjiProgress)
+        .where(and(
+          eq(userKanjiProgress.userId, userId),
+          ne(userKanjiProgress.status, 'unseen'),
+        )),
+    ])
+
+    const hookIds = new Set(cocreated.map((m) => m.kanjiId))
+    const withHook = progress.filter((p) => hookIds.has(p.kanjiId)).map((p) => p.lapses)
+    const without = progress.filter((p) => !hookIds.has(p.kanjiId)).map((p) => p.lapses)
+    const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length
+
+    // Only claim hooks help when BOTH sides of the comparison exist -- a mean
+    // over an empty group is NaN, and detectHookCoverage would push it into
+    // evidence the learner sees.
+    const bothExist = withHook.length > 0 && without.length > 0
+
+    return {
+      count: cocreated.length,
+      latestAt: cocreated[0]?.createdAt.toISOString() ?? null,
+      sessionDates,
+      lapsesWithHook: bothExist ? mean(withHook) : null,
+      lapsesWithoutHook: bothExist ? mean(without) : null,
+    }
   }
 }
