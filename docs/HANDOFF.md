@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-03 latest (**Slice 3 is built, reviewed and green on a branch. Nothing is merged, pushed or deployed. The copy floor is still not done.**)
+# Session Handoff — 2026-08-03 latest (**Slice 3 is built, reviewed, green, and open as PR #12. Nothing is merged or deployed. The copy floor is still not done.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -11,9 +11,9 @@
 
 > ## ▶️ What the next session does
 >
-> **Decide what happens to branch `coaching-analyzer-slice3`.** It is complete
-> and unpushed: 15 commits, `cdf4e72..f95750b`, off `main` at `1727f2e`.
-> Nothing has left this machine.
+> **Review and land https://github.com/radmelon/kanji-learn/pull/12**, then run
+> the deploy in the order below — migration 0035 *before* the API. The branch is
+> `coaching-analyzer-slice3`, off `main` at `1727f2e`.
 >
 > Then — still — **the coaching copy floor.** Slice 3 did not fix it and was
 > never going to. See "the ordering, restated honestly" below.
