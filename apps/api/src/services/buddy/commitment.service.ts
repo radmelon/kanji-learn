@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, lte, ne } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, isNull, lte, ne } from 'drizzle-orm'
 import { buddyCommitments, dailyStats } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import {
@@ -187,5 +187,78 @@ export class CommitmentService {
     return countConsecutiveRolledForward(
       rows.map((r) => ({ weekStart: r.weekStart, source: r.source as CommitmentSource }))
     )
+  }
+
+  /**
+   * Buddy session dates, newest first — `HookSnapshot.sessionDates`.
+   *
+   * `source='session'` IS this app's definition of "a Buddy session happened":
+   * getMostRecentAgreed above filters exactly this way, and both
+   * buddy-session.ts and notification.service.ts feed that to
+   * evaluateAppointment as `lastSessionDate`. There is no buddy_sessions table
+   * and inventing a second definition would let two parts of the system
+   * disagree about the same learner.
+   */
+  async getSessionDates(userId: string, limit = 10): Promise<string[]> {
+    const rows = await this.db.select({ weekStart: buddyCommitments.weekStart })
+      .from(buddyCommitments)
+      .where(and(
+        eq(buddyCommitments.userId, userId),
+        eq(buddyCommitments.source, 'session'),
+      ))
+      .orderBy(desc(buddyCommitments.weekStart))
+      .limit(limit)
+    return rows.map((r) => r.weekStart)
+  }
+
+  /**
+   * The most recent commitment period that has ENDED.
+   *
+   * `commitment_gap` is a statement about a finished period, which is what the
+   * weekly session is for. Handing it the CURRENT period means that at the
+   * instant a commitment is agreed, `actualMinutes` is 0 against a full
+   * promise: magnitude 1.0, confidence 1 (set deliberately -- "a promise and a
+   * measurement"), novelty 1.0. Buddy would greet a learner who just committed
+   * to four days a week with "you studied less than you promised yourself",
+   * and repeat it at the start of every period after that.
+   *
+   * `default` is excluded: assembleNotebook already treats it as "the learner
+   * agreed nothing", and buddy_commitments.source's own schema comment says a
+   * missed rolled_forward is not a broken promise because the learner never
+   * turned up to agree it. `default` is weaker still. `rolled_forward` IS
+   * included -- the register difference is §8's frankness escalator (slice 6).
+   */
+  async getLastCompletedPeriod(
+    userId: string,
+    now: string,
+    intervalWeeks: number,
+  ): Promise<{
+    weekStart: string
+    periodStart: string
+    periodEnd: string
+    promisedMinutes: number
+  } | null> {
+    const periodDays = 7 * intervalWeeks
+    const today = now.slice(0, 10)
+
+    const rows = await this.db.select().from(buddyCommitments)
+      .where(and(
+        eq(buddyCommitments.userId, userId),
+        ne(buddyCommitments.source, 'default'),
+        isNull(buddyCommitments.supersededAt),
+      ))
+      .orderBy(desc(buddyCommitments.weekStart))
+
+    for (const row of rows) {
+      const periodEnd = addDays(row.weekStart, periodDays)
+      if (periodEnd > today) continue
+      return {
+        weekStart: row.weekStart,
+        periodStart: row.weekStart,
+        periodEnd,
+        promisedMinutes: row.minutesPerDay * row.daysCommitted,
+      }
+    }
+    return null
   }
 }
