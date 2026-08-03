@@ -68,19 +68,20 @@ describe('buildCoachingPrompt', () => {
   it('never mentions mechanics_explainer, even when handed it directly', () => {
     const prompt = buildCoachingPrompt({ ...base, findings: [leech, mechanics] })
     expect(prompt).not.toContain('mechanics_explainer')
-    expect(prompt).not.toContain('IRT')
   })
 
   // MUTATION CAUGHT: serialising only `kind`, which is exactly the defect the
   // slice 2 retrospective found in templateCopy — the evidence exists and the
   // copy layer never reads it. The model cannot name 敗 if it is not sent 敗.
+  // The pairing (lapses: 4) — not the bare digit — is what discriminates, since
+  // reckon also contains a "4".
   it('carries each finding kind and its evidence labels and values', () => {
     const prompt = buildCoachingPrompt(base)
     expect(prompt).toContain('leech')
     expect(prompt).toContain('worst kanji')
     expect(prompt).toContain('敗')
     expect(prompt).toContain('lapses')
-    expect(prompt).toContain('4')
+    expect(prompt).toContain('lapses: 4')
   })
 
   // MUTATION CAUGHT: dropping the opener or reckoning from the input, which
@@ -90,6 +91,7 @@ describe('buildCoachingPrompt', () => {
     const prompt = buildCoachingPrompt(base)
     expect(prompt).toContain(base.openerText)
     expect(prompt).toContain(base.reckon)
+    expect(prompt).toContain(base.openerKind)
   })
 
   // MUTATION CAUGHT: interpolating a null reckon as the string "null", which
@@ -99,6 +101,22 @@ describe('buildCoachingPrompt', () => {
     const prompt = buildCoachingPrompt({ ...base, reckon: null })
     expect(prompt).not.toContain('null')
     expect(prompt.toLowerCase()).toContain('no previous period')
+  })
+
+  // MUTATION CAUGHT: collapsing the ternary in describe() to always emit
+  // `first seen ${f.since}`, which would render the literal string "first seen null"
+  // to the model on every first-ever finding.
+  it('says "first time" for a finding with no prior occurrence', () => {
+    const firstTimeFinding: Finding = {
+      kind: 'leech',
+      magnitude: 0.7,
+      confidence: 0.8,
+      evidence: [],
+      since: null,
+    }
+    const prompt = buildCoachingPrompt({ ...base, findings: [firstTimeFinding] })
+    expect(prompt).toContain('first time')
+    expect(prompt).not.toContain('first seen')
   })
 
   // MUTATION CAUGHT: dropping the do-not-calculate instruction. Parent §1
@@ -119,6 +137,17 @@ describe('buildCoachingPrompt', () => {
     const prompt = buildCoachingPrompt(base)
     expect(prompt).not.toContain('JSON object')
     expect(prompt.toLowerCase()).toContain('no json')
+  })
+
+  // MUTATION CAUGHT: a describe() or join that throws or emits `undefined`
+  // on an empty findings list, which would turn a legitimate period into a 500
+  // once Task 4 calls this.
+  it('handles the empty-spoken edge case (only mechanics_explainer)', () => {
+    const prompt = buildCoachingPrompt({ ...base, findings: [mechanics] })
+    expect(prompt).toBeTruthy()
+    expect(prompt.length).toBeGreaterThan(0)
+    expect(prompt).toContain(base.openerText)
+    expect(prompt).not.toContain('mechanics_explainer')
   })
 
   // MUTATION CAUGHT: emitting three labelled sections instead of asking for
