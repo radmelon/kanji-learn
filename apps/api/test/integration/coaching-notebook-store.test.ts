@@ -103,9 +103,10 @@ describe('NotebookService — coaching payload storage', () => {
     })
     const row = await service.readLatestKeyed(USER, 'coaching_analysis')
 
-    await service.updateEntryInPlace(USER, row!.id, 'After', {
+    const result = await service.updateEntryInPlace(USER, row!.id, 'After', {
       kind: 'coaching_analysis', analyzedAt: 'B', findings: [],
     })
+    expect(result.rowCount).toBe(1) // pins the new return contract for the ordinary, live-row case
 
     const rows = await db.execute(
       sql`SELECT body, source->>'analyzedAt' AS a FROM notebook_entries WHERE user_id = ${USER}`,
@@ -113,6 +114,52 @@ describe('NotebookService — coaching payload storage', () => {
     expect(rows.length).toBe(1)
     expect(rows[0].body).toBe('After')
     expect(rows[0].a).toBe('B')
+  })
+
+  /**
+   * THE REGRESSION TEST FOR THE MISSING supersededAt GUARD (final
+   * whole-branch review, Fix 2).
+   *
+   * The real hazard lives in CoachingService.refresh: it reads `latest` via
+   * readLatestKeyed (superseded or not — that method's own doc comment),
+   * decides from that snapshot that the row can be updated in place, and
+   * only THEN calls updateEntryInPlace. A concurrent
+   * supersedeEntry(userId, id, null) (a learner's delete) can land in the
+   * window between those two calls, and `id` + `userId` alone would still
+   * match the now-archived row.
+   *
+   * Unlike the `writeKeyedEntry` delete-race test above, this does NOT need
+   * a real lock-ordered race to reproduce. That test needs one because
+   * writeKeyedEntry's own vulnerable read (`findFirst`) happens INSIDE its
+   * body — a sequential create-then-delete-then-call would let the delete
+   * commit before that internal read ever runs, so the guarded branch would
+   * never be entered. Here there is no separate internal read to fool:
+   * updateEntryInPlace's WHERE clause is evaluated fresh, against whatever
+   * the row actually is at the instant this call runs — so calling it
+   * directly against an already-superseded row reproduces exactly the state
+   * a real race would leave behind, deterministically, no lock needed.
+   */
+  it('updateEntryInPlace does not resurrect a row a concurrent delete already won — returns rowCount 0', async () => {
+    const { id } = await service.createEntry(USER, {
+      kind: 'observation', body: 'Original analysis', author: 'buddy',
+      source: { kind: 'coaching_analysis', analyzedAt: 'A', findings: [] },
+    })
+    // Simulate the race already having resolved against us: by the time this
+    // update runs, a concurrent delete has already superseded the row.
+    await service.supersedeEntry(USER, id, null)
+
+    const result = await service.updateEntryInPlace(USER, id, 'Fresh analysis text', {
+      kind: 'coaching_analysis', analyzedAt: 'B', findings: [],
+    })
+    expect(result.rowCount).toBe(0)
+
+    const rows = await db.execute(
+      sql`SELECT body, superseded_at FROM notebook_entries WHERE id = ${id}`,
+    ) as any[]
+    // The archived row's own words survive untouched — not silently
+    // overwritten by an update whose caller thought the row was still live.
+    expect(rows[0]!.body).toBe('Original analysis')
+    expect(rows[0]!.superseded_at).not.toBeNull()
   })
 
   it('writeKeyedEntry SUPERSEDES rather than colliding on the second call', async () => {

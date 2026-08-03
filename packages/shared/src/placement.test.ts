@@ -4,6 +4,7 @@ import {
   thetaMean, thetaAtQuantile, pKnows, credibleIntervalWidth, shouldStop,
   inferredLevel, levelBands,
 } from './placement'
+import { JLPT_LEVELS } from './milestones/constants'
 
 describe('probCorrect', () => {
   it('at theta == b, equals c + (1-c)*0.5', () => {
@@ -187,6 +188,64 @@ describe('levelBands', () => {
     expect(inferredLevel(1.2, bands.boundaries, bands.levels)).toBe('N2')
     // Paired with the full list — the shipped bug — it read as N4.
     expect(inferredLevel(1.2, bands.boundaries, [...LEVELS])).toBe('N4')
+  })
+})
+
+/**
+ * B146 REGRESSION GUARD, restated against the real exported constant.
+ *
+ * The test above documents the ORIGINAL incident: bands derived from the
+ * items an adaptive test happened to ASK. `CoachingService.levelInterval`
+ * (apps/api/src/services/buddy/coaching.service.ts) doesn't have that
+ * problem — it builds bands from the whole `kanji_difficulty` corpus — but
+ * it keeps the module-level `JLPT_LEVELS` constant sitting right there in
+ * scope, because `levelBands` itself correctly takes it as an argument two
+ * lines above the `inferredLevel` calls. Passing that same in-scope
+ * `JLPT_LEVELS` into `inferredLevel` instead of `bands.levels` is a
+ * one-word, type-checks-fine mistake, and it is EXACTLY the B146 defect:
+ * boundaries for a shorter ladder, read out against the full five-level list.
+ *
+ * NO INTEGRATION TEST CAN CATCH THAT MISTAKE. Both the local test database
+ * and production `kanji_difficulty` have every JLPT level represented, so on
+ * any corpus either environment can actually produce, `bands.levels` and
+ * `JLPT_LEVELS` are the same array, in the same order — swapping one for the
+ * other is a no-op, and every API-level test stays green whether the swap
+ * happened or not. Only a corpus sparse enough to drop a level out of
+ * `levelBands` — unreachable through a fully-seeded database, since that is
+ * the whole point of seeding one — makes the two arrays diverge in length,
+ * which is why this guard has to live here, as a pure-function test over a
+ * hand-built corpus, and cannot live in apps/api at all.
+ */
+describe('B146 regression guard — inferredLevel must be paired with bands.levels, never JLPT_LEVELS', () => {
+  it('a corpus missing three of five levels: bands.levels labels correctly, the real JLPT_LEVELS labels wrong', () => {
+    // Deliberately sparse: only 2 of the 5 JLPT_LEVELS have any entries, so
+    // bands.levels (length 2) is genuinely shorter than JLPT_LEVELS (length 5).
+    const sparseCorpus = [
+      { b: -2, level: 'N4' as const },
+      { b: 2, level: 'N1' as const },
+    ]
+    const bands = levelBands(sparseCorpus, JLPT_LEVELS)
+    expect(bands.levels).toEqual(['N4', 'N1'])
+    expect(bands.boundaries).toEqual([0]) // midpoint of -2 and 2
+
+    const theta = 1 // above the single boundary
+
+    // Paired with its own (shorter) levels array: correctly N1 — and N1 is a
+    // level this sparse corpus actually has data for.
+    const correct = inferredLevel(theta, bands.boundaries, bands.levels)
+    expect(correct).toBe('N1')
+    expect(sparseCorpus.some((e) => e.level === correct)).toBe(true)
+
+    // Paired with the real, imported JLPT_LEVELS instead of bands.levels —
+    // the exact swap this guard exists for. JLPT_LEVELS[1] is 'N4', not
+    // 'N1': wrong, and not even a level this corpus has data for at this end
+    // of the scale. States the FAILURE explicitly, not just the fix: a
+    // learner who should read N1 is told N4, the same direction of error
+    // (told a lower level despite the same underlying theta) as the original
+    // device report.
+    const wrong = inferredLevel(theta, bands.boundaries, [...JLPT_LEVELS])
+    expect(wrong).toBe('N4')
+    expect(wrong).not.toBe(correct)
   })
 })
 

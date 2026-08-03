@@ -1,5 +1,5 @@
 // apps/api/test/integration/coaching-refresh.test.ts
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { sql } from 'drizzle-orm'
@@ -496,6 +496,62 @@ describe('CoachingService.refresh', () => {
     const other = outcomes.find((w) => w !== 'inserted')
     expect(other === 'updated' || other === 'skipped').toBe(true)
     expect((await liveEntries()).length).toBe(1)
+  })
+
+  /**
+   * Fix 2 (final whole-branch review follow-up). updateEntryInPlace now
+   * reports how many rows it actually changed — 0 when a concurrent
+   * supersedeEntry(userId, id, null) (a learner's delete) wins the race
+   * between refresh()'s own readLatestKeyed and this update. That guard
+   * itself is proved directly, deterministically, with no mocking, in
+   * coaching-notebook-store.test.ts. What is untested there is what refresh()
+   * DOES with a 0-rowcount result — this test is for that decision.
+   *
+   * Reproducing the exact interleaving through real concurrency would be
+   * scheduling-dependent (the race can resolve either way), so a true-race
+   * test here could pass against the unfixed code on a lucky run — not
+   * acceptable for a regression guard. Spying on the prototype method pins
+   * the outcome deterministically instead, the same technique
+   * coaching-triggers.test.ts already uses to force CoachingService.refresh
+   * itself to reject — here it forces the ONE call updateEntryInPlace makes
+   * inside this refresh() to report exactly the race outcome under test,
+   * while every other read and write stays real.
+   */
+  it('a 0-rowcount in-place update is never reported "updated" — the analysis still lands, as a new row', async () => {
+    await missedPeriod()
+    await service.refresh(USER, { force: true, now: NOW })
+    const inserted = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    await stampCreatedAt(inserted!.id, NOW)
+
+    const spy = vi.spyOn(NotebookService.prototype, 'updateEntryInPlace')
+      .mockResolvedValueOnce({ rowCount: 0 })
+    try {
+      const tenMinutesLater = '2026-08-02T12:10:00.000Z' // inside the coalescing window -> would hit canUpdate+coalescing
+      const result = await service.refresh(USER, { force: true, now: tenMinutesLater })
+
+      // Proves the spy actually intercepted the call this test depends on —
+      // without this, the assertions below would pass identically if
+      // refresh() took some other path entirely.
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy).toHaveBeenCalledWith(USER, inserted!.id, expect.any(String), expect.any(Object))
+
+      // The update did not land. Reporting 'updated' here would be exactly
+      // the silent-success lie the fix exists to prevent.
+      expect(result.written).toBe('inserted')
+
+      // And the analysis is not lost: it landed as a fresh live row, not
+      // nowhere.
+      const live = await liveEntries()
+      expect(live.length).toBe(1)
+      expect((live[0] as any).source.analyzedAt).toBe(tenMinutesLater)
+
+      // Two rows total: the original (really superseded by writeKeyedEntry's
+      // own, unmocked logic, since it re-checks the database for itself) plus
+      // the new one — never a silently resurrected single row.
+      expect((await allEntries()).length).toBe(2)
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 

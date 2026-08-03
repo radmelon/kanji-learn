@@ -299,15 +299,34 @@ export class NotebookService {
    * `analyzedAt` moves) and when two runs coalesce inside the same episode.
    * Superseding in either case would fill the chain with near-identical rows,
    * and that chain is what §4 calls the trajectory.
+   *
+   * The `supersededAt IS NULL` predicate guards a real race, not a
+   * hypothetical one: `CoachingService.refresh` reads `latest` via
+   * `readLatestKeyed` (superseded or not — see that method's own doc
+   * comment), decides from that snapshot whether the row can be updated in
+   * place, and only THEN calls this method. A concurrent
+   * `supersedeEntry(userId, id, null)` — a learner deleting the same entry —
+   * can land in the window between those two calls. `id` + `userId` alone
+   * would still match the now-archived row, and a bare UPDATE has no way to
+   * report "I changed nothing" versus "I changed one row" — so without this
+   * predicate, the archived row would be silently resurrected with fresh
+   * analysis text nobody asked to see again. Returning the rowcount is what
+   * lets the caller tell those two outcomes apart.
    */
   async updateEntryInPlace(
     userId: string,
     id: string,
     body: string,
     source: Record<string, unknown>,
-  ): Promise<void> {
-    await this.db.update(notebookEntries)
+  ): Promise<{ rowCount: number }> {
+    const updated = await this.db.update(notebookEntries)
       .set({ body, source })
-      .where(and(eq(notebookEntries.id, id), eq(notebookEntries.userId, userId)))
+      .where(and(
+        eq(notebookEntries.id, id),
+        eq(notebookEntries.userId, userId),
+        isNull(notebookEntries.supersededAt),
+      ))
+      .returning({ id: notebookEntries.id })
+    return { rowCount: updated.length }
   }
 }

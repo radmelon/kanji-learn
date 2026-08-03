@@ -188,8 +188,22 @@ export class CoachingService {
       // structurally assignable to that even though every property trivially
       // is -- the same reason `payload` below works untouched, since object
       // rest destructuring already produces a fresh, indexable object type.
-      await this.notebook.updateEntryInPlace(userId, latest!.id, body, { ...source })
-      return { written: 'updated', findings }
+      const { rowCount } = await this.notebook.updateEntryInPlace(userId, latest!.id, body, { ...source })
+      if (rowCount > 0) return { written: 'updated', findings }
+
+      // 0 rows: updateEntryInPlace's supersededAt-IS-NULL guard found the row
+      // no longer live. A concurrent supersedeEntry(userId, id, null) -- the
+      // delete path -- won the race between readLatestKeyed above and this
+      // update, so canUpdate's premise (that `latest` was still live) was
+      // already stale by the time we acted on it. The analysis computed
+      // above has not been written anywhere: reporting 'updated' would be a
+      // lie, and returning here with 'skipped' would drop it on the floor
+      // even though there is something worth saying. Deliberately no
+      // `return` -- fall through to the same insert path a `latest` that had
+      // correctly read as superseded would have taken. writeKeyedEntry
+      // re-derives "is there a live row" for itself from the database, not
+      // from anything decided above, so it is safe to call regardless of why
+      // canUpdate's premise went stale.
     }
 
     const { kind: _kind, ...payload } = source
