@@ -21,10 +21,14 @@ export type SessionData =
       // typed optional too so a caller that forgets to send it doesn't
       // silently typecheck against a lie the way isFirstSession did.
       currentCommitment?: SessionCommitment | null
+      // Slice 3 §8: additive and optional. Absent on an older server, and
+      // absent by design on the common week where the analyzer found nothing.
+      voice?: { text: string; source: 'llm' | 'template' } | null
       proposedCommitment: SessionCommitment
     }
 
 export type SessionCard =
+  | { kind: 'voice'; text: string }
   | { kind: 'opener'; text: string }
   | { kind: 'reckon'; text: string }
   | { kind: 'set'; proposed: SessionCommitment }
@@ -57,10 +61,22 @@ export function selectSessionBody(
     case 'due': {
       const cards: SessionCard[] = []
 
-      cards.push({ kind: 'opener', text: input.data.opener.text })
-
-      if (input.data.reckon !== null) {
-        cards.push({ kind: 'reckon', text: input.data.reckon })
+      // Slice 3 §3: ONE utterance, not three. The server composes opener,
+      // reckoning and findings into a single thing Buddy says, so the voice
+      // card REPLACES opener/reckon rather than joining them.
+      //
+      // Guarded on usable text, not on the key's presence: an older server
+      // omits it, a null is a valid payload, and a blank string would render
+      // an empty card while suppressing prose that was available all along —
+      // the B-227 shape this file already guards above.
+      const voice = input.data.voice
+      if (voice && voice.text.trim() !== '') {
+        cards.push({ kind: 'voice', text: voice.text })
+      } else {
+        cards.push({ kind: 'opener', text: input.data.opener.text })
+        if (input.data.reckon !== null) {
+          cards.push({ kind: 'reckon', text: input.data.reckon })
+        }
       }
 
       // The 'set' card is unconditional and always last: agreeing the coming
