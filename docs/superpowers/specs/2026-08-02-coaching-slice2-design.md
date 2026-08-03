@@ -384,9 +384,35 @@ CREATE UNIQUE INDEX IF NOT EXISTS notebook_entries_coaching_unique
   WHERE source->>'kind' = 'coaching_analysis' AND superseded_at IS NULL;
 ```
 
-`writeKeyedEntry` already supersedes the old row before inserting inside a
-transaction, so the ordering constraint `supersedeEntry` documents is satisfied.
-The losing insert of a genuine race fails on the constraint, as designed.
+### ⚠️ The index requires reordering `writeKeyedEntry` first
+
+**An earlier draft of this section claimed `writeKeyedEntry` already supersedes
+before inserting. It does not, and the claim was checked and disproved during
+implementation on 2026-08-02.**
+
+`notebook.service.ts:137` inserts the replacement and `:143` supersedes the
+original — insert first. Both rows therefore satisfy the index predicate at the
+same instant, so **the second coaching write for any learner fails with 23505.**
+Not a race: the ordinary path, single-threaded. Verified by replaying that exact
+statement order against the local test database with the index in place.
+
+`supersedeEntry` in the same file documents the hazard precisely
+(`notebook.service.ts:181-186`) — *"if the insert ran first, the old row (still
+live) and the new row would both be live and both match the index predicate at
+the same instant, and Postgres would reject the insert with 23505 **regardless
+of statement order within the transaction**"* — and orders itself the other way.
+`writeKeyedEntry` does the thing that comment warns against. It has never
+failed only because no unique index covered `commitment`, its sole caller.
+
+**`writeKeyedEntry` must be reordered to supersede → insert → link before this
+index can be relied on.** `supersededBy` references the new row's id, so the
+link is a third statement, exactly as `supersedeEntry` already does it.
+
+Once reordered, the losing insert of a genuine race fails on the constraint, as
+designed. Note that `writeKeyedEntry` has no `onConflictDoNothing` — unlike
+`ensureFirstOpen` — so a genuine race surfaces as an unhandled error rather than
+a silent no-op. That is acceptable for a guarded caller, and every call site
+added in this slice is wrapped in try/catch.
 
 ---
 

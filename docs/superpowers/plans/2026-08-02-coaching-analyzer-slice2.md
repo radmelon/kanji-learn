@@ -562,6 +562,41 @@ describe('NotebookService — coaching payload storage', () => {
     expect(rows[0].a).toBe('B')
   })
 
+  it('writeKeyedEntry SUPERSEDES rather than colliding on the second call', async () => {
+    // THE REGRESSION TEST FOR THIS TASK'S REORDER.
+    //
+    // writeKeyedEntry used to insert the replacement BEFORE superseding the
+    // original (notebook.service.ts:137 before :143). With migration 0034's
+    // partial unique index in place, both rows satisfy the predicate at that
+    // instant, so this second call failed with 23505 — on the ordinary path,
+    // single-threaded, no race required. supersedeEntry documents the same
+    // hazard at :181-186 and orders itself the other way.
+    await service.writeKeyedEntry(USER, {
+      sourceKind: 'coaching_analysis', kind: 'observation', body: 'First',
+      sourcePayload: { analyzedAt: 'A', findings: [] },
+    })
+    await service.writeKeyedEntry(USER, {
+      sourceKind: 'coaching_analysis', kind: 'observation', body: 'Second',
+      sourcePayload: { analyzedAt: 'B', findings: [] },
+    })
+
+    const rows = await db.execute(
+      sql`SELECT id, body, superseded_at, superseded_by FROM notebook_entries
+          WHERE user_id = ${USER} AND source->>'kind' = 'coaching_analysis'
+          ORDER BY created_at`,
+    )
+    expect(rows.length).toBe(2)
+    const [older, newer] = rows as any[]
+    expect(older.body).toBe('First')
+    expect(newer.body).toBe('Second')
+    // The old row is superseded AND linked to its replacement. The link is a
+    // third statement, because supersededBy needs the new row's id — which is
+    // why the reorder is supersede -> insert -> link, not just a swap.
+    expect(older.superseded_at).not.toBeNull()
+    expect(older.superseded_by).toBe(newer.id)
+    expect(newer.superseded_at).toBeNull()
+  })
+
   it('the partial unique index permits only one LIVE coaching row', async () => {
     await service.writeKeyedEntry(USER, {
       sourceKind: 'coaching_analysis', kind: 'observation', body: 'One',
@@ -606,11 +641,40 @@ export interface KeyedEntryRow {
 }
 ```
 
-In `writeKeyedEntry`, replace the insert's `source` value:
+**Rewrite `writeKeyedEntry`'s transaction body.** Two changes: it carries the payload, and — the reason for the regression test above — it **supersedes before inserting**.
 
 ```ts
+      const existing = await tx.query.notebookEntries.findFirst({ where: and(...conditions) })
+
+      // Supersede FIRST. Migration 0034 permits one LIVE coaching row per
+      // learner, and the old row still matches that predicate until this
+      // statement runs — so inserting first put two live rows in the index at
+      // the same instant and failed with 23505 on the ordinary second write,
+      // single-threaded, no race required. supersedeEntry documents this exact
+      // hazard below and orders itself the same way.
+      //
+      // supersededBy needs the replacement's id, so linking is a third
+      // statement rather than part of this one.
+      if (existing) {
+        await tx.update(notebookEntries)
+          .set({ supersededAt: new Date() })
+          .where(and(eq(notebookEntries.id, existing.id), isNull(notebookEntries.supersededAt)))
+      }
+
+      const [row] = await tx.insert(notebookEntries).values({
+        userId, kind: input.kind, body: input.body, author: 'buddy',
+        weekStart: input.weekStart ?? null,
         source: { kind: input.sourceKind, ...(input.sourcePayload ?? {}) },
+      }).returning({ id: notebookEntries.id })
+
+      if (existing) {
+        await tx.update(notebookEntries)
+          .set({ supersededBy: row.id })
+          .where(eq(notebookEntries.id, existing.id))
+      }
 ```
+
+**This also changes the existing `commitment` write-back path**, which is `writeKeyedEntry`'s only current caller (via `writeCommitmentObservation`). The outcome is identical — same two rows, same `supersededAt`, same `supersededBy` link — only the statement order inside the transaction differs. `apps/api/test/integration/notebook-writeback.test.ts` covers that path and must stay green; run it explicitly in Step 4.
 
 Add two methods to the class:
 
@@ -677,10 +741,10 @@ Add two methods to the class:
 - [ ] **Step 4: Run tests AND typecheck**
 
 Run: `pnpm --filter @kanji-learn/api test -- coaching-notebook-store`
-Expected: PASS, 5 tests.
+Expected: PASS, 6 tests.
 
 Run: `pnpm --filter @kanji-learn/api test -- notebook`
-Expected: PASS — the three existing notebook integration files must stay green.
+Expected: PASS — the three existing notebook integration files must stay green. `notebook-writeback.test.ts` is the one that covers the reordered `writeKeyedEntry` through its existing `commitment` caller; it passing is the evidence that the reorder changed order without changing outcome.
 
 Run: `pnpm typecheck`
 Expected: PASS, 4/4.
