@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-02 later (**Coaching analyzer slice 1 is MERGED. CI is green again after 28 red runs. Slice 2 is blocked on one missing column.**)
+# Session Handoff — 2026-08-02 later (**Coaching analyzer slice 1 is MERGED. CI is green again after 28 red runs. Slice 2 waits on a spec refresh — §13's "nothing blocking" is now false.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -11,9 +11,14 @@
 
 > ## ▶️ What the next session does
 >
-> **Write the slice 2 plan — but read the blocker first.** Slice 2 is "snapshot
-> assembly + notebook surface". It cannot be fully built as specified until
-> `priorFindings` has somewhere to live. See ⚠️ below.
+> **The owner is refreshing the slice 2 spec** against what slice 1 actually
+> produced (decided 2026-08-02). **Do not write the slice 2 plan until that
+> refresh lands** — the current spec makes one claim that execution disproved.
+>
+> **Read "📋 Input for the slice 2 spec refresh" below first.** It lists what
+> the refresh has to reconcile, which of §11's open decisions actually bind
+> slice 2 (one of the two does not), and the single design decision that is
+> owed before any of it can be planned.
 >
 > Slice 1 is **merged** (PR #9, merge commit `7cc9f09`). `main` has it. Nothing
 > in it is user-visible; it is the spine every later slice imports, and
@@ -103,6 +108,58 @@ source** — no `buddy_sessions` table exists. `hook_coverage`'s staleness half
 degrades to the zero-hooks branch without it. Candidates are
 `buddy_conversations.created_at` (2 rows) or `buddy_commitments.week_start`.
 
+### 📋 Input for the slice 2 spec refresh
+
+Spec:
+https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-01-buddy-coaching-analysis-design.md
+
+Slice 2 is **"snapshot assembly + the notebook surface"** — per §12 the **first
+user-visible slice**, and therefore the first one that could justify a build.
+Four things the refresh has to reconcile.
+
+**1. 🔴 §13 "Dependencies — None blocking" is now FALSE for slice 2, and it is
+the highest-value correction in this list.** That line was written 2026-08-01,
+*before* slice 1's calibration pass and execution. Two `LearnerSnapshot` fields
+have no source in Postgres — `priorFindings` and `HookSnapshot.sessionDates`,
+both detailed in the ⚠️ section above. §13 currently tells a planner the road
+is clear when it is not. §14 repeats the claim ("§13's 'no blocking
+dependencies' holds") in the `hook_coverage` discussion; that instance is about
+`review_logs`/`test_results`, which *is* true, so **correct §13 without
+invalidating §14's narrower point.**
+
+**2. 🟢 §11.3 (Tier-2 daily cap) is still unsized — and does NOT block slice
+2.** It is the one open decision left, and it is easy to read as a gate on
+everything. It is not. Slice 2 is **template copy only and works with the LLM
+off** (§12), so the cap binds **slices 3–4**, where companion mode makes LLM
+calls the common path. Do not let it hold up slice 2; do not let slice 2's
+progress make it look resolved either — the number is still owed before launch.
+
+**3. 🟢 §11.4's residual `CoCreationSheet` interaction is a slice 3 concern.**
+§14's ⚠️ is explicit that the undesigned part is offering co-creation *inside a
+Buddy session* — whether the sheet opens over the session or the session hands
+off. The **notebook** surface only has to render `hook_coverage`'s offer as
+text, with the named kanji slice 1 already picks. Worth stating in the refresh
+so a slice 2 planner does not inherit a slice 3 design problem.
+
+**4. ❓ The one decision genuinely owed before slice 2 can be planned: where
+`priorFindings` lives.** JSONB column on `notebook_entries` versus a dedicated
+findings table. This is a real design call, not a coin flip — it decides how
+superseding entries work, whether a finding's history survives an entry being
+replaced, and whether `since` is queryable or has to be reassembled. It wants a
+brainstorm, and it is a migration either way.
+
+**What slice 1 settled, so the refresh can now assume it:** the contracts are
+real and tested, not proposed. `LearnerSnapshot` and its sub-shapes are the
+literal input signature; the nine detectors, `select()`, and the template floor
+all exist with 110 tests. The refresh can write against those shapes rather
+than describing them.
+
+⚠️ **And one trap for whoever assembles the snapshot:** every detector sets
+`since: null`, and **`select()` is the only place that stamps it** from
+`priorFindings`. A caller that skips `select()` and uses raw detector output
+loses the persistence signal that makes §4's escalating framing work — silently,
+with no test failing.
+
 ### 🔎 The plan's own code was wrong in three places, and only running it found them
 
 Full table in the plan doc under **"✅ EXECUTED 2026-08-02"**. Short version:
@@ -142,6 +199,12 @@ step was actually run rather than eyeballed as obviously-fine arithmetic.
   build remains inside the allowance; the owner has authorised overage builds
   (~$2 each) through Tuesday **if there is a reason to cut one**. There was
   not, at the time of writing — see the "do not cut a build" note above.
+  **Slice 2 will not change that before the reset**: it is the first
+  user-visible slice, but it opens with a spec refresh and a migration
+  decision, so it is not a one-day piece of work. If a build is wanted before
+  Tuesday it should carry mobile bug fixes (B-230 is filed and unfixed —
+  `[Effort: XS — copy, or S if derived from the constants]`) batched with
+  anything else worth testing — not slice 2.
 - Local test DB was **not** rebuilt this session; it was left green earlier
   today and the API lane was run against it as-is. `docs/local-test-db.md` is
   emphatic that re-running the migration list on an existing DB *strips RLS* —
