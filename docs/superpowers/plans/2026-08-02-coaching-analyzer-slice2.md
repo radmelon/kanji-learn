@@ -2087,9 +2087,21 @@ function isUniqueViolation(err: unknown, constraint: string): boolean {
     // part of THIS episode: read priors from the row before it, and update it
     // in place rather than superseding, so the chain gains no spurious link
     // for an entry nobody had time to read.
-    const coalescing = sinceLastMs < COALESCE_WINDOW_MINUTES * 60_000
+    // Coalescing keys off the row's created_at, NOT analyzedAt. analyzedAt
+    // moves on every in-place update, but "read priors from the row before"
+    // presumes the previous row was CREATED by this episode. In the steady
+    // state one row is updated forever and the chain never grows, so keying on
+    // analyzedAt treats a weeks-old row as "moments earlier", finds no row
+    // before it, and stamps since = now on every finding — permanently.
+    const coalescing = latest !== null
+      && Date.parse(now) - Date.parse(latest.createdAt) < COALESCE_WINDOW_MINUTES * 60_000
+    // When coalescing but `latest` is the FIRST-ever coaching row, there is no
+    // row before it. Fall back to `latest` rather than to nothing: empty priors
+    // would stamp since = now and erase real findings. This re-floors novelty
+    // for kinds the previous run introduced, which §4 accepts — it ranks
+    // persistence above novelty explicitly.
     const priorRow = coalescing
-      ? await this.notebook.readLatestKeyed(userId, COACHING_SOURCE_KIND, 1)
+      ? (await this.notebook.readLatestKeyed(userId, COACHING_SOURCE_KIND, 1)) ?? latest
       : latest
     const priors = (priorRow?.source as CoachingAnalysisSource | undefined)?.findings ?? []
 
@@ -2116,7 +2128,15 @@ function isUniqueViolation(err: unknown, constraint: string): boolean {
     // Update in place when this says the same thing, or when it coalesces with
     // a run moments earlier. Both require the row to still be LIVE -- a
     // superseded row must never be resurrected by an UPDATE.
+    // `author === 'buddy'` is load-bearing, not defensive. supersedeEntry copies
+    // the original's source into the learner's replacement, so a learner edit is
+    // live, keyed coaching_analysis, and carries the inherited analyzedAt —
+    // it looks like a recent Buddy row. Updating it in place overwrites the
+    // learner's own words while author stays 'learner'. A learner-authored
+    // latest row must take the insert path, which supersedes it and preserves
+    // their text in the chain.
     const canUpdate = latest !== null && latest.supersededAt === null
+      && latest.author === 'buddy'
     const unchanged = selectionsMatch(priors, findings)
     if (canUpdate && (coalescing || unchanged)) {
       await this.notebook.updateEntryInPlace(userId, latest!.id, body, source)

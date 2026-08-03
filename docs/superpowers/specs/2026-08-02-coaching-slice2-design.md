@@ -137,7 +137,28 @@ week, so it resurfaces by the next session — but `since` resets, restarting th
 
 **Rule: a run within `COALESCE_WINDOW_MINUTES` (default 60) of the previous one
 inherits the OLDER row's stamps**, so back-to-back runs count as one episode.
-Implemented inside `carryForward` (§4), which is pure and shared-lane tested.
+
+⚠️ **Coalescing keys off the row's `created_at`, NOT its `analyzedAt`.** An
+earlier draft said `analyzedAt`, and implementation on 2026-08-03 proved that
+inverts §4's central guarantee.
+
+`analyzedAt` moves on *every* in-place update, but the "read priors from the row
+before" rule presumes the previous row was **created** by this episode. §5's
+unchanged-selection rule guarantees the opposite in the steady state: one row is
+updated in place forever and the chain never grows, so that single live row *is*
+the pre-episode state. Keying on `analyzedAt` therefore treats a row that is
+weeks old as "moments earlier", reads priors from a row that does not exist,
+and stamps `since = now` on every finding — permanently, since each later run
+carries the reset forward. A finding continuously true since March would read
+`since: today`, which is the precise inversion of *"a finding that has been true
+for six weeks is not less important than a new one — it is more important."*
+
+**Accepted tradeoff on the first episode.** When coalescing is correctly true
+but the latest row is the *first ever* coaching row, "the row before" does not
+exist. Priors then fall back to the latest row itself rather than to nothing.
+That preserves `since` at the cost of re-flooring novelty for kinds the previous
+run introduced. §4 ranks persistence above novelty, so preserving `since` is the
+design-aligned choice; the novelty cost is bounded and recovers within days.
 
 ---
 
@@ -271,6 +292,22 @@ row superseding a buddy-authored one *is* the correction signal.
 Note the mechanism that makes this work: `supersedeEntry` copies
 `existing.source` into the replacement (`notebook.service.ts:202`), so a
 learner edit carries the findings payload forward and priors are never lost.
+
+⚠️ **A learner-authored row must never be updated in place.** That same
+`source` copy is what makes this dangerous: the learner's replacement is live,
+keyed `coaching_analysis`, and carries the *inherited* `analyzedAt`, so it
+becomes `readLatestKeyed`'s answer and looks recent. An in-place update then
+overwrites the learner's own words with `analysisBody(...)` while `author`
+stays `'learner'` — their text destroyed, Buddy's analysis rendered as theirs.
+
+The trigger is ordinary, not a race: the learner edits Buddy's fresh
+observation five minutes later, which is *when* corrections happen, and a
+session completes twenty minutes after that.
+
+**The in-place path therefore requires `author === 'buddy'` as well as a live
+row.** A learner-authored latest row takes the insert path, which supersedes it
+and preserves their words in the chain — which is what "overwrite, but record
+the correction" was always supposed to mean.
 
 ---
 
