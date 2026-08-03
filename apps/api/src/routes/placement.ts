@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   selectNextItems, getQuestionsWithDistractors, completePlacement, getSessionPrior,
 } from '../services/placement.service.js'
+import { CoachingService } from '../services/buddy/coaching.service.js'
 
 export async function placementRoutes(server: FastifyInstance) {
   // GET /v1/placement/session-prior — does this user have a prior placement
@@ -69,6 +70,13 @@ export async function placementRoutes(server: FastifyInstance) {
         return reply.code(400).send({ ok: false, error: parsed.error.message, code: 'VALIDATION_ERROR' })
       }
       const result = await completePlacement(server.db, req.userId!, parsed.data.responses)
+      // §6: immediate, because this is the moment the learner is asking "what
+      // does that mean?". Forced — this is a real event, not a read.
+      try {
+        await new CoachingService(server.db).refresh(req.userId!, { force: true })
+      } catch (err) {
+        req.log.error({ err, userId: req.userId }, '[Placement] coaching refresh failed')
+      }
       return reply.send({ ok: true, data: result })
     }
   )

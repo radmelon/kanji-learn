@@ -21,6 +21,7 @@ import {
 import { z } from 'zod'
 import { CommitmentService } from '../services/buddy/commitment.service.js'
 import { NotebookService } from '../services/notebook.service.js'
+import { CoachingService } from '../services/buddy/coaching.service.js'
 
 const commitmentBodySchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -161,6 +162,12 @@ export async function buddySessionRoutes(server: FastifyInstance) {
       )
     } catch (err) {
       req.log.error({ err, userId: req.userId }, '[BuddySession] notebook write failed after commitment saved')
+    }
+
+    try {
+      await new CoachingService(server.db).refresh(req.userId!, { force: true })
+    } catch (err) {
+      req.log.error({ err, userId: req.userId }, '[BuddySession] coaching refresh failed')
     }
 
     return reply.send({ ok: true, data: commitment })

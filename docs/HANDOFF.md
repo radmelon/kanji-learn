@@ -1,4 +1,145 @@
-# Session Handoff — 2026-08-02 later (**Coaching analyzer slice 1 is MERGED. CI is green again after 28 red runs. Slice 2 waits on a spec refresh — §13's "nothing blocking" is now false.**)
+# Session Handoff — 2026-08-03 (**Coaching analyzer slice 2 is BUILT and green on `coaching-analyzer-slice2`, not merged. It needs a merge decision and a live migration.**)
+
+> **Canonical URL — hand this to a new session:**
+> https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
+>
+> *(This line is deliberately part of the artifact. A handoff that cannot state
+> its own address makes every reader reassemble it from a bare path. Carry it
+> forward into each new handoff section.)*
+
+## START HERE — 2026-08-03
+
+> ## ▶️ What the next session does
+>
+> **Decide whether to merge `coaching-analyzer-slice2`, then apply migration
+> 0034 to live.** The branch is complete, every lane is green, and a final
+> whole-branch review returned **no blockers**. Nothing is merged and nothing
+> has touched production.
+>
+> Spec:
+> https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-02-coaching-slice2-design.md
+> Plan:
+> https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/plans/2026-08-02-coaching-analyzer-slice2.md
+>
+> **Read the spec's §11 first.** It records what the final review found,
+> including one behaviour worth an owner decision before slice 3.
+>
+> **No EAS build is needed and none should be cut for this.** The slice is
+> API-only by design — zero `apps/mobile` files changed.
+
+### ✅ What landed — 30 commits, 21 files, API-only
+
+The coaching analyzer now runs end to end: a `LearnerSnapshot` assembled from
+seven Postgres tables, slice 1's pure `analyze()` run over it, and the top
+findings written as a superseding `notebook_entries` row.
+
+| Lane | Result |
+|---|---|
+| `pnpm typecheck` | **4/4** |
+| shared | **469** (453 pre-existing + 16 new), 41 files |
+| API | **530 passed, 0 failed**, 70 files (baseline was 448/65) |
+| mobile pure | **207** — unchanged, nothing touched it |
+| mobile components | not run — no client change to test |
+
+Every number was produced this session, not carried forward.
+
+⚠️ **Do not run two `vitest` processes against the test DB at once.** Doing so
+produced two phantom failures during verification. `fileParallelism: false`
+guards within a run, not across two processes.
+
+### 🔵 The finding memory needed no new table — both §13 "blockers" dissolved
+
+The 2026-08-02 handoff predicted slice 2 "needs a migration first": a JSONB
+column or findings table for `priorFindings`, and a `buddy_sessions` table for
+`HookSnapshot.sessionDates`. **Both already had sources.**
+
+- `notebook_entries.source` was already `jsonb`, already unconstrained, and
+  already the supersede key via `source->>'kind'`.
+- `buddy_commitments.week_start WHERE source='session'` is already how
+  `getMostRecentAgreed` and `evaluateAppointment` define "a session happened".
+  Inventing a second definition would let two parts of the system disagree
+  about the same learner.
+
+The slice carries **one** migration: `0034_coaching_analysis_index.sql`, a
+partial unique index permitting one live coaching row per learner.
+
+### 🔴 Migration 0034 is NOT applied to live — and it must be, before the code is
+
+Applied to the local test DB only. Verified safe against production:
+`notebook_entries` holds **8 rows across 1 user, zero of them coaching rows**,
+so the index builds over an empty predicate set and no learner can already have
+two live coaching rows.
+
+**Order matters: the index must exist before the deploy.** `writeKeyedEntry` was
+reordered to supersede → insert → link precisely because the old insert-first
+order fails with 23505 against this index — on the ordinary second write, not
+a race. The reordered code is correct with or without the index; the index
+without the reorder would break onboarding.
+
+### 🟠 The one behaviour worth an owner decision — `commitment_gap` goes silent fortnightly
+
+Two definitions of "the period" now coexist. `getLastCompletedPeriod` scales by
+cadence (`7 × intervalWeeks`), but `promisedMinutes` is the same quantity the
+in-session reckoning evaluates against a **fixed 7-day** window in
+`getActivity`.
+
+A fortnightly learner promising 4 × 15 = 60 who studies 50 minutes in each of
+two weeks reads as `actual 100`, `missed −40` — no finding. Buddy says nothing
+where the in-session reckoning would have said "partial".
+
+**It errs toward silence rather than false accusation, and it is unreachable
+today: all five live learners are weekly.** Fixing it means deciding whether the
+promise scales with the period or the coaching window matches `getActivity` —
+and whichever is chosen, `getActivity`'s own half-fortnight behaviour probably
+wants the same decision. Full detail in the spec's §11.
+
+### 🧠 What this build actually cost, and what it caught
+
+Ten tasks, each with a fresh implementer and an independent review, then a
+whole-branch review. **Roughly fifteen fix cycles.** Every cycle found something
+real. The five worth remembering:
+
+1. **`commitment_gap` scored the maximum any finding can reach at the instant a
+   learner agreed a commitment** — greeting them with "you studied less than you
+   promised yourself", every period. The detector was correct; *which* period it
+   received was assembly's decision.
+2. **`writeKeyedEntry` inserted before superseding**, so migration 0034 would
+   have made every learner's second analysis a 500. The spec asserted the
+   opposite; that sentence was wrong.
+3. **An in-place update destroyed learner-authored text** — a learner edits
+   Buddy's observation, a session completes, and their words are overwritten
+   while the row still reads `author: 'learner'`.
+4. **Coalescing keyed off `analyzedAt`**, which moves on every in-place update,
+   so a finding true since March would read `since: today` — permanently. The
+   exact inversion of the parent spec's §4.
+5. **A reported RED proof was misattributed.** Three tests were cited as proving
+   a fix; all three actually failed on a *different* line, leaving the real fix
+   unguarded.
+
+**The transferable lesson: a plan that specifies test code should specify the
+mutation each test is meant to catch.** Once dispatches started asking "name the
+mutation this test catches, then find a guarantee with no such test",
+implementers began finding their own gaps before review did — and two did.
+
+### Housekeeping
+
+- Branch `coaching-analyzer-slice2` is pushed; `main` is untouched at `6ebe0d5`.
+- Slice 1's branches (`coaching-analyzer-slice1`, `fix/red-ci`) are merged and
+  can still be deleted.
+- **§12's remaining slices are unchanged:** 3 (conversational surface), 4
+  (companion mode), 5 (IRT explainer), 6 (goal beat). 5 and 6 reorder freely.
+- **New and not in §12:** the spec's §10 records tutor notes as kanji evidence —
+  extracting kanji from a tutor's Japanese note is a set intersection against a
+  closed table, not prose comprehension, and `TutorNote.tsx` plus
+  `kanji-readings-index.ts` already do the extraction at both ends. Its
+  tutor-facing half is an Eta template edit worth landing early, because nothing
+  downstream can read a corpus of Japanese notes until that corpus exists.
+- **§11.3's tier-2 daily cap is still unsized** and still owed before launch. It
+  binds slices 3–4, not this one.
+
+---
+
+# Previous — 2026-08-02 later (**Coaching analyzer slice 1 is MERGED. CI is green again after 28 red runs. Slice 2 waits on a spec refresh — §13's "nothing blocking" is now false.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md

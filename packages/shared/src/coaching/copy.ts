@@ -20,7 +20,7 @@ const BASE: Record<FindingKind, string> = {
   leech:
     'A handful of kanji keep slipping back no matter how often they come round.',
   commitment_gap:
-    'You studied less than you promised yourself this period.',
+    'You studied less than you promised yourself over the last period.',
   hook_coverage:
     'Building a hook for a kanji you keep missing tends to make it stick. Want to make one together?',
   level_estimate:
@@ -69,4 +69,17 @@ export function templateCopy(finding: Finding, now?: string): string {
 
 function lowerFirst(s: string): string {
   return s.charAt(0).toLowerCase() + s.slice(1)
+}
+
+/**
+ * The notebook entry body for one analysis.
+ *
+ * ⚠️ `now` is NOT optional here, deliberately. `templateCopy` treats a missing
+ * `now` as "escalate whenever `since` is set" (see its `!now ||` branch), so a
+ * caller that drops the argument silently promotes every persistent finding to
+ * "this has been true for a while now" regardless of age. Nothing else would
+ * fail.
+ */
+export function analysisBody(findings: readonly Finding[], now: string): string {
+  return findings.map((f) => templateCopy(f, now)).join('\n\n')
 }

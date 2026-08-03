@@ -8,6 +8,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { NotebookService } from '../services/notebook.service.js'
+import { CoachingService } from '../services/buddy/coaching.service.js'
 
 // Every field the client sends is listed. z.object() strips what is not here
 // and still returns 200 — that is how four features shipped inert (docs/SOP.md).
@@ -34,9 +35,20 @@ function errorResponseFor(err: unknown): { status: number; code: string; error: 
 
 export async function notebookRoutes(server: FastifyInstance) {
   const service = new NotebookService(server.db)
+  const coaching = new CoachingService(server.db)
 
   server.get('/', { preHandler: [server.authenticate] }, async (req, reply) => {
     await service.ensureFirstOpen(req.userId!)
+    // Stale-gated: refresh() returns immediately unless the stored analysis is
+    // older than ANALYSIS_STALE_HOURS, so assembling seven tables does not ride
+    // on every notebook read. Guarded because a coaching failure must never
+    // turn a notebook read into a 500 — the same reasoning as the commitment
+    // write-back in buddy-session.ts.
+    try {
+      await coaching.refresh(req.userId!)
+    } catch (err) {
+      req.log.error({ err, userId: req.userId }, '[Notebook] coaching refresh failed')
+    }
     return reply.send({ ok: true, data: await service.getNotebook(req.userId!) })
   })
 
