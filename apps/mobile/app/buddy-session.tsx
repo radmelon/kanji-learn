@@ -19,7 +19,10 @@ export default function BuddySessionScreen() {
         // The route sets headerShown: false, so this is the only way out. A push
         // notification can open this screen from a killed app, where there is no
         // back stack to swipe to — dismiss to the tabs rather than to nothing.
-        onClose={() => { router.canGoBack() ? router.back() : router.replace('/(tabs)') }}
+        onClose={() => {
+          if (router.canGoBack()) router.back()
+          else router.replace('/(tabs)')
+        }}
       />
     </SafeAreaView>
   )
