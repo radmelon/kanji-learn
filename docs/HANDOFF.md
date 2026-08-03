@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-02 (**B148 is cut and submitted. Next session starts the coaching analyzer.**)
+# Session Handoff — 2026-08-02 later (**Coaching analyzer slice 1 is BUILT — in PR #9, not merged. Slice 2 is blocked on one missing column.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,111 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-02
+## START HERE — 2026-08-02 (later)
+
+> ## ▶️ What the next session does
+>
+> **1. Review and land PR #9.** https://github.com/radmelon/kanji-learn/pull/9
+> — branch `coaching-analyzer-slice1`, 10 commits, one per plan task. It is
+> **pushed but NOT merged**, and `main` does not have it. Nothing in it is
+> user-visible; it is the spine every later slice imports.
+>
+> **2. Then write the slice 2 plan — but read the blocker first.** Slice 2 is
+> "snapshot assembly + notebook surface". It cannot be fully built as specified
+> until `priorFindings` has somewhere to live. See ⚠️ below.
+
+### ✅ What landed — the pure analyzer, entirely in `packages/shared/src/coaching/`
+
+`Finding` / `LearnerSnapshot` contracts, per-kind magnitude helpers, nine
+detectors across four Direct + two Orient + four Motivate, the selection
+policy, template copy for every kind, and `analyze()` composing them.
+Re-exported from `@kanji-learn/shared`.
+
+Built TDD from
+https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/plans/2026-08-02-coaching-analyzer-slice1.md
+— every task red→green, one commit each.
+
+| Lane | Result |
+|---|---|
+| `pnpm typecheck` | **4/4** — the new barrel export is visible to `apps/api` and `apps/mobile` with no name collision |
+| shared | **453** (343 pre-existing + 110 new), 39 files |
+| mobile pure | **207** — unchanged |
+| mobile components | **63** — unchanged |
+| API | **448 passed, 0 failed** across 65 files — identical to the last session, so no stale-DB drift |
+
+Every lane was actually run this session; none of these numbers is carried
+forward from the previous handoff.
+
+### ⚠️ THE ONE THING THAT BLOCKS THE FEATURE — `priorFindings` has nowhere to live
+
+This was known before execution (it is in the plan's calibration section) and
+execution did not change it. Stating it here because it is the difference
+between "slice 2 is a week of plumbing" and "slice 2 needs a migration first".
+
+`notebook_entries.body` is plain `text`. There is **nowhere to read a finding's
+`kind` + `since` back from**, and **§4's entire decay mechanism depends on
+it**. Without that memory:
+
+- every finding is permanently novel — `novelty()` returns 1 forever;
+- the escalation in §4 can never fire, so Buddy can never say *"readings
+  again — let's try something different"*;
+- a persistent problem and a brand-new one are indistinguishable at selection
+  time, which is precisely the coaching failure the policy exists to prevent.
+
+`select()` handles an empty `priorFindings` array correctly, so this did **not**
+block building slice 1. **Slice 2 must add a JSONB column or a findings table
+before the decay behaviour can be tested against anything real.**
+
+Second, smaller gap of the same shape: **`HookSnapshot.sessionDates` has no
+source** — no `buddy_sessions` table exists. `hook_coverage`'s staleness half
+(the learner who built three hooks in week one and none since) silently
+degrades to the zero-hooks branch without it. Candidates are
+`buddy_conversations.created_at` (2 rows) or `buddy_commitments.week_start`.
+
+### 🔎 The plan's own code was wrong in three places, and only running it found them
+
+Full table in the plan doc under **"✅ EXECUTED 2026-08-02"**. Short version:
+
+1. **`normaliseSaturating` returned exactly `1`.** `1 - Math.exp(-value/scale)`
+   is `1` in IEEE 754 once the exponent passes ~37. Caught by *the plan's own
+   "never reaches 1" test*, so the step's stated "Expected: PASS, 9 tests" was
+   unreachable as written. Now clamped to `1 - Number.EPSILON` — the property
+   matters because `commitment_gap` sets `confidence: 1` deliberately and a
+   count-derived confidence must stay distinguishable from a measurement.
+2. **A test file used `QuizOutcome` without importing it** — fails
+   `pnpm typecheck`, which covers `src` including tests.
+3. **The purity test used `fs` + `__dirname`.** `packages/shared` has no
+   `@types/node` *by design*; it passed under vitest and failed `pnpm
+   typecheck` with four errors. Rewritten over Vite's `?raw` glob — no Node
+   types, same file set — because adding `@types/node` would have broken the
+   plan's own "no new dependencies" constraint.
+
+**The transferable lesson, and it is not "plans have typos":** #1 and #3 are
+both a plan *verifying itself against the wrong thing*. #3 passed the one
+command its step named and failed a command that step never mentioned. **A plan
+step that names a test command but not the typecheck command cannot catch that
+class of defect** — future plans should name both in every verification step.
+
+#1 is the better case and worth keeping in mind: the test encoded a property
+the plan's own implementation could not satisfy. It surfaced only because the
+step was actually run rather than eyeballed as obviously-fine arithmetic.
+
+### Housekeeping
+
+- Branch `coaching-analyzer-slice1` is pushed and tracked; `main` is untouched
+  and still at `f54b58c`.
+- The plan doc now carries an **"✅ EXECUTED"** section at the top with the
+  defect table — it is amended in the same PR, so it lands with the code.
+- Local test DB was **not** rebuilt this session; it was left green earlier
+  today and the API lane was run against it as-is. `docs/local-test-db.md` is
+  emphatic that re-running the migration list on an existing DB *strips RLS* —
+  do not "refresh" it reflexively.
+
+---
+
+# Previous — 2026-08-02 (**B148 is cut and submitted. Next session starts the coaching analyzer.**)
+
+## START HERE — 2026-08-02 (superseded by the section above)
 
 > ## ▶️ What the next session does
 >
