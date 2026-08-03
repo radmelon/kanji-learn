@@ -22,6 +22,7 @@ import { z } from 'zod'
 import { CommitmentService } from '../services/buddy/commitment.service.js'
 import { NotebookService } from '../services/notebook.service.js'
 import { CoachingService } from '../services/buddy/coaching.service.js'
+import { CoachingVoiceService } from '../services/buddy/coaching-voice.service.js'
 
 const commitmentBodySchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -50,6 +51,8 @@ function defaultShape(weekStart: string): Commitment {
 export async function buddySessionRoutes(server: FastifyInstance) {
   const service = new CommitmentService(server.db)
   const notebook = new NotebookService(server.db)
+  const coaching = new CoachingService(server.db)
+  const voiceService = new CoachingVoiceService(server.db, server.buddyLLM)
 
   server.get('/', { preHandler: [server.authenticate] }, async (req, reply) => {
     const profile = await server.db.query.userProfiles.findFirst({
@@ -107,15 +110,58 @@ export async function buddySessionRoutes(server: FastifyInstance) {
 
     const proposed = await service.ensureForWeek(req.userId!, state.weekStart)
 
+    // Computed once and reused by both the voice input and the reply — the
+    // two must be the same string, and openerCopy reads `check`, so calling it
+    // twice invites them to drift if either call site is edited later.
+    const openerText = openerCopy(openerKind, check)
+
+    // Analysis mode (slice 3). `force: true` is required, not defensive:
+    // RefreshResult.written 'skipped' is overloaded across three outcomes, and
+    // the staleness-gated path returns findings: [] while a live entry full of
+    // findings sits in the database — an unforced read would render an empty
+    // coaching state on every gated call (§7).
+    //
+    // refresh() also WRITES. Under slice 2's rules an unchanged selection
+    // updates the row in place (only analyzedAt moves), so repeated opens on
+    // the same Buddy day do not grow the superseded chain.
+    //
+    // Everything here is best-effort: agreeing the week ahead is the session's
+    // one guaranteed outcome and must not be lost to a coaching failure. Same
+    // guard as the notebook write below.
+    let voice: { text: string; source: 'llm' | 'template' } | null = null
+    try {
+      const { findings } = await coaching.refresh(req.userId!, {
+        force: true,
+        now: now.toISOString(),
+      })
+      voice = await voiceService.utteranceFor({
+        userId: req.userId!,
+        weekStart: state.weekStart,
+        openerKind,
+        openerText,
+        reckon,
+        findings,
+        // The SAME clock the refresh ran on, so the template floor's escalation
+        // window and the analysis agree.
+        now: now.toISOString(),
+        log: req.log,
+      })
+    } catch (err) {
+      req.log.error({ err, userId: req.userId }, '[BuddySession] coaching voice failed')
+    }
+
     return reply.send({
       ok: true,
       data: {
         state: 'due',
         weekStart: state.weekStart,
-        opener: { kind: openerKind, text: openerCopy(openerKind, check) },
+        opener: { kind: openerKind, text: openerText },
         reckon,
         currentCommitment: previous,
         proposedCommitment: proposed,
+        // Additive and CONDITIONAL (§§2, 8). Absent — not null — when there is
+        // nothing to say: the client's preference rule keys off presence.
+        ...(voice ? { voice } : {}),
       },
     })
   })
@@ -165,7 +211,7 @@ export async function buddySessionRoutes(server: FastifyInstance) {
     }
 
     try {
-      await new CoachingService(server.db).refresh(req.userId!, { force: true })
+      await coaching.refresh(req.userId!, { force: true })
     } catch (err) {
       req.log.error({ err, userId: req.userId }, '[BuddySession] coaching refresh failed')
     }
