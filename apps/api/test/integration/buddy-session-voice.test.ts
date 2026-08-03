@@ -20,10 +20,17 @@ const USER = '00000000-0000-0000-0000-0000000000c3'
 let app: Awaited<ReturnType<typeof buildTestAppWith>>
 
 beforeAll(async () => {
-  // The default test app's buddyLLM throws BuddyLLMError on every route() —
-  // exactly the outage §9 must survive. Stated explicitly rather than relied
-  // on implicitly, so this file still means what it says if the helper's
-  // default changes.
+  // The default test app's buddyLLM throws BuddyLLMError on every route()
+  // call. This fixture has no placement, reviews or commitment history, so
+  // analyze() always yields no findings, and CoachingVoiceService.utteranceFor
+  // returns before ever calling the router — no test in this file actually
+  // reaches the stub. It stays here anyway: the test app must never make a
+  // real LLM call, and if a future change did cause this fixture to reach
+  // the router, the test would still be exercising a controlled failure
+  // rather than a live one. The LLM-outage-survives-as-template path is
+  // proved at the service level in
+  // apps/api/test/integration/coaching-voice.test.ts, where the router is
+  // stubbed to throw and the result asserts `source: 'template'`.
   app = await buildTestAppWith(
     { buddyLLM: { route: async () => { throw new BuddyLLMError('stubbed outage') } } },
     { plugin: buddySessionRoutes, opts: { prefix: '/v1/buddy/session' } },
@@ -90,11 +97,13 @@ describe('GET /v1/buddy/session — voice', () => {
     expect(data.voice).toBeUndefined()
   })
 
-  // MUTATION CAUGHT: letting a coaching failure escape the try/catch and 500
-  // the session. Agreeing the week ahead is the session's one guaranteed
-  // outcome; this route must degrade, never fail. Also proves the LLM outage
-  // stubbed above does not reach the client as an error.
-  it('still serves a due session with the LLM stubbed to throw', async () => {
+  // MUTATION CAUGHT: removing the try/catch around the coaching block (the
+  // forced `refresh` plus the voice call) and letting a coaching failure
+  // escape it, 500ing the session. Agreeing the week ahead is the session's
+  // one guaranteed outcome, so this route must degrade, never fail. This
+  // fixture has no findings, so the router stubbed in beforeAll is never
+  // reached here — this test says nothing about the LLM path.
+  it('survives the coaching block (forced refresh + voice call) without 500ing the due session', async () => {
     const res = await get()
     expect(res.statusCode).toBe(200)
     expect(res.json().data.state).toBe('due')
