@@ -303,6 +303,22 @@ describe('CoachingService.assembleSnapshot — reviews', () => {
     expect(card.accuracyLate).toBeCloseTo(0)
   })
 
+  it('counts a Good (4) as a PASS, pinning the >= 4 boundary from the other side', async () => {
+    // Paired with the Hard(3) test above: together they pin the exact
+    // boundary the brief specifies (`quality >= 4`) rather than leaving the
+    // pass side of the threshold to be inferred from quality-5 fixtures
+    // elsewhere in this file, which cannot distinguish `>= 4` from `> 4`.
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
+      VALUES (${USER_R}, ${k1}, 'learning')`)
+    await db.execute(sql`INSERT INTO review_logs
+      (session_id, user_id, kanji_id, review_type, quality, response_time_ms,
+       prev_status, next_status, prev_interval, next_interval, reviewed_at)
+      VALUES (${sessionId}, ${USER_R}, ${k1}, 'meaning', 4, 9000, 'learning', 'learning', 0, 1, now() - interval '2 days')`)
+    const card = (await service.assembleSnapshot(USER_R, NOW, [])).reviews.cards[0]
+    expect(card.accuracyLate).toBeCloseTo(1)
+  })
+
   it('leaves a half null when it holds no reviews', async () => {
     const [k1] = await kanjiIds(1)
     await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
