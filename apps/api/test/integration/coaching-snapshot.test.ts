@@ -224,3 +224,150 @@ describe('CoachingService.assembleSnapshot — placement', () => {
     expect(snap.placement).toBeNull()
   })
 })
+
+describe('CoachingService.assembleSnapshot — reviews', () => {
+  const service = new CoachingService(db)
+  const USER_R = '00000000-0000-0000-0000-0000000000c4'
+  let sessionId: string
+
+  beforeAll(async () => {
+    await db.execute(sql`INSERT INTO user_profiles (id, display_name, timezone)
+      VALUES (${USER_R}, 'CoachingReviewFixture', 'America/Los_Angeles') ON CONFLICT DO NOTHING`)
+  })
+
+  const wipe = async () => {
+    await db.execute(sql`DELETE FROM review_logs WHERE user_id = ${USER_R}`)
+    await db.execute(sql`DELETE FROM review_sessions WHERE user_id = ${USER_R}`)
+    await db.execute(sql`DELETE FROM kl_test_results WHERE user_id = ${USER_R}`)
+    await db.execute(sql`DELETE FROM user_kanji_progress WHERE user_id = ${USER_R}`)
+  }
+  beforeEach(async () => {
+    await wipe()
+    const rows = await db.execute(sql`INSERT INTO review_sessions (user_id)
+      VALUES (${USER_R}) RETURNING id`)
+    sessionId = (rows[0] as any).id
+  })
+  afterAll(async () => {
+    await wipe()
+    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${USER_R}`)
+  })
+
+  it('excludes unseen cards', async () => {
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
+      VALUES (${USER_R}, ${k1}, 'unseen')`)
+    const snap = await service.assembleSnapshot(USER_R, NOW, [])
+    expect(snap.reviews.cards).toHaveLength(0)
+  })
+
+  it('carries status, lapses and reading stage', async () => {
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress
+      (user_id, kanji_id, status, lapses, reading_stage)
+      VALUES (${USER_R}, ${k1}, 'learning', 3, 2)`)
+    const snap = await service.assembleSnapshot(USER_R, NOW, [])
+    expect(snap.reviews.cards).toHaveLength(1)
+    expect(snap.reviews.cards[0]).toMatchObject({
+      kanjiId: k1, status: 'learning', lapses: 3, readingStage: 2,
+    })
+  })
+
+  it('splits response time and accuracy into early and late halves', async () => {
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
+      VALUES (${USER_R}, ${k1}, 'learning')`)
+    // Early half: 20 days ago, slow and wrong. Late half: 2 days ago, fast and right.
+    await db.execute(sql`INSERT INTO review_logs
+      (session_id, user_id, kanji_id, review_type, quality, response_time_ms,
+       prev_status, next_status, prev_interval, next_interval, reviewed_at)
+      VALUES
+       (${sessionId}, ${USER_R}, ${k1}, 'meaning', 1, 20000, 'learning', 'learning', 0, 1, now() - interval '20 days'),
+       (${sessionId}, ${USER_R}, ${k1}, 'meaning', 5,  5000, 'learning', 'remembered', 1, 3, now() - interval '2 days')`)
+
+    const card = (await service.assembleSnapshot(USER_R, NOW, [])).reviews.cards[0]
+    expect(card.responseMsEarly).toBeCloseTo(20000)
+    expect(card.responseMsLate).toBeCloseTo(5000)
+    expect(card.accuracyEarly).toBeCloseTo(0)   // quality 1 is a fail
+    expect(card.accuracyLate).toBeCloseTo(1)    // quality 5 is a pass
+  })
+
+  it('counts a Hard (3) as a FAIL, matching hook-coverage STRUGGLE_QUALITY', async () => {
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
+      VALUES (${USER_R}, ${k1}, 'learning')`)
+    await db.execute(sql`INSERT INTO review_logs
+      (session_id, user_id, kanji_id, review_type, quality, response_time_ms,
+       prev_status, next_status, prev_interval, next_interval, reviewed_at)
+      VALUES (${sessionId}, ${USER_R}, ${k1}, 'meaning', 3, 9000, 'learning', 'learning', 0, 1, now() - interval '2 days')`)
+    const card = (await service.assembleSnapshot(USER_R, NOW, [])).reviews.cards[0]
+    expect(card.accuracyLate).toBeCloseTo(0)
+  })
+
+  it('leaves a half null when it holds no reviews', async () => {
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
+      VALUES (${USER_R}, ${k1}, 'learning')`)
+    await db.execute(sql`INSERT INTO review_logs
+      (session_id, user_id, kanji_id, review_type, quality, response_time_ms,
+       prev_status, next_status, prev_interval, next_interval, reviewed_at)
+      VALUES (${sessionId}, ${USER_R}, ${k1}, 'meaning', 4, 8000, 'learning', 'learning', 0, 1, now() - interval '2 days')`)
+    const card = (await service.assembleSnapshot(USER_R, NOW, [])).reviews.cards[0]
+    expect(card.responseMsEarly).toBeNull()
+    expect(card.responseMsLate).toBeCloseTo(8000)
+  })
+
+  it('ignores reviews older than the window', async () => {
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
+      VALUES (${USER_R}, ${k1}, 'learning')`)
+    await db.execute(sql`INSERT INTO review_logs
+      (session_id, user_id, kanji_id, review_type, quality, response_time_ms,
+       prev_status, next_status, prev_interval, next_interval, reviewed_at)
+      VALUES (${sessionId}, ${USER_R}, ${k1}, 'meaning', 4, 8000, 'learning', 'learning', 0, 1, now() - interval '90 days')`)
+    const card = (await service.assembleSnapshot(USER_R, NOW, [])).reviews.cards[0]
+    expect(card.recentQualities).toEqual([])
+    expect(card.responseMsEarly).toBeNull()
+    expect(card.responseMsLate).toBeNull()
+  })
+
+  it('counts remembered to learning regressions inside the window', async () => {
+    const [k1] = await kanjiIds(1)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
+      VALUES (${USER_R}, ${k1}, 'learning')`)
+    await db.execute(sql`INSERT INTO review_logs
+      (session_id, user_id, kanji_id, review_type, quality, response_time_ms,
+       prev_status, next_status, prev_interval, next_interval, reviewed_at)
+      VALUES (${sessionId}, ${USER_R}, ${k1}, 'meaning', 1, 8000, 'remembered', 'learning', 5, 1, now() - interval '2 days')`)
+    const card = (await service.assembleSnapshot(USER_R, NOW, [])).reviews.cards[0]
+    expect(card.regressions).toBe(1)
+  })
+
+  it('flags a co-created hook, and ignores a system mnemonic', async () => {
+    const [k1, k2] = await kanjiIds(2)
+    await db.execute(sql`INSERT INTO user_kanji_progress (user_id, kanji_id, status)
+      VALUES (${USER_R}, ${k1}, 'learning'), (${USER_R}, ${k2}, 'learning')`)
+    await db.execute(sql`INSERT INTO mnemonics (kanji_id, user_id, type, story_text, generation_method)
+      VALUES (${k1}, ${USER_R}, 'user', 'mine', 'cocreated'),
+             (${k2}, ${USER_R}, 'system', 'theirs', 'system')`)
+
+    const cards = (await service.assembleSnapshot(USER_R, NOW, [])).reviews.cards
+    expect(cards.find((c) => c.kanjiId === k1)!.hasCoCreatedHook).toBe(true)
+    expect(cards.find((c) => c.kanjiId === k2)!.hasCoCreatedHook).toBe(false)
+  })
+
+  it('carries quiz outcomes inside the window', async () => {
+    const [k1] = await kanjiIds(1)
+    const s = await db.execute(sql`INSERT INTO kl_test_sessions (user_id, test_type)
+      VALUES (${USER_R}, 'exit_quiz') RETURNING test_session_id`)
+    const testSessionId = (s[0] as any).test_session_id
+    await db.execute(sql`INSERT INTO kl_test_results
+      (test_session_id, user_id, kanji_id, question_type, correct)
+      VALUES (${testSessionId}, ${USER_R}, ${k1}, 'reading_recall', false)`)
+
+    const snap = await service.assembleSnapshot(USER_R, NOW, [])
+    expect(snap.reviews.quiz).toHaveLength(1)
+    expect(snap.reviews.quiz[0]).toMatchObject({
+      kanjiId: k1, questionType: 'reading_recall', correct: false,
+    })
+  })
+})
