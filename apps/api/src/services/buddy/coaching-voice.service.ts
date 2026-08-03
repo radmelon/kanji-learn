@@ -45,10 +45,47 @@ const MAX_TOKENS = 400
  */
 const TEMPERATURE = 0.4
 
+/**
+ * Bound on the router call so a stalled tier-2 provider can never hold the
+ * weekly session open (slice 3 review, Finding 2). 10s is generous for a
+ * 400-token completion (MAX_TOKENS above) on the tier-2 providers this
+ * context normally reaches, and it leaves headroom inside
+ * apps/mobile/src/lib/api.ts's REQUEST_TIMEOUT_MS (30s, with one automatic
+ * retry on a GET): the server must answer with the template well before the
+ * client gives up, or a stalled call becomes a second forced
+ * coaching.refresh, a second LLM call, and a second rate-limit slot spent on
+ * the same session.
+ */
+export const COACHING_LLM_TIMEOUT_MS = 10_000
+
+/** Distinguishes a bounded wait timing out from every other router failure
+ *  (BuddyLLMError, a provider throwing directly), so the two can be logged
+ *  distinctly. Never escapes this module. */
+class CoachingTimeoutError extends Error {}
+
+/**
+ * Race `promise` against a timer. No provider in
+ * apps/api/src/services/llm/providers/ accepts an AbortSignal, so the loser
+ * of the race is not cancelled, only abandoned — the caller is responsible
+ * for swallowing its eventual settlement. The timer is always cleared,
+ * whichever side wins, so a fast response doesn't leave a dangling handle.
+ */
+function raceAgainstTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer!: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new CoachingTimeoutError(`coaching LLM call exceeded ${ms}ms`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 export class CoachingVoiceService {
   constructor(
     private readonly db: Db,
     private readonly llm: Pick<BuddyLLMRouter, 'route'>,
+    /** Overridable only for tests (a short injected bound beats faking
+     *  timers against a real Postgres connection). Production callers should
+     *  never pass this — it defaults to COACHING_LLM_TIMEOUT_MS. */
+    private readonly llmTimeoutMs: number = COACHING_LLM_TIMEOUT_MS,
   ) {}
 
   async utteranceFor(input: {
@@ -93,43 +130,79 @@ export class CoachingVoiceService {
     let content: string
     let providerName: string
     let finishReason: FinishReason
+    // Kicked off outside the try so the catch block below can still reach
+    // this promise when the TIMEOUT wins the race, not the route call.
+    const routePromise = this.llm.route({
+      context: 'coaching_utterance',
+      userId: input.userId,
+      // userOptedInPremium is deliberately UNSET. tutor-analysis.service.ts
+      // forces it true to bypass the premium gate; §5 wants the opposite
+      // here — opted-in learners get Claude, everyone else falls through to
+      // tier 2 with no branching at this call site.
+      messages: [{ role: 'user', content: buildCoachingPrompt({
+        openerKind: input.openerKind,
+        openerText: input.openerText,
+        reckon: input.reckon,
+        findings: spoken,
+      }) }],
+      maxTokens: MAX_TOKENS,
+      temperature: TEMPERATURE,
+    })
     try {
-      const result = await this.llm.route({
-        context: 'coaching_utterance',
-        userId: input.userId,
-        // userOptedInPremium is deliberately UNSET. tutor-analysis.service.ts
-        // forces it true to bypass the premium gate; §5 wants the opposite
-        // here — opted-in learners get Claude, everyone else falls through to
-        // tier 2 with no branching at this call site.
-        messages: [{ role: 'user', content: buildCoachingPrompt({
-          openerKind: input.openerKind,
-          openerText: input.openerText,
-          reckon: input.reckon,
-          findings: spoken,
-        }) }],
-        maxTokens: MAX_TOKENS,
-        temperature: TEMPERATURE,
-      })
+      const result = await raceAgainstTimeout(routePromise, this.llmTimeoutMs)
       content = (result.content ?? '').trim()
       providerName = result.providerName
       finishReason = result.finishReason
     } catch (err) {
-      // BuddyLLMError (tier-2 cap, both tier-2 providers down) and anything
-      // else land in the same place, by design (§9).
-      input.log?.error({ err, userId: input.userId }, '[CoachingVoice] router failed; using template')
+      if (err instanceof CoachingTimeoutError) {
+        // The in-flight call is abandoned, not cancelled — no provider in
+        // ../llm/providers/ accepts an AbortSignal, so there is nothing to
+        // cancel it WITH. Attach a no-op catch so its eventual settlement
+        // (almost always a late rejection once the caller's connection or
+        // read times out upstream) never surfaces as an unhandled promise
+        // rejection. We deliberately do not try to salvage a late SUCCESS
+        // into the cache either: racing a write against this request's
+        // already-returned response (or a second request's own attempt) is
+        // a concurrency story worth avoiding for a case the next weekly
+        // open resolves for free by simply trying again.
+        routePromise.catch(() => {})
+        input.log?.error({ userId: input.userId }, '[CoachingVoice] router timed out; using template')
+      } else {
+        // BuddyLLMError (tier-2 cap, both tier-2 providers down) and anything
+        // else land in the same place, by design (§9).
+        input.log?.error({ err, userId: input.userId }, '[CoachingVoice] router failed; using template')
+      }
       return { text: template, source: 'template' }
     }
 
-    // finishReason === 'length' means the model was cut off mid-sentence by
+    // finishReason is an ALLOWLIST, not a blocklist: only 'stop' passes. This
+    // is the safer shape for a field with four possible values, only one of
+    // which ('stop') means "the model said everything it meant to say" — a
+    // FinishReason this code has never seen before defaults to REJECTED, not
+    // silently accepted. 'length' means the model was cut off mid-sentence by
     // the token limit (MAX_TOKENS), which happens well under
-    // MAX_UTTERANCE_CHARS — the character bound below does not catch it, so
-    // it needs its own clause. A mid-sentence utterance frozen in the cache
-    // for the rest of the learner's session period is worse than the
-    // template, so treat it as unusable on the same path as empty and
-    // over-length content.
-    if (content === '' || content.length > MAX_UTTERANCE_CHARS || finishReason === 'length') {
+    // MAX_UTTERANCE_CHARS, so the character bound below does not catch it.
+    // 'safety' means a provider's content filter fired; Claude never returns
+    // it and Gemini's safety-blocked candidates carry no text (caught by the
+    // empty check below regardless of this clause), but Groq's
+    // content_filter can arrive WITH partial text, and a partially
+    // generated, safety-stopped completion is exactly the kind of thing that
+    // must not be cached for the rest of the learner's session period.
+    // 'tool_use' is unreachable here (no tools are sent), so excluding it via
+    // the allowlist costs nothing.
+    if (content === '' || content.length > MAX_UTTERANCE_CHARS || finishReason !== 'stop') {
+      // A discriminating tag, not just the raw finishReason: this slice
+      // exists partly to produce a cost/quality read a fortnight after
+      // rollout, and 'truncated' is the one cause with a tuning lever
+      // (MAX_TOKENS) behind it — indistinguishable from the others in a log
+      // line that only ever carried `length`.
+      const reason: 'empty' | 'too_long' | 'truncated' | 'unsafe' =
+        content === '' ? 'empty'
+        : content.length > MAX_UTTERANCE_CHARS ? 'too_long'
+        : finishReason === 'length' ? 'truncated'
+        : 'unsafe'
       input.log?.error(
-        { userId: input.userId, length: content.length },
+        { userId: input.userId, length: content.length, finishReason, reason },
         '[CoachingVoice] unusable completion; using template',
       )
       return { text: template, source: 'template' }

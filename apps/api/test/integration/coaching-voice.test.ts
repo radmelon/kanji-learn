@@ -167,6 +167,27 @@ describe('CoachingVoiceService', () => {
     expect(rows).toHaveLength(0)
   })
 
+  // MUTATION CAUGHT: removing the race between the router call and
+  // COACHING_LLM_TIMEOUT_MS (or removing the timeout entirely). Without it, a
+  // stalled tier-2 provider holds this call open indefinitely --
+  // apps/mobile/src/lib/api.ts aborts a GET at 30s and automatically retries
+  // it once, so an unbounded wait here turns one stalled provider into a
+  // second forced coaching.refresh, a second LLM call and a second
+  // rate-limit slot spent on the same session, ending in an error screen
+  // around 61s instead of a template a few seconds in.
+  it('falls back to the template when the router call never settles', async () => {
+    const { router, route } = stubRouter(() => new Promise<never>(() => {}))
+    // A short injected bound, not fake timers: this suite talks to a real
+    // Postgres connection, and vi.useFakeTimers() would stall that too.
+    // Production never passes this third argument -- it defaults to the
+    // exported COACHING_LLM_TIMEOUT_MS.
+    const svc = new CoachingVoiceService(db, router, 20)
+    const result = await svc.utteranceFor({ ...base, findings: [leech] })
+
+    expect(result?.source).toBe('template')
+    expect(route).toHaveBeenCalledTimes(1)
+  })
+
   // MUTATION CAUGHT: treating an empty or whitespace-only completion as
   // success. §9 lists it as a failure mode; without this the learner gets a
   // blank session card and every other test still passes.
@@ -326,5 +347,40 @@ describe('CoachingVoiceService', () => {
 
     expect(result?.source).toBe('template')
     expect(result?.text).not.toContain('been true for a while now')
+  })
+
+  // MUTATION CAUGHT: dropping readCache's `and(...)` predicate entirely (e.g.
+  // simplifying the WHERE clause while touching this code for an unrelated
+  // reason), which would let the query return whichever row Postgres happens
+  // to scan first regardless of who is asking or which week they mean -- the
+  // privacy failure this slice cannot afford. Every other test in this file
+  // uses one fixed user and one fixed week and would not notice.
+  it('does not serve a cache hit seeded for a different learner and a different week', async () => {
+    const OTHER_USER = '00000000-0000-0000-0000-0000000000ca'
+    const OTHER_WEEK = '2020-01-06'
+    await db.insert(schema.userProfiles)
+      .values({ id: OTHER_USER, displayName: 'Other Voice Fixture', timezone: 'America/Los_Angeles' })
+      .onConflictDoNothing()
+    await db.insert(schema.buddySessionUtterances).values({
+      userId: OTHER_USER,
+      weekStart: OTHER_WEEK,
+      text: 'OTHER_LEARNERS_UTTERANCE',
+      providerName: 'groq',
+    })
+
+    try {
+      const { router, route } = stubRouter(ok(SENTINEL))
+      const svc = new CoachingVoiceService(db, router)
+      const result = await svc.utteranceFor({ ...base, findings: [leech] })
+
+      expect(route).toHaveBeenCalledTimes(1)
+      expect(result?.source).toBe('llm')
+      expect(result?.text).toContain(SENTINEL)
+      expect(result?.text).not.toContain('OTHER_LEARNERS_UTTERANCE')
+    } finally {
+      await db.delete(schema.buddySessionUtterances)
+        .where(eq(schema.buddySessionUtterances.userId, OTHER_USER))
+      await db.delete(schema.userProfiles).where(eq(schema.userProfiles.id, OTHER_USER))
+    }
   })
 })
