@@ -21,6 +21,11 @@ const USER = '00000000-0000-0000-0000-0000000000c2'
 const WEEK = '2026-08-03'
 const NOW = '2026-08-03T17:00:00.000Z'
 const SENTINEL = 'SENTINEL_UTTERANCE'
+// A second learner, used only by the cache-scoping test below to seed a row
+// that shares the fixture's WEEK but belongs to someone else. Unused
+// anywhere else in the repo (checked with a repo-wide grep before picking
+// it).
+const OTHER_USER = '00000000-0000-0000-0000-0000000000ca'
 
 const leech: Finding = {
   kind: 'leech',
@@ -69,6 +74,13 @@ beforeAll(async () => {
   await db.insert(schema.userProfiles)
     .values({ id: USER, displayName: 'Voice Fixture', timezone: 'America/Los_Angeles' })
     .onConflictDoNothing()
+  // Satisfies the FK for the "different learner" seed row in the
+  // cache-scoping test below. Created here, not inline in that test, so its
+  // lifecycle follows the same beforeAll/afterAll pattern as the primary
+  // fixture user rather than a one-off try/finally.
+  await db.insert(schema.userProfiles)
+    .values({ id: OTHER_USER, displayName: 'Other Voice Fixture', timezone: 'America/Los_Angeles' })
+    .onConflictDoNothing()
 })
 
 beforeEach(async () => {
@@ -79,7 +91,10 @@ beforeEach(async () => {
 afterAll(async () => {
   await db.delete(schema.buddySessionUtterances)
     .where(eq(schema.buddySessionUtterances.userId, USER))
+  await db.delete(schema.buddySessionUtterances)
+    .where(eq(schema.buddySessionUtterances.userId, OTHER_USER))
   await db.delete(schema.userProfiles).where(eq(schema.userProfiles.id, USER))
+  await db.delete(schema.userProfiles).where(eq(schema.userProfiles.id, OTHER_USER))
   await client.end()
 })
 
@@ -349,22 +364,34 @@ describe('CoachingVoiceService', () => {
     expect(result?.text).not.toContain('been true for a while now')
   })
 
-  // MUTATION CAUGHT: dropping readCache's `and(...)` predicate entirely (e.g.
-  // simplifying the WHERE clause while touching this code for an unrelated
-  // reason), which would let the query return whichever row Postgres happens
-  // to scan first regardless of who is asking or which week they mean -- the
-  // privacy failure this slice cannot afford. Every other test in this file
-  // uses one fixed user and one fixed week and would not notice.
-  it('does not serve a cache hit seeded for a different learner and a different week', async () => {
-    const OTHER_USER = '00000000-0000-0000-0000-0000000000ca'
+  // MUTATION CAUGHT: dropping EITHER predicate from readCache's `and(...)`.
+  // A single seed row differing from the fixture on BOTH axes only catches
+  // dropping the whole `and(...)` at once (verified by experiment) -- either
+  // surviving predicate alone would still filter that one row out. Two rows
+  // pin down each half independently instead:
+  //   - Row A shares the fixture's WEEK but belongs to a different learner,
+  //     so it only becomes a false hit if `eq(userId, ...)` is dropped --
+  //     the failure that matters most, since it would serve one learner
+  //     another learner's coaching utterance.
+  //   - Row B shares the fixture's USER but belongs to a different week, so
+  //     it only becomes a false hit if `eq(weekStart, ...)` is dropped.
+  // With both present, losing either predicate turns this MISS into a hit on
+  // the wrong row, and the router is never called.
+  it('does not serve a cache hit seeded for a different learner or a different week', async () => {
     const OTHER_WEEK = '2020-01-06'
-    await db.insert(schema.userProfiles)
-      .values({ id: OTHER_USER, displayName: 'Other Voice Fixture', timezone: 'America/Los_Angeles' })
-      .onConflictDoNothing()
+    // Row A: fixture's WEEK, a different learner (OTHER_USER, created in
+    // beforeAll).
     await db.insert(schema.buddySessionUtterances).values({
       userId: OTHER_USER,
-      weekStart: OTHER_WEEK,
+      weekStart: WEEK,
       text: 'OTHER_LEARNERS_UTTERANCE',
+      providerName: 'groq',
+    })
+    // Row B: fixture's USER, a different week.
+    await db.insert(schema.buddySessionUtterances).values({
+      userId: USER,
+      weekStart: OTHER_WEEK,
+      text: 'OTHER_WEEKS_UTTERANCE',
       providerName: 'groq',
     })
 
@@ -377,10 +404,14 @@ describe('CoachingVoiceService', () => {
       expect(result?.source).toBe('llm')
       expect(result?.text).toContain(SENTINEL)
       expect(result?.text).not.toContain('OTHER_LEARNERS_UTTERANCE')
+      expect(result?.text).not.toContain('OTHER_WEEKS_UTTERANCE')
     } finally {
+      // Row B (USER, WEEK's cache write included) is cleaned by the next
+      // test's beforeEach, same as every other test in this file. Row A
+      // belongs to OTHER_USER, which beforeEach never touches, so it is
+      // cleaned here explicitly rather than waiting for the file's afterAll.
       await db.delete(schema.buddySessionUtterances)
         .where(eq(schema.buddySessionUtterances.userId, OTHER_USER))
-      await db.delete(schema.userProfiles).where(eq(schema.userProfiles.id, OTHER_USER))
     }
   })
 })
