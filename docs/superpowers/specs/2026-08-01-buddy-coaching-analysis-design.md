@@ -484,6 +484,47 @@ the true thing, just less warmly"* — and analysis mode has that floor.
 question is not only "what number", it is "what does a learner see on the turn
 after the cap".
 
+#### 🛑 Tier 1 is a stub on the server — the "free" floor does not exist on the API path
+
+Verified 2026-08-03. This is not in the original §11.3 framing and it changes
+the option set.
+
+`server.ts:94` wires the router's `onDevice` slot to
+**`AppleFoundationStubProvider`**, whose `isAvailable()` returns `false`
+unconditionally and whose `generateCompletion` throws *"cannot generate on the
+server"*. Its own header says why:
+
+> Server-side placeholder for Apple Foundation Models. The real provider lives
+> in the mobile app (Phase 2) and runs on-device.
+
+That is structural, not an oversight — a server cannot run an on-device model.
+The slot exists so the router has a uniformly-typed provider and so telemetry
+can measure on-device coverage. **Every tier-1 request through the API emits an
+`unavailable` skip and falls through to tier 2.**
+
+**But iOS native AI is genuinely implemented — in the client, bypassing the
+router.** `apps/mobile/src/mnemonics/assembleOnDevice.ts` imports
+`AppleFoundationModels` from `@react-native-ai/apple` (the real TurboModule) and
+runs its own cascade — on-device → cloud → template — sharing
+`buildAssemblyPrompt` and `COCREATION_SYSTEM_PROMPT` with the cloud tier so the
+output stays consistent. It never touches the server router.
+
+**Consequence for slices 3–4, and it is the whole reason this is recorded
+here:** the free tier that would naturally absorb cheap conversational chatter
+**does not exist on the path the conversational surface will use.** Companion
+mode goes through the API, so its turns classify as tier 1 or 2, land on tier 2
+either way, and count against the 50/day cap that *throws* when exhausted.
+Reading tier 1 as a working cost floor — as the table above invites — is wrong
+for anything server-routed.
+
+**This opens a fourth option that belongs in the decision below:** build
+companion mode's cheap turns **client-side**, following the pattern
+`assembleOnDevice.ts` already proves, with the server cascade as fallback. That
+is the only version of "tier 1 absorbs the chatter" actually available today,
+and it converts on-device from a telemetry placeholder into a real cost floor.
+It is also a materially different slice 4 — client-first rather than
+API-first — so it wants deciding before that slice is planned, not during.
+
 #### What actually has to be decided — three things, one of them a number
 
 1. **The degradation.** Today it is an exception mid-conversation. Options: a
@@ -494,7 +535,11 @@ after the cap".
 2. **Whether a per-day cap is even the right shape** for a conversational
    surface, versus a per-conversation turn limit — which fails far more legibly
    to a learner.
-3. **The number**, sized from cost-per-turn.
+3. **Where the cheap turns run** — server (tier 2, metered, throws when
+   exhausted) or client (on-device, free, already proven for mnemonics). See
+   the tier-1 finding above; this is not a implementation detail, it decides
+   slice 4's shape.
+4. **The number**, sized from cost-per-turn.
 
 **Recommendation: decide the degradation first, and set the number last.** A
 conversational surface that throws mid-chat is a worse failure than one that
