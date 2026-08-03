@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-03 (**Slice 2 is MERGED, migrated and DEPLOYED. Next: brainstorm slice 3 — which must absorb four open decisions first.**)
+# Session Handoff — 2026-08-03 later (**Slice 2 is LIVE and verified. It works, and the note it writes is useless. Fix the copy floor BEFORE slice 3.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,13 +7,183 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-03
+## START HERE — 2026-08-03 (later)
 
 > ## ▶️ What the next session does
 >
-> **Finish the content half of the deploy verification.** Everything else is
-> done: PR #11 merged (`6fdf02c`), migration 0034 applied to live, and the API
-> deployed 2026-08-03 08:33–08:36 PDT.
+> **Write the spec and plan for the coaching copy floor, then execute it.**
+> The design is fully settled below — transcribe it, do not re-derive it.
+>
+> Target: `docs/superpowers/specs/2026-08-03-coaching-copy-floor-design.md`
+>
+> **This comes BEFORE slice 3**, whose spec is already written and committed
+> (§ "Slice 3 is specced and waiting" below). The reason is in the next section.
+>
+> Shared lane only — `packages/shared/src/coaching/`, pure functions, **no
+> migration and no EAS build.** It deploys to the notebook the owner is already
+> reading.
+
+### ✅ Slice 2 is verified end to end — and that is how we learned the copy is useless
+
+The owner opened the Journal on their own account and got exactly this:
+
+> *"You have cleared the hardest kanji the test put in front of you. Your
+> placement puts you around this level, with some room either side. A handful of
+> kanji keep slipping back no matter how often they come around."*
+
+Their verdict: *"Overall Buddy has provided me less than zero value with this
+note."* They asked which test and when, what "this level" refers to, which
+kanji are slipping, and what they are supposed to do about it.
+
+**The pipeline is correct. The copy is the defect.** `templateCopy` reads
+`finding.kind` and nothing else — it looks up a static string per kind and
+returns it. **`finding.evidence` is never touched.**
+
+That inverts §1's stated purpose. The spec says `Evidence.label` is display-safe
+text computed in the analyzer *"so the voice layer has nothing left to
+calculate — that is the load-bearing invariant of §1."* The whole point of
+precomputing it was for the copy layer to use it. It never does.
+
+Every one of the owner's questions had an answer sitting unused in the finding:
+`level_estimate` carries `most likely level: N4` while its copy says *"this
+level"*; `leech` carries the worst kanji **named, with lapse counts**, while its
+copy says *"a handful"*.
+
+**What the review process missed.** Fifteen fix cycles went into whether the
+plumbing was correct — write ordering, coalescing keys, finding memory — and not
+one asked whether the output was *useful*. The reviewers checked everything
+except the thing a learner would actually read.
+
+### 🔬 The audit — all ten kinds
+
+The question asked of each: *what would a learner ask next, and can the evidence
+answer it?*
+
+| Kind | Class | Learner's next question | Answerable today? |
+|---|---|---|---|
+| `reading_lag` | Direct | By how much? Kun or on? What do I do? | Gap ✅ · **kun/on ❌** · action ❌ |
+| `leech` | Direct | Which kanji? How often? What do I do? | Named kanji ✅ · action ❌ |
+| `commitment_gap` | Direct | By how much? Which period? Now what? | Minutes ✅ · **dates ❌** · action ❌ |
+| `hook_coverage` | Direct | Which kanji? | ✅ **in evidence, unused by copy** |
+| `level_estimate` | Orient | What level? What range? When? | Level+range ✅ · **date ❌** |
+| `mechanics_explainer` | Orient | Where is the fuller explanation? | 🔴 **points at a page that does not exist** |
+| `fluency_gain` | Motivate | How much faster? Over what period? | Speed ✅ · **window ❌** |
+| `theta_delta` | Motivate | By how much? Between when? | ✅ **fully equipped, all unused** |
+| `hardest_cleared` | Motivate | Which one? Hard how? When? | Kanji ✅ · **basis ❌** · **date ❌** |
+| `retest_due` | Motivate | How long? What is "uncertainty"? Where? | Days ✅ · jargon ❌ · location ❌ |
+
+### 🔴 `mechanics_explainer` promises a page that does not exist
+
+Its template says *"There is a fuller explanation in your Profile."* **There is
+no IRT section in Profile** — §7 schedules it as slice 5. Verified by grep.
+That string is live in production sending learners to a dead end, on the one
+finding whose entire purpose is building trust.
+
+**Decision: remove the pointer sentence now; slice 5 restores it when the page
+exists.** Keep the two-sentence IRT explanation, which stands alone.
+
+### 📐 The design — settled, transcribe it
+
+**Three changes:**
+
+1. **`templateCopy` becomes per-kind formatters** — `Record<FindingKind, (f:
+   Finding, now?: string) => string>` replacing the static `BASE` record. Each
+   formatter reads its own finding's `Evidence`.
+2. **Evidence labels become exported constants**, shared between the detector
+   that writes them and the formatter that reads them. Otherwise formatters
+   match label strings and a rename silently yields "undefined" — the exact
+   failure mode that produced the note above.
+3. **Detectors emit what the audit found missing:** `completedAt` on
+   `hardest_cleared` and `level_estimate`; `periodStart`/`periodEnd` on
+   `commitment_gap`; the window length on `fluency_gain`; `strokeCount` and
+   `readingCount` on `hardest_cleared` so it can say what "hard" means.
+
+**Degradation rule:** a formatter that cannot find its evidence returns the base
+sentence. Never "undefined", never a half-built one. `reading_lag` matters most
+— its evidence differs depending on whether it fired from placement or quiz.
+
+**Actions are VERBAL, not interactive.** The notebook renders plain text and
+`NotebookBody` has no action affordance. Naming the specific kanji and the
+specific move is most of the value; a tappable button would need a client
+contract change, mobile work and a build. Verified reachable: co-creation opens
+from `apps/mobile/app/kanji/[id].tsx` and `study.tsx`, so "look it up and build
+a hook" is a real instruction.
+
+**The four Direct findings, with their actions** (the spec should carry all ten):
+
+> **leech** — Four kanji keep slipping back: 敗 has lapsed 4 times, 語 3, 使 and
+> 去 twice each. **敗 is the one to work on first** — look it up and build a hook
+> for it, which is what usually stops this.
+
+> **hook_coverage** — **敗** keeps catching you out. Building a hook for a kanji
+> tends to make it stick — want to make one together?
+
+> **commitment_gap** — You promised 60 minutes between 20 and 26 July and
+> studied 20. Worth naming rather than ignoring — **bring it to your next
+> session** and we will set something you will actually hit.
+
+> **reading_lag** — Your readings are trailing your meanings, 62% against 88%
+> across 24 answers — wider than the usual gap. **Next time you study, say the
+> reading aloud before you flip.**
+
+**Testing:** every formatter tested twice — once with full evidence, once with
+evidence stripped, to prove the degradation path. **Each test names the mutation
+it catches.** That discipline is what was missing when this shipped.
+
+### ⚠️ "Hardest" needed explaining, and the answer changes the copy
+
+The owner asked what `hardest_cleared` means by hard — strokes? JLPT? rarity?
+
+`b` (item difficulty) is a weighted sum of five z-scored features
+(`placement-difficulty.ts:112`): JLPT rank, log frequency rank, school grade,
+stroke count, and reading count. That prior is then blended with observed
+learner performance from `review_logs`.
+
+**Two things worth knowing.** First, the blend is currently **inert** —
+`observed_n = 0` for these kanji, so `b = b_prior` exactly. "Hardest" today
+means hardest *by feature model*, not by how learners actually perform. Second,
+their hardest-cleared was **願 (N3, 19 strokes, 3 readings, b=1.01)**, which
+outranked **刊 (N2, 5 strokes, b=0.95)** and **筆 (N2, 12 strokes, b=0.94)**.
+
+**So a bare superlative invites a JLPT lookup that makes it look wrong.** The
+copy should carry its own justification — *"the hardest item it gave you, at 19
+strokes and three readings; the test weighs those alongside JLPT level"* — which
+is why `hardest_cleared` needs `strokeCount`/`readingCount` in evidence.
+
+### ⏸️ Deferred, deliberately
+
+- **`reading_lag`'s kun-vs-on split.** Does not exist anywhere in
+  `LearnerSnapshot` — `CardSnapshot` has `readingStage` but no per-reading-type
+  accuracy. That is a detector *and* assembly change, not a passthrough. Say
+  "readings" without the split.
+- **Finding ORDER.** The owner got praise, then orientation, then the actual
+  problem. That is §4 working as designed — the primary sort is
+  `magnitude × confidence × novelty`, and §3's Direct/Orient/Motivate priority
+  only breaks ties, so a strong Motivate finding outranks a weak Direct one.
+  Their reaction suggests that may be wrong, but changing it is a §4 decision
+  with wider blast radius than copy.
+
+### 📄 Slice 3 is specced and waiting
+
+https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-03-coaching-slice3-design.md
+
+Analysis mode: the LLM voices the weekly session; the notebook keeps template
+prose. Fully designed, not started. **It does not fix the note above** — that is
+precisely why the copy floor goes first. Slice 3 also needs an EAS build; the
+copy floor does not.
+
+---
+
+# Previous — 2026-08-03 earlier (**deploy verification — now CLOSED, see the section above**)
+
+> ## ▶️ What that session asked for (DONE)
+>
+> **Finish the content half of the deploy verification.** ✅ **Closed** — the
+> owner opened the Journal, the coaching entry appeared, and reading it is what
+> surfaced the copy defect the current section is about.
+>
+> Everything else was already done: PR #11 merged (`6fdf02c`), migration 0034
+> applied to live, and the API deployed 2026-08-03 08:33–08:36 PDT.
 >
 > The artifact chain is proven — ECR digest went `9fce6c9e…` → `2a56d61e…`,
 > pushed 08:33:04, deployment triggered 08:33:06 two seconds later, SUCCEEDED
