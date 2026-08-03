@@ -628,4 +628,66 @@ describe('CoachingService.assembleSnapshot — commitment and hooks', () => {
     const snap = await service.assembleSnapshot(USER_C, NOW, [])
     expect(snap.hooks.sessionDates).toEqual(['2026-07-20'])
   })
+
+  it('all five HookSnapshot fields sit at their empty-state values together', async () => {
+    // Every hooks() test above pins ONE field against a partially-populated
+    // fixture. beforeEach(wipe) already leaves USER_C with no mnemonics, no
+    // buddy_commitments, and no user_kanji_progress rows, so a bare
+    // assembleSnapshot call here is the learner with nothing at all -- the
+    // one case that proves all five fields collapse to their empty state
+    // together, not just individually.
+    const snap = await service.assembleSnapshot(USER_C, NOW, [])
+    expect(snap.hooks).toEqual({
+      count: 0,
+      latestAt: null,
+      sessionDates: [],
+      lapsesWithHook: null,
+      lapsesWithoutHook: null,
+    })
+  })
+})
+
+describe('CoachingService.assembleSnapshot — commitment: buddyIntervalWeeks passthrough', () => {
+  // Own fixture, own interval. Every test in the block above pins
+  // buddy_interval_weeks=1 on USER_C -- the only occurrence of that column
+  // in this file before this block -- so a regression that dropped
+  // commitment()'s `profile?.buddyIntervalWeeks ?? 1` read (hardcoding 1
+  // regardless of the profile) would pass every one of them. This learner's
+  // profile carries buddy_interval_weeks=2, and the assertions below are
+  // built to distinguish a real 14-day period from the 7-day period that
+  // read would silently fall back to.
+  const service = new CoachingService(db)
+  const USER_I = '00000000-0000-0000-0000-0000000000d7'
+
+  beforeAll(async () => {
+    await db.execute(sql`INSERT INTO user_profiles (id, display_name, timezone, buddy_interval_weeks)
+      VALUES (${USER_I}, 'CoachingIntervalFixture', 'America/Los_Angeles', 2) ON CONFLICT DO NOTHING`)
+  })
+
+  afterAll(async () => {
+    await db.execute(sql`DELETE FROM buddy_commitments WHERE user_id = ${USER_I}`)
+    await db.execute(sql`DELETE FROM daily_stats WHERE user_id = ${USER_I}`)
+    await db.execute(sql`DELETE FROM user_profiles WHERE id = ${USER_I}`)
+  })
+
+  it('threads buddy_interval_weeks=2 into a 14-day commitment period, not 7', async () => {
+    await db.execute(sql`INSERT INTO buddy_commitments
+      (user_id, week_start, days_committed, minutes_per_day, source)
+      VALUES (${USER_I}, '2026-07-13', 4, 15, 'session')`)
+    // 2026-07-22 falls inside the correct 14-day window [07-13, 07-27) but
+    // OUTSIDE the 7-day window [07-13, 07-20) that a hardcoded intervalWeeks
+    // of 1 would produce from this same commitment row -- so actualMinutes
+    // distinguishes the two behaviours as well as periodEnd does. 900000 ms
+    // = 15 minutes.
+    await db.execute(sql`INSERT INTO daily_stats (user_id, date, study_time_ms)
+      VALUES (${USER_I}, '2026-07-22', 900000)`)
+
+    const snap = await service.assembleSnapshot(USER_I, NOW, [])
+    expect(snap.commitment).not.toBeNull()
+    expect(snap.commitment!.periodStart).toBe('2026-07-13')
+    // 14 days past periodStart -- unambiguously not the 7-day fallback.
+    expect(snap.commitment!.periodEnd).toBe('2026-07-27')
+    expect(snap.commitment!.promisedMinutes).toBe(60)
+    expect(snap.commitment!.actualMinutes).toBeCloseTo(15)
+  })
 })
