@@ -176,6 +176,76 @@ describe('coaching triggers', () => {
   })
 
   /**
+   * The mirror image of the test above. Placement completion and session
+   * completion pass `{ force: true }` specifically so a real event is never
+   * silently dropped by the staleness gate -- but a first-ever analysis
+   * (no prior `analyzedAt` at all) can't tell forced from gated, since the
+   * gate only ever skips when a PRIOR analysis is recent. Both wiring tests
+   * above are first-ever analyses, so neither actually proves `force: true`
+   * made it into the call. This seeds an existing, fresh (5-minute-old)
+   * analysis a non-forced call would skip, and real underlying data (a
+   * missed period) that would produce a different finding if analysis did
+   * run. The sentinel surviving would mean the call regressed to an
+   * unforced `refresh(userId)`.
+   */
+  it('POST /v1/placement/complete forces a refresh even inside the staleness window', async () => {
+    const recentlyAnalyzed = new Date(Date.now() - 5 * 60_000).toISOString()
+    const createdLongAgo = new Date(Date.now() - 3 * 60 * 60_000).toISOString()
+    const SENTINEL = 'SENTINEL: must be replaced -- placement completion forces a refresh.'
+    await db.execute(sql`
+      INSERT INTO notebook_entries (user_id, kind, body, author, source, created_at)
+      VALUES (${USER}, 'observation', ${SENTINEL}, 'buddy',
+        ${{ kind: 'coaching_analysis', analyzedAt: recentlyAnalyzed, findings: [] }}::jsonb,
+        ${createdLongAgo}::timestamptz)
+    `)
+    await missedPeriod()
+
+    const itemsRes = await app.inject({
+      method: 'GET', url: '/v1/placement/next-items?theta=0&count=1',
+      headers: { 'x-test-user-id': USER },
+    })
+    const [item] = itemsRes.json().data.items
+
+    const res = await app.inject({
+      method: 'POST', url: '/v1/placement/complete',
+      headers: { 'x-test-user-id': USER },
+      payload: { responses: [{ kanjiId: item.kanjiId, itemType: 'meaning', correct: true }] },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const rows = await coachingRows()
+    expect(rows.length).toBe(1)
+    expect((rows[0] as any).body).not.toBe(SENTINEL)
+    expect((rows[0] as any).body).toContain('promised')
+  })
+
+  it('POST /v1/buddy/session/commitment forces a refresh even inside the staleness window', async () => {
+    const recentlyAnalyzed = new Date(Date.now() - 5 * 60_000).toISOString()
+    const createdLongAgo = new Date(Date.now() - 3 * 60 * 60_000).toISOString()
+    const SENTINEL = 'SENTINEL: must be replaced -- session completion forces a refresh.'
+    await db.execute(sql`
+      INSERT INTO notebook_entries (user_id, kind, body, author, source, created_at)
+      VALUES (${USER}, 'observation', ${SENTINEL}, 'buddy',
+        ${{ kind: 'coaching_analysis', analyzedAt: recentlyAnalyzed, findings: [] }}::jsonb,
+        ${createdLongAgo}::timestamptz)
+    `)
+    await missedPeriod()
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/buddy/session/commitment',
+      headers: { 'x-test-user-id': USER },
+      payload: { weekStart: '2026-08-01', daysCommitted: 4, minutesPerDay: 15 },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const rows = await coachingRows()
+    expect(rows.length).toBe(1)
+    expect((rows[0] as any).body).not.toBe(SENTINEL)
+    expect((rows[0] as any).body).toContain('promised')
+  })
+
+  /**
    * Every call site wraps `refresh()` in try/catch specifically so a coaching
    * failure can never turn the route's real outcome into a 500. Spying on the
    * prototype method (rather than passing a stub) exercises the actual routes
