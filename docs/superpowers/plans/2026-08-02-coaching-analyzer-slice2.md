@@ -16,7 +16,8 @@ Spec: https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2
 - **Every verification step runs BOTH the test command and `pnpm typecheck`.** Slice 1 shipped a test file that passed vitest and failed typecheck with four errors. A step naming only a test command cannot catch that class of defect.
 - **Slice 2 is API-only.** Do not modify anything under `apps/mobile`.
 - **`packages/shared/src/coaching/` stays pure** — no I/O, no clock. `now` is always a parameter.
-- **Rebuild the local test DB before judging API results** — https://github.com/radmelon/kanji-learn/blob/main/docs/local-test-db.md. It holds **7 kanji**, not 2,294. Do **not** re-run the migration list on an existing DB; that strips RLS.
+- **Local test DB:** `postgresql://kanji:kanji@localhost:5433/kanji_buddy_test?sslmode=disable` (user `kanji`, NOT `postgres`). See https://github.com/radmelon/kanji-learn/blob/main/docs/local-test-db.md. Do **not** re-run the migration list on an existing DB; that strips RLS.
+- **The test DB holds 2,286 kanji** — verified 2026-08-02. `CLAUDE.md` and slice 1's notes say 7; the corpus has been imported since. Tests here still resolve kanji ids by query rather than hardcoding, which is correct either way.
 - **API integration tests authenticate with a bare `x-test-user-id` header.** There is no `test/helpers/auth.ts`, only `test-app.ts`.
 - Source kind string is exactly `'coaching_analysis'` everywhere.
 - Commit after every task. One commit per task.
@@ -415,7 +416,7 @@ In `docs/local-test-db.md`, add this line immediately after the `0033_met_buddy_
 Run:
 
 ```bash
-psql "postgresql://postgres:postgres@localhost:5433/kanji_buddy_test" -f packages/db/supabase/migrations/0034_coaching_analysis_index.sql
+psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_test?sslmode=disable" -f packages/db/supabase/migrations/0034_coaching_analysis_index.sql
 ```
 
 Expected: `CREATE INDEX`.
@@ -429,7 +430,7 @@ Expected: `CREATE INDEX`.
 Run:
 
 ```bash
-psql "postgresql://postgres:postgres@localhost:5433/kanji_buddy_test" -c "SELECT indexdef FROM pg_indexes WHERE indexname='notebook_entries_coaching_unique'"
+psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_test?sslmode=disable" -c "SELECT indexdef FROM pg_indexes WHERE indexname='notebook_entries_coaching_unique'"
 ```
 
 Expected: one row containing both `coaching_analysis` and `superseded_at IS NULL`.
@@ -2285,5 +2286,5 @@ Per https://github.com/radmelon/kanji-learn/blob/main/docs/SOP.md, **status code
 
 **Known gaps a reviewer should check rather than assume.**
 
-- The local test DB holds 7 kanji, so every test resolves kanji ids by query rather than hardcoding.
+- Every test resolves kanji ids by query rather than hardcoding, so the corpus size does not matter.
 - `CardSnapshot.character` is filled by a second query (`fillCharacters`) rather than a join, because the progress query has no reason to join `kanji` otherwise. If a reviewer prefers the join, it is a safe refactor — the test asserting `typeof character === 'string'` in Task 6 and the hook-candidate evidence in slice 1 are what protect it.
