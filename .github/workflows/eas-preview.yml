@@ -12,8 +12,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # This workflow has never once succeeded — 24 runs, 24 failures, since
+  # 2026-04-13 — because EXPO_TOKEN has never been configured. `eas build`
+  # exits with "An Expo user account is required to proceed", so every PR
+  # touching apps/mobile or packages/shared has produced a red check and a
+  # notification that no code change could ever fix.
+  #
+  # This gate makes the build SKIP when the token is absent instead of failing.
+  # Deliberately a skip, not a green no-op: a check reporting success without
+  # building anything is the false-signal trap this repo has been bitten by
+  # before (see docs/SOP.md on verifying deploys).
+  #
+  # To actually enable it: set the EXPO_TOKEN repository secret, plus
+  # EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY /
+  # EXPO_PUBLIC_API_URL, which currently resolve empty. Note the paths filter
+  # above includes packages/shared/**, so once enabled this fires an iOS AND
+  # Android build for shared-only PRs — check that against your EAS allowance.
+  gate:
+    name: Check EAS credentials
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=EAS preview skipped::EXPO_TOKEN is not set, so the preview build cannot run. Set it in repository secrets to enable."
+          fi
+
   preview:
     name: EAS Preview (iOS + Android)
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
