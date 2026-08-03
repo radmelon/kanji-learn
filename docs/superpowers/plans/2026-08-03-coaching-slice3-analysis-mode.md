@@ -1673,10 +1673,27 @@ Two things are required, per
 https://github.com/radmelon/kanji-learn/blob/main/docs/SOP.md. A status code is
 not one of them.
 
-1. **Migration 0035 applied to live** before the API rolls out. The route reads
-   `buddy_session_utterances` on every due session; without the table the read
-   throws, the try/catch swallows it, and every learner silently gets the
-   template forever — a failure with no symptom.
+1. **Migration 0035 applied to live** before the API rolls out.
+
+   ⚠️ **The symptom of getting this wrong is not what this section originally
+   said, and the difference matters when you are verifying.** The original text
+   claimed a missing table would degrade every learner to the template forever.
+   That was true of the service as first written; commit `274edee` changed it,
+   because a failed cache read now degrades to a cache *miss* rather than an
+   error. Trace it with the table absent: the read throws and is caught, the
+   LLM call proceeds and succeeds, the insert throws and is caught, and the
+   utterance is returned.
+
+   So the real failure mode is the opposite of a dead feature — **the feature
+   works, uncached, indefinitely.** Buddy says something different on every app
+   open, which is the exact defect §6 exists to prevent, and every open costs an
+   LLM call against the learner's daily cap.
+
+   **What to look for:** a pair of `[CoachingVoice] cache read failed` and
+   `[CoachingVoice] cache write failed` errors per due session, and a
+   `buddy_session_utterances` table that is missing or permanently empty.
+   `scripts/deploy-api.sh` does not apply migrations, so this ordering is
+   entirely manual and nothing enforces it.
 2. **An App Runner operation dated today**, and **response content**:
 
    **The canary is `data.voice` on `GET /v1/buddy/session`** for a learner whose
@@ -1703,6 +1720,16 @@ produces the measurement it needs**. No extra instrumentation is required —
 
 Read it a fortnight after rollout, not on day one — one call per learner per
 week means the sample builds slowly, which is the point.
+
+🛑 **Expect tier 2 in those rows, not tier 3, and do not read that as a bug.**
+`coaching_utterance` is registered in `TIER3_CONTEXTS`, but
+`BuddyLLMRouter.route()` only reaches Claude when `userOptedInPremium === true`,
+and §5 deliberately does not set it. No premium flag exists in the schema today,
+so **every** coaching utterance currently runs on the tier-2 providers and
+consumes the tier-2 daily cap — not the tier-3 cap this plan's §5 cost note
+cites. The registration is correct and forward-looking: the day a premium flag
+exists, opted-in learners move to Claude with no code change. Until then, this
+measurement is a tier-2 measurement.
 
 ---
 
