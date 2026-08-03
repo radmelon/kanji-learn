@@ -175,7 +175,7 @@ it.
 | `placement.items[].readingOffset` | `kanji_difficulty`, **not** `placement_results`. Constant 0.4 for every kanji — see slice 1's calibration on why the per-item framing is fiction. |
 | `reviews.cards` | `user_kanji_progress` (status, lapses, `reading_stage`) joined to `review_logs` over the window below. |
 | `reviews.quiz` | `kl_test_results`. Question types are the five that exist on live — see the caveat block on `QuizOutcome`. |
-| `commitment` | **Last COMPLETED, non-`default`, non-superseded `buddy_commitments` row** (`superseded_at IS NULL`). See below. |
+| `commitment` | **Last COMPLETED, non-`default`, non-superseded `buddy_commitments` row** (`superseded_at IS NULL`). See below, and the fortnightly caveat in §11. |
 | `commitment.promisedMinutes` | Computed: `minutes_per_day × days_committed`. Not stored. |
 | `commitment.actualMinutes` | `SUM(daily_stats.study_time_ms)` over the period ÷ 60000. `daily_stats.date` is `text` `YYYY-MM-DD`, so ISO range comparison is lexical and safe. |
 | `hooks.count` / `latestAt` | `mnemonics WHERE generation_method='cocreated'`. |
@@ -252,16 +252,27 @@ trajectory."*
 
 ### Restamp rule — transition only
 
-`carryForward(priors, selected, now, previousAnalyzedAt)` is a **pure function
-in `packages/shared/src/coaching/persistence.ts`**, shared-lane tested. It does
-not belong in a service where testing it requires a database.
+`carryForward(priors, selected, now)` is a **pure function in
+`packages/shared/src/coaching/persistence.ts`**, shared-lane tested. It does not
+belong in a service where testing it requires a database.
 
 - `since` = the prior's `since`, or `now` when the kind was not in the previous
   analysis.
 - `lastRaisedAt` = the prior's `lastRaisedAt` when the kind **was** in the
   previous analysis; `now` only on a transition from absent to selected.
-- When `now − previousAnalyzedAt < COALESCE_WINDOW_MINUTES`, inherit the older
-  row's stamps (§2).
+
+⚠️ **It takes three arguments, not four, and it knows nothing about coalescing.**
+An earlier draft gave it a `previousAnalyzedAt` parameter and made it decide the
+coalescing window itself. That was wrong twice over: the window is keyed off the
+row's `created_at`, not `analyzedAt` (see §2's ⚠️ for why `analyzedAt` inverts
+§4), and "which row counts as history" is a question about database rows, which
+has no business inside a pure function.
+
+**Coalescing is entirely the caller's decision.** `CoachingService.refresh`
+picks *which* row's findings to pass as `priors` — the row before the latest
+when coalescing, the latest otherwise — and `carryForward` applies the stamp
+rule to whatever it is handed. Slice 3 must not reintroduce the four-argument
+form.
 
 **Why transition-only.** Restamping every selected finding on every write
 re-floors novelty each run, so run 1 picks A/B/C, run 2 sees D/E at novelty 1.0
@@ -671,3 +682,85 @@ is the surface that would use it most. Note the two halves deploy independently:
 the tutor-facing prompt is an Eta template edit shippable on its own, and it is
 worth landing **early** regardless, because it is what makes the corpus of
 Japanese notes exist for anything downstream to read.
+
+---
+
+## 11. Known follow-ups, recorded at merge — 2026-08-03
+
+Found by the final whole-branch review. None blocks slice 2; all should be
+settled before or during slice 3.
+
+### 🔴 `commitment_gap` goes silent for a fortnightly learner
+
+**Two definitions of "the period" now coexist, and they disagree.**
+
+- `getLastCompletedPeriod` scales by cadence: `periodDays = 7 * intervalWeeks`
+  (`commitment.service.ts:241`), so `commitment()` sums `daily_stats` across
+  **14 days** for a fortnightly learner.
+- `promisedMinutes` is `minutesPerDay × daysCommitted` — but that is the same
+  quantity the in-session reckoning evaluates against a **fixed 7-day** window:
+  `getActivity` hardcodes `PERIOD_DAYS = 7`.
+
+A fortnightly learner promising 4 × 15 = 60 who studies 50 minutes in each of
+two weeks has `actualMinutes = 100`, `missed = −40`, and `detectCommitmentGap`
+returns null. Buddy says nothing, where the in-session reckoning would have said
+"partial" — the going-quiet failure §4 exists to prevent.
+
+**It errs toward silence rather than false accusation, and it is unreachable
+today**: all five live learners have `buddy_interval_weeks = 1`. Fixing it means
+deciding whether the promise scales with the period or the coaching window
+matches `getActivity` — and whichever is chosen, `getActivity`'s own
+half-fortnight behaviour probably wants the same decision.
+
+Per-task review could not have caught this: one task wrote
+`getLastCompletedPeriod` against the spec, another consumed it, and neither
+brief pointed at `getActivity`.
+
+### ✅ CLOSED before merge — the B146 basis swap now has a regression guard
+
+`levelInterval` correctly builds bands from the whole difficulty corpus and
+passes `bands.levels` to `inferredLevel`. Swapping in `JLPT_LEVELS` would
+desynchronise `boundaries` (length n−1) from `levels` (length 5) and reproduce
+B146 — but it is **invisible on any corpus containing all five JLPT levels**,
+which both the test DB and production have. No integration test can catch it.
+
+**Closed** by a pure shared-lane test over a sparse 2-of-5-level corpus, which
+states the failure mode explicitly: the same boundaries paired with
+`bands.levels` return `N1`, and paired with the full `JLPT_LEVELS` return `N4`.
+`levelBands` and `inferredLevel` were already pure, so no database was needed —
+which is exactly why the integration lane could never have covered it.
+
+### ✅ CLOSED before merge — `updateEntryInPlace`'s concurrent-delete race
+
+A delete landing between `readLatestKeyed` and the update used to leave
+`refresh` reporting `'updated'` while no live coaching entry existed, and
+overwrote the archived row's body. `updateEntryInPlace` now carries
+`isNull(superseded_at)` and returns a rowcount; `refresh` falls through to the
+insert path on zero rows, so the analysis lands rather than being reported as
+written when it was not. Both guards proven by reversion.
+
+### 🟡 Smaller items
+- **`POST /v1/buddy/notebook/entries` accepts an arbitrary `source`.** A client
+  posting `{"kind":"coaching_analysis"}` hits the unique index as an unhandled
+  23505, or wins and resets finding memory. Unreachable from the shipped client,
+  and 0032's `first_open` index carries the identical exposure on `main` today —
+  0034 widens a pre-existing hole rather than opening one. Reject reserved
+  source kinds in the route schema.
+- **`RefreshResult.written: 'skipped'` is overloaded** across staleness-gated,
+  empty-selection and lost-race, and the gated path returns `findings: []` while
+  a live entry full of findings sits in the database. Harmless while all three
+  call sites discard the result; **must be tightened before slice 3 renders from
+  it.**
+- **`assembleSnapshot` serialises four independent sections**, and `reviews()`
+  and `hooks()` each independently issue the same two queries. One `Promise.all`
+  and one shared read would fix both.
+- **`levelInterval` scans the whole 2,294-row difficulty corpus per refresh** to
+  compute an answer identical for every learner — and now sits inline before the
+  `POST /v1/placement/complete` response, the most latency-sensitive moment in
+  the product. Small at current scale; cache it when it stops being small.
+- **`readLatestKeyed`'s `ORDER BY created_at DESC` has no tiebreaker**, and
+  `sourcePayload` is spread after `kind` so a payload could retarget the index
+  key. Both one-liners.
+- **Migration 0034 is not represented in `packages/db/src/schema.ts`**, so
+  `drizzle-kit generate` does not know it exists. Pre-existing pattern — 0032's
+  `first_open` index has the same gap.
