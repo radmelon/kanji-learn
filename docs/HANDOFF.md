@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-03 (**Coaching analyzer slice 2 is BUILT and green on `coaching-analyzer-slice2`, not merged. It needs a merge decision and a live migration.**)
+# Session Handoff — 2026-08-03 (**Coaching analyzer slice 2 is MERGED and migration 0034 is live. Not deployed yet — that is the next step.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -11,10 +11,15 @@
 
 > ## ▶️ What the next session does
 >
-> **Decide whether to merge `coaching-analyzer-slice2`, then apply migration
-> 0034 to live.** The branch is complete, every lane is green, and a final
-> whole-branch review returned **no blockers**. Nothing is merged and nothing
-> has touched production.
+> **Deploy the API and verify slice 2 against real data.** PR #11 is merged
+> (`6fdf02c`) and migration 0034 is applied to live. Nothing is deployed yet, so
+> slice 2 delivers no user-visible value until it is.
+>
+> **Verify with BOTH signals per `docs/SOP.md`** — an App Runner operation dated
+> today, AND response content. The canary is a `coaching_analysis` entry
+> appearing in `GET /v1/buddy/notebook` for a learner with a completed, missed
+> commitment period. A 200 from that route is served by every build ever
+> deployed.
 >
 > Spec:
 > https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-02-coaching-slice2-design.md
@@ -63,18 +68,25 @@ column or findings table for `priorFindings`, and a `buddy_sessions` table for
 The slice carries **one** migration: `0034_coaching_analysis_index.sql`, a
 partial unique index permitting one live coaching row per learner.
 
-### 🔴 Migration 0034 is NOT applied to live — and it must be, before the code is
+### ✅ Migration 0034 IS applied to live — 2026-08-03
 
-Applied to the local test DB only. Verified safe against production:
-`notebook_entries` holds **8 rows across 1 user, zero of them coaching rows**,
-so the index builds over an empty predicate set and no learner can already have
-two live coaching rows.
+Verified from the catalog, not from an exit code: the index exists with the
+exact predicate (`source->>'kind' = 'coaching_analysis' AND superseded_at IS
+NULL`), `indisvalid` and `indisunique` are both true, and RLS on
+`notebook_entries` is **still enabled and forced with both policies intact** —
+checked because this repo's docs warn that re-running migrations strips RLS.
+The single additive file was applied, not the migration list.
 
-**Order matters: the index must exist before the deploy.** `writeKeyedEntry` was
-reordered to supersede → insert → link precisely because the old insert-first
-order fails with 23505 against this index — on the ordinary second write, not
-a race. The reordered code is correct with or without the index; the index
-without the reorder would break onboarding.
+It was safe to apply ahead of the deploy because the predicate only matches
+`coaching_analysis` rows, and the build running in production today writes only
+`commitment`, `first_open` and `onboarding_*` — so the index is **inert until
+the new code ships**.
+
+**The remaining ordering fact, for the record:** `writeKeyedEntry` was reordered
+to supersede → insert → link because the old insert-first order fails with 23505
+against this index, on the ordinary second write rather than a race. The
+reordered code is correct with or without the index; the index without the
+reorder would have broken onboarding. Both are now in place.
 
 ### 🟠 The one behaviour worth an owner decision — `commitment_gap` goes silent fortnightly
 
