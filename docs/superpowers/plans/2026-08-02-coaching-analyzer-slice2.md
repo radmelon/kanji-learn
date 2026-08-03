@@ -2032,7 +2032,23 @@ export interface RefreshResult {
   written: 'inserted' | 'updated' | 'skipped'
   findings: Finding[]
 }
+
+/**
+ * A Postgres unique-violation on a named constraint.
+ *
+ * `postgres.js` surfaces the SQLSTATE as `code` and the index name as
+ * `constraint_name`. Matching the name rather than the bare `23505` matters:
+ * a different unique violation from the same statement is a real bug and must
+ * not be swallowed as "someone else won the race".
+ */
+function isUniqueViolation(err: unknown, constraint: string): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  const e = err as { code?: unknown; constraint_name?: unknown }
+  return e.code === '23505' && e.constraint_name === constraint
+}
 ```
+
+⚠️ **Verify `constraint_name` is the field this driver actually populates** before relying on it — check against a real rejection rather than assuming. Task 4's test `'the partial unique index permits only one LIVE coaching row'` asserts `.rejects.toThrow(/notebook_entries_coaching_unique/)`, which proves the name reaches the error somewhere; confirm which property holds it. If it turns out to live only in the message, match on that instead and say so in the report.
 
 ```ts
   /**
@@ -2041,6 +2057,15 @@ export interface RefreshResult {
    * `force` is for real events (placement completion, session completion).
    * The notebook GET passes no force and is gated on staleness, so assembling
    * seven tables does not ride on every read.
+   *
+   * ⚠️ CONCURRENCY, established in Task 4: `writeKeyedEntry` now fails LOUDLY
+   * rather than silently when it loses a race. Two concurrent refreshes for one
+   * learner mean the loser's insert collides with
+   * `notebook_entries_coaching_unique` and rejects with 23505. That is the
+   * correct outcome — the winner's analysis landed and one live row exists —
+   * but it must not surface as an error, because a benign race is not a
+   * failure. Catch the unique-violation and return `'skipped'`; let every other
+   * error propagate to the caller's try/catch.
    */
   async refresh(
     userId: string,
@@ -2099,12 +2124,23 @@ export interface RefreshResult {
     }
 
     const { kind: _kind, ...payload } = source
-    await this.notebook.writeKeyedEntry(userId, {
-      sourceKind: COACHING_SOURCE_KIND,
-      kind: 'observation',
-      body,
-      sourcePayload: payload,
-    })
+    try {
+      await this.notebook.writeKeyedEntry(userId, {
+        sourceKind: COACHING_SOURCE_KIND,
+        kind: 'observation',
+        body,
+        sourcePayload: payload,
+      })
+    } catch (err) {
+      // A concurrent refresh for the same learner already wrote its analysis,
+      // and notebook_entries_coaching_unique rejected ours. One live row
+      // exists and it is current — that is success, not failure. Anything
+      // else is a real error and belongs to the caller.
+      if (isUniqueViolation(err, 'notebook_entries_coaching_unique')) {
+        return { written: 'skipped', findings }
+      }
+      throw err
+    }
     return { written: 'inserted', findings }
   }
 ```
