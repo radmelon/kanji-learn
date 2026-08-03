@@ -432,6 +432,83 @@ learner's timezone — an explicit Phase 0 simplification documented in
 This compounds with the timezone issue recorded in the 2026-08-02 handoff
 (no route writes `user_profiles.timezone`).
 
+#### Update 2026-08-03 — verified against AWS, and the shape of the decision has changed
+
+Everything above still holds. Three things are now confirmed rather than
+assumed, and one of them reframes what has to be decided.
+
+**The caps are genuinely unset.** Checked via `apprunner describe-service`:
+neither `BUDDY_TIER2_DAILY_CAP_PER_USER` nor `BUDDY_TIER3_DAILY_CAP_PER_USER`
+appears in `RuntimeEnvironmentVariables` **or** in `RuntimeEnvironmentSecrets`.
+Production runs the `env.ts` defaults — **tier 2 = 50/user/day, tier 3 = 5**.
+
+**Tier 2 is correctly configured.** `GROQ_API_KEY` and `GEMINI_API_KEY` are both
+wired as App Runner secrets, alongside `ANTHROPIC_API_KEY`. So the near-zero
+tier-2 usage is **not** a broken provider — do not go looking for one.
+
+**Live usage, for whatever it is worth (very little):**
+
+| Tier | User-days | Total calls | Max in a day |
+|---|---|---|---|
+| tier 2 | 2 | 4 | 2 |
+| tier 3 | 109 | 155 | 5 — the cap, hit once |
+
+Tier 3 splits 67 days at 1 call, 40 at 2, one at 3, one at 5. This is the
+"occasional structured beat" pattern the current caps were sized for, and it
+says **nothing** about conversational load, because no conversational surface
+exists yet.
+
+#### 🛑 The part that is not about a number: tier 2 THROWS
+
+`BuddyLLMRouter.route()` (`router.ts:101-125`) is **tier 1 → on-device, falling
+through to tier 2; tier 3 → Claude if opted in, falling through to tier 2;
+otherwise tier 2 directly.** Tier 2 is the **universal floor**, not a middle
+rung. That is why tier-3 traffic dominates today: requests classify as tier 3
+and a premium-opted-in learner is served by Claude, so the floor is never
+reached.
+
+When tier 3's cap is hit, `tryClaude` returns `{}` and the request falls through
+to tier 2 — graceful. When **tier 2's** cap is hit:
+
+```ts
+throw new BuddyLLMError('Tier 2 daily cap reached; no lower tier available')
+```
+
+There is nowhere lower to go. **The tier-2 cap is not a throttle; it is the
+point at which Buddy hard-fails.**
+
+This matters most for companion mode. §1 makes the template floor
+non-negotiable for findings — *"offline, or with the LLM down, Buddy still says
+the true thing, just less warmly"* — and analysis mode has that floor.
+**Companion mode is free conversation and has no floor to fall back to.** So the
+question is not only "what number", it is "what does a learner see on the turn
+after the cap".
+
+#### What actually has to be decided — three things, one of them a number
+
+1. **The degradation.** Today it is an exception mid-conversation. Options: a
+   template close ("let's pick this up tomorrow"), dropping to on-device for the
+   remainder, or refusing to open companion mode when the remaining budget is
+   under a threshold. `remainingForTier(userId, tier)` already exists on the
+   rate-limiter interface, so a pre-flight check is available without new code.
+2. **Whether a per-day cap is even the right shape** for a conversational
+   surface, versus a per-conversation turn limit — which fails far more legibly
+   to a learner.
+3. **The number**, sized from cost-per-turn.
+
+**Recommendation: decide the degradation first, and set the number last.** A
+conversational surface that throws mid-chat is a worse failure than one that
+closes gracefully at turn 20, and the number cannot be calibrated until slice 3
+produces a real token measurement. Setting it now would be calibrating against
+nothing — which is exactly what this spec talks itself out of doing for
+`goal_pace_gap` in §8.
+
+**Also still true and still unaddressed:** the day boundary is UTC
+(`rate-limit.ts` derives it from `toISOString().slice(0,10)`), so the cap resets
+at 9am JST — mid-morning for a Japanese learner who exhausted it the previous
+evening. No route writes `user_profiles.timezone`, so per-learner boundaries are
+not currently plumbable anyway.
+
 ### §11.4 — `hook_coverage`: **reframed from a report into an offer**
 
 The owner replaced the phrasing question with a rule:
