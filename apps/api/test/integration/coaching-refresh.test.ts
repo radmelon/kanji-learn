@@ -121,6 +121,8 @@ describe('CoachingService.refresh', () => {
   it('a non-forced refresh past the staleness window does run', async () => {
     await missedPeriod()
     await service.refresh(USER, { force: true, now: NOW })
+    const inserted = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    await stampCreatedAt(inserted!.id, NOW)   // pins coalescing's clock to this scenario's own
     const later = '2026-08-02T20:00:00.000Z'  // 8 hours later
     const result = await service.refresh(USER, { now: later })
     expect(result.written).toBe('updated')
@@ -177,7 +179,17 @@ describe('CoachingService.refresh', () => {
     await missedPeriod()
     await service.refresh(USER, { force: true, now: NOW })
     const row = await notebook.readLatestKeyed(USER, 'coaching_analysis')
-    await notebook.supersedeEntry(USER, row!.id, 'I was travelling that week.')
+    // Both the original row AND its learner-authored replacement need an
+    // explicit stamp, not just the replacement: readLatestKeyed orders by
+    // created_at DESC, and an unstamped original left at its real wall-clock
+    // default can sort AFTER a fictionally-stamped replacement once real
+    // "today" has passed the fictional date, making the ORIGINAL (dead) row
+    // `latest` instead of the learner's -- which silently drops `correction`
+    // below, since that branch only fires when `latest.author === 'learner'`.
+    await stampCreatedAt(row!.id, NOW)
+    const learnerEdits = '2026-08-02T12:01:00.000Z'   // shortly after NOW -- must sort after it, not tie
+    const { id: learnerRowId } = await notebook.supersedeEntry(USER, row!.id, 'I was travelling that week.')
+    await stampCreatedAt(learnerRowId!, learnerEdits)
 
     const later = '2026-08-10T12:00:00.000Z'
     await service.refresh(USER, { force: true, now: later })
@@ -203,10 +215,26 @@ describe('CoachingService.refresh', () => {
     await missedPeriod()
     await service.refresh(USER, { force: true, now: NOW })
     const row = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    // The original row needs its own explicit stamp too, not just the
+    // replacement below: readLatestKeyed orders by created_at DESC, and an
+    // unstamped original left at its real wall-clock default can sort AFTER
+    // a fictionally-stamped replacement once real "today" has passed the
+    // fictional date, making the ORIGINAL (dead) row `latest` instead of the
+    // learner's -- at which point `canUpdate` is false for the wrong reason
+    // (a superseded `latest`, not a learner-authored one) and this test would
+    // stop exercising what it claims to.
+    await stampCreatedAt(row!.id, NOW)
     // Learner edits 5 minutes later; session completes 20 minutes after that
     // -- 25 minutes total, inside COALESCE_WINDOW_MINUTES, which is exactly
-    // what drove the in-place overwrite before the fix.
-    await notebook.supersedeEntry(USER, row!.id, 'I was travelling that week.')
+    // what drove the in-place overwrite before the fix. `learnerEdits` is
+    // stamped explicitly: left at the column default, this row's created_at
+    // would be real wall-clock time, and whether that happens to land within
+    // COALESCE_WINDOW_MINUTES of sessionCompletes would depend on the actual
+    // instant the suite runs, not on the 5-minutes-later scenario this
+    // comment names.
+    const learnerEdits = '2026-08-02T12:05:00.000Z'
+    const { id: learnerRowId } = await notebook.supersedeEntry(USER, row!.id, 'I was travelling that week.')
+    await stampCreatedAt(learnerRowId!, learnerEdits)
     const sessionCompletes = '2026-08-02T12:25:00.000Z'
     const result = await service.refresh(USER, { force: true, now: sessionCompletes })
 
@@ -326,9 +354,52 @@ describe('CoachingService.refresh', () => {
    * -- even when its most recent in-place update landed minutes ago.
    * `analyzedAt` moves on every one of those updates; `created_at` never
    * does, which is exactly the distinction Critical 2 turns on.
+   *
+   * FIX PASS 2 -- this test used to prove nothing. With only the ONE row it
+   * seeded, reverting the basis to `analyzedAt` still makes `coalescing` true
+   * at the final call below, but `readLatestKeyed(..., 1)` then finds NOTHING
+   * -- there is no row before the only row -- so `?? latest` falls back to
+   * the exact same row the fixed, createdAt-based `coalescing = false` would
+   * have read directly anyway. Both bases landed on the same priors, so
+   * `since` survived either way and the assertion could not tell them apart.
+   * Confirmed empirically: reverting only the basis left the full suite
+   * green. Fixed the same way as the two-row-chain test above -- seed an
+   * older, ALREADY-SUPERSEDED row before the live one, so skip=1 finds a REAL
+   * row under the reverted basis instead of nothing.
+   *
+   * That seed row holds `hook_coverage`, deliberately NOT `commitment_gap`,
+   * the kind under test. `readLatestKeyed` returns the most recent row
+   * regardless of `superseded_at` (see its own doc comment), so the seed is
+   * `latest` for this test's very first refresh call, before the live row
+   * exists -- and coalescing is false there under EITHER basis (the seed's
+   * own created_at and analyzedAt agree, huge gap either way). If the seed
+   * carried a `commitment_gap` finding too, `carryForward` would inherit ITS
+   * `since` into the live row at that first call, and from then on both the
+   * correct lineage (the live row's own history) and the wrong one (the seed
+   * row itself) would carry the identical value forward forever -- the two
+   * bases would still be indistinguishable, just via a different mechanism
+   * than the single-row version above. A different kind sidesteps that: the
+   * live row's `since` starts fresh, at its own creation, so the two
+   * candidate priors at the final call actually disagree.
    */
   it('a row updated in place minutes ago, but created long ago, is NOT a coalescing episode — since survives', async () => {
     await missedPeriod()
+
+    // The seed: older, already superseded, holding an UNRELATED finding kind
+    // -- see the comment above for why. This is what a reverted basis wrongly
+    // hands skip=1 below, instead of null.
+    const seedTime = '2026-01-01T00:00:00.000Z'
+    const { id: seedId } = await notebook.createEntry(USER, {
+      kind: 'observation', author: 'buddy', body: 'An older, unrelated finding.',
+      source: {
+        kind: 'coaching_analysis',
+        analyzedAt: seedTime,
+        findings: [{ kind: 'hook_coverage', since: '2025-06-01T00:00:00.000Z', lastRaisedAt: seedTime }],
+      },
+    })
+    await stampCreatedAt(seedId, seedTime)
+    await notebook.supersedeEntry(USER, seedId, null)
+
     // missedPeriod's week_start is 2026-07-20 with the default 1-week
     // interval, so the period itself does not COMPLETE (and commitment_gap
     // does not fire) until 2026-07-27 -- `created` must be on or after that,
@@ -347,18 +418,23 @@ describe('CoachingService.refresh', () => {
     expect(midResult.written).toBe('updated')
 
     // A forced run 20 minutes after that update -- inside the 60-minute
-    // window measured from `analyzedAt` (the pre-fix, buggy basis) but 13
-    // days outside it measured from `created_at` (the fix).
+    // window measured from `analyzedAt` (the pre-fix, buggy basis) but 5
+    // days outside it measured from `created_at` (the fix). Under the buggy
+    // basis, `readLatestKeyed(..., 1)` now finds the seed row above -- a REAL
+    // row, not null -- so `?? latest` never engages and priors come from the
+    // wrong row.
     const finalResult = await service.refresh(USER, { force: true, now: NOW })
     expect(finalResult.written).toBe('updated')
-    expect((await allEntries()).length).toBe(1)   // still the one row -- never superseded
+    expect((await allEntries()).length).toBe(2)   // seed (superseded) + the live row -- never a 3rd
 
     const source = ((await liveEntries())[0] as any).source
     const finding = source.findings.find((f: any) => f.kind === 'commitment_gap')
-    // `since` traces back to the original creation 13 days ago, not to
-    // `recentUpdate` (the pre-fix bug: coalescing=true off `analyzedAt`,
-    // skip=1 finds nothing since this row has never been superseded, priors
-    // reset to empty, since re-floors to `now` on every run from here on).
+    // `since` traces back to the live row's own creation 5 days ago -- not
+    // to `recentUpdate`, and not reset to `NOW`, which is what the buggy
+    // basis produces: it reads priors from the seed row above, which holds
+    // no commitment_gap entry for carryForward to match, so `since` re-floors
+    // to `now` (the pre-fix bug, restated for a chain with real history
+    // instead of an empty one).
     expect(finding.since).toBe(created)
   })
 
