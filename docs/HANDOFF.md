@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-03 (**Coaching analyzer slice 2 is MERGED, migrated and DEPLOYED. One verification step is outstanding and needs a learner request.**)
+# Session Handoff — 2026-08-03 (**Slice 2 is MERGED, migrated and DEPLOYED. Next: brainstorm slice 3 — which must absorb four open decisions first.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -53,6 +53,50 @@
 >
 > **No EAS build is needed and none should be cut for this.** The slice is
 > API-only by design — zero `apps/mobile` files changed.
+
+### ▶️ Next effort: brainstorm slice 3 — but it inherits four open decisions
+
+Slice 3 is §12's *"conversational surface — the prompt module, analysis mode in
+the weekly session, and the LLM voice over slice 1's findings."* It cannot be
+planned until four things are settled, and a brainstorm is the right vehicle
+for all four. Full analysis in the parent spec's §14 → §11.3.
+
+**1. 🛑 Tier 1 is a stub on the server, so the "free" cost floor does not exist
+on the API path.** `server.ts:94` wires the router's on-device slot to
+`AppleFoundationStubProvider`, which always reports unavailable and throws if
+asked to generate — structural, since a server cannot run an on-device model.
+Every tier-1 request through the API falls through to tier 2.
+
+**iOS native AI is nonetheless real**, in the client and bypassing the router:
+`apps/mobile/src/mnemonics/assembleOnDevice.ts` drives the actual
+`AppleFoundationModels` TurboModule with its own on-device → cloud → template
+cascade. So there is a proven client-side pattern; it just is not wired to
+anything the coaching feature uses.
+
+**2. Where companion mode's cheap turns run** — server (tier 2, metered, throws
+on exhaustion) or client (on-device, free, already proven). This decides whether
+slice 4 is API-first or client-first, so it wants settling before slice 3 fixes
+the shape of the prompt module.
+
+**3. What happens when the cap is reached.** Tier 2 is the universal floor —
+tier 1 and tier 3 both fall through to it — and hitting *its* cap throws
+`'Tier 2 daily cap reached; no lower tier available'`. Analysis mode has §1's
+template floor for that; **companion mode is free conversation and has none.**
+The number itself should be set last, from a cost-per-turn measurement slice 3
+will produce. Verified 2026-08-03: neither cap env var is set in plaintext or
+secrets, so production runs the `env.ts` defaults of 50/day tier 2 and 5/day
+tier 3. `GROQ_API_KEY` and `GEMINI_API_KEY` **are** set — tier 2 is correctly
+configured, so do not go hunting for a broken provider.
+
+**4. §11.4's `CoCreationSheet` interaction.** Whether the sheet opens over a
+Buddy session or the session hands off to it. §14.4 says to size this before
+slicing it, and B-224's history says the co-creation commit path is subtle.
+
+**One code prerequisite, small:** `RefreshResult.written: 'skipped'` is
+overloaded across staleness-gated / empty-selection / lost-race, and the gated
+path returns `findings: []` while a live entry full of findings sits in the
+database. Harmless today because all three call sites discard the result —
+slice 3 is the first thing that *renders* from it.
 
 ### ✅ What landed — 30 commits, 21 files, API-only
 
