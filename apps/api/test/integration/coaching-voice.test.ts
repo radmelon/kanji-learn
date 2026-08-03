@@ -46,6 +46,16 @@ function ok(content: string) {
   })
 }
 
+/** Same shape as `ok()`, but with the finishReason a real truncated
+ *  completion carries — content cut off by the token limit, not by the
+ *  model choosing to stop. */
+function okTruncated(content: string) {
+  return async () => ({
+    content, finishReason: 'length', inputTokens: 100, outputTokens: 50,
+    providerName: 'groq', latencyMs: 12,
+  })
+}
+
 const base = {
   userId: USER,
   weekStart: WEEK,
@@ -108,13 +118,24 @@ describe('CoachingVoiceService', () => {
   // — the "Buddy says something different every time you look" defect §6
   // exists to prevent, and the one that makes the cost claim (one call per
   // learner per week) false.
+  //
+  // Also catches caching the raw completion instead of the composed text
+  // (e.g. `text: content,` in the insert values instead of `text,`):
+  // `findings` here includes `mechanics`, so the composed text carries the
+  // appended mechanics_explainer while the raw completion does not. The
+  // first call's return value is built from the local `text` variable before
+  // the write, so it would still show the explainer even under that
+  // mutation — only the cache-served second call would come back without
+  // it, silently stripping the trust-building explainer from every repeat
+  // open for the rest of the session period.
   it('serves the second call from cache without routing again', async () => {
     const { router, route } = stubRouter(ok(SENTINEL))
     const svc = new CoachingVoiceService(db, router)
-    const first = await svc.utteranceFor({ ...base, findings: [leech] })
-    const second = await svc.utteranceFor({ ...base, findings: [leech] })
+    const first = await svc.utteranceFor({ ...base, findings: [leech, mechanics] })
+    const second = await svc.utteranceFor({ ...base, findings: [leech, mechanics] })
 
     expect(second?.text).toBe(first?.text)
+    expect(second?.text).toContain('statistical technique called IRT')
     expect(second?.source).toBe('llm')
     expect(route).toHaveBeenCalledTimes(1)
   })
@@ -169,6 +190,21 @@ describe('CoachingVoiceService', () => {
     expect(result?.source).toBe('template')
   })
 
+  // MUTATION CAUGHT: accepting a truncated completion. finishReason: 'length'
+  // means the model was cut off mid-sentence by the token limit — that
+  // happens well under MAX_UTTERANCE_CHARS, so the character bound does not
+  // catch it. Without the finishReason guard, this content is short and
+  // non-empty, so it would be returned AND cached, freezing a sentence that
+  // stops mid-word for the rest of the learner's session period.
+  it('falls back when the completion is truncated', async () => {
+    const { router } = stubRouter(
+      okTruncated('Your leech rate on 敗 has been climbing for the past three weeks, and'),
+    )
+    const svc = new CoachingVoiceService(db, router)
+    const result = await svc.utteranceFor({ ...base, findings: [leech] })
+    expect(result?.source).toBe('template')
+  })
+
   // MUTATION CAUGHT: filtering mechanics_explainer out of the prompt (Task 2)
   // and then forgetting to append it, which would delete the one finding whose
   // purpose is building trust.
@@ -216,6 +252,15 @@ describe('CoachingVoiceService', () => {
   // out of the outgoing request. On its own, this test cannot tell you which
   // of the two is missing; verified by experiment (Task 4 report) that
   // reverting the call site alone to pass unfiltered findings leaves it green.
+  //
+  // The second assertion (not.toContain('IRT')) does not add discriminating
+  // power against either filter above: describe() in coaching-prompt.ts only
+  // renders kind, magnitude, confidence, `since`, and evidence label/value,
+  // and the `mechanics` fixture has `evidence: []`, so the prompt would never
+  // contain 'IRT' even with both filters removed. It guards a different,
+  // hypothetical leak instead — templateCopy's fixed prose (which does
+  // contain "IRT") reaching the prompt builder some other way — not the
+  // filtering the first assertion covers.
   it('never sends the mechanics explainer to the router', async () => {
     const { router, route } = stubRouter(ok(SENTINEL))
     const svc = new CoachingVoiceService(db, router)
@@ -251,12 +296,13 @@ describe('CoachingVoiceService', () => {
   // proven here by asserting the router WAS called, not just that the
   // promise resolves. The stub `db` throws synchronously from `select()`
   // (the only method `readCache` calls); `insert()` is stubbed too since the
-  // success path that follows a miss reaches the cache write.
+  // success path that follows a miss reaches the cache write, and the stub
+  // chain includes `onConflictDoNothing()` to match the real insert's shape.
   it('degrades to a cache miss and still routes when the cache read fails', async () => {
     const { router, route } = stubRouter(ok(SENTINEL))
     const throwingDb = {
       select: () => { throw new Error('cache read boom') },
-      insert: () => ({ values: async () => {} }),
+      insert: () => ({ values: () => ({ onConflictDoNothing: async () => {} }) }),
     } as unknown as Db
     const svc = new CoachingVoiceService(throwingDb, router)
     const result = await svc.utteranceFor({ ...base, findings: [leech] })

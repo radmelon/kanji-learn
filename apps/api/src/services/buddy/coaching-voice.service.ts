@@ -16,7 +16,7 @@
 import { and, eq } from 'drizzle-orm'
 import { buddySessionUtterances } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
-import { analysisBody, templateCopy, type Finding } from '@kanji-learn/shared'
+import { analysisBody, templateCopy, type Finding, type FinishReason } from '@kanji-learn/shared'
 import type { BuddyLLMRouter } from '../llm/router'
 import { buildCoachingPrompt, partitionForVoice } from './coaching-prompt'
 
@@ -92,6 +92,7 @@ export class CoachingVoiceService {
 
     let content: string
     let providerName: string
+    let finishReason: FinishReason
     try {
       const result = await this.llm.route({
         context: 'coaching_utterance',
@@ -111,6 +112,7 @@ export class CoachingVoiceService {
       })
       content = (result.content ?? '').trim()
       providerName = result.providerName
+      finishReason = result.finishReason
     } catch (err) {
       // BuddyLLMError (tier-2 cap, both tier-2 providers down) and anything
       // else land in the same place, by design (§9).
@@ -118,7 +120,14 @@ export class CoachingVoiceService {
       return { text: template, source: 'template' }
     }
 
-    if (content === '' || content.length > MAX_UTTERANCE_CHARS) {
+    // finishReason === 'length' means the model was cut off mid-sentence by
+    // the token limit (MAX_TOKENS), which happens well under
+    // MAX_UTTERANCE_CHARS — the character bound below does not catch it, so
+    // it needs its own clause. A mid-sentence utterance frozen in the cache
+    // for the rest of the learner's session period is worse than the
+    // template, so treat it as unusable on the same path as empty and
+    // over-length content.
+    if (content === '' || content.length > MAX_UTTERANCE_CHARS || finishReason === 'length') {
       input.log?.error(
         { userId: input.userId, length: content.length },
         '[CoachingVoice] unusable completion; using template',
@@ -135,13 +144,23 @@ export class CoachingVoiceService {
 
     // Cache the COMPOSED text, so a hit returns byte-for-byte what the first
     // open returned.
+    //
+    // onConflictDoNothing(): two simultaneous first-opens can both miss the
+    // cache read above and both reach this insert; the loser collides with
+    // the (user_id, week_start) unique index. That collision is an expected
+    // race, not a failure — the correct outcome is "the winner's utterance
+    // stands" — so it must not raise into the catch below and be logged at
+    // error level as a cache write failure indistinguishable from a genuine
+    // one. The try/catch stays for genuine write failures (e.g. the FK to
+    // user_profiles, exercised by coaching-voice.test.ts's "returns the
+    // utterance even when the cache write fails").
     try {
       await this.db.insert(buddySessionUtterances).values({
         userId: input.userId,
         weekStart: input.weekStart,
         text,
         providerName,
-      })
+      }).onConflictDoNothing()
     } catch (err) {
       // §9: return the utterance anyway. A lost cache write costs one extra
       // call on the next open; failing the session costs the session.
