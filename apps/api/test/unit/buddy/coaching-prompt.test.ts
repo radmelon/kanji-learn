@@ -86,7 +86,10 @@ describe('buildCoachingPrompt', () => {
 
   // MUTATION CAUGHT: dropping the opener or reckoning from the input, which
   // would leave the model composing from findings alone and produce an
-  // utterance that ignores what the learner actually did last period.
+  // utterance that ignores what the learner actually did last period. Also
+  // catches dropping the Opener (kind: …) interpolation from the prompt
+  // template, which would leave the model without the opener's classification
+  // while still showing its text.
   it('carries the opener and the reckoning', () => {
     const prompt = buildCoachingPrompt(base)
     expect(prompt).toContain(base.openerText)
