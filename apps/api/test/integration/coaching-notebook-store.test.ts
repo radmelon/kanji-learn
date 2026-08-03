@@ -78,12 +78,13 @@ describe('NotebookService — coaching payload storage', () => {
     // created_at defaults to now(); force a later timestamp so ordering is
     // deterministic rather than dependent on clock resolution.
     //
-    // Pass the plain object, not JSON.stringify(...): postgres.js sees the
-    // literal `::jsonb` cast after this placeholder and stringifies the bound
-    // value itself. Pre-stringifying here double-encodes, so the column would
-    // hold a jsonb STRING ('"{\"kind\":...}"') rather than an object —
-    // source->>'kind' is NULL against a jsonb string, which would silently
-    // drop this row out of readLatestKeyed's WHERE filter below.
+    // Pass the plain object, NOT JSON.stringify(...). Verified 2026-08-02:
+    // the plain form round-trips as a jsonb object, which the assertions
+    // below depend on — readLatestKeyed filters on source->>'kind', and that
+    // is NULL against a jsonb string. The exact serialization path through
+    // Drizzle's sql template into postgres.js was NOT pinned down; do not
+    // restate a mechanism here, and change this line only with a test that
+    // proves the replacement round-trips.
     await db.execute(sql`INSERT INTO notebook_entries (user_id, kind, body, author, source, created_at)
       VALUES (${USER}, 'observation', 'Newer', 'buddy',
               ${{ kind: 'coaching_analysis', analyzedAt: 'NEW', findings: [] }}::jsonb,
@@ -149,19 +150,80 @@ describe('NotebookService — coaching payload storage', () => {
     expect(newer.superseded_at).toBeNull()
   })
 
+  it('two concurrent writeKeyedEntry calls: the loser no-ops instead of corrupting the link', async () => {
+    // THE REGRESSION TEST FOR THE OPTIMISTIC-CONCURRENCY GUARD.
+    //
+    // writeKeyedEntry's supersede statement is guarded (WHERE supersededAt IS
+    // NULL), but the link statement that follows the insert was not — so a
+    // transaction that lost the supersede race (matched zero rows) still
+    // inserted its own row and then unconditionally overwrote supersededBy on
+    // the old row with an id it never actually superseded. For coaching_analysis
+    // specifically, migration 0034's unique index catches the second live row
+    // at the INSERT statement, so pre-fix this raced as the loser's promise
+    // rejecting with a raw postgres error rather than resolving — source kinds
+    // with no such index (commitment, onboarding_*) would have silently ended
+    // up with two live rows instead, which is the harder-to-detect version of
+    // the same bug. This file can only exercise the coaching_analysis case.
+    await service.writeKeyedEntry(USER, {
+      sourceKind: 'coaching_analysis', kind: 'observation', body: 'Zero',
+      sourcePayload: { analyzedAt: 'ZERO', findings: [] },
+    })
+
+    // Both calls read `existing` = the row above and race to supersede it.
+    // Whichever interleaving actually happens, neither promise should reject.
+    await Promise.all([
+      service.writeKeyedEntry(USER, {
+        sourceKind: 'coaching_analysis', kind: 'observation', body: 'RaceA',
+        sourcePayload: { analyzedAt: 'RACE_A', findings: [] },
+      }),
+      service.writeKeyedEntry(USER, {
+        sourceKind: 'coaching_analysis', kind: 'observation', body: 'RaceB',
+        sourcePayload: { analyzedAt: 'RACE_B', findings: [] },
+      }),
+    ])
+
+    const rows = await db.execute(sql`
+      SELECT id, superseded_at, superseded_by FROM notebook_entries
+      WHERE user_id = ${USER} AND source->>'kind' = 'coaching_analysis'
+      ORDER BY created_at`,
+    ) as any[]
+
+    // Exactly one live row survives regardless of how the two calls actually
+    // interleaved (a genuine race for "Zero", or one call fully finishing
+    // before the other's findFirst even runs, in which case the second call
+    // legitimately supersedes the first call's insert instead) — either way
+    // is a correct outcome, so this does not assert an exact row count.
+    const live = rows.filter((r) => r.superseded_at === null)
+    expect(live).toHaveLength(1)
+    expect(live[0]!.superseded_by).toBeNull()
+
+    // No dangling or mismatched links: every superseded row's supersededBy
+    // points at a row that exists in this same chain, i.e. no row was stamped
+    // supersededAt by one transaction and supersededBy by another pointing
+    // nowhere reachable.
+    const ids = new Set(rows.map((r) => r.id))
+    for (const row of rows) {
+      if (row.superseded_at !== null) {
+        expect(row.superseded_by).not.toBeNull()
+        expect(ids.has(row.superseded_by)).toBe(true)
+      }
+    }
+  })
+
   it('the partial unique index permits only one LIVE coaching row', async () => {
     await service.writeKeyedEntry(USER, {
       sourceKind: 'coaching_analysis', kind: 'observation', body: 'One',
       sourcePayload: { analyzedAt: 'A', findings: [] },
     })
-    // Plain object, not JSON.stringify(...) — see the comment in the "skip"
-    // test above. Double-encoding here would store a jsonb STRING, which
-    // never matches the partial index's `source->>'kind' = 'coaching_analysis'`
-    // predicate, and this insert would wrongly succeed instead of colliding.
+    // Plain object, not JSON.stringify(...) — see the "Verified 2026-08-02"
+    // comment on the "skip" test above; the mechanism is deliberately not
+    // restated here. Double-encoding would store a jsonb STRING, which never
+    // matches the partial index's `source->>'kind' = 'coaching_analysis'`
+    // predicate, so this insert would wrongly succeed instead of colliding.
     await expect(
       db.execute(sql`INSERT INTO notebook_entries (user_id, kind, body, author, source)
         VALUES (${USER}, 'observation', 'Two', 'buddy',
                 ${{ kind: 'coaching_analysis' }}::jsonb)`),
-    ).rejects.toThrow()
+    ).rejects.toThrow(/notebook_entries_coaching_unique/)
   })
 })
