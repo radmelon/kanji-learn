@@ -11,6 +11,7 @@ export type RequestContext =
   | 'mnemonic_assembly'
   | 'mnemonic_cocreation'
   | 'deep_diagnostic'
+  | 'coaching_utterance'
   | 'social_nudge'
   | 'onboarding_conversation'
 
@@ -43,6 +44,10 @@ const TIER1_CONTEXTS: readonly RequestContext[] = [
 const TIER3_CONTEXTS: readonly RequestContext[] = [
   'mnemonic_cocreation',
   'deep_diagnostic',
+  // The weekly coaching utterance (slice 3 §5). One call per learner per week
+  // behind the §6 cache, and it is the moment a learner is told something true
+  // about their own progress — the output where quality matters most.
+  'coaching_utterance',
 ]
 
 export function classifyTier(request: BuddyRequest): 1 | 2 | 3 {
