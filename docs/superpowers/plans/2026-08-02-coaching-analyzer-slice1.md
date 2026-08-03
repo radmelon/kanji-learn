@@ -13,6 +13,37 @@
 
 ---
 
+## ✅ EXECUTED 2026-08-02 — PR #9
+
+All ten tasks are built, TDD'd red→green, and open at
+https://github.com/radmelon/kanji-learn/pull/9 on branch
+`coaching-analyzer-slice1`. Shared lane **453** (343 pre-existing + 110 new),
+`pnpm typecheck` **4/4**.
+
+**The plan's own code was wrong in three places.** All three were caught by
+running it, not by reading it — recorded here so the next plan author knows
+which failure modes survive a careful review.
+
+| # | Where | What was wrong | Fix as shipped |
+|---|---|---|---|
+| 1 | Task 1, `magnitude.ts` | `normaliseSaturating` returns `1 - Math.exp(-value / scale)`, which is **exactly `1`** in IEEE 754 once the exponent passes ~37. `confidenceFromCount(10_000, 20)` claimed total certainty. **Caught by the plan's own "never reaches 1" assertion**, so Step 5's "Expected: PASS, 9 tests" was unreachable as written | Clamp to `1 - Number.EPSILON`. The property matters: `commitment_gap` sets `confidence: 1` deliberately — *a promise and a measurement* — and a count-derived confidence must stay distinguishable from it |
+| 2 | Task 2, test file | Uses `QuizOutcome` without importing it. `tsc --noEmit` covers `src`, which includes tests, so this fails `pnpm typecheck` under `verbatimModuleSyntax` | Added to the type import |
+| 3 | Task 10, purity test | Walks the filesystem with `fs` + `path` + `__dirname`. **`packages/shared` has no `@types/node`** — deliberately; it is a pure package — so this passes under vitest and then fails `pnpm typecheck` with four TS2307/TS2304 errors. Adding `@types/node` would break this plan's own "no new dependencies" constraint | Rewritten over Vite's `?raw` glob: no Node types, no `__dirname`, same file set. Plus a guards-the-guard assertion, because an empty glob makes both purity checks vacuously true |
+
+**The pattern worth naming:** #1 and #3 are both *the plan verifying itself
+against the wrong thing*. #1's test encoded a property the plan's own
+implementation could not satisfy — the test was right and the code was wrong,
+which is the good case, and it only surfaced because the step was actually run.
+#3 passed its lane and failed a different one; a plan that names a test command
+but not the typecheck command cannot catch that class of defect. **Both steps
+in future plans should name both commands.**
+
+Also: Task 5 says "Expected: PASS, 12 tests"; the file it specifies contains
+13 (5 + 3 + 5). Harmless arithmetic slip, but an executor comparing counts will
+stop on it.
+
+---
+
 ## Scope: this is slice 1 of 6, and that is deliberate
 
 The spec's §12 says plainly: *"This is a large spec — comparable to Phase 7. It should not become one undifferentiated plan."* It then names six independently shippable slices. This plan implements **slice 1 only**:
@@ -127,7 +158,7 @@ Tests are colocated as `<name>.test.ts`, matching every other module in `package
 - Consumes: `JlptLevel`, `SrsStatus` from `packages/shared/src/types.ts`.
 - Produces: `Finding`, `FindingKind`, `Evidence`, `LearnerSnapshot` and its sub-shapes; `normaliseLinear(value, zeroAt, oneAt)`, `normaliseSaturating(value, scale)`, `confidenceFromCount(n, scale)` — all `(…numbers) => number` returning 0..1.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/magnitude.test.ts
@@ -190,12 +221,12 @@ describe('confidenceFromCount', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/magnitude.test.ts`
 Expected: FAIL — `Failed to resolve import "./magnitude"`.
 
-- [ ] **Step 3: Write the contracts**
+- [x] **Step 3: Write the contracts**
 
 ```ts
 // packages/shared/src/coaching/types.ts
@@ -427,7 +458,7 @@ export interface LearnerSnapshot {
 }
 ```
 
-- [ ] **Step 4: Write the magnitude helpers**
+- [x] **Step 4: Write the magnitude helpers**
 
 ```ts
 // packages/shared/src/coaching/magnitude.ts
@@ -467,12 +498,12 @@ export function confidenceFromCount(n: number, scale: number): number {
 }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/magnitude.test.ts`
 Expected: PASS, 9 tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/shared/src/coaching/types.ts packages/shared/src/coaching/magnitude.ts packages/shared/src/coaching/magnitude.test.ts
@@ -509,7 +540,7 @@ detector unfirable. See the constants for the full story.
 
 Compute an excess per source, then combine weighted by observation count.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/detectors/reading-lag.test.ts
@@ -689,12 +720,12 @@ describe('detectReadingLag — quiz evidence', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/reading-lag.test.ts`
 Expected: FAIL — `Failed to resolve import "./reading-lag"`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // packages/shared/src/coaching/detectors/reading-lag.ts
@@ -820,12 +851,12 @@ function round2(n: number): number {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/reading-lag.test.ts`
 Expected: PASS, 14 tests (7 placement + 7 quiz).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/shared/src/coaching/detectors/reading-lag.ts packages/shared/src/coaching/detectors/reading-lag.test.ts
@@ -844,7 +875,7 @@ git commit -m "feat(coaching): reading_lag — only the gap BEYOND the populatio
 - Consumes: `LearnerSnapshot`, `CardSnapshot`, `Finding`; `normaliseSaturating`, `confidenceFromCount`.
 - Produces: `detectLeech(snapshot: LearnerSnapshot): Finding | null`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/detectors/leech.test.ts
@@ -953,12 +984,12 @@ describe('detectLeech', () => {
   })
 })
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/leech.test.ts`
 Expected: FAIL — `Failed to resolve import "./leech"`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // packages/shared/src/coaching/detectors/leech.ts
@@ -1042,12 +1073,12 @@ export function detectLeech(snapshot: LearnerSnapshot): Finding | null {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/leech.test.ts`
 Expected: PASS, 9 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/shared/src/coaching/detectors/leech.ts packages/shared/src/coaching/detectors/leech.test.ts
@@ -1068,7 +1099,7 @@ git commit -m "feat(coaching): leech — relative to the deck, because the absol
 
 **Note on scope:** the *register* in which this is delivered — silent / direct / frank — is the §8 frankness escalator, which depends on a goal that v1 only collects (slice 6). This detector computes the gap; nothing here decides tone.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/detectors/commitment-gap.test.ts
@@ -1140,12 +1171,12 @@ describe('detectCommitmentGap', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/commitment-gap.test.ts`
 Expected: FAIL — `Failed to resolve import "./commitment-gap"`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // packages/shared/src/coaching/detectors/commitment-gap.ts
@@ -1191,12 +1222,12 @@ export function detectCommitmentGap(snapshot: LearnerSnapshot): Finding | null {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/commitment-gap.test.ts`
 Expected: PASS, 9 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/shared/src/coaching/detectors/commitment-gap.ts packages/shared/src/coaching/detectors/commitment-gap.test.ts
@@ -1221,7 +1252,7 @@ Two trigger halves, and the second is the one a naive zero-check misses:
 1. `count === 0`, **or**
 2. no hook created since the session-before-last — the learner who built three hooks in week one and none since.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/detectors/hook-coverage.test.ts
@@ -1358,12 +1389,12 @@ describe('pickHookCandidate', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/hook-coverage.test.ts`
 Expected: FAIL — `Failed to resolve import "./hook-coverage"`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // packages/shared/src/coaching/detectors/hook-coverage.ts
@@ -1479,12 +1510,12 @@ export function detectHookCoverage(snapshot: LearnerSnapshot): Finding | null {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/hook-coverage.test.ts`
 Expected: PASS, 12 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/shared/src/coaching/detectors/hook-coverage.ts packages/shared/src/coaching/detectors/hook-coverage.test.ts
@@ -1505,7 +1536,7 @@ git commit -m "feat(coaching): hook_coverage as an OFFER on a named kanji, per t
 
 **Two hard constraints from §3**, both asserted below: `level_estimate` must **never emit a bare label** — the interval is not optional garnish — and `mechanics_explainer` must be **template, always, never LLM**.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/detectors/orient.test.ts
@@ -1580,12 +1611,12 @@ describe('detectMechanicsExplainer', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/orient.test.ts`
 Expected: FAIL — `Failed to resolve import "./orient"`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // packages/shared/src/coaching/detectors/orient.ts
@@ -1655,12 +1686,12 @@ export function detectMechanicsExplainer(snapshot: LearnerSnapshot): Finding | n
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/orient.test.ts`
 Expected: PASS, 8 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/shared/src/coaching/detectors/orient.ts packages/shared/src/coaching/detectors/orient.test.ts
@@ -1681,7 +1712,7 @@ git commit -m "feat(coaching): level_estimate always carries its interval; mecha
 
 **The trap in `fluency_gain`:** §3 says *response time falling **at constant accuracy***. Faster and wronger is not a gain — it is guessing, and praising it would train the wrong behaviour. Accuracy must not have dropped materially.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/detectors/fluency.test.ts
@@ -1796,12 +1827,12 @@ describe('detectThetaDelta', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/fluency.test.ts`
 Expected: FAIL — `Failed to resolve import "./fluency"`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // packages/shared/src/coaching/detectors/fluency.ts
@@ -1919,12 +1950,12 @@ export function detectThetaDelta(snapshot: LearnerSnapshot): Finding | null {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/fluency.test.ts`
 Expected: PASS, 12 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/shared/src/coaching/detectors/fluency.ts packages/shared/src/coaching/detectors/fluency.test.ts
@@ -1945,7 +1976,7 @@ git commit -m "feat(coaching): fluency_gain requires flat accuracy; theta_delta 
 
 **`retest_due` reuses `widenForStaleness`,** which already exists at `packages/shared/src/placement-difficulty.ts:190` with signature `(se: number, daysElapsed: number, drift?: number) => number`. §3 is specific about the framing this enables: *the value of the test increases if it is repeated*, not *please take a test*.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/detectors/milestones.test.ts
@@ -2062,12 +2093,12 @@ describe('detectRetestDue', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/milestones.test.ts`
 Expected: FAIL — `Failed to resolve import "./milestones"`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // packages/shared/src/coaching/detectors/milestones.ts
@@ -2161,12 +2192,12 @@ export function detectRetestDue(snapshot: LearnerSnapshot): Finding | null {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/detectors/milestones.test.ts`
 Expected: PASS, 10 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/shared/src/coaching/detectors/milestones.ts packages/shared/src/coaching/detectors/milestones.test.ts
@@ -2191,7 +2222,7 @@ git commit -m "feat(coaching): hardest_cleared names an earned win; retest_due k
 
 **And §14.1:** the count is a **parameter, not a constant**, so it can be tuned without a code change.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/selection.test.ts
@@ -2304,12 +2335,12 @@ describe('select', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/selection.test.ts`
 Expected: FAIL — `Failed to resolve import "./selection"`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // packages/shared/src/coaching/selection.ts
@@ -2392,12 +2423,12 @@ export function select(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd packages/shared && npx vitest run src/coaching/selection.test.ts`
 Expected: PASS, 16 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/shared/src/coaching/selection.ts packages/shared/src/coaching/selection.test.ts
@@ -2421,7 +2452,7 @@ git commit -m "feat(coaching): selection by magnitude x confidence x novelty, de
 
 **Why template copy is in this slice and not a later one.** §1: *"Every finding kind ships with template copy. Non-negotiable: Phase 7's entire HIGH-defect wave was the template floor failing to complete."* Offline, or with the LLM down, Buddy must still say the true thing. If it lands with the LLM surface instead, the floor is what gets cut when that slice runs long.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // packages/shared/src/coaching/analyze.test.ts
@@ -2539,12 +2570,12 @@ describe('purity (global constraint)', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd packages/shared && npx vitest run src/coaching/analyze.test.ts`
 Expected: FAIL — `Failed to resolve import "./analyze"`.
 
-- [ ] **Step 3: Write the template floor**
+- [x] **Step 3: Write the template floor**
 
 ```ts
 // packages/shared/src/coaching/copy.ts
@@ -2622,7 +2653,7 @@ function lowerFirst(s: string): string {
 }
 ```
 
-- [ ] **Step 4: Write `analyze()` and the barrels**
+- [x] **Step 4: Write `analyze()` and the barrels**
 
 ```ts
 // packages/shared/src/coaching/analyze.ts
@@ -2690,17 +2721,17 @@ Then add one line to `packages/shared/src/index.ts`, after the existing `export 
 export * from './coaching'
 ```
 
-- [ ] **Step 5: Run the full shared lane**
+- [x] **Step 5: Run the full shared lane**
 
 Run: `pnpm --filter @kanji-learn/shared test`
 Expected: PASS. All pre-existing tests still green, plus the coaching suites.
 
-- [ ] **Step 6: Typecheck the whole workspace**
+- [x] **Step 6: Typecheck the whole workspace**
 
 Run: `pnpm typecheck`
 Expected: `Tasks: 4 successful, 4 total`. The barrel export is now visible to `apps/api` and `apps/mobile`, so a name collision with an existing shared export surfaces here.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/shared/src/coaching/ packages/shared/src/index.ts
