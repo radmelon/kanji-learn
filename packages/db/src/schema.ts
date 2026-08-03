@@ -756,6 +756,30 @@ export const buddyCommitments = pgTable(
   })
 )
 
+// ─── buddy_session_utterances ────────────────────────────────────────────────
+// What Buddy actually said in one weekly session (slice 3 §6). A CACHE keyed on
+// the session period, not a record — the durable record is the notebook entry,
+// which stays template prose so it never varies with LLM availability.
+
+export const buddySessionUtterances = pgTable(
+  'buddy_session_utterances',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    weekStart: date('week_start').notNull(),
+    text: text('text').notNull(),
+    // CompletionResult.providerName — there is no model id on the result.
+    providerName: text('provider_name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userWeekUnique: uniqueIndex('buddy_session_utterances_user_week_unique')
+      .on(t.userId, t.weekStart),
+  })
+)
+
 // ─── notebook_entries ─────────────────────────────────────────────────────────
 // Prose sections of Buddy's home notebook. Migration 0032 replaces the old
 // Phase 6 photo/audio/mood scrapbook (study_log_entries), not revises it.
