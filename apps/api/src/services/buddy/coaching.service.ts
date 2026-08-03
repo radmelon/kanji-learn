@@ -6,12 +6,15 @@ import {
 } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
 import { CommitmentService } from './commitment.service'
+import { NotebookService } from '../notebook.service'
 import {
   levelBands, inferredLevel, JLPT_LEVELS,
+  analyze, carryForward, selectionsMatch, analysisBody,
   type JlptLevel, type LearnerSnapshot, type PlacementSnapshot,
   type PlacementItemOutcome, type PriorFinding,
   type CardSnapshot, type QuizOutcome, type ReviewSnapshot, type SrsStatus,
   type CommitmentSnapshot, type HookSnapshot,
+  type Finding, type FindingKind,
 } from '@kanji-learn/shared'
 
 /** Notebook `source->>'kind'` for a coaching analysis. */
@@ -33,11 +36,44 @@ export const COALESCE_WINDOW_MINUTES = 60
 /** z for an 80% two-sided interval, matching PlacementSnapshot's contract. */
 const Z_80 = 1.2816
 
+export interface CoachingAnalysisSource {
+  kind: string
+  analyzedAt: string
+  findings: PriorFinding[]
+  correction?: { at: string; kinds: FindingKind[] }
+}
+
+export interface RefreshResult {
+  written: 'inserted' | 'updated' | 'skipped'
+  findings: Finding[]
+}
+
+/**
+ * A Postgres unique-violation on a named constraint.
+ *
+ * `postgres.js` surfaces the SQLSTATE as `code` and the index name as
+ * `constraint_name`. Matching the name rather than the bare `23505` matters:
+ * a different unique violation from the same statement is a real bug and must
+ * not be swallowed as "someone else won the race".
+ *
+ * Exported (the brief's version was module-private) so
+ * `coaching-refresh.test.ts` can verify it directly against a real driver
+ * rejection rather than a synthetic error object -- see that file for why the
+ * synthetic form would not have caught a wrong property name.
+ */
+export function isUniqueViolation(err: unknown, constraint: string): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  const e = err as { code?: unknown; constraint_name?: unknown }
+  return e.code === '23505' && e.constraint_name === constraint
+}
+
 export class CoachingService {
   private readonly commitments: CommitmentService
+  private readonly notebook: NotebookService
 
   constructor(private readonly db: Db) {
     this.commitments = new CommitmentService(db)
+    this.notebook = new NotebookService(db)
   }
 
   async assembleSnapshot(
@@ -53,6 +89,105 @@ export class CoachingService {
       hooks: await this.hooks(userId),
       priorFindings: priors,
     }
+  }
+
+  /**
+   * Analyse and write the notebook entry.
+   *
+   * `force` is for real events (placement completion, session completion).
+   * The notebook GET passes no force and is gated on staleness, so assembling
+   * seven tables does not ride on every read.
+   *
+   * ⚠️ CONCURRENCY, established in Task 4: `writeKeyedEntry` now fails LOUDLY
+   * rather than silently when it loses a race. Two concurrent refreshes for one
+   * learner mean the loser's insert collides with
+   * `notebook_entries_coaching_unique` and rejects with 23505. That is the
+   * correct outcome — the winner's analysis landed and one live row exists —
+   * but it must not surface as an error, because a benign race is not a
+   * failure. Catch the unique-violation and return `'skipped'`; let every other
+   * error propagate to the caller's try/catch.
+   */
+  async refresh(
+    userId: string,
+    opts: { force?: boolean; now?: string } = {},
+  ): Promise<RefreshResult> {
+    const now = opts.now ?? new Date().toISOString()
+    const latest = await this.notebook.readLatestKeyed(userId, COACHING_SOURCE_KIND)
+    const latestSource = latest?.source as CoachingAnalysisSource | undefined
+    const analyzedAt = latestSource?.analyzedAt ?? null
+    const sinceLastMs = analyzedAt === null ? Infinity : Date.parse(now) - Date.parse(analyzedAt)
+
+    if (!opts.force && sinceLastMs < ANALYSIS_STALE_HOURS * 3_600_000) {
+      return { written: 'skipped', findings: [] }
+    }
+
+    // COALESCING. Two triggers can fire minutes apart -- the first Buddy
+    // session suggests taking the placement test, so session-completion and
+    // placement-completion are adjacent by design. Treat the previous entry as
+    // part of THIS episode: read priors from the row before it, and update it
+    // in place rather than superseding, so the chain gains no spurious link
+    // for an entry nobody had time to read.
+    const coalescing = sinceLastMs < COALESCE_WINDOW_MINUTES * 60_000
+    const priorRow = coalescing
+      ? await this.notebook.readLatestKeyed(userId, COACHING_SOURCE_KIND, 1)
+      : latest
+    const priors = (priorRow?.source as CoachingAnalysisSource | undefined)?.findings ?? []
+
+    const snapshot = await this.assembleSnapshot(userId, now, priors)
+    const findings = analyze(snapshot)
+
+    // Nothing worth reporting: write nothing and supersede nothing. Any
+    // existing entry stands until there is something better to say. (§5's
+    // companion mode is slices 3-4's answer; slice 2's answer is silence.)
+    if (findings.length === 0) return { written: 'skipped', findings }
+
+    const correction = latest?.author === 'learner'
+      ? { at: latest.createdAt, kinds: (latestSource?.findings ?? []).map((f) => f.kind) }
+      : latestSource?.correction
+
+    const source: CoachingAnalysisSource = {
+      kind: COACHING_SOURCE_KIND,
+      analyzedAt: now,
+      findings: carryForward(priors, findings, now),
+      ...(correction ? { correction } : {}),
+    }
+    const body = analysisBody(findings, now)
+
+    // Update in place when this says the same thing, or when it coalesces with
+    // a run moments earlier. Both require the row to still be LIVE -- a
+    // superseded row must never be resurrected by an UPDATE.
+    const canUpdate = latest !== null && latest.supersededAt === null
+    const unchanged = selectionsMatch(priors, findings)
+    if (canUpdate && (coalescing || unchanged)) {
+      // Spread into a fresh object rather than passing `source` directly:
+      // `updateEntryInPlace` takes `Record<string, unknown>`, and a named
+      // interface (CoachingAnalysisSource has no index signature) is not
+      // structurally assignable to that even though every property trivially
+      // is -- the same reason `payload` below works untouched, since object
+      // rest destructuring already produces a fresh, indexable object type.
+      await this.notebook.updateEntryInPlace(userId, latest!.id, body, { ...source })
+      return { written: 'updated', findings }
+    }
+
+    const { kind: _kind, ...payload } = source
+    try {
+      await this.notebook.writeKeyedEntry(userId, {
+        sourceKind: COACHING_SOURCE_KIND,
+        kind: 'observation',
+        body,
+        sourcePayload: payload,
+      })
+    } catch (err) {
+      // A concurrent refresh for the same learner already wrote its analysis,
+      // and notebook_entries_coaching_unique rejected ours. One live row
+      // exists and it is current — that is success, not failure. Anything
+      // else is a real error and belongs to the caller.
+      if (isUniqueViolation(err, 'notebook_entries_coaching_unique')) {
+        return { written: 'skipped', findings }
+      }
+      throw err
+    }
+    return { written: 'inserted', findings }
   }
 
   private async placement(userId: string): Promise<PlacementSnapshot | null> {
