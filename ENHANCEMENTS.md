@@ -259,6 +259,38 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 🎨 UI & Experience
 
+- [ ] **Review the Journal's UI/UX — nothing owns it, and it is the surface Buddy's coaching lands on** — The Journal was built by the [2026-07-31 notebook spec](https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-07-31-buddy-home-notebook-design.md) and has not been revisited since. **Verified 2026-08-03: no slice owns its presentation layer.** The parent coaching spec's §12 lists six slices — analyzer, notebook surface, conversational surface, companion mode, IRT explainer, goal beat — and none is presentation. The notebook spec's own §15 out-of-scope list defers voice conversation, the localised tutor report, Phase 4 social and Progress refinements, and lists **no** Journal presentation work, because it considered the surface finished when it shipped. So this is not deferred; it is unowned.
+
+  **Deliberately not specced on 2026-08-03**, when the coaching copy floor was written. The owner's complaint that Buddy's note gave "less than zero value" was entirely about *content* — which test, which kanji, what to do — and no part of it was about layout, spacing or hierarchy. Speccing presentation then would have been guessing at a second problem before the first was fixed.
+
+  **The honest trigger for this review:** read the Journal again once the copy floor ships. If the entries are now useful but hard to read — too dense, unclear which entry is current, no sense of trajectory across the superseded chain — spec it from what is actually wrong, not from a guess. The nearest already-queued item is the notebook spec's §14.1, *how many observations stay live before ageing into the archive*, which that spec calls "a number to tune against real sessions, not to guess once" — a presentation decision wearing a data-retention costume.
+
+  Captured 2026-08-03 (owner, after the slice 3 deploy).
+
+  `[Effort: M]` `[Impact: Med — the surface all coaching output lands on]` `[Backend: No]` `[Status: 💡 Idea]`
+
+- [ ] **Decide whether co-authored hooks belong in the Journal or under Progress** — Open question raised by the owner 2026-08-03, to be settled as part of the Journal UI/UX review above rather than in isolation.
+
+  The tension is real in both directions. **For the Journal:** a hook is something the learner and Buddy *made together*, and the Journal's whole premise is the shared record of what was decided — the notebook spec's §4 is titled "Authorship and rights". **For Progress:** a hook is an artifact you go back and *use*, and Progress is where the learner already looks things up; a growing list of hooks is closer to a collection than to a conversation. There is also a volume argument — hooks accumulate without bound while Journal entries age into an archive.
+
+  Worth settling with the retention question (§14.1) in the same pass, since "where do hooks live" and "how long do observations stay live" are the same decision about what the Journal is *for*.
+
+  `[Effort: S to decide, M to move]` `[Impact: Med]` `[Backend: Maybe — depends on the surface]` `[Status: ❓ Open question]`
+
+- [ ] **A quiz item that challenges a hook after it has caught — specced in 2026-05-31 and never built** — The owner asked on 2026-08-03 whether we had discussed a test item that challenges a kanji where a hook has caught. **We did, in detail, and it does not exist.**
+
+  The [Phase 5 co-creation spec](https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-05-31-phase-5-mnemonic-cocreation-design.md) §8 is titled "The story → kanji quiz (first-test of a fresh hook)", and its §1 states the principle directly: *"A freshly-built hook is tested soon via a new story → kanji quiz item."* Its parking lot then explicitly defers the broader version: *"Story → kanji as a **recurring** review modality across all hooks (not just the fresh-hook first-test)."*
+
+  **Verified 2026-08-03: neither shipped.** `TestService.QuestionType` is `meaning_recall | kanji_from_meaning | reading_recall | vocab_reading | vocab_from_definition` — five types, none hook-related. `mnemonic_recall`, `story_to_kanji` and equivalents appear **nowhere** in `apps/` or `packages/`. This is the same class of defect the coaching spec's `QuizOutcome` header already records: a design-list question type with zero rows, which a detector keyed on it would match silently and forever.
+
+  **Why it matters more now than it did in May.** The coaching analyzer offers to build hooks (`hook_coverage`) and measures whether they help by comparing mean lapses on ordinary reviews with and without a hook (`lapsesWithHook` vs `lapsesWithoutHook` in `HookSnapshot`). That is an *indirect* proxy — nothing ever tests the hook itself. A story → kanji item would turn hook efficacy from an inference into a measurement, and would give `hook_coverage`'s offer a closing loop it currently lacks.
+
+  What the owner asked for is closer to the **parked recurring version** than to the fresh-hook first-test: challenging a hook *after it has caught*, not immediately after it is built.
+
+  Captured 2026-08-03 (owner, during the copy floor spec review).
+
+  `[Effort: M]` `[Impact: High — closes the loop on the co-creation flow's core claim]` `[Backend: Yes — new question type, generation, and `kl_test_results` vocabulary]` `[Status: 💡 Idea — specced 2026-05-31, never implemented]`
+
 - [ ] **"How studying works" is unreachable after first dismissal — add an ⓘ to reopen it** — The study-screen explainer (grading semantics, swipe directions, what Again/Hard/Good/Easy each do) is a **first-run overlay only**. It is gated on `showOnboarding` and dismissal writes `HELP_KEY = 'kl_has_seen_study_help'` to SecureStore ([study.tsx:55,263,769](apps/mobile/app/(tabs)/study.tsx)), after which nothing in the UI can bring it back. A learner who taps past it on day one — when the content means least, because they have not studied yet — never sees it again.
 
   **The app already has the pattern.** The Progress tab surfaces the same kind of explainer on demand via `information-circle-outline` buttons over `InfoSection[]` arrays (`INFO_BREAKDOWN`, `INFO_CONFIDENCE`, `INFO_VELOCITY`, "How evaluation works", …) at [progress.tsx:679](apps/mobile/app/(tabs)/progress.tsx). The onboarding copy even teaches ⓘ as the convention — *"Tap ⓘ to understand how stroke-order scoring works"* ([onboarding-content.ts:44](apps/mobile/src/config/onboarding-content.ts)). Study is the outlier: its explainer is the one that is one-shot.
