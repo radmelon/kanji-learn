@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-03 latest (**Slice 3 is MERGED and DEPLOYED. Content verification cannot happen until Monday 2026-08-10. The copy floor is still not done.**)
+# Session Handoff — 2026-08-03 latest (**Slice 3 is MERGED and DEPLOYED, B149 is building. Content verification cannot happen until Monday 2026-08-10. The copy floor is still not done.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -63,10 +63,32 @@ HTTP response, not in the table — a template fallback is deliberately never
 cached, so *any* row means the LLM path succeeded. An empty table with a working
 session means the fallback ran every time.
 
-### 📱 Mobile still needs an EAS build
+### 📱 B149 is building and auto-submits to TestFlight
 
-The API change is additive, so today's shipped client keeps rendering two cards
-and is not broken. It will not show the single composed card until a build ships.
+Cut 2026-08-03 23:09 from `main`, with the owner accepting the **~$2 overage**
+(the allowance renewed 2026-08-04, one day later — see Housekeeping below).
+
+- Build `53d65198-ae72-4104-b6e0-ecca0c547f22` —
+  https://expo.dev/accounts/radmelon/projects/kanji-learn/builds/53d65198-ae72-4104-b6e0-ecca0c547f22
+- Submission `9c11b49e-c485-4bcc-a614-bec2fcac64e4` (scheduled, fires on build
+  completion) —
+  https://expo.dev/accounts/radmelon/projects/kanji-learn/submissions/9c11b49e-c485-4bcc-a614-bec2fcac64e4
+- B147 and B148 each took **~3h45m** start to finish, so expect the same.
+- `buildNumber` bumped to 149 in `app.json` by `autoIncrement` and committed as
+  `130fa72`, matching the precedent set by `d80625e` for 148.
+
+⚠️ **Do not expect B149 to show anything new on its own.** Its entire
+user-visible delta over B148 is:
+
+| Change | Visible when |
+|---|---|
+| `voice` composed card (`buddy-session-state.ts`) | Only on a **due** session — **2026-08-10** |
+| `buddy-session.tsx` `onClose` | Never — lint-only refactor, identical behaviour |
+
+Everything else built since B148 — slices 1, 2 and 3's analyzer, copy and API —
+is **server-side**, and B148 already exercises all of it against the deployed
+API. Someone opening B149 on 2026-08-04 and seeing no change has not found a
+bug; the session is not due until the 10th.
 
 ### 📦 What slice 3 added
 
