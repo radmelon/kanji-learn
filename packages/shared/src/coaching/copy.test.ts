@@ -64,6 +64,27 @@ const levelEstimateFinding: Finding = {
   since: null,
 }
 
+// A collapsed interval: low === high because the 80% credible interval sits
+// entirely inside one band. Reachable at the codebase's own SE_TIGHT = 0.3
+// (detectors/orient.ts) — band boundaries computed from real per-level mean
+// difficulty make the narrowest band (N4) 1.31 logits wide, while the 80%
+// interval at SE_TIGHT spans only ~0.77 logits, so theta = -2.0, se = 0.3
+// never leaves N5.
+const levelEstimateFindingCollapsed: Finding = {
+  kind: 'level_estimate',
+  magnitude: 0.5,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.MOST_LIKELY_LEVEL, value: 'N5' },
+    { label: EVIDENCE_LABELS.LOWER_BOUND, value: 'N5' },
+    { label: EVIDENCE_LABELS.UPPER_BOUND, value: 'N5' },
+    { label: EVIDENCE_LABELS.ABILITY_ESTIMATE, value: -2.0 },
+    { label: EVIDENCE_LABELS.STANDARD_ERROR, value: 0.3 },
+    { label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' },
+  ],
+  since: null,
+}
+
 // Mirrors detectMechanicsExplainer: fixed copy, no evidence, since always null.
 const mechanicsFinding: Finding = {
   kind: 'mechanics_explainer',
@@ -93,7 +114,7 @@ describe('humanDateRange', () => {
   })
 
   // MUTATION CAUGHT: collapsing to one month name when the period straddles
-  // two, which would render "26 and 1 July" for a period ending in August.
+  // two, which would render "27 and 2 August" for a period ending in August.
   it('names both months when the period straddles them', () => {
     expect(humanDateRange('2026-07-27', '2026-08-03')).toBe('27 July and 2 August')
   })
@@ -128,6 +149,19 @@ describe('templateCopy — level_estimate', () => {
     const text = templateCopy({ ...levelEstimateFinding, evidence: [] }, NOW)
     expect(text).not.toContain('undefined')
     expect(text).toContain('around this level')
+  })
+
+  // MUTATION CAUGHT: removing the `low === high` branch, which renders "the
+  // honest range runs from N5 to N5. That range is wide" — a sentence that
+  // contradicts itself in the same breath, on the finding whose job is to
+  // tell the learner where they stand. Reachable at the codebase's own
+  // definition of a tight estimate (SE_TIGHT = 0.3 in detectors/orient.ts),
+  // not a hypothetical: see levelEstimateFindingCollapsed above.
+  it('does not call the range wide when it collapses to one band', () => {
+    const text = templateCopy(levelEstimateFindingCollapsed, NOW)
+    expect(text).not.toContain('That range is wide')
+    expect(text).not.toContain('N5 to N5')
+    expect(text).toContain('narrow enough to sit entirely within N5')
   })
 })
 

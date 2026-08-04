@@ -44,13 +44,17 @@ export function detectLevelEstimate(snapshot: LearnerSnapshot): Finding | null {
 }
 
 /**
- * The IRT two-liner plus a pointer to Profile (§7).
+ * The IRT two-liner (§7).
  *
  * TEMPLATE, ALWAYS. NEVER LLM. §3: "Buddy must not improvise about his own
  * algorithm." The explanation never changes, so there is nothing for a model
  * to add and everything for it to get wrong. It therefore carries NO evidence
  * — there is no number in it — and the copy layer (Task 10) must emit it
  * verbatim.
+ *
+ * Used to close with a pointer to Profile; Task 4 removed it because Profile
+ * has no IRT section for it to point to — only a Placement Test row. Adding
+ * that section, and restoring the pointer, is a later slice.
  */
 const MECHANICS_MAGNITUDE = 0.1
 

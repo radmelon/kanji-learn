@@ -150,7 +150,7 @@ describe('CoachingVoiceService', () => {
     const second = await svc.utteranceFor({ ...base, findings: [leech, mechanics] })
 
     expect(second?.text).toBe(first?.text)
-    expect(second?.text).toContain('statistical technique called IRT')
+    expect(second?.text).toContain('statistical technique called Item Response Theory, or IRT')
     expect(second?.source).toBe('llm')
     expect(route).toHaveBeenCalledTimes(1)
   })
@@ -251,7 +251,7 @@ describe('CoachingVoiceService', () => {
 
     expect(result?.source).toBe('llm')
     expect(result?.text.startsWith(SENTINEL)).toBe(true)
-    expect(result?.text).toContain('statistical technique called IRT')
+    expect(result?.text).toContain('statistical technique called Item Response Theory, or IRT')
   })
 
   // MUTATION CAUGHT: calling the router when the ONLY finding is the one kind
@@ -263,7 +263,7 @@ describe('CoachingVoiceService', () => {
 
     expect(route).not.toHaveBeenCalled()
     expect(result?.source).toBe('template')
-    expect(result?.text).toContain('statistical technique called IRT')
+    expect(result?.text).toContain('statistical technique called Item Response Theory, or IRT')
   })
 
   // MUTATION CAUGHT: requesting tier 3 by forcing userOptedInPremium, or

@@ -29,7 +29,7 @@ const BASE: Record<FindingKind, string> = {
   // §3: template, always, never LLM. Buddy must not improvise about his own
   // algorithm, so this string is the whole finding.
   mechanics_explainer:
-    'Your level comes from a statistical technique called IRT. The test gets harder when you answer well and easier when you do not, which is how it can say something useful about your level in about a dozen questions.',
+    'Your level comes from a statistical technique called Item Response Theory, or IRT. The test gets harder when you answer well and easier when you do not, which is how it can say something useful about your level in about a dozen questions.',
   fluency_gain:
     'You are answering faster than you were, without losing accuracy.',
   theta_delta:
@@ -114,7 +114,15 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     const high = ev(f, EVIDENCE_LABELS.UPPER_BOUND)
     const on = ev(f, EVIDENCE_LABELS.MEASURED_ON)
     if (level === undefined || low === undefined || high === undefined || on === undefined) return null
-    return `Your placement test on ${humanDate(String(on))} puts you at ${level}, and the honest range runs from ${low} to ${high}. That range is wide because a placement test only asks about a dozen questions. It narrows when you take the placement test again, rather than from day-to-day studying, because your level estimate is only recalculated when you sit the test.`
+    const date = humanDate(String(on))
+    // The 80% interval can sit entirely inside one band (reachable at the
+    // codebase's own SE_TIGHT = 0.3, detectors/orient.ts) — e.g. theta = -2.0,
+    // se = 0.3 gives low === high === N5. Calling that range "wide" would
+    // contradict itself in the same sentence, so this case gets its own copy.
+    if (low === high) {
+      return `Your placement test on ${date} puts you at ${level}, and the range around that estimate is narrow enough to sit entirely within ${level}, so the test is reasonably confident about it. Your level estimate is only recalculated when you take the placement test again, rather than from day-to-day studying.`
+    }
+    return `Your placement test on ${date} puts you at ${level}, and the honest range runs from ${low} to ${high}. That range is wide because a placement test only asks about a dozen questions. It narrows when you take the placement test again, rather than from day-to-day studying, because your level estimate is only recalculated when you sit the test.`
   },
 
   // Fixed copy by contract (§3): no evidence to read, so no formatter.
