@@ -99,6 +99,25 @@ function evAll(f: Finding, label: string): Evidence[] {
   return f.evidence.filter((e) => e.label === label)
 }
 
+/** 0.62 -> '62%'. Evidence accuracies are proportions, per the detectors. */
+function pct(v: string | number): string {
+  return `${Math.round(Number(v) * 100)}%`
+}
+
+/**
+ * Small counts read better as words in prose: 'three readings', 'Two kanji'.
+ * Always lowercase — capitalise at the call site when it starts a sentence, so
+ * there is one spelling table rather than a cased and an uncased copy of it.
+ */
+function spell(n: number): string {
+  return ['zero', 'one', 'two', 'three', 'four', 'five'][n] ?? String(n)
+}
+
+/** 'two' -> 'Two'. Only for a word that opens a sentence. */
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 type Formatter = (f: Finding) => string | null
 
 /**
@@ -145,10 +164,55 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
   // Fixed copy by contract (§3): no evidence to read, so no formatter.
   mechanics_explainer: () => null,
 
-  reading_lag: () => null,
-  leech: () => null,
-  commitment_gap: () => null,
-  hook_coverage: () => null,
+  reading_lag: (f) => {
+    // Two evidence shapes — placement and quiz. Handle both, or degrade.
+    const placementReading = ev(f, EVIDENCE_LABELS.READING_ACCURACY)
+    const placementMeaning = ev(f, EVIDENCE_LABELS.MEANING_ACCURACY)
+    const placementCount = ev(f, EVIDENCE_LABELS.ITEMS_WITH_READING_ASKED)
+    const quizReading = ev(f, EVIDENCE_LABELS.QUIZ_READING_ACCURACY)
+    const quizMeaning = ev(f, EVIDENCE_LABELS.QUIZ_MEANING_ACCURACY)
+    const quizCount = ev(f, EVIDENCE_LABELS.QUIZ_READING_ANSWERS)
+
+    const reading = placementReading ?? quizReading
+    const meaning = placementMeaning ?? quizMeaning
+    const count = placementCount ?? quizCount
+    if (reading === undefined || meaning === undefined || count === undefined) return null
+
+    return `Your readings are trailing your meanings, ${pct(reading)} against ${pct(meaning)} across ${count} answers, which is a wider gap than most people have. Next time you study, try saying the reading aloud before you reveal the answer.`
+  },
+
+  leech: (f) => {
+    const named = evAll(f, EVIDENCE_LABELS.LAPSES)
+      .filter((e) => e.character && typeof e.value === 'number')
+    if (named.length === 0) return null
+    const [worst] = named
+    const list = named
+      .map((e) => `${e.character} has lapsed ${e.value} ${e.value === 1 ? 'time' : 'times'}`)
+      .join(', ')
+    const opener = named.length === 1
+      ? 'One kanji keeps'
+      : `${capitalise(spell(named.length))} kanji keep`
+    return `${opener} slipping back no matter how often they come round: ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
+  },
+
+  commitment_gap: (f) => {
+    const promised = ev(f, EVIDENCE_LABELS.MINUTES_PROMISED)
+    const studied = ev(f, EVIDENCE_LABELS.MINUTES_STUDIED)
+    const start = ev(f, EVIDENCE_LABELS.PERIOD_START)
+    const end = ev(f, EVIDENCE_LABELS.PERIOD_END)
+    if (promised === undefined || studied === undefined) return null
+    const when = start !== undefined && end !== undefined
+      ? ` between ${humanDateRange(String(start), String(end))}`
+      : ''
+    return `You promised ${Math.round(Number(promised))} minutes${when} and studied ${Math.round(Number(studied))}. It is worth discussing whether we should try shifting the time of day when you study, or try two short study sessions in a day. Or maybe it was just a busy week.`
+  },
+
+  hook_coverage: (f) => {
+    const suggested = f.evidence.find((e) => e.label === EVIDENCE_LABELS.SUGGESTED_KANJI)
+    if (!suggested?.character) return null
+    return `${suggested.character} keeps catching you out. When something new will not stick, it usually helps to connect it to something you already know well: that connection is what we call a hook. It can be a small story, an image, or a resemblance to a word or a thing you are already familiar with, and it works because memory holds on to the familiar far more readily than the unfamiliar. Would you like to build one for ${suggested.character} together?`
+  },
+
   fluency_gain: () => null,
   theta_delta: () => null,
   hardest_cleared: () => null,

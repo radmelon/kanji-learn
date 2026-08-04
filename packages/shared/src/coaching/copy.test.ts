@@ -94,6 +94,101 @@ const mechanicsFinding: Finding = {
   since: null,
 }
 
+// Mirrors what detectLeech (detectors/leech.ts) actually emits: two summary
+// items (KANJI_GIVING_TROUBLE, ACTIVE_KANJI) followed by up to MAX_NAMED (3)
+// per-kanji LAPSES items, worst-first — `worst` is sorted by
+// (lapses + regressions) descending, ties broken by kanjiId, and the
+// formatter trusts that order rather than re-sorting. Slicing this array's
+// first three entries (as the "one named kanji" test below does) therefore
+// yields exactly one LAPSES item, matching what the detector itself emits
+// for a learner with only one troubled kanji. Characters and counts match
+// the spec's own §6 worked example (敗×4, 語×3, 使×2).
+const leechFinding: Finding = {
+  kind: 'leech',
+  magnitude: 0.5,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.KANJI_GIVING_TROUBLE, value: 3 },
+    { label: EVIDENCE_LABELS.ACTIVE_KANJI, value: 120 },
+    { label: EVIDENCE_LABELS.LAPSES, value: 4, kanjiId: 1, character: '敗' },
+    { label: EVIDENCE_LABELS.LAPSES, value: 3, kanjiId: 2, character: '語' },
+    { label: EVIDENCE_LABELS.LAPSES, value: 2, kanjiId: 3, character: '使' },
+  ],
+  since: null,
+}
+
+// Mirrors detectHookCoverage: HOOKS_BUILT, then SUGGESTED_KANJI (the pick
+// from pickHookCandidate), then — only when both sides of the lapses
+// comparison exist — the two AVG_LAPSES_* items. All four included so the
+// fixture matches the full real shape, even though the formatter reads only
+// SUGGESTED_KANJI.
+const hookCoverageFinding: Finding = {
+  kind: 'hook_coverage',
+  magnitude: 1,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.HOOKS_BUILT, value: 0 },
+    { label: EVIDENCE_LABELS.SUGGESTED_KANJI, value: '敗', kanjiId: 1, character: '敗' },
+    { label: EVIDENCE_LABELS.AVG_LAPSES_WITH_HOOK, value: 1.2 },
+    { label: EVIDENCE_LABELS.AVG_LAPSES_WITHOUT_HOOK, value: 3.4 },
+  ],
+  since: null,
+}
+
+// Mirrors detectCommitmentGap: promised/studied minutes plus the period
+// bounds, emitted exactly as CommitmentSnapshot stores them — PERIOD_END is
+// EXCLUSIVE (commitment.service.ts:253), so 2026-07-20..2026-07-27 covers the
+// 20th to the 26th. The -1-day adjustment is humanDateRange's job, not the
+// detector's or the fixture's. confidence is always exactly 1 for this kind
+// per the detector's own comment: "A promise and a measurement. There is
+// nothing to be uncertain about."
+const commitmentGapFinding: Finding = {
+  kind: 'commitment_gap',
+  magnitude: 0.7,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.MINUTES_PROMISED, value: 60 },
+    { label: EVIDENCE_LABELS.MINUTES_STUDIED, value: 20 },
+    { label: EVIDENCE_LABELS.PERIOD_START, value: '2026-07-20' },
+    { label: EVIDENCE_LABELS.PERIOD_END, value: '2026-07-27' },
+  ],
+  since: null,
+}
+
+// Mirrors detectReadingLag's PLACEMENT branch (placementExcess fires):
+// MEANING_ACCURACY, READING_ACCURACY, EXPECTED_READING_PENALTY,
+// ITEMS_WITH_READING_ASKED. Values are proportions rounded to 2dp by the
+// detector's own round2 — copy.ts's pct() converts them to whole percent.
+const readingLagPlacementFinding: Finding = {
+  kind: 'reading_lag',
+  magnitude: 0.5,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.MEANING_ACCURACY, value: 0.88 },
+    { label: EVIDENCE_LABELS.READING_ACCURACY, value: 0.62 },
+    { label: EVIDENCE_LABELS.EXPECTED_READING_PENALTY, value: -0.033 },
+    { label: EVIDENCE_LABELS.ITEMS_WITH_READING_ASKED, value: 24 },
+  ],
+  since: null,
+}
+
+// Mirrors detectReadingLag's QUIZ branch (quizExcess fires): QUIZ_READING_
+// ACCURACY, QUIZ_MEANING_ACCURACY, QUIZ_READING_ANSWERS. A real finding can
+// carry both shapes at once, but this fixture isolates the quiz shape alone
+// so the formatter can't be silently depending on the placement labels also
+// being present.
+const readingLagQuizFinding: Finding = {
+  kind: 'reading_lag',
+  magnitude: 0.4,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.QUIZ_READING_ACCURACY, value: 0.71 },
+    { label: EVIDENCE_LABELS.QUIZ_MEANING_ACCURACY, value: 0.9 },
+    { label: EVIDENCE_LABELS.QUIZ_READING_ANSWERS, value: 40 },
+  ],
+  since: null,
+}
+
 describe('humanDate', () => {
   // MUTATION CAUGHT: using toLocaleDateString, whose output depends on the
   // host locale and timezone. The analyzer is pure by contract and CI must not
@@ -201,5 +296,110 @@ describe('templateCopy — mechanics_explainer', () => {
     const text = templateCopy(mechanicsFinding, NOW)
     expect(text).not.toContain('Profile')
     expect(text).toContain('IRT')
+  })
+})
+
+describe('templateCopy — leech', () => {
+  // MUTATION CAUGHT: "a handful of kanji keep slipping back" — the exact
+  // sentence the owner read, whose first question was "which ones?". The
+  // evidence names them, with lapse counts, and the old copy ignored it.
+  it('names each kanji and its lapse count', () => {
+    const text = templateCopy(leechFinding, NOW)
+    expect(text).toContain('敗')
+    expect(text).toContain('語')
+    expect(text).toContain('4 times')
+  })
+
+  // MUTATION CAUGHT: naming the kanji but not what to do about them. The
+  // finding is Direct — its purpose is changing behaviour, and a list without
+  // an action is an observation.
+  it('names one kanji to start with, and explains what a hook is', () => {
+    const text = templateCopy(leechFinding, NOW)
+    expect(text).toContain('hook')
+    expect(text.toLowerCase()).toContain('already know')
+  })
+
+  // MUTATION CAUGHT: assuming exactly MAX_NAMED kanji. The detector emits
+  // BETWEEN ONE AND THREE, and a formatter that indexes worst[1] blindly
+  // renders "undefined has lapsed undefined times" for a single-leech learner.
+  it('reads correctly with only one named kanji', () => {
+    const single = { ...leechFinding, evidence: leechFinding.evidence.slice(0, 3) }
+    const text = templateCopy(single, NOW)
+    expect(text).not.toContain('undefined')
+    expect(text).toContain('敗')
+  })
+
+  it('falls back with evidence stripped', () => {
+    expect(templateCopy({ ...leechFinding, evidence: [] }, NOW)).not.toContain('undefined')
+  })
+})
+
+describe('templateCopy — commitment_gap', () => {
+  // MUTATION CAUGHT: rendering periodEnd raw. The period 2026-07-20 to
+  // 2026-07-27 EXCLUSIVE covers the 20th to the 26th; "between 20 and 27 July"
+  // tells the learner they were measured on a day they were not.
+  it('renders the period inclusively', () => {
+    const text = templateCopy(commitmentGapFinding, NOW)
+    expect(text).toContain('between 20 and 26 July')
+    expect(text).not.toContain('27 July')
+  })
+
+  // MUTATION CAUGHT: reverting to "we will set something you will actually
+  // hit", which assumes the learner over-promised and should promise less.
+  // The owner replaced it: offer mechanism, and allow that nothing is wrong.
+  it('offers mechanism and allows that the week was simply busy', () => {
+    const text = templateCopy(commitmentGapFinding, NOW)
+    expect(text).toContain('time of day')
+    expect(text).toContain('two short study sessions')
+    expect(text.toLowerCase()).toContain('busy week')
+  })
+})
+
+describe('templateCopy — hook_coverage', () => {
+  // MUTATION CAUGHT: telling a learner to build a hook without saying what one
+  // is. Instruction without explanation cannot be acted on, which reproduces
+  // the original defect in a new place.
+  it('explains what a hook is before offering to build one', () => {
+    const text = templateCopy(hookCoverageFinding, NOW)
+    expect(text).toContain('敗')
+    expect(text.toLowerCase()).toContain('already know')
+    expect(text).toMatch(/hook/i)
+  })
+})
+
+describe('templateCopy — reading_lag', () => {
+  // MUTATION CAUGHT: handling only one evidence shape. reading_lag fires from
+  // EITHER placement or quiz and emits different labels for each; a formatter
+  // that knows one shape degrades silently half the time, and the degradation
+  // is invisible because it still returns a real sentence.
+  it('builds the sentence from placement-shaped evidence', () => {
+    const text = templateCopy(readingLagPlacementFinding, NOW)
+    expect(text).toContain('62%')
+    expect(text).toContain('88%')
+    expect(text).toContain('24')
+  })
+
+  it('builds the sentence from quiz-shaped evidence', () => {
+    const text = templateCopy(readingLagQuizFinding, NOW)
+    expect(text).toContain('71%')
+    expect(text).toContain('90%')
+  })
+
+  it('falls back with evidence stripped', () => {
+    expect(templateCopy({ ...readingLagQuizFinding, evidence: [] }, NOW))
+      .not.toContain('undefined')
+  })
+})
+
+describe('leech and hook_coverage together', () => {
+  // MUTATION CAUGHT: nothing, deliberately — this is the spec's §6.1 decision
+  // under observation. Both are Direct, both can be selected, and both explain
+  // hooks. The redundancy was accepted rather than engineered away; this test
+  // exists so a human reads the combined output at least once.
+  it('reads as emphasis rather than repetition', () => {
+    const both = analysisBody([leechFinding, hookCoverageFinding], NOW)
+    expect(both).not.toContain('undefined')
+    // The full definition appears once; leech carries only the short form.
+    expect(both.match(/memory holds on to the familiar/g) ?? []).toHaveLength(1)
   })
 })
