@@ -481,6 +481,23 @@ describe('templateCopy — leech', () => {
     expect(text).not.toContain('Three kanji')
   })
 
+  // MUTATION CAUGHT: reverting the over-cap branch's lead-in to expect a bare
+  // noun list while the list builder supplies its own verb, producing
+  // "The three worst are 敗 has lapsed 4 times" (ungrammatical). The branch
+  // must use an em dash so the list follows as a complete phrase.
+  it('pins the over-cap branch wording with an em dash before the list', () => {
+    const text = templateCopy(leechFinding23, NOW)
+    expect(text).toContain('23 kanji are giving you trouble, and these are the three worst — 敗 has lapsed')
+  })
+
+  // MUTATION CAUGHT: a specific guard to catch reverting the lead-in back to
+  // "are" without the em-dash — "The three worst are 敗 has lapsed 4 times"
+  // is ungrammatical and contradicts the design spec.
+  it('does not render "are" followed by the list with its own verb', () => {
+    const text = templateCopy(leechFinding23, NOW)
+    expect(text).not.toContain('are 敗 has lapsed')
+  })
+
   // Finding 2 (Important): dropping the repetition claim entirely means it
   // must never reappear in any evidence-bearing render, across every
   // named-count shape (three, two, one, and a single lapse).

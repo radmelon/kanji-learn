@@ -267,7 +267,7 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // a single lapse already qualifies, so a repetition claim can contradict
     // the very count it sits beside. The counts speak for themselves instead.
     if (count > named.length) {
-      return `${count} kanji are giving you trouble. The ${spell(named.length)} worst are ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
+      return `${count} kanji are giving you trouble, and these are the ${spell(named.length)} worst — ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
     }
 
     return `${capitalise(spell(count))} kanji are giving you trouble — ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
