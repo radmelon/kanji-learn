@@ -4,7 +4,7 @@ import postgres from 'postgres'
 import { sql } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
 import { levelBands, inferredLevel, JLPT_LEVELS, type JlptLevel } from '@kanji-learn/shared'
-import { CoachingService } from '../../src/services/buddy/coaching.service'
+import { CoachingService, REVIEW_WINDOW_DAYS } from '../../src/services/buddy/coaching.service'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
@@ -222,6 +222,27 @@ describe('CoachingService.assembleSnapshot — placement', () => {
       VALUES (${USER}, 0.5, 0.4, NULL, now())`)
     const snap = await service.assembleSnapshot(USER, NOW, [])
     expect(snap.placement).toBeNull()
+  })
+
+  // MUTATION CAUGHT: shipping hardest_cleared's copy without the features it
+  // cites. The sentence claims the test "weighs stroke count and number of
+  // readings alongside JLPT level"; if assembly does not supply them the
+  // formatter degrades to the vague base string forever, and no shared-lane
+  // test would notice because the detector's own fixtures are hand-built.
+  it('carries stroke count and reading count on each placement item', async () => {
+    const [k1] = await kanjiIds(1)
+    const rows = await db.execute(sql`INSERT INTO placement_sessions
+      (user_id, ability_theta, ability_se, inferred_level, completed_at)
+      VALUES (${USER}, 0.5, 0.4, 'N4', now()) RETURNING id`)
+    const sessionId = (rows[0] as any).id
+    await db.execute(sql`INSERT INTO placement_results
+      (session_id, kanji_id, jlpt_level, passed, meaning_correct, reading_correct, difficulty_at_ask)
+      VALUES (${sessionId}, ${k1}, 'N5', true, true, false, 0.8)`)
+
+    const snap = await service.assembleSnapshot(USER, NOW, [])
+    const item = snap.placement!.items.find((i) => i.kanjiId === k1)!
+    expect(item.strokeCount).toBeGreaterThan(0)
+    expect(item.readingCount).toBeGreaterThan(0)
   })
 })
 
@@ -466,6 +487,15 @@ describe('CoachingService.assembleSnapshot — reviews', () => {
 
     const snap = await service.assembleSnapshot(USER_R, NOW, [])
     expect(snap.reviews.quiz).toHaveLength(0)
+  })
+
+  // MUTATION CAUGHT: hardcoding "a month" in fluency_gain's copy instead of
+  // reading the window. REVIEW_WINDOW_DAYS is documented as an assembly
+  // parameter; a copy string that inlines it becomes a lie the first time it
+  // changes, and nothing else would fail.
+  it('carries the review window length on the review snapshot', async () => {
+    const snap = await service.assembleSnapshot(USER_R, NOW, [])
+    expect(snap.reviews.windowDays).toBe(REVIEW_WINDOW_DAYS)
   })
 })
 

@@ -7,6 +7,7 @@ function item(o: Partial<PlacementItemOutcome> = {}): PlacementItemOutcome {
     kanjiId: 1, character: '日',
     meaningCorrect: true, readingCorrect: true,
     readingOffset: 0.3, difficultyAtAsk: 0,
+    strokeCount: 4, readingCount: 2,
     ...o,
   }
 }
@@ -19,7 +20,7 @@ function snap(items: PlacementItemOutcome[]): LearnerSnapshot {
       level: 'N3', thetaLow: -0.5, thetaHigh: 0.5, levelLow: 'N4', levelHigh: 'N3',
       previous: null, items,
     },
-    reviews: { cards: [], quiz: [] },
+    reviews: { cards: [], quiz: [], windowDays: 30 },
     commitment: null,
     hooks: { count: 0, latestAt: null, sessionDates: [], lapsesWithHook: null, lapsesWithoutHook: null },
     priorFindings: [],

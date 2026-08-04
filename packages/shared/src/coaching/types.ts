@@ -105,6 +105,12 @@ export interface PlacementItemOutcome {
   /** Population reading penalty for this item — `reading_lag` must exceed it. */
   readingOffset: number
   difficultyAtAsk: number
+  /** Strokes in the character. Part of what the difficulty model weighs, and
+   *  what `hardest_cleared` cites to justify calling an item hard. */
+  strokeCount: number
+  /** Total on- plus kun-readings. Computed in ASSEMBLY, not here — the
+   *  analyzer must not learn the shape of a jsonb column. */
+  readingCount: number
 }
 
 export interface PlacementSnapshot {
@@ -230,6 +236,10 @@ export const POPULATION_PLACEMENT_READING_GAP = -0.033
 export interface ReviewSnapshot {
   cards: CardSnapshot[]
   quiz: QuizOutcome[]
+  /** Length of the window `cards` was computed over. Owned by the assembly
+   *  layer (REVIEW_WINDOW_DAYS); carried here so `fluency_gain`'s copy can
+   *  state the period without inlining a constant it does not own. */
+  windowDays: number
 }
 
 export interface CommitmentSnapshot {

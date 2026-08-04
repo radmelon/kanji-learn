@@ -7,6 +7,7 @@ function item(o: Partial<PlacementItemOutcome> = {}): PlacementItemOutcome {
     kanjiId: 1, character: '日',
     meaningCorrect: true, readingCorrect: true,
     readingOffset: 0.3, difficultyAtAsk: 0,
+    strokeCount: 4, readingCount: 2,
     ...o,
   }
 }
@@ -24,7 +25,7 @@ function snap(p: PlacementSnapshot | null, now = '2026-08-02T00:00:00.000Z'): Le
   return {
     now,
     placement: p,
-    reviews: { cards: [], quiz: [] },
+    reviews: { cards: [], quiz: [], windowDays: 30 },
     commitment: null,
     hooks: { count: 0, latestAt: null, sessionDates: [], lapsesWithHook: null, lapsesWithoutHook: null },
     priorFindings: [],

@@ -17,7 +17,7 @@ function snap(cards: CardSnapshot[]): LearnerSnapshot {
   return {
     now: '2026-08-02T00:00:00.000Z',
     placement: null,
-    reviews: { cards, quiz: [] },
+    reviews: { cards, quiz: [], windowDays: 30 },
     commitment: null,
     hooks: { count: 0, latestAt: null, sessionDates: [], lapsesWithHook: null, lapsesWithoutHook: null },
     priorFindings: [],

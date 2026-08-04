@@ -279,6 +279,9 @@ export class CoachingService {
         readingCorrect: placementResults.readingCorrect,
         difficultyAtAsk: placementResults.difficultyAtAsk,
         readingOffset: kanjiDifficulty.readingOffset,
+        strokeCount: kanji.strokeCount,
+        kunReadings: kanji.kunReadings,
+        onReadings: kanji.onReadings,
       })
       .from(placementResults)
       .innerJoin(kanji, eq(kanji.id, placementResults.kanjiId))
@@ -295,6 +298,10 @@ export class CoachingService {
       readingCorrect: r.readingCorrect,
       readingOffset: r.readingOffset ?? 0,
       difficultyAtAsk: r.difficultyAtAsk ?? 0,
+      strokeCount: r.strokeCount,
+      // jsonb string arrays, NOT NULL DEFAULT '[]' — but coalesce anyway, so a
+      // hand-seeded test row without them cannot produce NaN in learner copy.
+      readingCount: (r.kunReadings?.length ?? 0) + (r.onReadings?.length ?? 0),
     }))
   }
 
@@ -412,6 +419,7 @@ export class CoachingService {
 
     return {
       cards,
+      windowDays: REVIEW_WINDOW_DAYS,
       quiz: quiz.map((q): QuizOutcome => ({
         kanjiId: q.kanjiId,
         questionType: q.questionType,
