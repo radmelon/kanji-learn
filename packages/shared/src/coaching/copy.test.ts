@@ -688,8 +688,19 @@ describe('templateCopy — leech', () => {
 
   // MUTATION CAUGHT: removing the `named.length === 0` guard, which crashes
   // destructuring `worst` off an empty array instead of degrading to BASE.
+  //
+  // MUTATION CAUGHT: restoring a repetition claim ('no matter how often') to
+  // BASE.leech — the string that renders when there is no evidence to support
+  // any claim at all, so a vague sentence is the only kind it can honestly
+  // make. Owner-directed fix, 2026-08-03: BASE.leech used to read "A handful
+  // of kanji keep slipping back no matter how often they come round", which
+  // overstated the detector (MIN_TROUBLE_SCORE = 1 — a single lapse already
+  // qualifies) in exactly the same way the formatter's own repetition claim
+  // once did.
   it('falls back with evidence stripped', () => {
-    expect(templateCopy({ ...leechFinding, evidence: [] }, NOW)).not.toContain('undefined')
+    const text = templateCopy({ ...leechFinding, evidence: [] }, NOW)
+    expect(text).not.toContain('undefined')
+    expect(text).not.toContain('no matter how often')
   })
 })
 

@@ -19,7 +19,7 @@ const BASE: Record<FindingKind, string> = {
   reading_lag:
     'Your readings are trailing your meanings by more than the usual gap.',
   leech:
-    'A handful of kanji keep slipping back no matter how often they come round.',
+    'Some of your kanji are giving you more trouble than the rest.',
   commitment_gap:
     'You studied less than you promised yourself over the last period.',
   hook_coverage:
