@@ -229,8 +229,32 @@ describe('CoachingService.assembleSnapshot — placement', () => {
   // readings alongside JLPT level"; if assembly does not supply them the
   // formatter degrades to the vague base string forever, and no shared-lane
   // test would notice because the detector's own fixtures are hand-built.
+  // ALSO CAUGHT: summing only ONE of the two reading arrays (e.g.
+  // `kunReadings?.length ?? 0` alone, dropping onReadings from the sum).
+  // That mutation still yields a plausible positive number, so a
+  // `toBeGreaterThan(0)` check stays green while telling a learner a kanji
+  // has fewer readings than it actually does -- readingCount is quoted
+  // straight into Task 6's hardest_cleared copy ("has 19 strokes and three
+  // readings"), so an undercount here is a false statement to a user, not
+  // just an internal miscount. The fixture kanji is picked for an
+  // ASYMMETRIC kun/on split (counts unequal): with an equal split (e.g. 2
+  // and 2), dropping either array produces the SAME wrong total, so the
+  // test could pass while being unable to tell you which array was
+  // dropped. An unequal split makes the two possible undercounts distinct
+  // values, neither of which equals the pinned expectation below.
   it('carries stroke count and reading count on each placement item', async () => {
-    const [k1] = await kanjiIds(1)
+    const kanjiRows = await db.execute(sql`
+      SELECT id, stroke_count AS "strokeCount", kun_readings AS "kunReadings", on_readings AS "onReadings"
+      FROM kanji
+      WHERE jsonb_array_length(kun_readings) <> jsonb_array_length(on_readings)
+      ORDER BY id LIMIT 1
+    `)
+    const kanjiRow = kanjiRows[0] as any
+    const k1 = Number(kanjiRow.id)
+    const expectedStrokeCount = Number(kanjiRow.strokeCount)
+    const expectedReadingCount =
+      (kanjiRow.kunReadings as string[]).length + (kanjiRow.onReadings as string[]).length
+
     const rows = await db.execute(sql`INSERT INTO placement_sessions
       (user_id, ability_theta, ability_se, inferred_level, completed_at)
       VALUES (${USER}, 0.5, 0.4, 'N4', now()) RETURNING id`)
@@ -241,8 +265,9 @@ describe('CoachingService.assembleSnapshot — placement', () => {
 
     const snap = await service.assembleSnapshot(USER, NOW, [])
     const item = snap.placement!.items.find((i) => i.kanjiId === k1)!
-    expect(item.strokeCount).toBeGreaterThan(0)
-    expect(item.readingCount).toBeGreaterThan(0)
+    // Pinned to the row's own values, not merely "> 0" -- see comment above.
+    expect(item.strokeCount).toBe(expectedStrokeCount)
+    expect(item.readingCount).toBe(expectedReadingCount)
   })
 })
 
