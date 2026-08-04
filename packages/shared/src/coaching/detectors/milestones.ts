@@ -38,6 +38,9 @@ export function detectHardestCleared(snapshot: LearnerSnapshot): Finding | null 
         character: hardest.character,
       },
       { label: EVIDENCE_LABELS.ITEM_DIFFICULTY, value: Math.round(hardest.difficultyAtAsk * 100) / 100 },
+      { label: EVIDENCE_LABELS.STROKE_COUNT, value: hardest.strokeCount },
+      { label: EVIDENCE_LABELS.READING_COUNT, value: hardest.readingCount },
+      { label: EVIDENCE_LABELS.MEASURED_ON, value: p.completedAt.slice(0, 10) },
     ],
     since: null,
   }

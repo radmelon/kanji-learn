@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { detectFluencyGain, detectThetaDelta } from './fluency'
 import type { CardSnapshot, LearnerSnapshot, PlacementSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 
 function card(o: Partial<CardSnapshot> = {}): CardSnapshot {
   return {
@@ -65,6 +66,14 @@ describe('detectFluencyGain', () => {
   it('reports the improvement as a percentage in evidence', () => {
     const f = detectFluencyGain(snap([card({ responseMsEarly: 4000, responseMsLate: 2000 })]))!
     expect(f.evidence.map((e) => e.label)).toContain('percent faster')
+  })
+
+  // MUTATION CAUGHT: dropping the window, which leaves "faster than before"
+  // with no period attached — unfalsifiable praise, and the copy would have to
+  // inline 30 days to say anything, hardcoding a constant it does not own.
+  it('carries the window it measured over', () => {
+    const f = detectFluencyGain(snap([card({ responseMsEarly: 4000, responseMsLate: 2000 })]))!
+    expect(f.evidence).toContainEqual({ label: EVIDENCE_LABELS.WINDOW_DAYS, value: 30 })
   })
 })
 

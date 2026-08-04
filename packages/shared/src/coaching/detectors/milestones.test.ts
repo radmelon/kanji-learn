@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { detectHardestCleared, detectRetestDue } from './milestones'
 import type { LearnerSnapshot, PlacementItemOutcome, PlacementSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 
 function item(o: Partial<PlacementItemOutcome> = {}): PlacementItemOutcome {
   return {
@@ -69,6 +70,20 @@ describe('detectHardestCleared', () => {
     const easy = detectHardestCleared(snap(placement({ items: [item({ difficultyAtAsk: -1 })] })))
     const hard = detectHardestCleared(snap(placement({ items: [item({ difficultyAtAsk: 2.5 })] })))!
     expect(hard.magnitude).toBeGreaterThan(easy?.magnitude ?? 0)
+  })
+
+  // MUTATION CAUGHT: omitting the features that justify calling the item hard.
+  // Their absence is why a bare superlative invites a JLPT lookup that makes
+  // Buddy look wrong: the owner's hardest-cleared was N3 and outranked two N2
+  // kanji, because the model weighs strokes and readings too.
+  it('carries stroke count, reading count and the test date', () => {
+    const f = detectHardestCleared(snap(placement({
+      completedAt: '2026-07-29T00:00:00.000Z',
+      items: [item({ strokeCount: 19, readingCount: 3, difficultyAtAsk: 1.5 })],
+    })))!
+    expect(f.evidence).toContainEqual({ label: EVIDENCE_LABELS.STROKE_COUNT, value: 19 })
+    expect(f.evidence).toContainEqual({ label: EVIDENCE_LABELS.READING_COUNT, value: 3 })
+    expect(f.evidence).toContainEqual({ label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' })
   })
 })
 

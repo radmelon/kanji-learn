@@ -67,6 +67,7 @@ export function detectFluencyGain(snapshot: LearnerSnapshot): Finding | null {
       { label: EVIDENCE_LABELS.AVG_SECONDS_BEFORE, value: Math.round(early / 100) / 10 },
       { label: EVIDENCE_LABELS.AVG_SECONDS_NOW, value: Math.round(late / 100) / 10 },
       { label: EVIDENCE_LABELS.KANJI_MEASURED, value: honest.length },
+      { label: EVIDENCE_LABELS.WINDOW_DAYS, value: snapshot.reviews.windowDays },
     ],
     since: null,
   }

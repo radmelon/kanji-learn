@@ -37,6 +37,7 @@ export function detectLevelEstimate(snapshot: LearnerSnapshot): Finding | null {
       { label: EVIDENCE_LABELS.UPPER_BOUND, value: p.levelHigh },
       { label: EVIDENCE_LABELS.ABILITY_ESTIMATE, value: Math.round(p.theta * 100) / 100 },
       { label: EVIDENCE_LABELS.STANDARD_ERROR, value: Math.round(p.se * 100) / 100 },
+      { label: EVIDENCE_LABELS.MEASURED_ON, value: p.completedAt.slice(0, 10) },
     ],
     since: null,
   }

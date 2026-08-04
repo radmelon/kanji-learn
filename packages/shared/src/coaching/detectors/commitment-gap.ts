@@ -35,6 +35,10 @@ export function detectCommitmentGap(snapshot: LearnerSnapshot): Finding | null {
     evidence: [
       { label: EVIDENCE_LABELS.MINUTES_PROMISED, value: c.promisedMinutes },
       { label: EVIDENCE_LABELS.MINUTES_STUDIED, value: c.actualMinutes },
+      { label: EVIDENCE_LABELS.PERIOD_START, value: c.periodStart },
+      // EXCLUSIVE — the display layer subtracts a day. Emitted as the contract
+      // stores it, so the raw value and the snapshot never disagree.
+      { label: EVIDENCE_LABELS.PERIOD_END, value: c.periodEnd },
     ],
     since: null,
   }
