@@ -196,11 +196,49 @@ available, do not make it.
 
 ### Direct
 
-> **`leech`** — Three kanji keep slipping back no matter how often they come
-> round: 敗 has lapsed 4 times, 語 3 times, and 使 twice. The one to work on
-> first is 敗. Look it up and build a hook for it — a small story or image that
-> ties the character to something you already know — because that is what
-> usually stops a kanji from slipping.
+> **`leech`, more troubled than can be named** — 23 kanji are giving you
+> trouble, and three of them are 敗, which has lapsed 4 times, 語 3 times, and
+> 使 twice. The one to work on first is 敗. Look it up and build a hook for it —
+> a small story or image that ties the character to something you already know —
+> because that is what usually stops a kanji from slipping.
+
+> **`leech`, every troubled kanji named** — Three kanji are giving you trouble —
+> 敗 has lapsed 4 times, 語 3 times, and 使 twice. The one to work on first is
+> 敗. Look it up and build a hook for it — a small story or image that ties the
+> character to something you already know — because that is what usually stops a
+> kanji from slipping.
+
+> **`leech`, a single troubled kanji** — One kanji is giving you trouble — 敗,
+> which has lapsed 4 times. Look it up and build a hook for it — a small story
+> or image that ties the character to something you already know — because that
+> is what usually stops a kanji from slipping.
+
+**⚠️ This wording replaced an earlier owner-approved sentence, and the reason is
+worth keeping.** The original read *"Three kanji keep slipping back no matter
+how often they come round"*. Two things were wrong with it, both found by
+checking the rendered copy against live data rather than against tests:
+
+1. **The count was the display cap, not the learner's problem.** `MAX_NAMED = 3`
+   caps how many kanji are *named*; the true count is emitted separately as
+   `kanji giving trouble` and the formatter never read it. On live, one account
+   has **23** troubled kanji and would have been told "Three" — understating by
+   a factor of eight. That is §0's defect exactly, reproduced inside the finding
+   this spec exists to fix, and the old vague `BASE` string was at least not
+   false.
+2. **"no matter how often they come round" overstates the trigger.**
+   `MIN_TROUBLE_SCORE = 1`, so a *single* lapse qualifies a kanji — and 19 of
+   those 23 cards have exactly one. The sentence asserted repetition and then
+   printed evidence of one lapse directly after it.
+
+**The owner reviewed the replacement on 2026-08-03 and accepted it**, including
+the loss of the word-picture of a card cycling back through review. That was
+atmosphere; the persistence claim now lives in the lapse counts, where it is
+evidence-backed. They also directed that **`BASE.leech` be rewritten to match** —
+otherwise the removed claim survives in the fallback, which is the one string
+nobody reads until everything else has failed.
+
+Note the single-kanji branch drops "The one to work on first is …": prioritising
+among one thing is absurd.
 
 > **`hook_coverage`** — 敗 keeps catching you out. When something new will not
 > stick, it usually helps to connect it to something you already know well: that
