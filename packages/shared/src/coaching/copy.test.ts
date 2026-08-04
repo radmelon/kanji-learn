@@ -310,6 +310,16 @@ describe('templateCopy — leech', () => {
     expect(text).toContain('4 times')
   })
 
+  // MUTATION CAUGHT: repeating the verb for every item ('語 has lapsed 3
+  // times'), which reads like a database dump rather than a sentence. The
+  // design spec elides it after the first item: '敗 has lapsed 4 times, 語 3
+  // times, and 使 twice'.
+  it('elides the repeated verb after the first item in a three-kanji list', () => {
+    const text = templateCopy(leechFinding, NOW)
+    expect(text).toContain('語 3 times')
+    expect(text).not.toContain('語 has lapsed')
+  })
+
   // MUTATION CAUGHT: naming the kanji but not what to do about them. The
   // finding is Direct — its purpose is changing behaviour, and a list without
   // an action is an observation.
@@ -322,11 +332,45 @@ describe('templateCopy — leech', () => {
   // MUTATION CAUGHT: assuming exactly MAX_NAMED kanji. The detector emits
   // BETWEEN ONE AND THREE, and a formatter that indexes worst[1] blindly
   // renders "undefined has lapsed undefined times" for a single-leech learner.
+  //
+  // MUTATION CAUGHT: reusing the plural branch for a single kanji, which
+  // produces a grammatical error ('they come round' for one kanji) and tells
+  // the learner to prioritise among one thing ('The one to work on first is
+  // 敗' when 敗 is the only kanji named).
   it('reads correctly with only one named kanji', () => {
     const single = { ...leechFinding, evidence: leechFinding.evidence.slice(0, 3) }
     const text = templateCopy(single, NOW)
     expect(text).not.toContain('undefined')
     expect(text).toContain('敗')
+    expect(text).toContain('it comes round')
+    expect(text).not.toContain('they come round')
+    expect(text).not.toContain('The one to work on first')
+  })
+
+  // MUTATION CAUGHT: an off-by-one at the two-item boundary in the list join
+  // — correct for one item (handled by an entirely separate branch) and for
+  // three (which already takes the Oxford-comma path regardless), but a join
+  // that always applies the Oxford comma renders 'times, and' for exactly
+  // two items, which neither the one- nor three-kanji tests can see.
+  it('joins exactly two kanji with "and" and no comma', () => {
+    const twoNamed = { ...leechFinding, evidence: leechFinding.evidence.slice(0, 4) }
+    const text = templateCopy(twoNamed, NOW)
+    expect(text).toContain('敗 has lapsed 4 times and 語 3 times')
+    expect(text).not.toContain('times, and')
+    expect(text).not.toContain('and and')
+  })
+
+  // MUTATION CAUGHT: dropping the n === 2 branch from lapseCount, which
+  // would render '2 times' for the exact value the design spec calls out by
+  // name as 'twice' (worked example: 敗×4, 語×3, 使×2).
+  it('spells a count of exactly two as "twice", not "2 times"', () => {
+    const single = {
+      ...leechFinding,
+      evidence: [leechFinding.evidence[0], leechFinding.evidence[1], leechFinding.evidence[4]],
+    }
+    const text = templateCopy(single, NOW)
+    expect(text).toContain('twice')
+    expect(text).not.toContain('2 times')
   })
 
   it('falls back with evidence stripped', () => {

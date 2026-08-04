@@ -113,6 +113,13 @@ function spell(n: number): string {
   return ['zero', 'one', 'two', 'three', 'four', 'five'][n] ?? String(n)
 }
 
+/** 1 -> 'once', 2 -> 'twice', otherwise 'N times'. */
+function lapseCount(n: number): string {
+  if (n === 1) return 'once'
+  if (n === 2) return 'twice'
+  return `${n} times`
+}
+
 /** 'two' -> 'Two'. Only for a word that opens a sentence. */
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
@@ -185,13 +192,25 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     const named = evAll(f, EVIDENCE_LABELS.LAPSES)
       .filter((e) => e.character && typeof e.value === 'number')
     if (named.length === 0) return null
-    const [worst] = named
-    const list = named
-      .map((e) => `${e.character} has lapsed ${e.value} ${e.value === 1 ? 'time' : 'times'}`)
-      .join(', ')
-    const opener = named.length === 1
-      ? 'One kanji keeps'
-      : `${capitalise(spell(named.length))} kanji keep`
+    const [worst, ...rest] = named
+
+    if (rest.length === 0) {
+      return `One kanji keeps slipping back no matter how often it comes round: ${worst.character}, which has lapsed ${lapseCount(Number(worst.value))}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
+    }
+
+    // First item carries the verb; later items elide it ('語 3 times', not
+    // '語 has lapsed 3 times') — repeating it for every item reads like a
+    // database dump, not a sentence.
+    const items = [
+      `${worst.character} has lapsed ${lapseCount(Number(worst.value))}`,
+      ...rest.map((e) => `${e.character} ${lapseCount(Number(e.value))}`),
+    ]
+    // Two items: 'A and B', no comma. Three or more: Oxford comma before 'and'.
+    const list = items.length === 2
+      ? `${items[0]} and ${items[1]}`
+      : `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
+
+    const opener = `${capitalise(spell(named.length))} kanji keep`
     return `${opener} slipping back no matter how often they come round: ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
   },
 
