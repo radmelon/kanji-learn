@@ -164,6 +164,29 @@ const leechFindingOneNamed: Finding = {
   since: null,
 }
 
+// Finding 1 (Important): the true troubled count can exceed 1 while only ONE
+// kanji survives to be named — distinct from leechFindingOneNamed above,
+// where KANJI_GIVING_TROUBLE genuinely IS 1. Here it is 3, and the other two
+// candidates the detector would have supplied are dropped by copy.ts's own
+// filtering: one has a blanked character (fillCharacters's `?? ''` fallback,
+// coaching.service.ts:444, when a kanji id has no matching row) and one has
+// zero lapses (a regression-only card, same mechanism as
+// leechFindingZeroLapseCard below). 使 is the sole survivor of three actually
+// troubled kanji.
+const leechFindingOneNamedOfThree: Finding = {
+  kind: 'leech',
+  magnitude: 0.3,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.KANJI_GIVING_TROUBLE, value: 3 },
+    { label: EVIDENCE_LABELS.ACTIVE_KANJI, value: 120 },
+    { label: EVIDENCE_LABELS.LAPSES, value: 5, kanjiId: 11, character: '' },
+    { label: EVIDENCE_LABELS.LAPSES, value: 0, kanjiId: 9, character: '規' },
+    { label: EVIDENCE_LABELS.LAPSES, value: 2, kanjiId: 3, character: '使' },
+  ],
+  since: null,
+}
+
 // Finding 2's own case: MIN_TROUBLE_SCORE = 1 in the leech detector, so a
 // SINGLE lapse already qualifies a kanji as trouble — 19 of 23 troubled cards
 // on the largest live account have exactly one lapse. Exists to prove the
@@ -200,6 +223,20 @@ const leechFindingZeroLapseCard: Finding = {
     { label: EVIDENCE_LABELS.LAPSES, value: 2, kanjiId: 3, character: '使' },
   ],
   since: null,
+}
+
+// Finding 2 (Minor): an over-cap count that still falls inside spell()'s 0-5
+// table. 4 is one more than the 3 named — mirrors leechFinding's own shape
+// with KANJI_GIVING_TROUBLE raised from 3 to 4, so the over-cap branch fires
+// with a count small enough for the numeral-vs-spelled-word distinction to
+// actually be visible in the rendered text (leechFinding23's 23 renders
+// identically either way, which is why it can't pin this).
+const leechFindingSmallOverCap: Finding = {
+  ...leechFinding,
+  evidence: [
+    { label: EVIDENCE_LABELS.KANJI_GIVING_TROUBLE, value: 4 },
+    ...leechFinding.evidence.slice(1),
+  ],
 }
 
 // The degradation path: KANJI_GIVING_TROUBLE absent entirely (an older
@@ -481,21 +518,58 @@ describe('templateCopy — leech', () => {
     expect(text).not.toContain('Three kanji')
   })
 
-  // MUTATION CAUGHT: reverting the over-cap branch's lead-in to expect a bare
-  // noun list while the list builder supplies its own verb, producing
-  // "The three worst are 敗 has lapsed 4 times" (ungrammatical). The branch
-  // must use an em dash so the list follows as a complete phrase.
+  // MUTATION CAUGHT: dropping the em dash before the list in the over-cap
+  // branch (a space in its place), which runs the lead-in directly into the
+  // list's own subject-verb clause instead of introducing it as a complete
+  // phrase.
   it('pins the over-cap branch wording with an em dash before the list', () => {
     const text = templateCopy(leechFinding23, NOW)
-    expect(text).toContain('23 kanji are giving you trouble, and these are the three worst — 敗 has lapsed')
+    expect(text).toContain('23 kanji are giving you trouble, and here are three of them — 敗 has lapsed')
   })
 
-  // MUTATION CAUGHT: a specific guard to catch reverting the lead-in back to
-  // "are" without the em-dash — "The three worst are 敗 has lapsed 4 times"
-  // is ungrammatical and contradicts the design spec.
+  // MUTATION CAUGHT: a specific guard to catch reverting the lead-in to put
+  // "are" directly in front of the list — "...and here are 敗 has lapsed 4
+  // times" is ungrammatical; "are" must be followed by "N of them", not by
+  // the list's own subject-verb clause.
   it('does not render "are" followed by the list with its own verb', () => {
     const text = templateCopy(leechFinding23, NOW)
     expect(text).not.toContain('are 敗 has lapsed')
+  })
+
+  // Finding 1 (Important): the true count can exceed 1 while only one kanji
+  // survives to be named — leechFindingOneNamedOfThree has
+  // KANJI_GIVING_TROUBLE: 3 but only 使 survives copy.ts's own filtering. The
+  // old code branched on `rest.length === 0` (equivalently `named.length ===
+  // 1`), so this rendered "One kanji is giving you trouble", reporting the
+  // size of the display list as the size of the learner's problem — the same
+  // class of understatement the Critical fix (above) closed, surviving in
+  // the one branch that never read KANJI_GIVING_TROUBLE. It must instead use
+  // the over-cap shape, naming the one survivor as one of three.
+  //
+  // MUTATION CAUGHT: branching on how many kanji were named (`named.length
+  // === 1` / `rest.length === 0`) rather than on how many are troubled
+  // (`count === 1`).
+  it('uses the over-cap shape, not the single-kanji sentence, when the true count exceeds one but only one kanji is named', () => {
+    const text = templateCopy(leechFindingOneNamedOfThree, NOW)
+    expect(text).toContain('Three kanji are giving you trouble')
+    expect(text).not.toContain('One kanji is giving you trouble')
+    expect(text).toContain('here is one of them — 使 has lapsed twice')
+    expect(text).toContain('The one to work on first is 使')
+  })
+
+  // Finding 2 (Minor): the over-cap branch must spell a small count the same
+  // way the equals branch does, not render a bare numeral — leechFinding23's
+  // 23 renders identically either way (spell()'s fallback for values above
+  // five is `String(n)`), so it cannot catch this on its own.
+  //
+  // MUTATION CAUGHT: reverting the over-cap branch's count back to a bare
+  // `${count}`, which renders "4 kanji are giving you trouble" instead of
+  // "Four kanji are giving you trouble" — correct one branch over, in the
+  // equals-branch rendering of the same count.
+  it('spells a small over-cap count the same way as the equals branch', () => {
+    const text = templateCopy(leechFindingSmallOverCap, NOW)
+    expect(text).toContain('Four kanji are giving you trouble')
+    expect(text).not.toContain('4 kanji are giving you trouble')
   })
 
   // Finding 2 (Important): dropping the repetition claim entirely means it
@@ -579,6 +653,14 @@ describe('templateCopy — leech', () => {
   // MUTATION CAUGHT: dropping the n === 2 branch from lapseCount, which
   // would render '2 times' for the exact value the design spec calls out by
   // name as 'twice' (worked example: 敗×4, 語×3, 使×2).
+  //
+  // This fixture's shape — KANJI_GIVING_TROUBLE: 3 with only 使's LAPSES item
+  // supplied — is also Finding 1's bug case: the old code would render "One
+  // kanji is giving you trouble" here, and this test would still have passed
+  // because it only ever asserted on "twice". Reconciled per Finding 1 to
+  // assert the count as well, so it cannot pass on a sentence that silently
+  // understates it (dedicated coverage for the branching itself lives in
+  // 'uses the over-cap shape...' above, with leechFindingOneNamedOfThree).
   it('spells a count of exactly two as "twice", not "2 times"', () => {
     const single = {
       ...leechFinding,
@@ -587,6 +669,8 @@ describe('templateCopy — leech', () => {
     const text = templateCopy(single, NOW)
     expect(text).toContain('twice')
     expect(text).not.toContain('2 times')
+    expect(text).toContain('Three kanji are giving you trouble')
+    expect(text).not.toContain('One kanji is giving you trouble')
   })
 
   // The degradation path: an older caller (or a stripped fixture) with no

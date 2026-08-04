@@ -236,10 +236,26 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     if (named.length === 0) return null
     const [worst, ...rest] = named
 
-    // Exactly one named kanji gets its own sentence regardless of the true
-    // count below — "The one to work on first" is nonsensical when there is
-    // only one, and building `list` below assumes at least two items.
-    if (rest.length === 0) {
+    // The learner's TRUE trouble count, not how many we can name — MAX_NAMED
+    // caps the detector's evidence at 3, and reading `named.length` renders
+    // "Three kanji" for an account with 23 troubled kanji, understating by
+    // however many the cap hides. Computed BEFORE every branch below and
+    // used by all of them (Finding 1): `named.length` can independently drop
+    // to 1 — via the `value > 0` filter above, or a blanked character from
+    // fillCharacters's `?? ''` fallback (coaching.service.ts:444) — even
+    // while the true count stays far above 1, and the single-kanji branch
+    // below must not mistake that coincidence for there being only one
+    // troubled kanji. Absent evidence degrades to "as many as we can name"
+    // rather than throwing.
+    const trueCount = ev(f, EVIDENCE_LABELS.KANJI_GIVING_TROUBLE)
+    const count = trueCount === undefined ? named.length : Number(trueCount)
+
+    // Exactly one TRUE troubled kanji gets its own sentence — "The one to
+    // work on first" is nonsensical when there is only one. Keyed on `count`,
+    // NOT on `named.length` / `rest.length` (Finding 1): a true count above 1
+    // with only one survivor falls through to the branches below instead,
+    // which name that lone survivor as part of a larger true count.
+    if (count === 1) {
       return `One kanji is giving you trouble — ${worst.character}, which has lapsed ${lapseCount(Number(worst.value))}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
     }
 
@@ -250,24 +266,27 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
       `${worst.character} has lapsed ${lapseCount(Number(worst.value))}`,
       ...rest.map((e) => `${e.character} ${lapseCount(Number(e.value))}`),
     ]
-    // Two items: 'A and B', no comma. Three or more: Oxford comma before 'and'.
-    const list = items.length === 2
-      ? `${items[0]} and ${items[1]}`
-      : `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
-
-    // The learner's TRUE trouble count, not how many we can name — MAX_NAMED
-    // caps the detector's evidence at 3, and reading `named.length` here
-    // renders "Three kanji" for an account with 23 troubled kanji,
-    // understating by however many the cap hides (Finding 1). Absent
-    // evidence degrades to "as many as we can name" rather than throwing.
-    const trueCount = ev(f, EVIDENCE_LABELS.KANJI_GIVING_TROUBLE)
-    const count = trueCount === undefined ? named.length : Number(trueCount)
+    // One item: itself, no joiner — reachable when `count` exceeds 1 but
+    // only one kanji survived to be named (Finding 1). Two items: 'A and B',
+    // no comma. Three or more: Oxford comma before 'and'.
+    const list = items.length === 1
+      ? items[0]
+      : items.length === 2
+        ? `${items[0]} and ${items[1]}`
+        : `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
 
     // Finding 2: no "no matter how often" claim — MIN_TROUBLE_SCORE = 1 means
     // a single lapse already qualifies, so a repetition claim can contradict
     // the very count it sits beside. The counts speak for themselves instead.
     if (count > named.length) {
-      return `${count} kanji are giving you trouble, and these are the ${spell(named.length)} worst — ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
+      // Not "the worst" (related finding, same root cause): the detector
+      // ranks candidates by lapses + regressions, but `named` above filters
+      // on lapses alone, so a higher-troubleScore card can be dropped ahead
+      // of a lower-scoring one that survives the filter — the survivors are
+      // not guaranteed to be the worst by the detector's own ordering.
+      // "The one to work on first" stays: it recommends `worst` (the top
+      // survivor) rather than ranking the whole set.
+      return `${capitalise(spell(count))} kanji are giving you trouble, and here ${named.length === 1 ? 'is' : 'are'} ${spell(named.length)} of them — ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
     }
 
     return `${capitalise(spell(count))} kanji are giving you trouble — ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
