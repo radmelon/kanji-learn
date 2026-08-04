@@ -151,17 +151,44 @@ describe('templateCopy — level_estimate', () => {
     expect(text).toContain('around this level')
   })
 
-  // MUTATION CAUGHT: removing the `low === high` branch, which renders "the
-  // honest range runs from N5 to N5. That range is wide" — a sentence that
-  // contradicts itself in the same breath, on the finding whose job is to
-  // tell the learner where they stand. Reachable at the codebase's own
-  // definition of a tight estimate (SE_TIGHT = 0.3 in detectors/orient.ts),
-  // not a hypothetical: see levelEstimateFindingCollapsed above.
+  // MUTATION CAUGHT: re-adding an independent confidence claim to this
+  // branch (e.g. "...so the test is reasonably confident about it"). Per
+  // copy.ts's comment on this branch, collapse only means the interval
+  // doesn't cross a band edge, not that it's narrow, and confidence is
+  // `finding.confidence`'s job (the hedge below), not this sentence's — an
+  // independent claim here can be directly contradicted by "Early signal"
+  // in the same paragraph once se exceeds about 0.84 (demonstrated by the
+  // hedged test below). Also pins the mechanism sentence ("again", not "as
+  // you do more") on the collapsed branch's OWN copy: "says retaking the
+  // test narrows the range, not studying" above exercises only the spread
+  // fixture, so it would not catch this branch's mechanism sentence being
+  // dropped. Still covers the original defect too: removing the
+  // `low === high` branch renders "the honest range runs from N5 to N5.
+  // That range is wide", reachable at the codebase's own definition of a
+  // tight estimate (SE_TIGHT = 0.3 in detectors/orient.ts), not a
+  // hypothetical: see levelEstimateFindingCollapsed above.
   it('does not call the range wide when it collapses to one band', () => {
     const text = templateCopy(levelEstimateFindingCollapsed, NOW)
     expect(text).not.toContain('That range is wide')
     expect(text).not.toContain('N5 to N5')
-    expect(text).toContain('narrow enough to sit entirely within N5')
+    expect(text).not.toContain('confident')
+    expect(text).toContain('stays entirely within N5')
+    expect(text).toContain('again')
+  })
+
+  // MUTATION CAUGHT: a confidence claim reappearing in copy that the hedge
+  // simultaneously undercuts. copy.ts trusts `finding.confidence` as given
+  // rather than deriving it from the evidence shown, so a collapsed
+  // interval can still be a weak signal: theta = -3.0, se = 0.9 still
+  // collapses to N5 (both ends stay below the N5/N4 boundary) but gives
+  // confidence = 1 - normaliseLinear(0.9, 0.3, 1.2) = 0.33, below
+  // HEDGE_BELOW. If the collapsed branch asserted confidence on top of
+  // that, "Early signal, so take it lightly" and "...confident about it"
+  // would sit in the same paragraph.
+  it('hedges instead of asserting confidence when the collapsed signal is weak', () => {
+    const text = templateCopy({ ...levelEstimateFindingCollapsed, confidence: 0.33 }, NOW)
+    expect(text).toContain('Early signal')
+    expect(text).not.toContain('confident')
   })
 })
 

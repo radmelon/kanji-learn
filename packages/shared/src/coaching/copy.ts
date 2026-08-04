@@ -115,12 +115,29 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     const on = ev(f, EVIDENCE_LABELS.MEASURED_ON)
     if (level === undefined || low === undefined || high === undefined || on === undefined) return null
     const date = humanDate(String(on))
-    // The 80% interval can sit entirely inside one band (reachable at the
-    // codebase's own SE_TIGHT = 0.3, detectors/orient.ts) — e.g. theta = -2.0,
-    // se = 0.3 gives low === high === N5. Calling that range "wide" would
-    // contradict itself in the same sentence, so this case gets its own copy.
+    // Collapse only means the interval doesn't cross a band edge — the
+    // outer bands are unbounded (live corpus midpoints run roughly -1.454 /
+    // -0.149 / 1.241 / 3.112), so a collapsed interval can still be wider
+    // than a bounded band: theta = -3.0, se = 0.55 collapses to N5 but is
+    // 1.41 logits wide, more than N4's own 1.31. Don't call that "narrow".
+    // Don't assert confidence here either — `finding.confidence` (the hedge
+    // below) already owns that claim, and once se exceeds about 0.84 at
+    // theta = -3.0 the estimate still collapses to N5 while confidence
+    // drops below HEDGE_BELOW, so an independent confidence claim in this
+    // sentence would be contradicted by "Early signal" in the same
+    // paragraph. State only what's true by construction: the whole interval
+    // stays inside one level.
+    //
+    // Interpolates `low`, not `level`: `level` is the stored
+    // placementSessions.inferredLevel from when the test was taken; `low`
+    // and `high` are recomputed here from today's corpus. A recalibration
+    // between those two moments can leave them disagreeing, the same class
+    // of band/ladder mismatch coaching.service.ts already carries a scar
+    // comment about (B146). Interpolating `low` keeps the containment claim
+    // true by construction instead of asserting it about a band the
+    // interval may no longer be in.
     if (low === high) {
-      return `Your placement test on ${date} puts you at ${level}, and the range around that estimate is narrow enough to sit entirely within ${level}, so the test is reasonably confident about it. Your level estimate is only recalculated when you take the placement test again, rather than from day-to-day studying.`
+      return `Your placement test on ${date} puts you at ${level}. The honest range around that estimate stays entirely within ${low}, rather than reaching into a neighbouring level. Your level estimate is only recalculated when you take the placement test again, rather than from day-to-day studying.`
     }
     return `Your placement test on ${date} puts you at ${level}, and the honest range runs from ${low} to ${high}. That range is wide because a placement test only asks about a dozen questions. It narrows when you take the placement test again, rather than from day-to-day studying, because your level estimate is only recalculated when you sit the test.`
   },
