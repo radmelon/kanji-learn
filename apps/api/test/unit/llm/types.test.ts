@@ -41,6 +41,14 @@ describe('classifyTier', () => {
     expect(classifyTier({ ...base, context: 'deep_diagnostic' })).toBe(3)
   })
 
+  // MUTATION CAUGHT: adding 'coaching_utterance' to the RequestContext union
+  // but forgetting TIER3_CONTEXTS. That mutation is invisible at runtime —
+  // the router still answers, just from tier 2 — so nothing else fails and
+  // the "quality matters most here" decision in §5 is silently reversed.
+  it('classifies the coaching utterance as tier 3', () => {
+    expect(classifyTier({ ...base, context: 'coaching_utterance' })).toBe(3)
+  })
+
   it('returns 2 for everything else', () => {
     expect(classifyTier({ ...base, context: 'study_plan_generation' })).toBe(2)
     expect(classifyTier({ ...base, context: 'leech_diagnostic' })).toBe(2)

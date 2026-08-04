@@ -20,6 +20,7 @@ psql "postgresql://kanji:kanji@localhost:5433/kanji_buddy_test" \
   -f packages/db/supabase/migrations/0032_notebook.sql \
   -f packages/db/supabase/migrations/0033_met_buddy_at.sql \
   -f packages/db/supabase/migrations/0034_coaching_analysis_index.sql \
+  -f packages/db/supabase/migrations/0035_session_utterances.sql \
   -f packages/db/drizzle/0007_rls.sql \
   -f packages/db/drizzle/0010_rls_phase0_tables.sql
 pnpm --filter @kanji-learn/api test

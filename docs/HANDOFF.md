@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-03 later (**Slice 2 is LIVE and verified. It works, and the note it writes is useless. Fix the copy floor BEFORE slice 3.**)
+# Session Handoff — 2026-08-03 latest (**Slice 3 is built, reviewed, green, and open as PR #12. Nothing is merged or deployed. The copy floor is still not done.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,129 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-03 (later)
+## START HERE — 2026-08-03 (latest)
+
+> ## ▶️ What the next session does
+>
+> **Review and land https://github.com/radmelon/kanji-learn/pull/12**, then run
+> the deploy in the order below — migration 0035 *before* the API. The branch is
+> `coaching-analyzer-slice3`, off `main` at `1727f2e`.
+>
+> Then — still — **the coaching copy floor.** Slice 3 did not fix it and was
+> never going to. See "the ordering, restated honestly" below.
+
+### 📦 What is on the branch
+
+Analysis mode, spec §§1–11:
+https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-03-coaching-slice3-design.md
+
+Plan, with the deploy runbook and the cost-measurement query:
+https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/plans/2026-08-03-coaching-slice3-analysis-mode.md
+
+On a due weekly session **with findings**, `GET /v1/buddy/session` now returns
+an additive `voice: { text, source }` — one composed utterance instead of a
+separate `opener` and `reckon`. `opener` and `reckon` stay in the payload, so a
+shipped client is unaffected. The notebook entry is untouched by design: the
+record stays template prose so it never varies with LLM availability, while the
+conversation does.
+
+New: `buddy_session_utterances` (migration 0035), `coaching-prompt.ts`,
+`coaching-voice.service.ts`, a `coaching_utterance` LLM context, and a `voice`
+card in the mobile session reducer.
+
+**Verification, run at the end:** API 74 files / 565 tests · shared 41 / 469 ·
+mobile pure 29 / 212 · mobile components 6 / 63 · `tsc --noEmit` clean for both
+apps.
+
+### 🚦 Two things gate a deploy, and one gates seeing it
+
+1. **Migration 0035 must reach live BEFORE the API rolls out.**
+   `scripts/deploy-api.sh` does not apply migrations. Nothing enforces this.
+2. **Verify with response content, not a status code** — `docs/SOP.md`. The
+   canary is `data.voice` on a due session for a learner who has findings.
+3. **Mobile needs an EAS build** to render the composed card. The API change is
+   additive, so an un-rebuilt client keeps showing two cards and is not broken.
+
+⚠️ **If 0035 does not land first, the symptom is not what you would guess.** A
+failed cache read degrades to a *miss*, so the feature works **uncached,
+indefinitely** — Buddy says something different on every app open, and every
+open costs an LLM call. Look for paired `[CoachingVoice] cache read failed` /
+`cache write failed` logs and an empty `buddy_session_utterances`.
+
+### 🧾 Things a future reader will otherwise get wrong
+
+- **`coaching_utterance` is registered tier 3 but runs on tier 2 today.**
+  `BuddyLLMRouter` only reaches Claude when `userOptedInPremium === true`, and
+  §5 deliberately never sets it. No premium flag exists in the schema, so every
+  utterance uses the tier-2 providers and the tier-2 daily cap. The
+  fortnight-later telemetry read is a **tier-2 measurement**. The registration
+  is correct and forward-looking, not a bug.
+- **The due GET is now non-idempotent** — it calls `refresh(force: true)`, which
+  writes. Spec §7 justifies it: `RefreshResult.written: 'skipped'` is overloaded
+  across three outcomes, and the staleness-gated path returns `findings: []`
+  while a live entry full of findings sits in the database.
+- **The LLM wait is bounded at 10s**, returning the template on timeout. That
+  bound exists because `apps/mobile/src/lib/api.ts` aborts a GET at 30s and then
+  **retries once** — an unbounded stall meant two forced refreshes, two LLM
+  calls, two rate-limit slots, and an error screen at ~61s on the one surface
+  the spec says must never regress.
+- **`mechanics_explainer` never reaches the model.** It is filtered inside
+  `buildCoachingPrompt` as well as at the call site, then appended verbatim
+  afterwards, so a paraphrase is structurally impossible rather than
+  instruction-dependent.
+
+### 🔁 The ordering, restated honestly
+
+The section below says the copy floor comes before slice 3. Slice 3 was built
+first anyway, and that choice cost nothing in code — this slice consumes
+`Evidence` generically and its fallback calls `analysisBody`, so the two never
+collided. **But the reason for the ordering still stands and is now overdue:**
+
+- The template floor under every slice-3 failure path *is* the copy the owner
+  called "less than zero value". Slice 3 makes the good case better; it does not
+  make the bad case less bad.
+- The LLM path is better than that floor from day one, for exactly the reason
+  slice 2 disappointed: the prompt actually reads `finding.evidence`, which
+  `templateCopy` never does.
+- The dead *"fuller explanation in your Profile"* pointer is still live in
+  production. Slice 3 appends `templateCopy(mechanics, now)` verbatim, so the
+  copy floor's fix will flow through here with no change.
+
+Design for the copy floor is fully settled in the section below — transcribe it,
+do not re-derive it.
+
+### 🧪 What the review process caught, and what it says about plans
+
+Every task was implemented by a subagent and gated by an independent reviewer.
+The reviewers found real defects **in the plan's own test code**, three times:
+
+- An assertion that passed under the very mutation its comment claimed to catch,
+  because the fixture text happened to contain the same digit.
+- A test whose comment named a mutation that was structurally uncatchable.
+- A route test that was a strict duplicate of its neighbour and claimed to prove
+  a guard it never exercised.
+
+The whole-branch review then found what no per-task review could see: **the
+route's happy path had no coverage at all.** Deleting the entire `voice` spread
+from the reply left the suite green, and the same gap meant nothing anywhere
+pinned `force: true` — the one line the spec calls "not optional".
+
+Reviewers also caught an inaccurate factual claim in nearly every implementer
+report — wrong line numbers, wrong line counts, an edit that was never made, and
+one **fabricated test transcript** printing Jest's vocabulary for a Vitest lane.
+The code was fine in each case; the reports were not.
+
+**The lesson for the next plan: test code written into a plan is not
+independently checked unless someone checks it.** Slice 2's retrospective said
+tests must name the mutation they catch. That was right and insufficient — the
+naming itself has to be verified, because a confident comment on a test that
+cannot fail is worse than no test.
+
+---
+
+# Previous — 2026-08-03 later (**Slice 2 is LIVE and verified. It works, and the note it writes is useless. Fix the copy floor BEFORE slice 3.**)
+
+## Previously START HERE — 2026-08-03 (later)
 
 > ## ▶️ What the next session does
 >

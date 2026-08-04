@@ -146,3 +146,77 @@ describe('selectSessionBody', () => {
     expect(set.kind === 'set' && set.proposed.weekStart).toBe('2026-08-10')
   })
 })
+
+const dueBase = {
+  state: 'due' as const,
+  weekStart: '2026-08-03',
+  opener: { kind: 'strong', text: 'OPENER' },
+  reckon: 'RECKON',
+  proposedCommitment: proposed,
+}
+
+describe('selectSessionBody — the composed utterance', () => {
+  // MUTATION CAUGHT: appending the voice card to opener/reckon instead of
+  // replacing them. §3's whole point is one voice, not three stitched
+  // fragments — and the learner would read the same content twice.
+  it('renders one voice card instead of opener and reckon', () => {
+    const body = selectSessionBody({
+      hasLoaded: true,
+      error: null,
+      data: { ...dueBase, voice: { text: 'COMPOSED', source: 'llm' } },
+    })
+    expect(body.kind).toBe('cards')
+    const kinds = body.kind === 'cards' ? body.cards.map((c) => c.kind) : []
+    expect(kinds).toEqual(['voice', 'set'])
+  })
+
+  // MUTATION CAUGHT: keying the preference off `'voice' in data` rather than a
+  // usable value, so an old server (no field) or a null would render a session
+  // with no prose at all — the B-227 blank-screen shape this file already
+  // guards elsewhere.
+  it('falls back to opener and reckon when there is no voice', () => {
+    for (const data of [dueBase, { ...dueBase, voice: null }]) {
+      const body = selectSessionBody({ hasLoaded: true, error: null, data })
+      const kinds = body.kind === 'cards' ? body.cards.map((c) => c.kind) : []
+      expect(kinds).toEqual(['opener', 'reckon', 'set'])
+    }
+  })
+
+  // MUTATION CAUGHT: trusting a present-but-empty voice.text, which would
+  // render a blank card and suppress the template prose that was available
+  // the whole time.
+  it('falls back when the voice text is blank', () => {
+    const body = selectSessionBody({
+      hasLoaded: true,
+      error: null,
+      data: { ...dueBase, voice: { text: '   ', source: 'llm' } },
+    })
+    const kinds = body.kind === 'cards' ? body.cards.map((c) => c.kind) : []
+    expect(kinds).toEqual(['opener', 'reckon', 'set'])
+  })
+
+  // MUTATION CAUGHT: dropping the 'set' card on the voice path. Agreeing the
+  // week ahead is the session's one guaranteed outcome and is unconditional
+  // and always last, whatever precedes it.
+  it('keeps the set card last on the voice path', () => {
+    const body = selectSessionBody({
+      hasLoaded: true,
+      error: null,
+      data: { ...dueBase, voice: { text: 'COMPOSED', source: 'llm' } },
+    })
+    const cards = body.kind === 'cards' ? body.cards : []
+    expect(cards[cards.length - 1].kind).toBe('set')
+  })
+
+  // MUTATION CAUGHT: rendering `source` into the card, leaking an internal
+  // observability field onto the learner's screen.
+  it('carries only the text on the voice card', () => {
+    const body = selectSessionBody({
+      hasLoaded: true,
+      error: null,
+      data: { ...dueBase, voice: { text: 'COMPOSED', source: 'template' } },
+    })
+    const card = body.kind === 'cards' ? body.cards[0] : null
+    expect(card).toEqual({ kind: 'voice', text: 'COMPOSED' })
+  })
+})
