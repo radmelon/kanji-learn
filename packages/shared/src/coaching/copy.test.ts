@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { analysisBody, templateCopy } from './copy'
+import { analysisBody, humanDate, humanDateRange, templateCopy } from './copy'
 import type { Finding, FindingKind } from './types'
+import { EVIDENCE_LABELS } from './types'
 
 function finding(kind: FindingKind, since: string | null = null): Finding {
   return { kind, magnitude: 0.8, confidence: 1, evidence: [], since }
@@ -40,5 +41,104 @@ describe('commitment_gap copy', () => {
     const text = templateCopy(finding('commitment_gap'), NOW)
     expect(text).not.toContain('this period')
     expect(text).toContain('last')
+  })
+})
+
+// Mirrors what detectLevelEstimate (orient.ts) actually emits: level, its 80%
+// credible interval, ability estimate + SE, and the date the test was taken.
+// levelLow/levelHigh are named for the ABILITY bound, which is why the "lower"
+// bound is N5 (less advanced) and the "upper" bound is N3 (more advanced) —
+// JLPT numbering runs the opposite way from ability.
+const levelEstimateFinding: Finding = {
+  kind: 'level_estimate',
+  magnitude: 0.5,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.MOST_LIKELY_LEVEL, value: 'N4' },
+    { label: EVIDENCE_LABELS.LOWER_BOUND, value: 'N5' },
+    { label: EVIDENCE_LABELS.UPPER_BOUND, value: 'N3' },
+    { label: EVIDENCE_LABELS.ABILITY_ESTIMATE, value: 0.42 },
+    { label: EVIDENCE_LABELS.STANDARD_ERROR, value: 0.35 },
+    { label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' },
+  ],
+  since: null,
+}
+
+// Mirrors detectMechanicsExplainer: fixed copy, no evidence, since always null.
+const mechanicsFinding: Finding = {
+  kind: 'mechanics_explainer',
+  magnitude: 0.1,
+  confidence: 1,
+  evidence: [],
+  since: null,
+}
+
+describe('humanDate', () => {
+  // MUTATION CAUGHT: using toLocaleDateString, whose output depends on the
+  // host locale and timezone. The analyzer is pure by contract and CI must not
+  // render a different sentence from a developer's machine.
+  it('renders an ISO date as a day and month', () => {
+    expect(humanDate('2026-07-29')).toBe('29 July')
+    expect(humanDate('2026-08-03T17:19:55.000Z')).toBe('3 August')
+  })
+})
+
+describe('humanDateRange', () => {
+  // MUTATION CAUGHT: rendering periodEnd raw. It is EXCLUSIVE
+  // (commitment.service.ts:253 computes weekStart + periodDays), so a period
+  // starting 20 July ends on the 26th and must not read "27 July". Nothing
+  // else in the system would catch an off-by-one in prose.
+  it('subtracts a day from the exclusive end', () => {
+    expect(humanDateRange('2026-07-20', '2026-07-27')).toBe('20 and 26 July')
+  })
+
+  // MUTATION CAUGHT: collapsing to one month name when the period straddles
+  // two, which would render "26 and 1 July" for a period ending in August.
+  it('names both months when the period straddles them', () => {
+    expect(humanDateRange('2026-07-27', '2026-08-03')).toBe('27 July and 2 August')
+  })
+})
+
+describe('templateCopy — level_estimate', () => {
+  // MUTATION CAUGHT: the original defect. "Your placement puts you around this
+  // level, with some room either side" answers none of the owner's questions —
+  // which test, when, what level, what range.
+  it('names the level, the range and the date', () => {
+    const text = templateCopy(levelEstimateFinding, NOW)
+    expect(text).toContain('29 July')
+    expect(text).toContain('N4')
+    expect(text).toContain('N5')
+    expect(text).toContain('N3')
+  })
+
+  // MUTATION CAUGHT: saying the range narrows "as you do more". Verified
+  // 2026-08-03: abilityTheta/abilitySe are written ONLY by
+  // placement.service.ts:319, on completing a placement test. Read as "more
+  // studying", that sentence is FALSE, not merely vague.
+  it('says retaking the test narrows the range, not studying', () => {
+    const text = templateCopy(levelEstimateFinding, NOW).toLowerCase()
+    expect(text).toContain('again')
+    expect(text).not.toMatch(/as you do more\b/)
+  })
+
+  // MUTATION CAUGHT: returning a half-built sentence when evidence is absent.
+  // The degradation path must yield the base string, never "puts you at
+  // undefined".
+  it('falls back to the base sentence with evidence stripped', () => {
+    const text = templateCopy({ ...levelEstimateFinding, evidence: [] }, NOW)
+    expect(text).not.toContain('undefined')
+    expect(text).toContain('around this level')
+  })
+})
+
+describe('templateCopy — mechanics_explainer', () => {
+  // MUTATION CAUGHT: leaving the Profile pointer in. Re-verified 2026-08-03:
+  // Profile has a Placement Test row (profile.tsx:729) and NO IRT section.
+  // That string is live in production sending learners to a dead end, on the
+  // one finding whose entire purpose is building trust.
+  it('no longer points at a Profile page that does not exist', () => {
+    const text = templateCopy(mechanicsFinding, NOW)
+    expect(text).not.toContain('Profile')
+    expect(text).toContain('IRT')
   })
 })
