@@ -1,4 +1,5 @@
 import type { Finding, LearnerSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 import { normaliseLinear } from '../magnitude'
 
 /**
@@ -32,8 +33,8 @@ export function detectCommitmentGap(snapshot: LearnerSnapshot): Finding | null {
     // A promise and a measurement. There is nothing to be uncertain about.
     confidence: 1,
     evidence: [
-      { label: 'minutes promised', value: c.promisedMinutes },
-      { label: 'minutes studied', value: c.actualMinutes },
+      { label: EVIDENCE_LABELS.MINUTES_PROMISED, value: c.promisedMinutes },
+      { label: EVIDENCE_LABELS.MINUTES_STUDIED, value: c.actualMinutes },
     ],
     since: null,
   }

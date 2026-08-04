@@ -1,4 +1,5 @@
 import type { Finding, LearnerSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 import { normaliseLinear } from '../magnitude'
 import { widenForStaleness } from '../../placement-difficulty'
 
@@ -31,12 +32,12 @@ export function detectHardestCleared(snapshot: LearnerSnapshot): Finding | null 
     confidence: 1,
     evidence: [
       {
-        label: 'hardest kanji cleared',
+        label: EVIDENCE_LABELS.HARDEST_KANJI_CLEARED,
         value: hardest.character,
         kanjiId: hardest.kanjiId,
         character: hardest.character,
       },
-      { label: 'item difficulty', value: Math.round(hardest.difficultyAtAsk * 100) / 100 },
+      { label: EVIDENCE_LABELS.ITEM_DIFFICULTY, value: Math.round(hardest.difficultyAtAsk * 100) / 100 },
     ],
     since: null,
   }
@@ -79,9 +80,9 @@ export function detectRetestDue(snapshot: LearnerSnapshot): Finding | null {
     magnitude,
     confidence: 1,
     evidence: [
-      { label: 'current uncertainty', value: Math.round(widened * 100) / 100 },
-      { label: 'uncertainty when measured', value: Math.round(p.se * 100) / 100 },
-      { label: 'days since the test', value: Math.round(daysElapsed) },
+      { label: EVIDENCE_LABELS.CURRENT_UNCERTAINTY, value: Math.round(widened * 100) / 100 },
+      { label: EVIDENCE_LABELS.UNCERTAINTY_WHEN_MEASURED, value: Math.round(p.se * 100) / 100 },
+      { label: EVIDENCE_LABELS.DAYS_SINCE_THE_TEST, value: Math.round(daysElapsed) },
     ],
     since: null,
   }

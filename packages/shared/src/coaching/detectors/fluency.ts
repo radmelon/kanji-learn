@@ -1,4 +1,5 @@
 import type { CardSnapshot, Finding, LearnerSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 import { confidenceFromCount, normaliseLinear } from '../magnitude'
 
 /**
@@ -62,10 +63,10 @@ export function detectFluencyGain(snapshot: LearnerSnapshot): Finding | null {
     magnitude,
     confidence: confidenceFromCount(honest.length, CONFIDENCE_SCALE),
     evidence: [
-      { label: 'percent faster', value: Math.round(proportionFaster * 100) },
-      { label: 'average seconds before', value: Math.round(early / 100) / 10 },
-      { label: 'average seconds now', value: Math.round(late / 100) / 10 },
-      { label: 'kanji measured', value: honest.length },
+      { label: EVIDENCE_LABELS.PERCENT_FASTER, value: Math.round(proportionFaster * 100) },
+      { label: EVIDENCE_LABELS.AVG_SECONDS_BEFORE, value: Math.round(early / 100) / 10 },
+      { label: EVIDENCE_LABELS.AVG_SECONDS_NOW, value: Math.round(late / 100) / 10 },
+      { label: EVIDENCE_LABELS.KANJI_MEASURED, value: honest.length },
     ],
     since: null,
   }
@@ -102,10 +103,10 @@ export function detectThetaDelta(snapshot: LearnerSnapshot): Finding | null {
     magnitude,
     confidence: 1 - normaliseLinear(noise, 0.3, 1.5),
     evidence: [
-      { label: 'ability then', value: Math.round(p.previous.theta * 100) / 100 },
-      { label: 'ability now', value: Math.round(p.theta * 100) / 100 },
-      { label: 'measured on', value: p.completedAt.slice(0, 10) },
-      { label: 'previously measured on', value: p.previous.completedAt.slice(0, 10) },
+      { label: EVIDENCE_LABELS.ABILITY_THEN, value: Math.round(p.previous.theta * 100) / 100 },
+      { label: EVIDENCE_LABELS.ABILITY_NOW, value: Math.round(p.theta * 100) / 100 },
+      { label: EVIDENCE_LABELS.MEASURED_ON, value: p.completedAt.slice(0, 10) },
+      { label: EVIDENCE_LABELS.PREVIOUSLY_MEASURED_ON, value: p.previous.completedAt.slice(0, 10) },
     ],
     since: null,
   }

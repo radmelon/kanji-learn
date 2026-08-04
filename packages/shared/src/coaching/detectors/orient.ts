@@ -1,4 +1,5 @@
 import type { Finding, LearnerSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 import { normaliseLinear } from '../magnitude'
 
 /**
@@ -31,11 +32,11 @@ export function detectLevelEstimate(snapshot: LearnerSnapshot): Finding | null {
     magnitude: LEVEL_ESTIMATE_MAGNITUDE,
     confidence,
     evidence: [
-      { label: 'most likely level', value: p.level },
-      { label: 'lower bound', value: p.levelLow },
-      { label: 'upper bound', value: p.levelHigh },
-      { label: 'ability estimate', value: Math.round(p.theta * 100) / 100 },
-      { label: 'standard error', value: Math.round(p.se * 100) / 100 },
+      { label: EVIDENCE_LABELS.MOST_LIKELY_LEVEL, value: p.level },
+      { label: EVIDENCE_LABELS.LOWER_BOUND, value: p.levelLow },
+      { label: EVIDENCE_LABELS.UPPER_BOUND, value: p.levelHigh },
+      { label: EVIDENCE_LABELS.ABILITY_ESTIMATE, value: Math.round(p.theta * 100) / 100 },
+      { label: EVIDENCE_LABELS.STANDARD_ERROR, value: Math.round(p.se * 100) / 100 },
     ],
     since: null,
   }

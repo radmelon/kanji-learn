@@ -1,4 +1,5 @@
 import type { CardSnapshot, Evidence, Finding, LearnerSnapshot, QuizOutcome } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 import { confidenceFromCount } from '../magnitude'
 
 /**
@@ -82,9 +83,9 @@ export function detectHookCoverage(snapshot: LearnerSnapshot): Finding | null {
   if (!candidate) return null
 
   const evidence: Evidence[] = [
-    { label: 'hooks built', value: snapshot.hooks.count },
+    { label: EVIDENCE_LABELS.HOOKS_BUILT, value: snapshot.hooks.count },
     {
-      label: 'suggested kanji',
+      label: EVIDENCE_LABELS.SUGGESTED_KANJI,
       value: candidate.character,
       kanjiId: candidate.kanjiId,
       character: candidate.character,
@@ -95,8 +96,8 @@ export function detectHookCoverage(snapshot: LearnerSnapshot): Finding | null {
   const { lapsesWithHook, lapsesWithoutHook } = snapshot.hooks
   if (lapsesWithHook !== null && lapsesWithoutHook !== null) {
     evidence.push(
-      { label: 'average lapses with a hook', value: lapsesWithHook },
-      { label: 'average lapses without one', value: lapsesWithoutHook },
+      { label: EVIDENCE_LABELS.AVG_LAPSES_WITH_HOOK, value: lapsesWithHook },
+      { label: EVIDENCE_LABELS.AVG_LAPSES_WITHOUT_HOOK, value: lapsesWithoutHook },
     )
   }
 

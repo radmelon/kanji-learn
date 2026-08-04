@@ -1,4 +1,5 @@
 import type { CardSnapshot, Evidence, Finding, LearnerSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 import { confidenceFromCount, normaliseLinear } from '../magnitude'
 
 /**
@@ -58,10 +59,10 @@ export function detectLeech(snapshot: LearnerSnapshot): Finding | null {
   )
 
   const evidence: Evidence[] = [
-    { label: 'kanji giving trouble', value: troubled.length },
-    { label: 'active kanji', value: active.length },
+    { label: EVIDENCE_LABELS.KANJI_GIVING_TROUBLE, value: troubled.length },
+    { label: EVIDENCE_LABELS.ACTIVE_KANJI, value: active.length },
     ...worst.slice(0, MAX_NAMED).map((c): Evidence => ({
-      label: 'lapses',
+      label: EVIDENCE_LABELS.LAPSES,
       value: c.lapses,
       kanjiId: c.kanjiId,
       character: c.character,
