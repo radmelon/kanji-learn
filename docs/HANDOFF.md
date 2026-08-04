@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-03 latest (**Slice 3 is built, reviewed, green, and open as PR #12. Nothing is merged or deployed. The copy floor is still not done.**)
+# Session Handoff — 2026-08-03 latest (**Slice 3 is MERGED and DEPLOYED. Content verification cannot happen until Monday 2026-08-10. The copy floor is still not done.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -11,14 +11,64 @@
 
 > ## ▶️ What the next session does
 >
-> **Review and land https://github.com/radmelon/kanji-learn/pull/12**, then run
-> the deploy in the order below — migration 0035 *before* the API. The branch is
-> `coaching-analyzer-slice3`, off `main` at `1727f2e`.
+> **The coaching copy floor.** It is now the only outstanding build work, its
+> design is fully settled below, and slice 3 did not fix it. Transcribe the
+> design; do not re-derive it.
 >
-> Then — still — **the coaching copy floor.** Slice 3 did not fix it and was
-> never going to. See "the ordering, restated honestly" below.
+> Two things are deployed but *unproven*, and neither blocks that work:
+> slice 3's content check (see the next section — it cannot fire before
+> **Monday 2026-08-10**) and the mobile EAS build.
 
-### 📦 What is on the branch
+### 🚀 Deploy status — 2026-08-03
+
+PR #12 merged as `a90abb4`. Deployed in the required order, migration first.
+
+| Step | Evidence |
+|---|---|
+| Migration 0035 → live | `BEGIN … COMMIT` clean. Verified after: `rls_enabled=t`, `rls_forced=t`, 2 policies, unique index present. |
+| ECR image | digest `2a56d61e…` → **`79bbbdae…`**, pushed `2026-08-03T17:19:55-07:00` |
+| App Runner | op `ea50e22c09d44bf6be6dd431cd3edfdf`, started `17:19:57` — **2 seconds after the push**, so the running image is this build and not a redeploy of the old one. SUCCEEDED `17:24:14`. Service RUNNING. |
+| Health | `GET /health` → 200 `{"ok":true,"status":"healthy"}` |
+
+### 🔴 Content verification is OPEN, and it cannot be done before 2026-08-10
+
+`docs/SOP.md` requires response content on top of a dated operation, and a
+status code does not count. **That check has not been done, and cannot be yet.**
+
+The canary is `data.voice` on `GET /v1/buddy/session`, which needs an
+authenticated learner whose session is **due** *and* who has findings. Traced
+against `evaluateAppointment` for the owner
+(`b8503589-1695-4659-b69d-b9e77d1cf655`) on live data:
+
+- `buddy_day = 1` (Monday), `America/Los_Angeles`, weekly.
+- Today **is** Monday 2026-08-03, so the anchor is today — but
+  `getMostRecentAgreed` filters `source = 'session'` and returns week_start
+  **2026-08-01**, only 2 days back. `anchorIsNewPeriod` needs ≥ 7.
+- So the route returns **`waiting`, not `due`**, with `nextDue = 2026-08-10`.
+
+Opening the app today will therefore show the waiting state and prove nothing
+about slice 3. **Check on Monday 2026-08-10**, or after any learner reaches a
+genuinely due session:
+
+```bash
+./scripts/with-live-db.sh psql -c "SELECT user_id, provider_name, left(text, 80), created_at FROM buddy_session_utterances ORDER BY created_at DESC LIMIT 5"
+```
+
+An empty table on 2026-08-10 after the owner opens a due session means the
+utterance path did not run — start at the API logs for `[CoachingVoice]`.
+
+⚠️ **A row with `provider_name` set proves the cache works; it does not prove
+the LLM ran.** The `source` field distinguishes them and is only visible in the
+HTTP response, not in the table — a template fallback is deliberately never
+cached, so *any* row means the LLM path succeeded. An empty table with a working
+session means the fallback ran every time.
+
+### 📱 Mobile still needs an EAS build
+
+The API change is additive, so today's shipped client keeps rendering two cards
+and is not broken. It will not show the single composed card until a build ships.
+
+### 📦 What slice 3 added
 
 Analysis mode, spec §§1–11:
 https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-03-coaching-slice3-design.md
@@ -41,20 +91,20 @@ card in the mobile session reducer.
 mobile pure 29 / 212 · mobile components 6 / 63 · `tsc --noEmit` clean for both
 apps.
 
-### 🚦 Two things gate a deploy, and one gates seeing it
+### 🚦 The deploy ordering — done here, but keep it for the next one
 
-1. **Migration 0035 must reach live BEFORE the API rolls out.**
-   `scripts/deploy-api.sh` does not apply migrations. Nothing enforces this.
-2. **Verify with response content, not a status code** — `docs/SOP.md`. The
-   canary is `data.voice` on a due session for a learner who has findings.
-3. **Mobile needs an EAS build** to render the composed card. The API change is
-   additive, so an un-rebuilt client keeps showing two cards and is not broken.
+**Migration 0035 had to reach live BEFORE the API rolled out**, and did.
+`scripts/deploy-api.sh` does not apply migrations and nothing enforces the
+ordering, so this remains a manual step on every schema-touching slice.
 
-⚠️ **If 0035 does not land first, the symptom is not what you would guess.** A
-failed cache read degrades to a *miss*, so the feature works **uncached,
-indefinitely** — Buddy says something different on every app open, and every
-open costs an LLM call. Look for paired `[CoachingVoice] cache read failed` /
-`cache write failed` logs and an empty `buddy_session_utterances`.
+⚠️ **Worth keeping because the failure mode is counter-intuitive.** If a
+required table is missing, this feature does *not* fall back forever — a failed
+cache read degrades to a *miss*, so it works **uncached, indefinitely**: Buddy
+says something different on every app open and every open costs an LLM call.
+The tell is paired `[CoachingVoice] cache read failed` / `cache write failed`
+logs alongside an empty `buddy_session_utterances`. An earlier draft of the
+plan's runbook described the opposite symptom and would have sent a verifier
+looking for the wrong thing; it was corrected in `f95750b`.
 
 ### 🧾 Things a future reader will otherwise get wrong
 
