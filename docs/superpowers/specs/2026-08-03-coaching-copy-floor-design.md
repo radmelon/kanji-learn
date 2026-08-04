@@ -220,16 +220,49 @@ available, do not make it.
 
 ### Orient
 
-> **`level_estimate`** — Your placement test on 29 July puts you at N4, and the
-> honest range runs from N5 to N3. That range is wide because a placement test
-> only asks about a dozen questions. It narrows when you take the placement test
-> again, rather than from day-to-day studying, because your level estimate is
-> only recalculated when you sit the test.
+> **`level_estimate`, spread interval** — Your placement test on 29 July puts
+> you at N4, and the honest range runs from N5 to N3. That range is wide because
+> a placement test only asks about a dozen questions. It narrows when you take
+> the placement test again, rather than from day-to-day studying, because your
+> level estimate is only recalculated when you sit the test.
+
+> **`level_estimate`, interval inside one band** — Your placement test on 29
+> July puts you at N5. The honest range around that estimate stays entirely
+> within N5, rather than reaching into a neighbouring level. Your level estimate
+> is only recalculated when you take the placement test again, rather than from
+> day-to-day studying.
 
 > **`mechanics_explainer`** — Your level comes from a statistical technique
-> called IRT. The test gets harder when you answer well and easier when you do
-> not, which is how it can say something useful about your level in about a
-> dozen questions.
+> called Item Response Theory, or IRT. The test gets harder when you answer well
+> and easier when you do not, which is how it can say something useful about
+> your level in about a dozen questions.
+
+**Why `level_estimate` has two branches, and why the second says nothing about
+confidence.** Found during implementation, and it is the sharper half of this
+finding:
+
+- With one branch, a learner whose credible interval fits inside a single JLPT
+  band reads *"the honest range runs from N5 to N5. That range is wide."* The
+  sentence contradicts itself, and it is reachable at the codebase's own
+  definition of a tight estimate — `SE_TIGHT = 0.3` gives an interval of 0.77
+  logits, narrower than any band.
+- The obvious repair — "narrow enough to sit entirely within N5, so the test is
+  reasonably confident" — is **also wrong**, because `low === high` signals band
+  *collapse*, not precision. The outer bands are unbounded, so at θ = −3.0,
+  se = 0.55 the interval spans 1.41 logits — wider than the whole N4 band — and
+  still collapses to N5. Worse, above se ≈ 0.84 the finding's confidence drops
+  under `HEDGE_BELOW`, so `templateCopy` prepends *"Early signal, so take it
+  lightly:"* to a sentence claiming the test is confident. The paragraph argues
+  with itself.
+- **So the collapsed branch states only what is true by construction — that the
+  range stays inside one level — and leaves every confidence claim to the
+  hedge**, which is the one mechanism that actually reads the standard error.
+- It interpolates the **lower bound**, not the stored `level`. Those come from
+  different moments: `level` is `placementSessions.inferredLevel` from test
+  time, while the bounds are recomputed at coaching time against today's
+  corpus. A recalibration between them makes the containment claim false;
+  interpolating the bound makes it true by construction. `coaching.service.ts`
+  already carries a scar comment about exactly this class of mismatch (B146).
 
 ### Motivate
 
