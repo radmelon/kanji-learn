@@ -187,48 +187,99 @@ from `apps/mobile/app/kanji/[id].tsx` and `study.tsx`, so "look it up and build
 a hook" is a real instruction, and Profile → Placement Test
 (`apps/mobile/app/(tabs)/profile.tsx:729`) is a real retake route.
 
+**Write in full sentences, and never leave a comparative or a pronoun without
+its referent.** "It will tighten as you do more" was in an earlier draft of this
+section and is exactly the defect §0 is about: more *what* — more study, more
+quizzes, another placement test? A sentence a learner has to interpret is a
+sentence that failed. If a claim cannot be made specific from the evidence
+available, do not make it.
+
 ### Direct
 
-> **`leech`** — Three kanji keep slipping back: 敗 has lapsed 4 times, 語 3, 使
-> twice. **敗 is the one to work on first** — look it up and build a hook for it,
-> which is what usually stops this.
+> **`leech`** — Three kanji keep slipping back no matter how often they come
+> round: 敗 has lapsed 4 times, 語 3 times, and 使 twice. The one to work on
+> first is 敗. Look it up and build a hook for it — a small story or image that
+> ties the character to something you already know — because that is what
+> usually stops a kanji from slipping.
 
-> **`hook_coverage`** — **敗** keeps catching you out. Building a hook for a
-> kanji tends to make it stick — want to make one together?
+> **`hook_coverage`** — 敗 keeps catching you out. When something new will not
+> stick, it usually helps to connect it to something you already know well: that
+> connection is what we call a hook. It can be a small story, an image, or a
+> resemblance to a word or a thing you are already familiar with, and it works
+> because memory holds on to the familiar far more readily than the unfamiliar.
+> Would you like to build one for 敗 together?
 
 > **`commitment_gap`** — You promised 60 minutes between 20 and 26 July and
-> studied 20. Worth naming rather than ignoring — **bring it to your next
-> session** and we will set something you will actually hit.
+> studied 20. It is worth discussing whether we should try shifting the time of
+> day when you study, or try two short study sessions in a day. Or maybe it was
+> just a busy week.
 
 > **`reading_lag`** — Your readings are trailing your meanings, 62% against 88%
-> across 24 answers — wider than the usual gap. **Next time you study, say the
-> reading aloud before you flip.**
+> across 24 answers, which is a wider gap than most people have. Next time you
+> study, try saying the reading aloud before you reveal the answer.
 
 ### Orient
 
-> **`level_estimate`** — Your placement on 29 July puts you at N4, and the
-> honest range is N5 to N3. It will tighten as you do more.
+> **`level_estimate`** — Your placement test on 29 July puts you at N4, and the
+> honest range runs from N5 to N3. That range is wide because a placement test
+> only asks about a dozen questions. It narrows when you take the placement test
+> again, rather than from day-to-day studying, because your level estimate is
+> only recalculated when you sit the test.
 
 > **`mechanics_explainer`** — Your level comes from a statistical technique
-> called IRT — the test gets harder when you do well, which is how it can say
-> something useful in about a dozen questions.
+> called IRT. The test gets harder when you answer well and easier when you do
+> not, which is how it can say something useful about your level in about a
+> dozen questions.
 
 ### Motivate
 
-> **`fluency_gain`** — You are answering about 22% faster than a month ago
-> across 41 kanji, and your accuracy has not slipped. That is the shape of
-> something becoming automatic.
+> **`fluency_gain`** — You are answering about 22% faster than you were a month
+> ago, across 41 kanji, and your accuracy has not slipped while doing it. Speed
+> usually improves before anything else does, so this is a sign that recalling
+> these characters is becoming automatic rather than effortful.
 
-> **`theta_delta`** — Your ability estimate has moved from 0.31 to 0.68 between
-> 12 July and 29 July. That is real movement, not noise.
+> **`theta_delta`** — Your ability estimate has risen from 0.31 to 0.68 between
+> your placement tests on 12 July and 29 July. That rise is larger than the
+> uncertainty in both measurements combined, so it is real progress rather than
+> the test landing differently on the day.
 
-> **`hardest_cleared`** — You cleared 願 — the hardest item the test gave you,
-> at 19 strokes and three readings. The test weighs those alongside JLPT level,
-> which is why it outranked some N2 kanji.
+> **`hardest_cleared`** — You cleared 願, which was the hardest item the test
+> put in front of you: it has 19 strokes and three readings. The test weighs
+> stroke count and number of readings alongside JLPT level, which is why 願
+> counted as harder than some N2 kanji you also saw.
 
-> **`retest_due`** — Your placement was 34 days ago and the estimate has drifted
-> since. Retaking it from your Profile would sharpen it — the test is worth more
-> the second time.
+> **`retest_due`** — You took your placement test 34 days ago, and the estimate
+> of your level has drifted since then because it has had no new information.
+> You can take the test again from your Profile, and doing so would narrow the
+> range around your level rather than simply repeating what you already know.
+
+### 6.1 What a "hook" is, and where the explanation lives
+
+Two findings tell a learner to build a hook, and the word means nothing on its
+own. A hook is **a deliberate connection between an unfamiliar kanji and
+something the learner already knows well** — a story, an image, or a
+resemblance. The explanation matters more than the instruction: a learner told
+to "build a hook" without knowing what one is cannot act, and the whole point of
+this spec is copy that can be acted on.
+
+`hook_coverage` carries the full explanation, because making the offer is its
+entire purpose. `leech` carries a one-clause version, because its subject is the
+slipping kanji rather than the technique.
+
+⚠️ **Both can appear in the same note.** They are both Direct findings and
+`select()` takes the top three, so a learner can be told what a hook is twice in
+one entry. Formatters are per-finding and pure — a formatter cannot see what
+else was selected.
+
+**Decision: accept the redundancy rather than build a cross-finding mechanism.**
+The short form in `leech` reads as emphasis rather than repetition, and the
+alternative — passing selection context into `analysisBody` so formatters can
+suppress each other — couples the copy layer to the selection layer to save one
+clause. Revisit only if a real note reads badly.
+
+The plan must include a test that renders `leech` and `hook_coverage` together
+and asserts the result is not absurd, so this decision is at least observed
+rather than assumed.
 
 ---
 
@@ -333,6 +384,49 @@ API, sub-second.
   rather than building the destination.
 - **Anything in the LLM path.** Slice 3 owns it. This spec improves what it is
   handed and what it falls back to, and touches none of its code.
+- **The Journal's presentation layer** — see §11.1, which is a real gap rather
+  than a deferral.
+
+### 11.1 The Journal's presentation layer is out of scope here, and nothing else owns it
+
+Asked directly, and the answer is worth recording because it is not the answer
+one would assume.
+
+**Yes, presentation is out of scope for this slice.** This slice changes only
+the strings `analysisBody` produces; it does not touch how the Journal lays them
+out, orders them, or distinguishes a current entry from a superseded one.
+
+**And no, there is no slice dedicated to Journal UI/UX.** Verified 2026-08-03
+against both roadmaps:
+
+- The parent coaching spec's §12 lists six slices — analyzer, notebook surface,
+  conversational surface, companion mode, IRT explainer + Profile, goal beat.
+  **None is a presentation slice.**
+- The Journal itself was built by
+  https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-07-31-buddy-home-notebook-design.md
+  Its §15 out-of-scope list defers voice conversation, the Japanese-localised
+  tutor report, Phase 4 social, and Progress refinements — **no Journal
+  presentation work is listed as deferred**, because that spec considered the
+  surface finished when it shipped.
+
+So the presentation layer is not deferred; it is simply unowned. The nearest
+queued item is that spec's §14.1 — *how many observations stay live before
+ageing into the archive* — which it explicitly calls "a number to tune against
+real sessions, not to guess once", and which is a presentation decision wearing
+a data-retention costume.
+
+**This spec does not create that slice**, for a reason worth stating: the
+owner's complaint in §0 was entirely about *content* — which test, which kanji,
+what to do — and not one part of it was about layout, spacing or hierarchy.
+Fixing the copy is the correct response to the evidence in hand. Inventing a
+presentation slice now would be guessing at a second problem before the first is
+fixed.
+
+**But it should be decided rather than forgotten.** The honest test is to read
+the Journal again once this slice ships. If the entries are now useful but hard
+to read — too dense, unclear which is current, no sense of trajectory across the
+superseded chain — that is a real slice and should be specced from what the
+owner actually finds wrong with it, not from a guess made today.
 
 ---
 
@@ -358,3 +452,42 @@ rather than silently:
    `LearnerSnapshot`'s contract and `CoachingService`'s assembly — which means
    the API package's tests are in scope for those two, and the "shared lane
    only, sub-second" framing in §1 holds for the copy work but not for them.
+
+---
+
+## 13. Owner review — 2026-08-03
+
+Feedback on §6, incorporated above rather than appended. Recorded because the
+reasoning outlives the edit.
+
+1. **"We should provide more explanation on what a hook is."** A learner told to
+   build one, who does not know what one is, cannot act — which would have
+   reproduced §0's defect in a new place. §6.1 now carries the definition, and
+   the explanation is framed the way the owner put it: *connecting something
+   new, like an unfamiliar kanji, with something you already know and are
+   familiar with.*
+
+2. **`commitment_gap`'s action was wrong in kind, not just vague.** The draft
+   said *"bring it to your next session and we will set something you will
+   actually hit"* — which quietly assumes the learner over-promised and should
+   promise less. The owner's replacement offers **mechanism** instead
+   (shift the time of day, or split into two short sessions) and, importantly,
+   ends by allowing that nothing is wrong at all: *"Or maybe it was just a busy
+   week."* A coach that treats one missed week as a character flaw is worse than
+   silent.
+
+3. **"It will tighten as you do more." More what?** The draft failed its own
+   §0 test. The corrected sentence names the mechanism, and the mechanism turned
+   out to be non-obvious enough to be worth verifying: `abilityTheta` and
+   `abilitySe` are written **only** by `placement.service.ts:319`, on completing
+   a placement test. Ordinary studying and quizzes never move them. So "as you
+   do more" was not merely vague — read as "more studying", it would have been
+   **false**.
+
+**The general rule this establishes, applied to all ten kinds:** write full
+sentences, and never leave a comparative, a pronoun, or a piece of jargon
+without its referent. Three further sentences were rewritten under it —
+`reading_lag` said "before you flip" (card jargon), `fluency_gain` said "the
+shape of something becoming automatic" (evocative, unfalsifiable), and
+`retest_due` said "the test is worth more the second time" (true, but it does
+not say why or narrow what).
