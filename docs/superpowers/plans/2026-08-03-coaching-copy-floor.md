@@ -435,7 +435,7 @@ git add packages/shared/src/coaching/types.ts apps/api/src/services/buddy/coachi
 **Interfaces:**
 - Consumes: `EVIDENCE_LABELS` (Task 1); `strokeCount`, `readingCount`,
   `windowDays` (Task 2).
-- Produces: four new labels — `PERIOD_START: 'period start'`,
+- Produces: five new labels — `PERIOD_START: 'period start'`,
   `PERIOD_END: 'period end'`, `STROKE_COUNT: 'stroke count'`,
   `READING_COUNT: 'reading count'`, `WINDOW_DAYS: 'window days'`. Add each to
   `EVIDENCE_LABELS` **and** to `labels.test.ts`'s pinned object.
