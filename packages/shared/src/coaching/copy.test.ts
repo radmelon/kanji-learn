@@ -98,11 +98,11 @@ const mechanicsFinding: Finding = {
 // items (KANJI_GIVING_TROUBLE, ACTIVE_KANJI) followed by up to MAX_NAMED (3)
 // per-kanji LAPSES items, worst-first — `worst` is sorted by
 // (lapses + regressions) descending, ties broken by kanjiId, and the
-// formatter trusts that order rather than re-sorting. Slicing this array's
-// first three entries (as the "one named kanji" test below does) therefore
-// yields exactly one LAPSES item, matching what the detector itself emits
-// for a learner with only one troubled kanji. Characters and counts match
-// the spec's own §6 worked example (敗×4, 語×3, 使×2).
+// formatter trusts that order rather than re-sorting. Characters and counts
+// match the spec's own §6 worked example (敗×4, 語×3, 使×2).
+// KANJI_GIVING_TROUBLE (3) equals the number named (3) here — see
+// leechFinding23 below for the case where the display cap actually hides
+// something.
 const leechFinding: Finding = {
   kind: 'leech',
   magnitude: 0.5,
@@ -115,6 +115,99 @@ const leechFinding: Finding = {
     { label: EVIDENCE_LABELS.LAPSES, value: 2, kanjiId: 3, character: '使' },
   ],
   since: null,
+}
+
+// Finding 1 (CRITICAL), verified against live data: a learner with 23
+// troubled kanji but only MAX_NAMED (3) ever named in evidence.
+// KANJI_GIVING_TROUBLE (23) must win over named.length (3) — the old copy
+// read named.length and rendered "Three kanji", understating an account with
+// 23 by a factor of eight.
+const leechFinding23: Finding = {
+  ...leechFinding,
+  evidence: [
+    { label: EVIDENCE_LABELS.KANJI_GIVING_TROUBLE, value: 23 },
+    ...leechFinding.evidence.slice(1),
+  ],
+}
+
+// A learner with exactly TWO troubled kanji: KANJI_GIVING_TROUBLE equals the
+// number named, exercising the "equals, and more than one" branch distinctly
+// from the three-named case above.
+const leechFindingTwoNamed: Finding = {
+  kind: 'leech',
+  magnitude: 0.4,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.KANJI_GIVING_TROUBLE, value: 2 },
+    { label: EVIDENCE_LABELS.ACTIVE_KANJI, value: 120 },
+    { label: EVIDENCE_LABELS.LAPSES, value: 4, kanjiId: 1, character: '敗' },
+    { label: EVIDENCE_LABELS.LAPSES, value: 3, kanjiId: 2, character: '語' },
+  ],
+  since: null,
+}
+
+// A learner with exactly ONE troubled kanji: KANJI_GIVING_TROUBLE is 1,
+// matching named.length, exactly as detectLeech would emit it for a single
+// troubled card. (This replaces an earlier version of this fixture built by
+// slicing leechFinding down to one LAPSES item while leaving
+// KANJI_GIVING_TROUBLE at 3 — internally inconsistent, and invisible only
+// because the old formatter never read the count.)
+const leechFindingOneNamed: Finding = {
+  kind: 'leech',
+  magnitude: 0.3,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.KANJI_GIVING_TROUBLE, value: 1 },
+    { label: EVIDENCE_LABELS.ACTIVE_KANJI, value: 120 },
+    { label: EVIDENCE_LABELS.LAPSES, value: 4, kanjiId: 1, character: '敗' },
+  ],
+  since: null,
+}
+
+// Finding 2's own case: MIN_TROUBLE_SCORE = 1 in the leech detector, so a
+// SINGLE lapse already qualifies a kanji as trouble — 19 of 23 troubled cards
+// on the largest live account have exactly one lapse. Exists to prove the
+// sentence reads cleanly at count = 1 now that it no longer claims
+// repetition ("no matter how often it comes round") beside "has lapsed
+// once".
+const leechFindingSingleLapse: Finding = {
+  kind: 'leech',
+  magnitude: 0.1,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.KANJI_GIVING_TROUBLE, value: 1 },
+    { label: EVIDENCE_LABELS.ACTIVE_KANJI, value: 120 },
+    { label: EVIDENCE_LABELS.LAPSES, value: 1, kanjiId: 5, character: '習' },
+  ],
+  since: null,
+}
+
+// Finding 5: a card that qualifies as troubled PURELY on regressions has
+// lapses: 0 (troubleScore = lapses + regressions). 規 is listed first
+// (mirroring a card whose regressions push its troubleScore above 語's and
+// 使's) but must be filtered out of the named list rather than rendering
+// "has lapsed 0 times" — the worst NAMED kanji becomes 語 once 規 is
+// excluded.
+const leechFindingZeroLapseCard: Finding = {
+  kind: 'leech',
+  magnitude: 0.4,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.KANJI_GIVING_TROUBLE, value: 3 },
+    { label: EVIDENCE_LABELS.ACTIVE_KANJI, value: 120 },
+    { label: EVIDENCE_LABELS.LAPSES, value: 0, kanjiId: 9, character: '規' },
+    { label: EVIDENCE_LABELS.LAPSES, value: 3, kanjiId: 2, character: '語' },
+    { label: EVIDENCE_LABELS.LAPSES, value: 2, kanjiId: 3, character: '使' },
+  ],
+  since: null,
+}
+
+// The degradation path: KANJI_GIVING_TROUBLE absent entirely (an older
+// caller, or a stripped fixture). Must fall back to named.length rather than
+// throwing or rendering "NaN".
+const leechFindingNoCountEvidence: Finding = {
+  ...leechFinding,
+  evidence: leechFinding.evidence.filter((e) => e.label !== EVIDENCE_LABELS.KANJI_GIVING_TROUBLE),
 }
 
 // Mirrors detectHookCoverage: HOOKS_BUILT, then SUGGESTED_KANJI (the pick
@@ -185,6 +278,48 @@ const readingLagQuizFinding: Finding = {
     { label: EVIDENCE_LABELS.QUIZ_READING_ACCURACY, value: 0.71 },
     { label: EVIDENCE_LABELS.QUIZ_MEANING_ACCURACY, value: 0.9 },
     { label: EVIDENCE_LABELS.QUIZ_READING_ANSWERS, value: 40 },
+  ],
+  since: null,
+}
+
+// Finding 3's worked case, reproduced exactly: placement's OWN numbers show
+// reading AHEAD of meaning (85% vs 77% — no real placement lag) while quiz
+// shows a genuine lag (55% vs 90%) over a far larger n (200 vs 13). Both
+// shapes present at once, as a real finding can carry — quiz must win
+// because it has more answers behind it.
+const readingLagMixedQuizWinsFinding: Finding = {
+  kind: 'reading_lag',
+  magnitude: 0.5,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.MEANING_ACCURACY, value: 0.77 },
+    { label: EVIDENCE_LABELS.READING_ACCURACY, value: 0.85 },
+    { label: EVIDENCE_LABELS.EXPECTED_READING_PENALTY, value: -0.033 },
+    { label: EVIDENCE_LABELS.ITEMS_WITH_READING_ASKED, value: 13 },
+    { label: EVIDENCE_LABELS.QUIZ_READING_ACCURACY, value: 0.55 },
+    { label: EVIDENCE_LABELS.QUIZ_MEANING_ACCURACY, value: 0.9 },
+    { label: EVIDENCE_LABELS.QUIZ_READING_ANSWERS, value: 200 },
+  ],
+  since: null,
+}
+
+// The same shape, but placement now carries the LARGER count (24 vs 10), so
+// it is the chosen source — and placement's own numbers still show reading
+// ahead of meaning. This is the reviewer's "flatly false" case: the weighted
+// blend clears the floor (quiz strength drags it there) but the chosen
+// source's own numbers say the opposite of what the sentence would claim.
+const readingLagChosenSourceContradictsFinding: Finding = {
+  kind: 'reading_lag',
+  magnitude: 0.5,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.MEANING_ACCURACY, value: 0.77 },
+    { label: EVIDENCE_LABELS.READING_ACCURACY, value: 0.85 },
+    { label: EVIDENCE_LABELS.EXPECTED_READING_PENALTY, value: -0.033 },
+    { label: EVIDENCE_LABELS.ITEMS_WITH_READING_ASKED, value: 24 },
+    { label: EVIDENCE_LABELS.QUIZ_READING_ACCURACY, value: 0.55 },
+    { label: EVIDENCE_LABELS.QUIZ_MEANING_ACCURACY, value: 0.9 },
+    { label: EVIDENCE_LABELS.QUIZ_READING_ANSWERS, value: 10 },
   ],
   since: null,
 }
@@ -320,31 +455,95 @@ describe('templateCopy — leech', () => {
     expect(text).not.toContain('語 has lapsed')
   })
 
-  // MUTATION CAUGHT: naming the kanji but not what to do about them. The
-  // finding is Direct — its purpose is changing behaviour, and a list without
-  // an action is an observation.
+  // MUTATION CAUGHT: naming the kanji but not which to start with, or not
+  // saying what to do about them. The finding is Direct — its purpose is
+  // changing behaviour, and a list without a priority and an action is an
+  // observation.
   it('names one kanji to start with, and explains what a hook is', () => {
     const text = templateCopy(leechFinding, NOW)
+    expect(text).toContain('The one to work on first is 敗')
     expect(text).toContain('hook')
     expect(text.toLowerCase()).toContain('already know')
   })
 
-  // MUTATION CAUGHT: assuming exactly MAX_NAMED kanji. The detector emits
-  // BETWEEN ONE AND THREE, and a formatter that indexes worst[1] blindly
-  // renders "undefined has lapsed undefined times" for a single-leech learner.
+  // Finding 1 (CRITICAL): the opener must state the learner's TRUE trouble
+  // count, not how many the display cap (MAX_NAMED = 3) let us name.
   //
-  // MUTATION CAUGHT: reusing the plural branch for a single kanji, which
-  // produces a grammatical error ('they come round' for one kanji) and tells
-  // the learner to prioritise among one thing ('The one to work on first is
-  // 敗' when 敗 is the only kanji named).
+  // MUTATION CAUGHT: deriving the count from named.length (the display cap)
+  // instead of reading KANJI_GIVING_TROUBLE. Verified against live data: one
+  // account has 23 troubled kanji and the old copy rendered "Three kanji
+  // keep slipping back", understating by a factor of eight; another with 8
+  // troubled also rendered "Three". False for every real learner on live
+  // whose trouble count exceeds 3.
+  it('reads the true trouble count from evidence, not the display cap', () => {
+    const text = templateCopy(leechFinding23, NOW)
+    expect(text).toContain('23')
+    expect(text).not.toContain('Three kanji')
+  })
+
+  // Finding 2 (Important): dropping the repetition claim entirely means it
+  // must never reappear in any evidence-bearing render, across every
+  // named-count shape (three, two, one, and a single lapse).
+  //
+  // MUTATION CAUGHT: reintroducing 'no matter how often it/they come round'.
+  // MIN_TROUBLE_SCORE = 1 in the leech detector, so a single lapse already
+  // qualifies a kanji as trouble; 19 of 23 troubled cards on the largest live
+  // account have exactly one lapse, which the old copy's repetition claim
+  // directly contradicted.
+  it('never claims repetition the detector does not require', () => {
+    const renders = [
+      templateCopy(leechFinding, NOW),
+      templateCopy(leechFindingTwoNamed, NOW),
+      templateCopy(leechFindingOneNamed, NOW),
+      templateCopy(leechFindingSingleLapse, NOW),
+    ]
+    for (const text of renders) {
+      expect(text).not.toContain('no matter how often')
+    }
+  })
+
+  // MUTATION CAUGHT: assuming exactly MAX_NAMED kanji when building the list
+  // — the detector emits BETWEEN ONE AND THREE, and indexing named[1] blindly
+  // renders "undefined has lapsed undefined times" for a single-leech
+  // learner.
+  //
+  // MUTATION CAUGHT: reusing the multi-kanji branch for a single kanji, which
+  // tells the learner to prioritise among one thing ('The one to work on
+  // first is 敗' when 敗 is the only kanji named).
   it('reads correctly with only one named kanji', () => {
-    const single = { ...leechFinding, evidence: leechFinding.evidence.slice(0, 3) }
-    const text = templateCopy(single, NOW)
+    const text = templateCopy(leechFindingOneNamed, NOW)
     expect(text).not.toContain('undefined')
+    expect(text).toContain('One kanji is giving you trouble')
     expect(text).toContain('敗')
-    expect(text).toContain('it comes round')
-    expect(text).not.toContain('they come round')
     expect(text).not.toContain('The one to work on first')
+  })
+
+  // Finding 2's edge case: a single lapse is enough to qualify
+  // (MIN_TROUBLE_SCORE = 1), and the sentence must read cleanly at that count
+  // now that it no longer asserts repetition alongside it.
+  //
+  // MUTATION CAUGHT: dropping the `n === 1` branch from lapseCount, which
+  // would render 'has lapsed 1 times' — the exact evidence-adjacent detail
+  // the old repetition claim used to paper over.
+  it('reads correctly with exactly one lapse', () => {
+    const text = templateCopy(leechFindingSingleLapse, NOW)
+    expect(text).toContain('has lapsed once')
+    expect(text).not.toContain('no matter how often')
+  })
+
+  // Finding 5: a card qualifying purely on regressions has lapses: 0
+  // (troubleScore = lapses + regressions) and must not be named with "has
+  // lapsed 0 times" — nor should it silently become `worst` just because it
+  // sorts first in the evidence array.
+  //
+  // MUTATION CAUGHT: dropping the `e.value > 0` filter clause (reverting to
+  // `typeof e.value === 'number'` alone), which both renders "規 has lapsed 0
+  // times" and wrongly picks 規 as `worst` instead of 語.
+  it('excludes a card whose lapses are zero from the named list', () => {
+    const text = templateCopy(leechFindingZeroLapseCard, NOW)
+    expect(text).not.toContain('規')
+    expect(text).not.toContain('lapsed 0')
+    expect(text).toContain('The one to work on first is 語')
   })
 
   // MUTATION CAUGHT: an off-by-one at the two-item boundary in the list join
@@ -353,8 +552,8 @@ describe('templateCopy — leech', () => {
   // that always applies the Oxford comma renders 'times, and' for exactly
   // two items, which neither the one- nor three-kanji tests can see.
   it('joins exactly two kanji with "and" and no comma', () => {
-    const twoNamed = { ...leechFinding, evidence: leechFinding.evidence.slice(0, 4) }
-    const text = templateCopy(twoNamed, NOW)
+    const text = templateCopy(leechFindingTwoNamed, NOW)
+    expect(text).toContain('Two kanji are giving you trouble')
     expect(text).toContain('敗 has lapsed 4 times and 語 3 times')
     expect(text).not.toContain('times, and')
     expect(text).not.toContain('and and')
@@ -373,6 +572,21 @@ describe('templateCopy — leech', () => {
     expect(text).not.toContain('2 times')
   })
 
+  // The degradation path: an older caller (or a stripped fixture) with no
+  // KANJI_GIVING_TROUBLE evidence at all must not crash or render "NaN" — it
+  // falls back to "as many as we can name".
+  //
+  // MUTATION CAUGHT: `Number(undefined)` flowing through unguarded to
+  // `count`, rendering "NaN kanji are giving you trouble" instead of
+  // degrading to named.length.
+  it('falls back to named.length as the count when KANJI_GIVING_TROUBLE is absent', () => {
+    const text = templateCopy(leechFindingNoCountEvidence, NOW)
+    expect(text).toContain('Three kanji are giving you trouble')
+    expect(text).not.toContain('NaN')
+  })
+
+  // MUTATION CAUGHT: removing the `named.length === 0` guard, which crashes
+  // destructuring `worst` off an empty array instead of degrading to BASE.
   it('falls back with evidence stripped', () => {
     expect(templateCopy({ ...leechFinding, evidence: [] }, NOW)).not.toContain('undefined')
   })
@@ -403,11 +617,20 @@ describe('templateCopy — hook_coverage', () => {
   // MUTATION CAUGHT: telling a learner to build a hook without saying what one
   // is. Instruction without explanation cannot be acted on, which reproduces
   // the original defect in a new place.
+  //
+  // MUTATION CAUGHT: swapping the explanation and the offer so the offer
+  // comes first — the title makes an ORDER claim ("before"), so this pins the
+  // order, not just the presence of both pieces.
   it('explains what a hook is before offering to build one', () => {
     const text = templateCopy(hookCoverageFinding, NOW)
     expect(text).toContain('敗')
     expect(text.toLowerCase()).toContain('already know')
     expect(text).toMatch(/hook/i)
+    const explanationIndex = text.indexOf('that connection is what we call a hook')
+    const offerIndex = text.indexOf('Would you like to build one')
+    expect(explanationIndex).toBeGreaterThan(-1)
+    expect(offerIndex).toBeGreaterThan(-1)
+    expect(explanationIndex).toBeLessThan(offerIndex)
   })
 })
 
@@ -420,15 +643,63 @@ describe('templateCopy — reading_lag', () => {
     const text = templateCopy(readingLagPlacementFinding, NOW)
     expect(text).toContain('62%')
     expect(text).toContain('88%')
-    expect(text).toContain('24')
+    expect(text).toContain('across 24 answers')
   })
 
+  // Finding 4: QUIZ_READING_ANSWERS counts reading rows only — the meaning
+  // percentage comes from a separate, larger set of rows — so "across 40
+  // answers" would imply both numbers came from the same 40 asked items,
+  // which is false for this shape (true only for placement, where both
+  // accuracies are measured over the same asked set).
+  //
+  // MUTATION CAUGHT: rendering "across 40 answers" for the quiz shape instead
+  // of "across 40 reading answers".
   it('builds the sentence from quiz-shaped evidence', () => {
     const text = templateCopy(readingLagQuizFinding, NOW)
     expect(text).toContain('71%')
     expect(text).toContain('90%')
+    expect(text).toContain('across 40 reading answers')
   })
 
+  // Finding 3, part 1: detectReadingLag blends both sources weighted by
+  // observation count, so the source that actually drives a real finding is
+  // whichever has more answers behind it — not always placement.
+  //
+  // MUTATION CAUGHT: always preferring placement (the old `??` chain).
+  // Reproduces the reviewer's worked case: a 13-item placement whose OWN
+  // numbers show reading AHEAD of meaning (85%/77%) alongside 200 quiz
+  // answers showing a genuine lag (55%/90%) — the old code rendered the
+  // placement's 85%/77%, backwards from what the finding is actually about.
+  it('prefers the source with the larger answer count when both shapes fire', () => {
+    const text = templateCopy(readingLagMixedQuizWinsFinding, NOW)
+    expect(text).toContain('55%')
+    expect(text).toContain('90%')
+    expect(text).toContain('200')
+    expect(text).not.toContain('85%')
+    expect(text).not.toContain('77%')
+  })
+
+  // Finding 3, part 2: POPULATION_PLACEMENT_READING_GAP is negative, so a
+  // placement excess can be negative while the weighted blend still clears
+  // the floor on quiz strength. A sentence claiming readings trail must not
+  // render when the CHOSEN source's own numbers disagree — it must fall back
+  // to exactly the same BASE text an evidence-stripped finding would get.
+  //
+  // MUTATION CAUGHT: removing the `chosen.reading >= chosen.meaning` guard,
+  // which would render "your readings are trailing your meanings, 85%
+  // against 77%" — readings are AHEAD at 85%, flatly false — instead of
+  // falling back to BASE.
+  it('falls back to BASE when the chosen source contradicts the claim', () => {
+    const fallback = templateCopy({ ...readingLagChosenSourceContradictsFinding, evidence: [] }, NOW)
+    const text = templateCopy(readingLagChosenSourceContradictsFinding, NOW)
+    expect(text).toBe(fallback)
+    expect(text).not.toContain('85%')
+    expect(text).not.toContain('77%')
+  })
+
+  // MUTATION CAUGHT: removing the `!placement && !quiz` guard, which leaves
+  // `chosen` undefined and throws reading `chosen.reading` instead of
+  // degrading to BASE.
   it('falls back with evidence stripped', () => {
     expect(templateCopy({ ...readingLagQuizFinding, evidence: [] }, NOW))
       .not.toContain('undefined')

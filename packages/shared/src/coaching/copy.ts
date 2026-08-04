@@ -128,6 +128,19 @@ function capitalise(s: string): string {
 type Formatter = (f: Finding) => string | null
 
 /**
+ * One `reading_lag` evidence shape, normalised so both sources compare alike
+ * once one is chosen. `unit` differs between them on purpose: placement's
+ * count covers the SAME asked set both accuracies are measured over, while
+ * the quiz count is reading-answers only — see the formatter's own comment.
+ */
+interface ReadingLagSource {
+  reading: string | number
+  meaning: string | number
+  count: number
+  unit: 'answers' | 'reading answers'
+}
+
+/**
  * Per-kind copy. A formatter returns `null` when its evidence is absent, and
  * `templateCopy` substitutes BASE[kind] — never a half-built sentence.
  *
@@ -180,22 +193,54 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     const quizMeaning = ev(f, EVIDENCE_LABELS.QUIZ_MEANING_ACCURACY)
     const quizCount = ev(f, EVIDENCE_LABELS.QUIZ_READING_ANSWERS)
 
-    const reading = placementReading ?? quizReading
-    const meaning = placementMeaning ?? quizMeaning
-    const count = placementCount ?? quizCount
-    if (reading === undefined || meaning === undefined || count === undefined) return null
+    // Placement's count covers the SAME asked set both accuracies come from,
+    // so "across N answers" is true as written. The quiz count is reading
+    // answers only — the meaning percentage comes from a different, larger
+    // set of rows — so it earns the more specific "reading answers" unit.
+    const placement: ReadingLagSource | null =
+      placementReading !== undefined && placementMeaning !== undefined && placementCount !== undefined
+        ? { reading: placementReading, meaning: placementMeaning, count: Number(placementCount), unit: 'answers' }
+        : null
+    const quiz: ReadingLagSource | null =
+      quizReading !== undefined && quizMeaning !== undefined && quizCount !== undefined
+        ? { reading: quizReading, meaning: quizMeaning, count: Number(quizCount), unit: 'reading answers' }
+        : null
+    if (!placement && !quiz) return null
 
-    return `Your readings are trailing your meanings, ${pct(reading)} against ${pct(meaning)} across ${count} answers, which is a wider gap than most people have. Next time you study, try saying the reading aloud before you reveal the answer.`
+    // detectReadingLag blends both sources weighted by observation count, so
+    // the source actually driving the finding is whichever has more answers
+    // behind it — always preferring placement (the old `??` chain) let a
+    // ~13-item placement outrank 200 quiz answers that were doing the real
+    // work in the detector's own weighted magnitude.
+    const chosen = placement && quiz
+      ? (placement.count >= quiz.count ? placement : quiz)
+      : (placement ?? quiz)!
+
+    // POPULATION_PLACEMENT_READING_GAP is negative, so the placement excess
+    // can be negative while the blend still clears the floor on quiz
+    // strength (or the reverse) — the CHOSEN source's own numbers can
+    // disagree with the sentence the blend would otherwise justify. A
+    // sentence claiming readings trail must not render when the numbers it
+    // is about to cite say the opposite; fall back to BASE instead.
+    if (Number(chosen.reading) >= Number(chosen.meaning)) return null
+
+    return `Your readings are trailing your meanings, ${pct(chosen.reading)} against ${pct(chosen.meaning)} across ${chosen.count} ${chosen.unit}, which is a wider gap than most people have. Next time you study, try saying the reading aloud before you reveal the answer.`
   },
 
   leech: (f) => {
+    // `value > 0` (Finding 5): troubleScore = lapses + regressions, so a card
+    // that qualifies purely on regressions has `lapses: 0` and would
+    // otherwise render "has lapsed 0 times".
     const named = evAll(f, EVIDENCE_LABELS.LAPSES)
-      .filter((e) => e.character && typeof e.value === 'number')
+      .filter((e) => e.character && typeof e.value === 'number' && e.value > 0)
     if (named.length === 0) return null
     const [worst, ...rest] = named
 
+    // Exactly one named kanji gets its own sentence regardless of the true
+    // count below — "The one to work on first" is nonsensical when there is
+    // only one, and building `list` below assumes at least two items.
     if (rest.length === 0) {
-      return `One kanji keeps slipping back no matter how often it comes round: ${worst.character}, which has lapsed ${lapseCount(Number(worst.value))}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
+      return `One kanji is giving you trouble — ${worst.character}, which has lapsed ${lapseCount(Number(worst.value))}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
     }
 
     // First item carries the verb; later items elide it ('語 3 times', not
@@ -210,8 +255,22 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
       ? `${items[0]} and ${items[1]}`
       : `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
 
-    const opener = `${capitalise(spell(named.length))} kanji keep`
-    return `${opener} slipping back no matter how often they come round: ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
+    // The learner's TRUE trouble count, not how many we can name — MAX_NAMED
+    // caps the detector's evidence at 3, and reading `named.length` here
+    // renders "Three kanji" for an account with 23 troubled kanji,
+    // understating by however many the cap hides (Finding 1). Absent
+    // evidence degrades to "as many as we can name" rather than throwing.
+    const trueCount = ev(f, EVIDENCE_LABELS.KANJI_GIVING_TROUBLE)
+    const count = trueCount === undefined ? named.length : Number(trueCount)
+
+    // Finding 2: no "no matter how often" claim — MIN_TROUBLE_SCORE = 1 means
+    // a single lapse already qualifies, so a repetition claim can contradict
+    // the very count it sits beside. The counts speak for themselves instead.
+    if (count > named.length) {
+      return `${count} kanji are giving you trouble. The ${spell(named.length)} worst are ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
+    }
+
+    return `${capitalise(spell(count))} kanji are giving you trouble — ${list}. The one to work on first is ${worst.character}. Look it up and build a hook for it — a small story or image that ties the character to something you already know — because that is what usually stops a kanji from slipping.`
   },
 
   commitment_gap: (f) => {
