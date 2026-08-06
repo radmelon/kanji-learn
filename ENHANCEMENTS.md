@@ -8,6 +8,18 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 > **Must fix immediately** — these are active security vulnerabilities flagged by Supabase.
 
+- [x] **Enable RLS on `kanji_difficulty` — the last table without it** — ~~SHIPPED~~ 2026-08-06 via migration 0036, after the Supabase database linter flagged *"Table public.kanji_difficulty is public, but RLS has not been enabled."* It was the **only one of 39 public tables** missing RLS — a single table missed when 0009 and 0018 swept the rest, not a category gap.
+
+  **The linter understated it, and that is the part worth remembering.** It reports only the missing RLS. The severity came from the grants underneath: `anon` and `authenticated` hold INSERT, UPDATE, DELETE **and TRUNCATE** on this table. They hold those on *every* table — it is the Supabase default grant on the public schema — but everywhere else RLS makes them inert, because a policy only permits what it permits. `kanji` carries identical grants and one SELECT-only policy, so its write grants cannot be used. Here there was no RLS and therefore nothing neutralising them. **Read the grants, not just the linter line.**
+
+  **This was live, not theoretical.** Probed read-only before the fix (`SET ROLE anon`, inside a rolled-back transaction): anon saw all **2,294 rows** and a `DELETE` would have taken every one. The rows are the IRT parameters `placement.service.ts` scores the placement test against, and the anon key ships inside the mobile app by design. Corrupting them leaks nothing and silently invalidates every learner's placement result — integrity and availability, not disclosure.
+
+  **No anon/authenticated policy was added, deliberately** — unlike `kanji`, which needs a public SELECT. Verified first: the API connects as `postgres` (`rolbypassrls = t`) and `service_role` bypasses too; `apps/mobile` contains **zero** `.from(` calls, so no client reads any table directly. Reference data the client never touches should be closed entirely. A `service_role` policy is included as belt-and-braces, matching 0018's reasoning.
+
+  **Verified after applying:** anon reads 2,294 → **0**, anon `DELETE` affects 2,294 → **0**, `postgres` still reads 2,294, row count and `updated_at` unchanged. **39 of 39 public tables now have RLS.**
+
+  `[Effort: S]` `[Impact: Critical — anon could have truncated the placement difficulty model]` `[Backend: Yes — migration]` `[Status: ✅ Shipped & Verified]`
+
 - [x] **Enable RLS on Remaining 5 Tables (Tutor + Placement)** — ~~SHIPPED~~ 2026-04-19 via migration 0018. RLS enabled on `placement_sessions`, `placement_results`, `tutor_shares`, `tutor_notes`, `tutor_analysis_cache`. Each gets an authenticated-user policy scoped via `auth.uid() = user_id` (or via parent table for child rows) plus an explicit service_role bypass policy, matching the pattern from migration 0009. Tutor notes use a SELECT-only policy for the owning student — tutor writes flow through the API's service_role since tutors authenticate by opaque share token, not Supabase auth. Verified post-apply: all 5 tables show `rowsecurity = t` with 2 policies each.
   `[Effort: S]` `[Impact: Critical]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 
