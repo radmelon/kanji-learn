@@ -196,11 +196,49 @@ available, do not make it.
 
 ### Direct
 
-> **`leech`** — Three kanji keep slipping back no matter how often they come
-> round: 敗 has lapsed 4 times, 語 3 times, and 使 twice. The one to work on
-> first is 敗. Look it up and build a hook for it — a small story or image that
-> ties the character to something you already know — because that is what
-> usually stops a kanji from slipping.
+> **`leech`, more troubled than can be named** — 23 kanji are giving you
+> trouble, and here are three of them — 敗 has lapsed 4 times, 語 3 times, and
+> 使 twice. The one to work on first is 敗. Look it up and build a hook for it —
+> a small story or image that ties the character to something you already know —
+> because that is what usually stops a kanji from slipping.
+
+> **`leech`, every troubled kanji named** — Three kanji are giving you trouble —
+> 敗 has lapsed 4 times, 語 3 times, and 使 twice. The one to work on first is
+> 敗. Look it up and build a hook for it — a small story or image that ties the
+> character to something you already know — because that is what usually stops a
+> kanji from slipping.
+
+> **`leech`, a single troubled kanji** — One kanji is giving you trouble — 敗,
+> which has lapsed 4 times. Look it up and build a hook for it — a small story
+> or image that ties the character to something you already know — because that
+> is what usually stops a kanji from slipping.
+
+**⚠️ This wording replaced an earlier owner-approved sentence, and the reason is
+worth keeping.** The original read *"Three kanji keep slipping back no matter
+how often they come round"*. Two things were wrong with it, both found by
+checking the rendered copy against live data rather than against tests:
+
+1. **The count was the display cap, not the learner's problem.** `MAX_NAMED = 3`
+   caps how many kanji are *named*; the true count is emitted separately as
+   `kanji giving trouble` and the formatter never read it. On live, one account
+   has **23** troubled kanji and would have been told "Three" — understating by
+   a factor of eight. That is §0's defect exactly, reproduced inside the finding
+   this spec exists to fix, and the old vague `BASE` string was at least not
+   false.
+2. **"no matter how often they come round" overstates the trigger.**
+   `MIN_TROUBLE_SCORE = 1`, so a *single* lapse qualifies a kanji — and 19 of
+   those 23 cards have exactly one. The sentence asserted repetition and then
+   printed evidence of one lapse directly after it.
+
+**The owner reviewed the replacement on 2026-08-03 and accepted it**, including
+the loss of the word-picture of a card cycling back through review. That was
+atmosphere; the persistence claim now lives in the lapse counts, where it is
+evidence-backed. They also directed that **`BASE.leech` be rewritten to match** —
+otherwise the removed claim survives in the fallback, which is the one string
+nobody reads until everything else has failed.
+
+Note the single-kanji branch drops "The one to work on first is …": prioritising
+among one thing is absurd.
 
 > **`hook_coverage`** — 敗 keeps catching you out. When something new will not
 > stick, it usually helps to connect it to something you already know well: that
@@ -220,38 +258,74 @@ available, do not make it.
 
 ### Orient
 
-> **`level_estimate`** — Your placement test on 29 July puts you at N4, and the
-> honest range runs from N5 to N3. That range is wide because a placement test
-> only asks about a dozen questions. It narrows when you take the placement test
-> again, rather than from day-to-day studying, because your level estimate is
-> only recalculated when you sit the test.
+> **`level_estimate`, spread interval** — Your placement test on 29 July puts
+> you at N4, and the honest range runs from N5 to N3. That range is wide because
+> a placement test only asks about a dozen questions. It narrows when you take
+> the placement test again, rather than from day-to-day studying, because your
+> level estimate is only recalculated when you sit the test.
+
+> **`level_estimate`, interval inside one band** — Your placement test on 29
+> July puts you at N5. The honest range around that estimate stays entirely
+> within N5, rather than reaching into a neighbouring level. Your level estimate
+> is only recalculated when you take the placement test again, rather than from
+> day-to-day studying.
 
 > **`mechanics_explainer`** — Your level comes from a statistical technique
-> called IRT. The test gets harder when you answer well and easier when you do
-> not, which is how it can say something useful about your level in about a
-> dozen questions.
+> called Item Response Theory, or IRT. The test gets harder when you answer well
+> and easier when you do not, which is how it can say something useful about
+> your level in about a dozen questions.
+
+**Why `level_estimate` has two branches, and why the second says nothing about
+confidence.** Found during implementation, and it is the sharper half of this
+finding:
+
+- With one branch, a learner whose credible interval fits inside a single JLPT
+  band reads *"the honest range runs from N5 to N5. That range is wide."* The
+  sentence contradicts itself, and it is reachable at the codebase's own
+  definition of a tight estimate — `SE_TIGHT = 0.3` gives an interval of 0.77
+  logits, narrower than any band.
+- The obvious repair — "narrow enough to sit entirely within N5, so the test is
+  reasonably confident" — is **also wrong**, because `low === high` signals band
+  *collapse*, not precision. The outer bands are unbounded, so at θ = −3.0,
+  se = 0.55 the interval spans 1.41 logits — wider than the whole N4 band — and
+  still collapses to N5. Worse, above se ≈ 0.84 the finding's confidence drops
+  under `HEDGE_BELOW`, so `templateCopy` prepends *"Early signal, so take it
+  lightly:"* to a sentence claiming the test is confident. The paragraph argues
+  with itself.
+- **So the collapsed branch states only what is true by construction — that the
+  range stays inside one level — and leaves every confidence claim to the
+  hedge**, which is the one mechanism that actually reads the standard error.
+- It interpolates the **lower bound**, not the stored `level`. Those come from
+  different moments: `level` is `placementSessions.inferredLevel` from test
+  time, while the bounds are recomputed at coaching time against today's
+  corpus. A recalibration between them makes the containment claim false;
+  interpolating the bound makes it true by construction. `coaching.service.ts`
+  already carries a scar comment about exactly this class of mismatch (B146).
 
 ### Motivate
 
-> **`fluency_gain`** — You are answering about 22% faster than you were a month
-> ago, across 41 kanji, and your accuracy has not slipped while doing it. Speed
-> usually improves before anything else does, so this is a sign that recalling
-> these characters is becoming automatic rather than effortful.
+> **`fluency_gain`** — You are answering about 22% faster than you were earlier
+> in the last 30 days, across 41 kanji, and your accuracy has held up on those.
+> Speed usually improves before anything else does, so this is a sign that
+> recalling these characters is becoming automatic rather than effortful.
 
-> **`theta_delta`** — Your ability estimate has risen from 0.31 to 0.68 between
-> your placement tests on 12 July and 29 July. That rise is larger than the
-> uncertainty in both measurements combined, so it is real progress rather than
-> the test landing differently on the day.
+> **`theta_delta`** — Your ability estimate has risen between your placement
+> tests on 12 July and 29 July, and the rise is larger than the uncertainty in
+> both measurements combined — so it is real progress rather than the test
+> landing differently on the day.
 
-> **`hardest_cleared`** — You cleared 願, which was the hardest item the test
-> put in front of you: it has 19 strokes and three readings. The test weighs
-> stroke count and number of readings alongside JLPT level, which is why 願
-> counted as harder than some N2 kanji you also saw.
+> **`hardest_cleared`** — You cleared 願, the hardest item you got right: it has
+> 19 strokes and 3 readings. Difficulty here weighs stroke count and number of
+> readings alongside JLPT level, so the hardest item is not always the one from
+> the highest level you saw.
 
-> **`retest_due`** — You took your placement test 34 days ago, and the estimate
-> of your level has drifted since then because it has had no new information.
-> You can take the test again from your Profile, and doing so would narrow the
-> range around your level rather than simply repeating what you already know.
+> **`retest_due`** — Retaking your placement test would sharpen your level
+> estimate rather than simply repeat what you already know, and it has been 34
+> days since the last one. You can start it from your Profile.
+
+**⚠️ All four of these were rewritten during implementation, three of them after
+the drafts above proved untrue.** The reasons are in §12.4; do not restore the
+originals without reading it.
 
 ### 6.1 What a "hook" is, and where the explanation lives
 
@@ -452,6 +526,104 @@ rather than silently:
    `LearnerSnapshot`'s contract and `CoachingService`'s assembly — which means
    the API package's tests are in scope for those two, and the "shared lane
    only, sub-second" framing in §1 holds for the copy work but not for them.
+
+### 12.4 Every Motivate sentence was rewritten, three because the draft was untrue
+
+Found by rendering the copy and checking each claim against its detector and
+against live data — never by a failing test. All four drafts passed their tests.
+
+- **`hardest_cleared` was false on live, and inverted this spec's own insight.**
+  The draft claimed 願 "counted as harder than some N2 kanji you also saw". The
+  finding's evidence carries **only** the hardest item — no other item, and no
+  JLPT level at all — so the comparison had nothing behind it. Worse, the
+  owner's 願 session contains 願(N3) plus seven N2s and one more N3: **nothing
+  easier than N3 was on it**, and the claim is false on two of the four sessions
+  live has. §9's actual insight is the reverse — 願, at the *easier* JLPT level,
+  outranked 刊 and 筆 at the harder one. The shipped clause now describes the
+  difficulty model, which the evidence does support, and needs only one
+  counterexample to be true.
+
+- **`theta_delta` printed raw logits.** θ is centred near zero, so the
+  reachable negative case rendered *"Your ability estimate has risen from -0.42
+  to 0.12"* — a negative "ability" shown to a learner as praise, in the one band
+  whose job is motivation. The numbers are gone; the dates and the
+  combined-standard-error basis remain, which is what carried the meaning.
+
+- **`retest_due` attributed the finding to elapsed time, which is not what fires
+  it.** `widenForStaleness` contributes 0.0185 of variance at 34 days, while
+  live standard errors of 0.585 and 0.546 already exceed `RETEST_FLOOR` — so a
+  learner who finishes a test *today* was told *"You took your placement test 0
+  days ago, and the estimate of your level has drifted since then."* It also
+  rendered "1 days ago".
+
+  **This one took three attempts.** The second said the estimate carried
+  "uncertainty", reintroducing the exact jargon §3's audit flags as this
+  finding's failing — the word appears verbatim in two of its own evidence
+  labels. The third borrowed `level_estimate`'s "range" vocabulary to make them
+  one voice, and instead made them **contradict**: one paragraph explained the
+  range as inherent to a twelve-question test while the next called it excess,
+  the retake instruction appeared twice, and "that range" pointed at a number
+  `level_estimate` never displayed. The shipped sentence describes what a retake
+  *buys* and mentions no range at all.
+
+  Per §6.1's precedent, the residual overlap — both findings mention retaking —
+  is accepted and **pinned by a test that renders the pair together**, across
+  both `level_estimate` branches.
+
+- **`fluency_gain` named a comparison the detector does not make.** "faster than
+  you were a month ago" reused `windowDays` as a lookback distance; the detector
+  splits the window at its midpoint and compares the later half against the
+  earlier, a ~15-day step. It now says "earlier in the last 30 days". "your
+  accuracy has not slipped" also became "has held up on those", because
+  `accuracyHeld` allows a fall of up to `ACCURACY_SLACK` per card and the cited
+  kanji are exactly the subset that satisfied it.
+
+**The rule this establishes, and the one worth carrying to the next slice:**
+the analyzer's vocabulary may appear in learner copy only when the sentence
+explains it in the same breath. `theta_delta` may say "uncertainty" because it
+immediately glosses it; `retest_due` may not, because it led with it bare.
+
+### 12.5 Two more the whole-branch review caught, both against live data
+
+Neither could fail a test — every fixture in the suite is self-consistent by
+construction, which is exactly the blind spot.
+
+- **`level_estimate` printed a level outside the range it printed in the same
+  sentence.** `PlacementSnapshot.level` was `placementSessions.inferredLevel`,
+  stored at test time, while `levelLow`/`levelHigh` were recomputed at coaching
+  time. On the owner's own session that rendered *"puts you at N4, and the
+  honest range runs from N3 to N2"* — true on two of the four live sessions.
+
+  The cause was **not** the corpus recalibration the code anticipated:
+  `kanji_difficulty` had not changed. Those rows were written by a **pre-B146
+  build**, and the one session completed after that fix is the one whose stored
+  level agrees. So the bad rows are permanent until each learner retakes.
+
+  Fixed in **assembly**, not copy: `CoachingService` now derives `level` from
+  the same bands as the bounds, so containment is true by construction and the
+  LLM prompt is corrected too. A copy-layer guard alone would have degraded the
+  owner's own account to `BASE` — the opposite of the point. A containment guard
+  was added in `copy.ts` as defence in depth.
+
+- **`hardest_cleared` claimed the item was the hardest the test *asked*.** The
+  detector filters to cleared items *first*, then takes the maximum — so it only
+  knows the hardest one **cleared**. On live, one session asked an item at
+  difficulty 2.00 and the learner's hardest cleared was 1.21. False on two of
+  four. §12.4 had rewritten this sentence's closing clause for exactly this class
+  of unsupported claim and left the superlative in the opening clause. It now
+  reads "the hardest item you got right", and `BASE.hardest_cleared` was
+  rewritten to match.
+
+**`BASE.retest_due` was rewritten for the same reason as `BASE.leech`** — it
+still said the estimate "has drifted since it was taken", which §12.4 had
+already established is not what fires the finding.
+
+**The lesson, and it is the branch's most transferable one:** eight truthfulness
+defects were found on this branch, and **every single one was found by rendering
+a sentence and checking it against the detector or against live data.** None was
+found by a failing test, and 541 shared tests pass either way. A live-render
+smoke check — pull each real session, print all ten sentences — would have caught
+both of these in seconds, and is worth building before the next copy slice.
 
 ---
 

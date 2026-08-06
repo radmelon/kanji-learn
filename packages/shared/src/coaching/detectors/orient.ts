@@ -1,4 +1,5 @@
 import type { Finding, LearnerSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 import { normaliseLinear } from '../magnitude'
 
 /**
@@ -31,24 +32,29 @@ export function detectLevelEstimate(snapshot: LearnerSnapshot): Finding | null {
     magnitude: LEVEL_ESTIMATE_MAGNITUDE,
     confidence,
     evidence: [
-      { label: 'most likely level', value: p.level },
-      { label: 'lower bound', value: p.levelLow },
-      { label: 'upper bound', value: p.levelHigh },
-      { label: 'ability estimate', value: Math.round(p.theta * 100) / 100 },
-      { label: 'standard error', value: Math.round(p.se * 100) / 100 },
+      { label: EVIDENCE_LABELS.MOST_LIKELY_LEVEL, value: p.level },
+      { label: EVIDENCE_LABELS.LOWER_BOUND, value: p.levelLow },
+      { label: EVIDENCE_LABELS.UPPER_BOUND, value: p.levelHigh },
+      { label: EVIDENCE_LABELS.ABILITY_ESTIMATE, value: Math.round(p.theta * 100) / 100 },
+      { label: EVIDENCE_LABELS.STANDARD_ERROR, value: Math.round(p.se * 100) / 100 },
+      { label: EVIDENCE_LABELS.MEASURED_ON, value: p.completedAt.slice(0, 10) },
     ],
     since: null,
   }
 }
 
 /**
- * The IRT two-liner plus a pointer to Profile (§7).
+ * The IRT two-liner (§7).
  *
  * TEMPLATE, ALWAYS. NEVER LLM. §3: "Buddy must not improvise about his own
  * algorithm." The explanation never changes, so there is nothing for a model
  * to add and everything for it to get wrong. It therefore carries NO evidence
  * — there is no number in it — and the copy layer (Task 10) must emit it
  * verbatim.
+ *
+ * Used to close with a pointer to Profile; Task 4 removed it because Profile
+ * has no IRT section for it to point to — only a Placement Test row. Adding
+ * that section, and restoring the pointer, is a later slice.
  */
 const MECHANICS_MAGNITUDE = 0.1
 

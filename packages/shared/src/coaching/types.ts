@@ -34,6 +34,60 @@ export interface Evidence {
   character?: string
 }
 
+/**
+ * Every `Evidence.label` the detectors emit.
+ *
+ * Shared between the detector that WRITES a label and the formatter in copy.ts
+ * that READS it. Without this, a formatter matches a string literal and a
+ * rename yields `undefined` inside a learner-facing sentence — the exact
+ * failure mode that produced the note this work exists to fix.
+ *
+ * ⚠️ These strings are a WIRE CONTRACT, not an implementation detail. Slice 3's
+ * buildCoachingPrompt serialises `${label}: ${value}` into the LLM prompt, so
+ * renaming one changes what the model is told. labels.test.ts pins them.
+ */
+export const EVIDENCE_LABELS = {
+  KANJI_GIVING_TROUBLE: 'kanji giving trouble',
+  ACTIVE_KANJI: 'active kanji',
+  LAPSES: 'lapses',
+  MOST_LIKELY_LEVEL: 'most likely level',
+  LOWER_BOUND: 'lower bound',
+  UPPER_BOUND: 'upper bound',
+  ABILITY_ESTIMATE: 'ability estimate',
+  STANDARD_ERROR: 'standard error',
+  MINUTES_PROMISED: 'minutes promised',
+  MINUTES_STUDIED: 'minutes studied',
+  PERIOD_START: 'period start',
+  PERIOD_END: 'period end',
+  HOOKS_BUILT: 'hooks built',
+  SUGGESTED_KANJI: 'suggested kanji',
+  AVG_LAPSES_WITH_HOOK: 'average lapses with a hook',
+  AVG_LAPSES_WITHOUT_HOOK: 'average lapses without one',
+  MEANING_ACCURACY: 'meaning accuracy',
+  READING_ACCURACY: 'reading accuracy',
+  EXPECTED_READING_PENALTY: 'expected reading penalty',
+  ITEMS_WITH_READING_ASKED: 'items with a reading asked',
+  QUIZ_READING_ACCURACY: 'quiz reading accuracy',
+  QUIZ_MEANING_ACCURACY: 'quiz meaning accuracy',
+  QUIZ_READING_ANSWERS: 'quiz reading answers',
+  PERCENT_FASTER: 'percent faster',
+  AVG_SECONDS_BEFORE: 'average seconds before',
+  AVG_SECONDS_NOW: 'average seconds now',
+  KANJI_MEASURED: 'kanji measured',
+  WINDOW_DAYS: 'window days',
+  ABILITY_THEN: 'ability then',
+  ABILITY_NOW: 'ability now',
+  MEASURED_ON: 'measured on',
+  PREVIOUSLY_MEASURED_ON: 'previously measured on',
+  HARDEST_KANJI_CLEARED: 'hardest kanji cleared',
+  ITEM_DIFFICULTY: 'item difficulty',
+  STROKE_COUNT: 'stroke count',
+  READING_COUNT: 'reading count',
+  CURRENT_UNCERTAINTY: 'current uncertainty',
+  UNCERTAINTY_WHEN_MEASURED: 'uncertainty when measured',
+  DAYS_SINCE_THE_TEST: 'days since the test',
+} as const
+
 export interface Finding {
   kind: FindingKind
   /** 0..1, normalised per kind — see each detector's documented mapping. */
@@ -56,6 +110,12 @@ export interface PlacementItemOutcome {
   /** Population reading penalty for this item — `reading_lag` must exceed it. */
   readingOffset: number
   difficultyAtAsk: number
+  /** Strokes in the character. Part of what the difficulty model weighs, and
+   *  what `hardest_cleared` cites to justify calling an item hard. */
+  strokeCount: number
+  /** Total on- plus kun-readings. Computed in ASSEMBLY, not here — the
+   *  analyzer must not learn the shape of a jsonb column. */
+  readingCount: number
 }
 
 export interface PlacementSnapshot {
@@ -181,6 +241,10 @@ export const POPULATION_PLACEMENT_READING_GAP = -0.033
 export interface ReviewSnapshot {
   cards: CardSnapshot[]
   quiz: QuizOutcome[]
+  /** Length of the window `cards` was computed over. Owned by the assembly
+   *  layer (REVIEW_WINDOW_DAYS); carried here so `fluency_gain`'s copy can
+   *  state the period without inlining a constant it does not own. */
+  windowDays: number
 }
 
 export interface CommitmentSnapshot {

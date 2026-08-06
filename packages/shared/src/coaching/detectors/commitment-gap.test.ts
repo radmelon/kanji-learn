@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { detectCommitmentGap } from './commitment-gap'
 import type { CommitmentSnapshot, LearnerSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 
 function snap(commitment: CommitmentSnapshot | null): LearnerSnapshot {
   return {
     now: '2026-08-02T00:00:00.000Z',
     placement: null,
-    reviews: { cards: [], quiz: [] },
+    reviews: { cards: [], quiz: [], windowDays: 30 },
     commitment,
     hooks: { count: 0, latestAt: null, sessionDates: [], lapsesWithHook: null, lapsesWithoutHook: null },
     priorFindings: [],
@@ -62,5 +63,18 @@ describe('detectCommitmentGap', () => {
         { label: 'minutes studied', value: 10 },
       ]),
     )
+  })
+
+  // MUTATION CAUGHT: emitting the period as one blob, or omitting it. The copy
+  // must say "between 20 and 26 July", which needs both ends separately — and
+  // periodEnd is EXCLUSIVE, so the formatter subtracts a day. If the detector
+  // emits only a duration, that subtraction has nothing to work from.
+  it('carries both ends of the commitment period', () => {
+    const f = detectCommitmentGap(snap({
+      promisedMinutes: 70, actualMinutes: 10,
+      periodStart: '2026-07-20', periodEnd: '2026-07-27',
+    }))!
+    expect(f.evidence).toContainEqual({ label: EVIDENCE_LABELS.PERIOD_START, value: '2026-07-20' })
+    expect(f.evidence).toContainEqual({ label: EVIDENCE_LABELS.PERIOD_END, value: '2026-07-27' })
   })
 })

@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-03 latest (**Slice 3 is MERGED and DEPLOYED, B149 is building. Content verification cannot happen until Monday 2026-08-10. The copy floor is still not done.**)
+# Session Handoff — 2026-08-04 (**The copy floor is reviewed and open as PR #13. Not merged, not deployed. It fixes the note the owner called worthless.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,99 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-03 (latest)
+## START HERE — 2026-08-04
+
+> ## ▶️ What the next session does
+>
+> **Review and land https://github.com/radmelon/kanji-learn/pull/13**, then
+> deploy. The whole-branch review returned **Ready to merge: Yes**, no Critical
+> and no Important outstanding.
+>
+> **Deploy is API-only — no migration, no EAS build.** It changes what the
+> Journal says and what slice 3's template fallback produces. Verify with
+> response content per `docs/SOP.md`; the canary is below.
+>
+> ### 🔎 How to verify this deploy
+>
+> The pass condition is **not** "a row exists" — slice 2 already produced rows.
+> It is that the text **names specific kanji, dates and levels**:
+>
+> ```bash
+> ./scripts/with-live-db.sh psql -c "SELECT left(body, 400) FROM notebook_entries WHERE source->>'kind' = 'coaching_analysis' AND superseded_at IS NULL ORDER BY created_at DESC LIMIT 3"
+> ```
+>
+> If it still reads "A handful of kanji are giving you trouble", the formatters
+> are degrading to `BASE` in production for a reason no test reproduced.
+>
+> ### 📋 Then, in priority order
+>
+> 1. **Slice 3's content check on 2026-08-10** — the owner's next due session.
+>    Still open; see the slice 3 section below.
+> 2. **The `inferred_level` backfill** — this branch made a pre-existing
+>    staleness visible. See the warning below and `ENHANCEMENTS.md`.
+> 3. **A live-render smoke check** before any further copy work. See the red
+>    section below for why this is the highest-value item on the list.
+
+### 📦 What it does
+
+Spec: https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-03-coaching-copy-floor-design.md
+Plan: https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/plans/2026-08-03-coaching-copy-floor.md
+
+`templateCopy` used to read `finding.kind`, look up a static string, and never
+touch `finding.evidence`. Now ten per-kind formatters each read their own
+evidence through label constants shared with the detector that writes them. A
+formatter that cannot build its sentence returns `null` and falls back to the
+base string, so the floor never drops below what shipped before.
+
+Before: *"A handful of kanji keep slipping back no matter how often they come round."*
+After: *"23 kanji are giving you trouble, and here are three of them — 敗 has
+lapsed 4 times, 語 3 times, and 使 twice. The one to work on first is 敗. Look it
+up and build a hook for it — a small story or image that ties the character to
+something you already know — because that is what usually stops a kanji from
+slipping."*
+
+All ten sentences are in the spec's §6. **Verification:** shared 541 · API 568 ·
+mobile pure 212 (regression only) · `turbo typecheck` 4/4.
+
+### 🔴 Read this before writing any more coaching copy
+
+**Eight truthfulness defects were found on this branch. Every single one was
+found by rendering a sentence and checking it against its detector or against
+live data. Not one was found by a failing test** — and all 541 shared tests pass
+either way.
+
+The reason is structural: every fixture in the suite is self-consistent by
+construction, so no fixture can reproduce a stored value disagreeing with a
+recomputed one, or a superlative that is true of the fixture and false of a real
+learner. `coaching-snapshot.test.ts` even carried an invariant assertion that
+live data violated, because it seeded its input from the same source it asserted
+against.
+
+The two worst, both caught only in the final review:
+
+- **`level_estimate` printed a level outside the range it printed** — *"puts you
+  at N4, and the honest range runs from N3 to N2"* on the owner's own session.
+- **`hardest_cleared` claimed the item was the hardest the test asked**, when the
+  detector only knows it was the hardest one *cleared*.
+
+Full detail in the spec's **§12.4 and §12.5**. A live-render smoke check is now
+in `ENHANCEMENTS.md` and is the single highest-value thing to build before the
+next copy slice.
+
+### ⚠️ One live inconsistency this branch created deliberately
+
+`CoachingService` now **recomputes** the learner's level from today's difficulty
+bands instead of reading `placement_sessions.inferred_level`. The stored values
+are stale — written by a build predating `504b1ea` (2026-08-01) — and permanent
+until each learner retakes.
+
+**`tutor-report.service.ts:141` and `tutor-analysis.service.ts:168` still read
+the column raw**, so on 3 of the 4 live sessions a tutor now sees a different
+level from the Journal. Not a regression; a pre-existing staleness made visible
+by fixing one of two consumers. The durable fix is a backfill migration —
+recorded in `ENHANCEMENTS.md`, deliberately not attempted here.
+
+## Previous — 2026-08-03 (slice 3 deploy)
 
 > ## ▶️ What the next session does
 >

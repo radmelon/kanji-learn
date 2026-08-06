@@ -140,7 +140,7 @@ producing a defence of the wrong conclusion.
 | | Connection | Use |
 |---|---|---|
 | **Live** | `./scripts/with-live-db.sh` | Answering questions about real data. Read-only by default |
-| **Local test** | `localhost:5433/kanji_buddy_test`, see below | Running the API suite. Holds **7 kanji**, not 2,294 |
+| **Local test** | `localhost:5433/kanji_buddy_test`, see below | Running the API suite. Holds the **full kanji corpus** (2,286 as of 2026-08-04) |
 
 ## Before judging API test results
 

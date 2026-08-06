@@ -8,7 +8,7 @@ const ALL_KINDS = Object.keys(FINDING_PRIORITY) as FindingKind[]
 const EMPTY: LearnerSnapshot = {
   now: '2026-08-02T00:00:00.000Z',
   placement: null,
-  reviews: { cards: [], quiz: [] },
+  reviews: { cards: [], quiz: [], windowDays: 30 },
   commitment: null,
   hooks: { count: 0, latestAt: null, sessionDates: [], lapsesWithHook: null, lapsesWithoutHook: null },
   priorFindings: [],
@@ -30,9 +30,9 @@ describe('analyze', () => {
         level: 'N2', thetaLow: 0, thetaHigh: 1.8, levelLow: 'N3', levelHigh: 'N1',
         previous: { theta: 0.1, se: 0.3, completedAt: '2025-11-01T00:00:00.000Z' },
         items: [
-          { kanjiId: 1, character: '鬱', meaningCorrect: true, readingCorrect: false, readingOffset: 0.1, difficultyAtAsk: 2.2 },
-          { kanjiId: 2, character: '日', meaningCorrect: true, readingCorrect: false, readingOffset: 0.1, difficultyAtAsk: 0.1 },
-          { kanjiId: 3, character: '一', meaningCorrect: true, readingCorrect: false, readingOffset: 0.1, difficultyAtAsk: -0.5 },
+          { kanjiId: 1, character: '鬱', meaningCorrect: true, readingCorrect: false, readingOffset: 0.1, difficultyAtAsk: 2.2, strokeCount: 29, readingCount: 2 },
+          { kanjiId: 2, character: '日', meaningCorrect: true, readingCorrect: false, readingOffset: 0.1, difficultyAtAsk: 0.1, strokeCount: 4, readingCount: 2 },
+          { kanjiId: 3, character: '一', meaningCorrect: true, readingCorrect: false, readingOffset: 0.1, difficultyAtAsk: -0.5, strokeCount: 1, readingCount: 2 },
         ],
       },
       commitment: { promisedMinutes: 70, actualMinutes: 5, periodStart: '2026-07-26T00:00:00.000Z', periodEnd: '2026-08-02T00:00:00.000Z' },

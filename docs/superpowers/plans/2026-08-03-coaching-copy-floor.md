@@ -263,11 +263,19 @@ drifted.
 - [ ] **Step 6: Prove no literal survived**
 
 ```bash
-grep -rn "label: '" packages/shared/src/coaching/detectors/
+grep -rn "label: '" packages/shared/src/coaching/detectors/ --include="*.ts" | grep -v "\.test\.ts"
 ```
 
 Expected: no output. Any hit is a literal that escaped the extraction and will
 drift silently later. Record the command and its empty result in your report.
+
+⚠️ **Test files are deliberately excluded, and must not be "fixed".**
+`commitment-gap.test.ts` pins a literal evidence object via `toEqual`, and that
+literal is doing real work: it is an independent assertion of the label values
+that does not go through the constants, so it would still fail if
+`EVIDENCE_LABELS` and the detector were changed together. Rewriting it to use
+the constants would make it circular and delete the only check that survives a
+coordinated rename.
 
 - [ ] **Step 7: Commit**
 
@@ -427,7 +435,7 @@ git add packages/shared/src/coaching/types.ts apps/api/src/services/buddy/coachi
 **Interfaces:**
 - Consumes: `EVIDENCE_LABELS` (Task 1); `strokeCount`, `readingCount`,
   `windowDays` (Task 2).
-- Produces: four new labels — `PERIOD_START: 'period start'`,
+- Produces: five new labels — `PERIOD_START: 'period start'`,
   `PERIOD_END: 'period end'`, `STROKE_COUNT: 'stroke count'`,
   `READING_COUNT: 'reading count'`, `WINDOW_DAYS: 'window days'`. Add each to
   `EVIDENCE_LABELS` **and** to `labels.test.ts`'s pinned object.
@@ -1198,7 +1206,7 @@ pnpm --filter @kanji-learn/api typecheck
 - [ ] Confirm no literal labels remain:
 
 ```bash
-grep -rn "label: '" packages/shared/src/coaching/
+grep -rn "label: '" packages/shared/src/coaching/ --include="*.ts" | grep -v "\.test\.ts"
 ```
 
 Expected: empty.

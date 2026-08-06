@@ -2,6 +2,7 @@ import type { Evidence, Finding, LearnerSnapshot } from '../types'
 import {
   MEANING_QUESTION_TYPES, READING_QUESTION_TYPES,
   POPULATION_QUIZ_READING_GAP, POPULATION_PLACEMENT_READING_GAP,
+  EVIDENCE_LABELS,
 } from '../types'
 import { confidenceFromCount, normaliseLinear } from '../magnitude'
 
@@ -89,10 +90,10 @@ export function detectReadingLag(snapshot: LearnerSnapshot): Finding | null {
   if (fromPlacement) {
     const asked = snapshot.placement!.items.filter((i) => i.readingCorrect !== null)
     evidence.push(
-      { label: 'meaning accuracy', value: round2(asked.filter((i) => i.meaningCorrect).length / asked.length) },
-      { label: 'reading accuracy', value: round2(asked.filter((i) => i.readingCorrect === true).length / asked.length) },
-      { label: 'expected reading penalty', value: POPULATION_PLACEMENT_READING_GAP },
-      { label: 'items with a reading asked', value: asked.length },
+      { label: EVIDENCE_LABELS.MEANING_ACCURACY, value: round2(asked.filter((i) => i.meaningCorrect).length / asked.length) },
+      { label: EVIDENCE_LABELS.READING_ACCURACY, value: round2(asked.filter((i) => i.readingCorrect === true).length / asked.length) },
+      { label: EVIDENCE_LABELS.EXPECTED_READING_PENALTY, value: POPULATION_PLACEMENT_READING_GAP },
+      { label: EVIDENCE_LABELS.ITEMS_WITH_READING_ASKED, value: asked.length },
     )
   }
   if (fromQuiz) {
@@ -100,9 +101,9 @@ export function detectReadingLag(snapshot: LearnerSnapshot): Finding | null {
     const reading = rows.filter((r) => READING_QUESTION_TYPES.includes(r.questionType))
     const meaning = rows.filter((r) => MEANING_QUESTION_TYPES.includes(r.questionType))
     evidence.push(
-      { label: 'quiz reading accuracy', value: round2(reading.filter((r) => r.correct).length / reading.length) },
-      { label: 'quiz meaning accuracy', value: round2(meaning.filter((r) => r.correct).length / meaning.length) },
-      { label: 'quiz reading answers', value: reading.length },
+      { label: EVIDENCE_LABELS.QUIZ_READING_ACCURACY, value: round2(reading.filter((r) => r.correct).length / reading.length) },
+      { label: EVIDENCE_LABELS.QUIZ_MEANING_ACCURACY, value: round2(meaning.filter((r) => r.correct).length / meaning.length) },
+      { label: EVIDENCE_LABELS.QUIZ_READING_ANSWERS, value: reading.length },
     )
   }
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { detectLevelEstimate, detectMechanicsExplainer } from './orient'
 import type { LearnerSnapshot, PlacementSnapshot } from '../types'
+import { EVIDENCE_LABELS } from '../types'
 
 function placement(o: Partial<PlacementSnapshot> = {}): PlacementSnapshot {
   return {
@@ -16,7 +17,7 @@ function snap(p: PlacementSnapshot | null): LearnerSnapshot {
   return {
     now: '2026-08-02T00:00:00.000Z',
     placement: p,
-    reviews: { cards: [], quiz: [] },
+    reviews: { cards: [], quiz: [], windowDays: 30 },
     commitment: null,
     hooks: { count: 0, latestAt: null, sessionDates: [], lapsesWithHook: null, lapsesWithoutHook: null },
     priorFindings: [],
@@ -44,6 +45,15 @@ describe('detectLevelEstimate', () => {
 
   it('is low magnitude — orienting, not urgent', () => {
     expect(detectLevelEstimate(snap(placement()))!.magnitude).toBeLessThan(0.6)
+  })
+
+  // MUTATION CAUGHT: dropping the placement date, which forces level_estimate's
+  // copy back to "your placement puts you around this level" — literally the
+  // sentence the owner called useless, with "which test and when?" as their
+  // first question.
+  it('carries the date the placement was taken', () => {
+    const f = detectLevelEstimate(snap(placement({ completedAt: '2026-07-29T00:00:00.000Z' })))!
+    expect(f.evidence).toContainEqual({ label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' })
   })
 })
 

@@ -21,7 +21,7 @@ function snap(hooks: Partial<HookSnapshot>, cards: CardSnapshot[] = [], quiz: Qu
   return {
     now: '2026-08-02T00:00:00.000Z',
     placement: null,
-    reviews: { cards, quiz },
+    reviews: { cards, quiz, windowDays: 30 },
     commitment: null,
     hooks: { ...NO_HOOKS, ...hooks },
     priorFindings: [],

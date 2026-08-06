@@ -4,7 +4,7 @@ import postgres from 'postgres'
 import { sql } from 'drizzle-orm'
 import * as schema from '@kanji-learn/db'
 import { levelBands, inferredLevel, JLPT_LEVELS, type JlptLevel } from '@kanji-learn/shared'
-import { CoachingService } from '../../src/services/buddy/coaching.service'
+import { CoachingService, REVIEW_WINDOW_DAYS } from '../../src/services/buddy/coaching.service'
 
 const client = postgres(process.env.TEST_DATABASE_URL!)
 const db = drizzle(client, { schema })
@@ -94,7 +94,17 @@ describe('CoachingService.assembleSnapshot — placement', () => {
     expect(snap.placement).not.toBeNull()
     expect(snap.placement!.theta).toBeCloseTo(0.5)
     expect(snap.placement!.se).toBeCloseTo(0.4)
-    expect(snap.placement!.level).toBe('N4')
+    // Finding 1 (CRITICAL, coaching-copy-floor final review): `level` is no
+    // longer a passthrough of the stored inferred_level -- levelInterval()
+    // now recomputes it from TODAY's corpus at the SAME theta used for
+    // levelLow/levelHigh, so all three can never disagree (see that
+    // function's own comment for the live row that motivated this). This
+    // fixture stores 'N4' at theta=0.5 specifically to prove the OLD
+    // passthrough path is gone: the assertion below checks `level` against
+    // what the corpus says theta=0.5 means TODAY, independent of what was
+    // written to the row, which may or may not still be 'N4'.
+    const bands = await corpusLevelBands()
+    expect(snap.placement!.level).toBe(inferredLevel(0.5, bands.boundaries, bands.levels))
     expect(snap.placement!.previous).toBeNull()
     expect(snap.placement!.items).toHaveLength(2)
 
@@ -166,6 +176,40 @@ describe('CoachingService.assembleSnapshot — placement', () => {
     }
   })
 
+  // Finding 1 (CRITICAL, coaching-copy-floor final review): the defect this
+  // pass fixes. A session whose STORED inferred_level does not match what
+  // today's corpus says its theta means -- exactly the shape of the live
+  // rows written by a pre-B146 build (fix 504b1ea, landed 2026-08-01) -- must
+  // not surface the stale stored value. `level` must come from the SAME
+  // computation as `levelLow`/`levelHigh`, at this test's own theta, never
+  // from the row.
+  //
+  // The 'levelLow and levelHigh bracket level in JLPT order' test above seeds
+  // `inferred_level` FROM today's bands (`inferredLevel(theta, ...)`), so its
+  // own bracket assertion is true BY CONSTRUCTION and structurally cannot
+  // fail, whatever `level` assembly actually returns -- it was never able to
+  // catch this bug, before or after the fix. This test seeds a level that
+  // DISAGREES with the bands on purpose, so it is the one that actually fails
+  // against the pre-fix code (which returned `fallback`, i.e. the stored
+  // value, verbatim).
+  it('reconciles a stored inferred_level that disagrees with what theta means today', async () => {
+    const bands = await corpusLevelBands()
+    const theta = 0.5
+    const se = 0.4
+    const correctLevel = inferredLevel(theta, bands.boundaries, bands.levels)
+    // Any level OTHER than the one theta actually resolves to today --
+    // deliberately wrong, mirroring a stale pre-recalibration row.
+    const wrongLevel = JLPT_LEVELS.find((l) => l !== correctLevel)!
+
+    await db.execute(sql`INSERT INTO placement_sessions
+      (user_id, ability_theta, ability_se, inferred_level, completed_at)
+      VALUES (${USER}, ${theta}, ${se}, ${wrongLevel}, now())`)
+
+    const snap = await service.assembleSnapshot(USER, NOW, [])
+    expect(snap.placement!.level).toBe(correctLevel)
+    expect(snap.placement!.level).not.toBe(wrongLevel)
+  })
+
   it('a larger ability_se produces a credible interval at least as wide', async () => {
     // Same theta, two learners, only ability_se differs -- isolates se's
     // effect on both the theta interval and the level labels at its ends.
@@ -222,6 +266,52 @@ describe('CoachingService.assembleSnapshot — placement', () => {
       VALUES (${USER}, 0.5, 0.4, NULL, now())`)
     const snap = await service.assembleSnapshot(USER, NOW, [])
     expect(snap.placement).toBeNull()
+  })
+
+  // MUTATION CAUGHT: shipping hardest_cleared's copy without the features it
+  // cites. The sentence claims the test "weighs stroke count and number of
+  // readings alongside JLPT level"; if assembly does not supply them the
+  // formatter degrades to the vague base string forever, and no shared-lane
+  // test would notice because the detector's own fixtures are hand-built.
+  // ALSO CAUGHT: summing only ONE of the two reading arrays (e.g.
+  // `kunReadings?.length ?? 0` alone, dropping onReadings from the sum).
+  // That mutation still yields a plausible positive number, so a
+  // `toBeGreaterThan(0)` check stays green while telling a learner a kanji
+  // has fewer readings than it actually does -- readingCount is quoted
+  // straight into Task 6's hardest_cleared copy ("has 19 strokes and 3
+  // readings"), so an undercount here is a false statement to a user, not
+  // just an internal miscount. The fixture kanji is picked for an
+  // ASYMMETRIC kun/on split (counts unequal): with an equal split (e.g. 2
+  // and 2), dropping either array produces the SAME wrong total, so the
+  // test could pass while being unable to tell you which array was
+  // dropped. An unequal split makes the two possible undercounts distinct
+  // values, neither of which equals the pinned expectation below.
+  it('carries stroke count and reading count on each placement item', async () => {
+    const kanjiRows = await db.execute(sql`
+      SELECT id, stroke_count AS "strokeCount", kun_readings AS "kunReadings", on_readings AS "onReadings"
+      FROM kanji
+      WHERE jsonb_array_length(kun_readings) <> jsonb_array_length(on_readings)
+      ORDER BY id LIMIT 1
+    `)
+    const kanjiRow = kanjiRows[0] as any
+    const k1 = Number(kanjiRow.id)
+    const expectedStrokeCount = Number(kanjiRow.strokeCount)
+    const expectedReadingCount =
+      (kanjiRow.kunReadings as string[]).length + (kanjiRow.onReadings as string[]).length
+
+    const rows = await db.execute(sql`INSERT INTO placement_sessions
+      (user_id, ability_theta, ability_se, inferred_level, completed_at)
+      VALUES (${USER}, 0.5, 0.4, 'N4', now()) RETURNING id`)
+    const sessionId = (rows[0] as any).id
+    await db.execute(sql`INSERT INTO placement_results
+      (session_id, kanji_id, jlpt_level, passed, meaning_correct, reading_correct, difficulty_at_ask)
+      VALUES (${sessionId}, ${k1}, 'N5', true, true, false, 0.8)`)
+
+    const snap = await service.assembleSnapshot(USER, NOW, [])
+    const item = snap.placement!.items.find((i) => i.kanjiId === k1)!
+    // Pinned to the row's own values, not merely "> 0" -- see comment above.
+    expect(item.strokeCount).toBe(expectedStrokeCount)
+    expect(item.readingCount).toBe(expectedReadingCount)
   })
 })
 
@@ -466,6 +556,15 @@ describe('CoachingService.assembleSnapshot — reviews', () => {
 
     const snap = await service.assembleSnapshot(USER_R, NOW, [])
     expect(snap.reviews.quiz).toHaveLength(0)
+  })
+
+  // MUTATION CAUGHT: hardcoding "a month" in fluency_gain's copy instead of
+  // reading the window. REVIEW_WINDOW_DAYS is documented as an assembly
+  // parameter; a copy string that inlines it becomes a lie the first time it
+  // changes, and nothing else would fail.
+  it('carries the review window length on the review snapshot', async () => {
+    const snap = await service.assembleSnapshot(USER_R, NOW, [])
+    expect(snap.reviews.windowDays).toBe(REVIEW_WINDOW_DAYS)
   })
 })
 
