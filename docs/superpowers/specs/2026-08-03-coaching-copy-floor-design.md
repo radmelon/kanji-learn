@@ -197,7 +197,7 @@ available, do not make it.
 ### Direct
 
 > **`leech`, more troubled than can be named** — 23 kanji are giving you
-> trouble, and three of them are 敗, which has lapsed 4 times, 語 3 times, and
+> trouble, and here are three of them — 敗 has lapsed 4 times, 語 3 times, and
 > 使 twice. The one to work on first is 敗. Look it up and build a hook for it —
 > a small story or image that ties the character to something you already know —
 > because that is what usually stops a kanji from slipping.
@@ -314,10 +314,10 @@ finding:
 > both measurements combined — so it is real progress rather than the test
 > landing differently on the day.
 
-> **`hardest_cleared`** — You cleared 願, which was the hardest item the test
-> put in front of you: it has 19 strokes and three readings. Difficulty here
-> weighs stroke count and number of readings alongside JLPT level, so the
-> hardest item is not always the one from the highest level you saw.
+> **`hardest_cleared`** — You cleared 願, the hardest item you got right: it has
+> 19 strokes and 3 readings. Difficulty here weighs stroke count and number of
+> readings alongside JLPT level, so the hardest item is not always the one from
+> the highest level you saw.
 
 > **`retest_due`** — Retaking your placement test would sharpen your level
 > estimate rather than simply repeat what you already know, and it has been 34
@@ -582,6 +582,48 @@ against live data — never by a failing test. All four drafts passed their test
 the analyzer's vocabulary may appear in learner copy only when the sentence
 explains it in the same breath. `theta_delta` may say "uncertainty" because it
 immediately glosses it; `retest_due` may not, because it led with it bare.
+
+### 12.5 Two more the whole-branch review caught, both against live data
+
+Neither could fail a test — every fixture in the suite is self-consistent by
+construction, which is exactly the blind spot.
+
+- **`level_estimate` printed a level outside the range it printed in the same
+  sentence.** `PlacementSnapshot.level` was `placementSessions.inferredLevel`,
+  stored at test time, while `levelLow`/`levelHigh` were recomputed at coaching
+  time. On the owner's own session that rendered *"puts you at N4, and the
+  honest range runs from N3 to N2"* — true on two of the four live sessions.
+
+  The cause was **not** the corpus recalibration the code anticipated:
+  `kanji_difficulty` had not changed. Those rows were written by a **pre-B146
+  build**, and the one session completed after that fix is the one whose stored
+  level agrees. So the bad rows are permanent until each learner retakes.
+
+  Fixed in **assembly**, not copy: `CoachingService` now derives `level` from
+  the same bands as the bounds, so containment is true by construction and the
+  LLM prompt is corrected too. A copy-layer guard alone would have degraded the
+  owner's own account to `BASE` — the opposite of the point. A containment guard
+  was added in `copy.ts` as defence in depth.
+
+- **`hardest_cleared` claimed the item was the hardest the test *asked*.** The
+  detector filters to cleared items *first*, then takes the maximum — so it only
+  knows the hardest one **cleared**. On live, one session asked an item at
+  difficulty 2.00 and the learner's hardest cleared was 1.21. False on two of
+  four. §12.4 had rewritten this sentence's closing clause for exactly this class
+  of unsupported claim and left the superlative in the opening clause. It now
+  reads "the hardest item you got right", and `BASE.hardest_cleared` was
+  rewritten to match.
+
+**`BASE.retest_due` was rewritten for the same reason as `BASE.leech`** — it
+still said the estimate "has drifted since it was taken", which §12.4 had
+already established is not what fires the finding.
+
+**The lesson, and it is the branch's most transferable one:** eight truthfulness
+defects were found on this branch, and **every single one was found by rendering
+a sentence and checking it against the detector or against live data.** None was
+found by a failing test, and 541 shared tests pass either way. A live-render
+smoke check — pull each real session, print all ten sentences — would have caught
+both of these in seconds, and is worth building before the next copy slice.
 
 ---
 
