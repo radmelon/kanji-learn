@@ -378,6 +378,20 @@ const fluencyFinding: Finding = {
   since: null,
 }
 
+// Finding 4 (Minor, this pass): not reachable at coaching.service.ts's own
+// REVIEW_WINDOW_DAYS = 30, but ReviewSnapshot.windowDays is carried on the
+// snapshot rather than inlined as a constant precisely because it may change
+// — the same reason this fixture exists for a value the constant does not
+// currently take. Pluralised the same way retest_due's elapsed-days clause
+// already is.
+const fluencyFindingOneDayWindow: Finding = {
+  ...fluencyFinding,
+  evidence: [
+    ...fluencyFinding.evidence.filter((e) => e.label !== EVIDENCE_LABELS.WINDOW_DAYS),
+    { label: EVIDENCE_LABELS.WINDOW_DAYS, value: 1 },
+  ],
+}
+
 // Mirrors detectThetaDelta (detectors/fluency.ts): both theta estimates and
 // both completedAt dates, sliced to 10 chars exactly as the detector emits
 // them (humanDate is the formatter's job, not the fixture's).
@@ -425,12 +439,19 @@ const thetaDeltaFindingNegativeStart: Finding = {
 // difficulty_at_ask = 1.00716, which the detector's own rounding
 // (`Math.round(x * 100) / 100`) renders as 1.01. The formatter does not read
 // this field, but the fixture should not assert a number that never occurred.
+//
+// Finding 3 (Minor, this pass): kanjiId here read 512 — not 願's real live id.
+// Verified 2026-08-06 (`SELECT id, character FROM kanji WHERE character =
+// '願'`): id is 1820. The formatter never reads kanjiId, but this fixture's
+// own comment claims live fidelity, and this is the same defect class
+// ITEM_DIFFICULTY above was corrected for one pass ago — surviving in a field
+// nobody re-checked the second time.
 const hardestFinding: Finding = {
   kind: 'hardest_cleared',
   magnitude: 0.7,
   confidence: 1,
   evidence: [
-    { label: EVIDENCE_LABELS.HARDEST_KANJI_CLEARED, value: '願', kanjiId: 512, character: '願' },
+    { label: EVIDENCE_LABELS.HARDEST_KANJI_CLEARED, value: '願', kanjiId: 1820, character: '願' },
     { label: EVIDENCE_LABELS.ITEM_DIFFICULTY, value: 1.01 },
     { label: EVIDENCE_LABELS.STROKE_COUNT, value: 19 },
     { label: EVIDENCE_LABELS.READING_COUNT, value: 3 },
@@ -454,6 +475,30 @@ const hardestFindingOneReading: Finding = {
     { label: EVIDENCE_LABELS.ITEM_DIFFICULTY, value: 0.95 },
     { label: EVIDENCE_LABELS.STROKE_COUNT, value: 5 },
     { label: EVIDENCE_LABELS.READING_COUNT, value: 1 },
+    { label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' },
+  ],
+  since: null,
+}
+
+// Finding 2 (Minor, this pass): the identical hard-coded-plural defect as
+// hardestFindingOneReading above, but on the STROKE side — the formatter
+// rendered "it has 1 strokes" for a one-stroke item. Only two live kanji have
+// exactly one stroke; verified 2026-08-06 (`SELECT id, character, stroke_count
+// FROM kanji WHERE stroke_count = 1`): 一 (id 1) and 乙 (id 1147), both with 4
+// readings. ITEM_DIFFICULTY here is illustrative rather than sourced from a
+// specific live session, unlike the two fixtures above — 一 is the simplest
+// kanji in the corpus, so it being the hardest-cleared item on a real
+// placement test is not realistic. This fixture exists to isolate the
+// stroke-count pluralisation, not to mirror a session.
+const hardestFindingOneStroke: Finding = {
+  kind: 'hardest_cleared',
+  magnitude: 0.4,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.HARDEST_KANJI_CLEARED, value: '一', kanjiId: 1, character: '一' },
+    { label: EVIDENCE_LABELS.ITEM_DIFFICULTY, value: -1.8 },
+    { label: EVIDENCE_LABELS.STROKE_COUNT, value: 1 },
+    { label: EVIDENCE_LABELS.READING_COUNT, value: 4 },
     { label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' },
   ],
   since: null,
@@ -1003,6 +1048,18 @@ describe('templateCopy — fluency_gain', () => {
     expect(text).toContain('recalling these characters is becoming automatic')
     expect(text).not.toContain('shape of something')
   })
+
+  // Finding 4 (Minor, this pass): not reachable at REVIEW_WINDOW_DAYS = 30,
+  // but the sole reason this layer reads the constant rather than inlining it
+  // is that it may change — so a 1-day window must still read correctly.
+  //
+  // MUTATION CAUGHT: hard-coding "days" regardless of count, which renders
+  // "last 1 days" for this fixture.
+  it('pluralises the window correctly at exactly one day', () => {
+    const text = templateCopy(fluencyFindingOneDayWindow, NOW)
+    expect(text).toContain('last 1 day,')
+    expect(text).not.toContain('1 days')
+  })
 })
 
 describe('templateCopy — theta_delta', () => {
@@ -1108,34 +1165,53 @@ describe('templateCopy — hardest_cleared', () => {
     expect(text).toContain('one reading')
     expect(text).not.toContain('one readings')
   })
+
+  // Finding 2 (Minor, this pass): the identical defect in the identical
+  // clause, fixed on the reading side only — strokes was hard-coded to the
+  // plural. Far less reachable than the reading case (only two one-stroke
+  // kanji exist live), but it is the same bug.
+  //
+  // MUTATION CAUGHT: hard-coding "strokes" regardless of count, which renders
+  // "1 strokes" for 一 and for the only other one-stroke kanji live (乙).
+  it('pluralises the stroke count correctly for a kanji with exactly one stroke', () => {
+    const text = templateCopy(hardestFindingOneStroke, NOW)
+    expect(text).toContain('一')
+    expect(text).toContain('1 stroke ')
+    expect(text).not.toContain('1 strokes')
+  })
 })
 
 describe('templateCopy — retest_due', () => {
-  // Finding 3: detectRetestDue fires when widenForStaleness(se, days) clears
-  // RETEST_FLOOR (0.5) — driven by the SE term. At 34 days, the drift term
-  // (0.004/day) contributes only 0.0185 to the variance; live ability_se
-  // values already clear 0.5 on their own (verified live 2026-08-06: 0.585
-  // and 0.546), so a learner who finished a placement test TODAY can already
-  // get this finding. The old copy attributed it to elapsed days
-  // ("drifted since then") and read "You took your placement test 0 days
-  // ago" for exactly that learner. The fix leads with the range around the
-  // learner's level being wider than it needs to be — the same cause, and
-  // the same vocabulary level_estimate already uses for it — rather than the
-  // analyzer's own word for that spread.
+  // Finding 1 (Important, this pass) — a contradiction the previous fix
+  // introduced. That pass had this sentence lead with "The range around your
+  // level is wider than it needs to be" and close "...would narrow THAT
+  // range", reusing level_estimate's own "range" vocabulary so the two
+  // findings would "read as one voice" when both render. Rendered together
+  // they contradicted instead: level_estimate calls its interval's width
+  // inherent to a twelve-question instrument, this sentence called the
+  // same-sounding quantity excess that should not be there, and "that range"
+  // asserted an identity between two DIFFERENT numbers — detectLevelEstimate's
+  // bounds come from the SE stored at test time; this finding's spread is
+  // widenForStaleness(se, days), a WIDER figure the learner is never shown.
+  // See "level_estimate and retest_due together" below, which renders the
+  // pair. The fix drops the range description entirely, giving this sentence
+  // a referent of its own: what a retake buys.
   //
-  // MUTATION CAUGHT: "the value of the test goes up when it is repeated" —
-  // true, obscure, and it never says where to go. Profile has a Placement Test
-  // row (profile.tsx:729), so the location can be named honestly.
+  // MUTATION CAUGHT: reverting to "The range around your level is wider than
+  // it needs to be...Taking the test again from your Profile would narrow
+  // that range rather than simply repeating what you already know" — the
+  // exact contradictory wording this pass removes.
   //
-  // MUTATION CAUGHT: reverting to "You took your placement test N days ago,
-  // and the estimate of your level has drifted since then" — attributes the
-  // finding to elapsed time rather than the range that actually fires it.
-  it('leads with the range, names the elapsed days, what retaking achieves, and where', () => {
+  // MUTATION CAUGHT: "the value of the test goes up when it is repeated" (an
+  // earlier, BASE-like phrasing) — true, obscure, and it never says where to
+  // go. Profile has a Placement Test row (profile.tsx:729), so the location
+  // can be named honestly.
+  it('names what retaking buys, the elapsed days, and where — without describing a range', () => {
     const text = templateCopy(retestFinding, NOW)
-    expect(text).toContain('The range around your level is wider than it needs to be')
+    expect(text).toContain('Retaking your placement test would sharpen your level estimate')
     expect(text).toContain('34 days')
     expect(text).toContain('Profile')
-    expect(text.toLowerCase()).toContain('narrow')
+    expect(text).not.toContain('range')
     expect(text).not.toContain('drifted')
   })
 
@@ -1157,13 +1233,13 @@ describe('templateCopy — retest_due', () => {
 
   // Finding 3's own reachable case: a learner who completed a placement test
   // TODAY already has ability_se above RETEST_FLOOR on live (0.585, 0.546
-  // verified above), so DAYS_SINCE_THE_TEST can be exactly 0. The old copy
-  // rendered "You took your placement test 0 days ago", which reads as
-  // broken — the fix omits the elapsed-time clause entirely rather than
-  // stating a true-but-useless zero.
+  // verified above), so DAYS_SINCE_THE_TEST can be exactly 0. The fix omits
+  // the elapsed-time clause entirely rather than stating a true-but-useless
+  // zero.
   //
-  // MUTATION CAUGHT: dropping the `n >= 1` guard, which would render "...than
-  // it should, and your placement test was 0 days ago" for this fixture.
+  // MUTATION CAUGHT: dropping the `n >= 1` guard, which would render "...you
+  // already know, and it has been 0 days since the last one" for this
+  // fixture.
   it('omits the elapsed-time clause entirely at zero days', () => {
     const zeroDays: Finding = {
       ...retestFinding,
@@ -1174,17 +1250,17 @@ describe('templateCopy — retest_due', () => {
       ],
     }
     const text = templateCopy(zeroDays, NOW)
-    expect(text).toContain('The range around your level is wider than it needs to be')
+    expect(text).toContain('Retaking your placement test would sharpen your level estimate')
     expect(text).toContain('Profile')
-    expect(text).not.toContain('days ago')
+    expect(text).not.toContain('since the last one')
     expect(text).not.toContain('0 days')
   })
 
-  // Finding 3's grammatical edge: "1 days ago" is reachable (a placement test
+  // Finding 3's grammatical edge: "1 days" is reachable (a placement test
   // completed yesterday) and ungrammatical.
   //
   // MUTATION CAUGHT: hard-coding the plural ("days") regardless of count,
-  // which renders "1 days ago" for this exact fixture.
+  // which renders "1 days since the last one" for this exact fixture.
   it('pluralises correctly at exactly one day', () => {
     const oneDay: Finding = {
       ...retestFinding,
@@ -1195,8 +1271,72 @@ describe('templateCopy — retest_due', () => {
       ],
     }
     const text = templateCopy(oneDay, NOW)
-    expect(text).toContain('1 day ago')
-    expect(text).not.toContain('1 days ago')
+    expect(text).toContain('1 day since the last one')
+    expect(text).not.toContain('1 days since')
+  })
+})
+
+describe('level_estimate and retest_due together', () => {
+  // Finding 1 (Important): the reason this pass exists. An earlier revision
+  // had retest_due adopt level_estimate's "range" vocabulary so the two would
+  // "read as one voice" — instead, rendered back to back, they contradicted
+  // each other and shared a false anaphora:
+  //
+  //   "...and the honest range runs from N5 to N3. That range is wide
+  //   because a placement test only asks about a dozen questions..."
+  //   (level_estimate), followed two sentences later by "The range around
+  //   your level is wider than it needs to be...Taking the test again...
+  //   would narrow THAT range..." (retest_due).
+  //
+  // Two incompatible framings of one quantity, back to back — inherent to the
+  // instrument in one paragraph, excess to be trimmed in the next — and "that
+  // range" claiming an identity the numbers don't share: detectLevelEstimate's
+  // bounds are the SE stored at test time; detectRetestDue fires on
+  // widenForStaleness(se, days), a WIDER number the learner is never shown.
+  // `level_estimate` and `retest_due` are scored independently by `select()`
+  // — a flat top-N with no per-band cap — so both landing in the same note is
+  // not a contrived case; the owner's own live numbers score both into it.
+  //
+  // The fix gives retest_due a referent of its own (what retaking buys)
+  // instead of describing a spread at all, so the two cannot contradict no
+  // matter which fires alongside the other — level_estimate keeps describing
+  // ITS interval; retest_due no longer describes any interval at all.
+  //
+  // This test's real job is not any one assertion below: it is the same
+  // discipline spec §6.1 established for leech + hook_coverage — forcing a
+  // human to read the rendered pair at least once, because that is how this
+  // exact contradiction was found in the first place. The assertions exist so
+  // a silent regression back to the old wording still fails CI even if nobody
+  // rereads the pair by eye.
+  //
+  // MUTATION CAUGHT: reverting retest_due to the old range-based wording,
+  // which reintroduces both the "wider than it needs to be" / "wide because"
+  // clash and the false "that range" anaphora. Run against both
+  // level_estimate branches — the collapsed branch's own "stays entirely
+  // within N5" framing collided even harder with "wider than it needs to be".
+  it('does not contradict level_estimate when the interval is a spread', () => {
+    const both = analysisBody([levelEstimateFinding, retestFinding], NOW)
+    const [levelParagraph, retestParagraph] = both.split('\n\n')
+    expect(both).not.toContain('undefined')
+    expect(levelParagraph).toContain('That range is wide because')
+    // retest_due must not reach back into level_estimate's number, or
+    // describe any range of its own for "that range" to refer to.
+    expect(retestParagraph.toLowerCase()).not.toContain('range')
+    expect(retestParagraph).not.toContain('wider than it needs to be')
+    expect(retestParagraph).toContain('Retaking your placement test would sharpen your level estimate')
+  })
+
+  // Same pair, the collapsed level_estimate branch — the sharper case per the
+  // finding: "stays entirely within N5" would have collided even harder with
+  // retest_due's old "wider than it needs to be".
+  it('does not contradict level_estimate when the interval collapses to one band', () => {
+    const both = analysisBody([levelEstimateFindingCollapsed, retestFinding], NOW)
+    const [levelParagraph, retestParagraph] = both.split('\n\n')
+    expect(both).not.toContain('undefined')
+    expect(levelParagraph).toContain('stays entirely within N5')
+    expect(retestParagraph.toLowerCase()).not.toContain('range')
+    expect(retestParagraph).not.toContain('wider than it needs to be')
+    expect(retestParagraph).toContain('Retaking your placement test would sharpen your level estimate')
   })
 })
 

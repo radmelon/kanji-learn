@@ -15,6 +15,22 @@ import { EVIDENCE_LABELS } from './types'
  * true thing warmly; its input is the Finding, never a row (§1).
  */
 
+/**
+ * The rule that decides when a formatter may use the analyzer's own
+ * vocabulary — words that are also literally how an Evidence label reads,
+ * like "uncertainty" (CURRENT_UNCERTAINTY, UNCERTAINTY_WHEN_MEASURED below).
+ *
+ * That word may appear in generated copy ONLY when the sentence glosses it in
+ * the same breath. `theta_delta` earns it: "...larger than the uncertainty in
+ * both measurements combined" explains what the word means as it uses it.
+ * `retest_due` does not use it at all, because there was never a clause in
+ * that sentence prepared to explain it — it would have been a bare technical
+ * term the learner has to interpret alone. copy.test.ts pins both sides of
+ * this — `toContain('uncertainty')` for theta_delta, `not.toContain
+ * ('uncertainty')` for retest_due — which is the rule holding in two
+ * directions at once, not a contradiction between the tests.
+ */
+
 const BASE: Record<FindingKind, string> = {
   reading_lag:
     'Your readings are trailing your meanings by more than the usual gap.',
@@ -328,7 +344,15 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // accuracyHeld permits a fall of up to ACCURACY_SLACK (0.05) per card, and
     // the cited kanji are precisely the subset that satisfied it — the old
     // global phrasing overstated a claim that is actually scoped to them.
-    return `You are answering about ${faster}% faster than you were earlier in the last ${window} days, across ${measured} kanji, and your accuracy has held up on those. Speed usually improves before anything else does, so this is a sign that recalling these characters is becoming automatic rather than effortful.`
+    //
+    // Not reachable at coaching.service.ts's own REVIEW_WINDOW_DAYS = 30, but
+    // ReviewSnapshot.windowDays is carried here rather than inlined precisely
+    // because it may change (see that field's own comment in types.ts) —
+    // pluralised the same way retest_due's elapsed-days clause two formatters
+    // down already is, so a future 1-day window does not read "last 1 days".
+    const windowDays = Number(window)
+    const dayWord = windowDays === 1 ? 'day' : 'days'
+    return `You are answering about ${faster}% faster than you were earlier in the last ${windowDays} ${dayWord}, across ${measured} kanji, and your accuracy has held up on those. Speed usually improves before anything else does, so this is a sign that recalling these characters is becoming automatic rather than effortful.`
   },
 
   theta_delta: (f) => {
@@ -355,6 +379,12 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // readings' — 344 of 2,294 live kanji have exactly one reading.
     const readingCount = Number(readings)
     const readingWord = readingCount === 1 ? 'reading' : 'readings'
+    // The identical defect lived in the same clause on the stroke side: a
+    // hard-coded plural rendered 'it has 1 strokes'. Only two live kanji have
+    // exactly one stroke (一, 乙 — id-verified 2026-08-06), far less reachable
+    // than the reading case above, but it is the same bug fixed the same way.
+    const strokeCount = Number(strokes)
+    const strokeWord = strokeCount === 1 ? 'stroke' : 'strokes'
     // Finding 1 (CRITICAL): detectHardestCleared emits five fields about the
     // hardest item ALONE — character, difficulty, strokes, readings, date.
     // Nothing about any other item, and no JLPT level at all. The old closing
@@ -363,31 +393,47 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // which is false on two of live's four sessions (verified: the owner's
     // own 願 session had nine items, none below N3). State the mechanism
     // instead — true regardless of what else was on the test.
-    return `You cleared ${kanji.character}, which was the hardest item the test put in front of you: it has ${strokes} strokes and ${spell(readingCount)} ${readingWord}. Difficulty here weighs stroke count and number of readings alongside JLPT level, so the hardest item is not always the one from the highest level you saw.`
+    return `You cleared ${kanji.character}, which was the hardest item the test put in front of you: it has ${strokeCount} ${strokeWord} and ${spell(readingCount)} ${readingWord}. Difficulty here weighs stroke count and number of readings alongside JLPT level, so the hardest item is not always the one from the highest level you saw.`
   },
 
   retest_due: (f) => {
     const days = ev(f, EVIDENCE_LABELS.DAYS_SINCE_THE_TEST)
     if (days === undefined) return null
-    // Finding 3: detectRetestDue fires on widenForStaleness(se, days) clearing
-    // RETEST_FLOOR (0.5) — driven by the SE term, not the drift term. At 34
-    // days, drift contributes only 0.0185 to the variance; live ability_se
-    // values already exceed 0.5 on their own (verified: 0.585, 0.546), so a
-    // learner can hit this finding at 0 elapsed days. Lead with the estimate's
-    // spread, which is what actually fires the finding, and only mention
-    // elapsed time when it is non-zero and correctly pluralised.
+    // An earlier pass (Finding 3) established two things this still keeps:
+    // detectRetestDue fires on widenForStaleness(se, days) clearing
+    // RETEST_FLOOR (0.5) — driven by the SE term, not elapsed time, so a
+    // learner can hit this finding at 0 elapsed days (live ability_se already
+    // exceeds 0.5 on its own: verified 0.585, 0.546). That is why the elapsed
+    // clause below is omitted at 0 and, even when shown, is stated as an
+    // added fact rather than as the reason the finding fired.
     //
-    // "The range around your level is wider than it needs to be" — not "your
-    // level estimate is carrying more uncertainty than it should". Same
-    // finding, same cause, but "uncertainty" is the analyzer's word for it:
-    // it is literally how CURRENT_UNCERTAINTY and UNCERTAINTY_WHEN_MEASURED
-    // are labelled below, not a learner's. level_estimate already has a
-    // vocabulary for this exact concept ("the honest range"); reusing it here
-    // says the same true thing in the learner's language instead, and makes
-    // the two findings read as one voice when both fire together.
+    // What that pass got wrong (this task's Important finding — a
+    // contradiction the fix below removes): it had this sentence lead with
+    // "The range around your level is wider than it needs to be" and close
+    // with "...would narrow THAT range" — reusing level_estimate's own
+    // "range" vocabulary so the two findings would "read as one voice".
+    // Rendered together they contradicted instead. level_estimate calls its
+    // interval's width inherent to a twelve-question instrument ("that range
+    // is wide because a placement test only asks about a dozen questions");
+    // this finding called the same-sounding quantity excess that should not
+    // be there ("wider than it needs to be") — and "that range" asserted an
+    // identity between two DIFFERENT numbers. detectLevelEstimate's bounds
+    // are recomputed from the SE stored at test time; this finding's spread
+    // is widenForStaleness(se, days) — a WIDER figure the learner is never
+    // shown. See "level_estimate and retest_due together" in copy.test.ts,
+    // which renders the pair and pins the absence of that contradiction.
+    //
+    // The fix: give this finding a referent of its own instead of describing
+    // a spread at all — it states what retaking buys, not why the finding
+    // fired. That also keeps this clear of "uncertainty" (the analyzer's own
+    // word for the concept: CURRENT_UNCERTAINTY / UNCERTAINTY_WHEN_MEASURED
+    // below), since there is no spread claim left for that word to attach to.
+    // See the rule above BASE: the analyzer's vocabulary may appear only when
+    // a sentence explains it in the same breath, and this sentence has
+    // nothing left to explain.
     const n = Number(days)
-    const elapsed = n >= 1 ? `, and your placement test was ${n} ${n === 1 ? 'day' : 'days'} ago` : ''
-    return `The range around your level is wider than it needs to be${elapsed}. Taking the test again from your Profile would narrow that range rather than simply repeating what you already know.`
+    const elapsed = n >= 1 ? `, and it has been ${n} ${n === 1 ? 'day' : 'days'} since the last one` : ''
+    return `Retaking your placement test would sharpen your level estimate rather than simply repeat what you already know${elapsed}. You can start it from your Profile.`
   },
 }
 
