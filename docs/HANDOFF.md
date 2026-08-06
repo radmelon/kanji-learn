@@ -28,15 +28,20 @@
 > 3. **The `inferred_level` backfill** — `[Effort: M]`, needs a migration. Three
 >    of four live sessions still show a tutor and the Journal reporting
 >    different levels. See the 2026-08-04 section and `ENHANCEMENTS.md`.
-> 4. **🔴 The Supabase credentials exposed on 2026-04-20 are still live in
+> 4. **⏰ Rotate the three LLM keys in early October — they expire 2026-10-26
+>    and expiry is SILENT.** Anthropic, Groq and Gemini were issued 2026-07-28
+>    with a 90-day life. `/v1/buddy/meet/turn` returns `{fallback:true}` at
+>    **200** on any failure, so an expired key does not error — Buddy just drops
+>    to template tier and nobody is told. `docs/secrets-rotation.md` schedules
+>    the rotation *for the expiry date*, i.e. zero margin. Owner's target:
+>    **2026-10-02**.
+> 5. **🔴 The Supabase credentials exposed on 2026-04-20 are still live in
 >    production.** Verified 2026-08-06 against AWS: `DATABASE_URL`,
 >    `SUPABASE_JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` are SSM **version 1**,
 >    untouched since 2026-07-29 and byte-identical to `packages/db/.env`; the
->    service-role key runs to **2036**-03-26. An owner report the same day said
->    they had been rotated with a 2026-10-02 expiry — **no evidence of either was
->    found.** Likely new keys were created without the old being revoked or
->    production switched. Confirm in the Supabase dashboard, then rotate and
->    `put-parameter --overwrite`. Evidence in `ENHANCEMENTS.md`.
+>    service-role key runs to **2036**-03-26. Rotation was **deferred to October
+>    by the owner**, so this is a decision, not a gap — but `service_role`
+>    bypasses RLS, so the leaked key is full database access until then.
 >
 >    Good news in the same check: the **SSM migration is done** (all seven read
 >    by ARN, plaintext-env exposure closed) and the four non-Supabase keys **are**

@@ -236,7 +236,7 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   **Ties directly to the Velocity rework below**, which is the same failure at the other end of the journey: a number computed and presented without the framing that makes it useful.
 
-  **Note B-210 first.** Retaking the placement test currently destroys FSRS state on in-progress kanji, and any work that makes the test more attractive raises the odds of a retake. Fix that before inviting people back to it.
+  ~~**Note B-210 first.** Retaking the placement test currently destroys FSRS state on in-progress kanji, and any work that makes the test more attractive raises the odds of a retake. Fix that before inviting people back to it.~~ **B-210 was closed 2026-08-02** — `applyPlacementResults` no longer exists, `alreadyHas` covers every owned kanji at any status, and the write is `onConflictDoNothing()`. **A retake is safe, and this blocker no longer applies.** Noted here because the warning outlived the bug: `retest_due` already ships copy inviting a retake ("You can start it from your Profile"), so a reader acting on the struck-through text would have gone looking for a defect that was fixed four days earlier.
 
   `[Effort: M]` `[Impact: High — first impression, and the only structured diagnostic we ever collect]` `[Backend: Yes]` `[Status: 💡 Idea]`
 
@@ -283,13 +283,27 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   `[Effort: M]` `[Impact: Med — a tutor and a learner currently see different levels for the same test]` `[Backend: Yes — migration]` `[Status: 💡 Idea]`
 
-- [ ] **Build a live-render smoke check for coaching copy before the next copy slice** — Eight truthfulness defects were found on the copy-floor branch. **Every one was found by rendering a sentence and checking it against its detector or against live data. Not one was found by a failing test**, and 541 shared tests pass either way.
+- [x] **Build a live-render smoke check for coaching copy** — Eight truthfulness defects were found on the copy-floor branch. **Every one was found by rendering a sentence and checking it against its detector or against live data. Not one was found by a failing test**, and 541 shared tests pass either way.
 
   The reason is structural: every fixture in the suite is self-consistent by construction, so a fixture can never reproduce the disagreement between a stored value and a recomputed one, or a superlative that is true of the fixture and false of a real session. `apps/api/test/integration/coaching-snapshot.test.ts` even contained an invariant assertion that live data violated, because it seeded its input from the same source it asserted against.
 
   **What to build:** a script that pulls each real placement session and learner snapshot, renders all ten finding sentences, and prints them for a human to read. It cannot live in CI — it needs live read access — so it belongs beside `scripts/with-live-db.sh` as a manual pre-merge tool. Recorded in the copy-floor spec's §12.5.
 
-  `[Effort: S]` `[Impact: High — it is the only thing that has ever caught this defect class]` `[Backend: No — read-only script]` `[Status: 💡 Idea]`
+  ✅ **SHIPPED 2026-08-06** as `scripts/coaching-smoke-render.mjs`:
+
+  ```bash
+  ./scripts/with-live-db.sh node \
+    --import ./packages/db/node_modules/tsx/dist/esm/index.cjs \
+    scripts/coaching-smoke-render.mjs
+  ```
+
+  It drives the **production** path — `CoachingService.assembleSnapshot`, not a reimplementation — then calls `analyze(snapshot, 10)` to bypass the top-3 cap, and prints each sentence directly above the evidence it was built from so the two can be checked against each other. It classifies every kind as **SHOWN** (production displays it today), **HIDDEN** (fires, but loses the top-3 cut, so nobody has ever read it) or **SILENT** (the detector returned null).
+
+  **That distinction was the point.** Before it, 5 of 10 kinds had ever reached a notebook entry. The first run rendered **7 of 10** — `reading_lag` and `retest_due` had been firing all along and losing the cut, so their copy was shipped-but-unread rather than never-triggered. `commitment_gap`, `fluency_gain` and `theta_delta` remain SILENT and their copy is still unverified against reality; checking them needs a learner whose data makes them fire.
+
+  **First run found no truthfulness defects** — worth recording, given the branch's base rate was eight. It did surface one evidence-contract gap: `hook_coverage` renders *"字 keeps catching you out"*, which is guaranteed true by `pickHookCandidate`'s `score >= MIN_STRUGGLE_SIGNALS` filter, but the struggle score is **not** in the finding's evidence — so the sentence's central claim cannot be checked against its own evidence, which is exactly the workflow this tool exists for. Worth adding.
+
+  `[Effort: S]` `[Impact: High — it is the only thing that has ever caught this defect class]` `[Backend: No — read-only script]` `[Status: ✅ Shipped & Verified]`
 
 - [ ] **Review the Journal's UI/UX — nothing owns it, and it is the surface Buddy's coaching lands on** — The Journal was built by the [2026-07-31 notebook spec](https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-07-31-buddy-home-notebook-design.md) and has not been revisited since. **Verified 2026-08-03: no slice owns its presentation layer.** The parent coaching spec's §12 lists six slices — analyzer, notebook surface, conversational surface, companion mode, IRT explainer, goal beat — and none is presentation. The notebook spec's own §15 out-of-scope list defers voice conversation, the localised tutor report, Phase 4 social and Progress refinements, and lists **no** Journal presentation work, because it considered the surface finished when it shipped. So this is not deferred; it is unowned.
 
@@ -575,11 +589,15 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   **That means the credentials exposed on 2026-04-20 are still live in production and remain valid until 2036.** The `iat` predates the exposure, so this is the leaked key itself, not a successor.
 
-  ⚠️ **This contradicts an owner report of 2026-08-06** that the Supabase credentials had been rotated and that the replacements expire **2026-10-02**. No evidence of either was found: the parameters are untouched since 2026-07-29, and none of the three carries a decodable October expiry (`database-url` and `supabase-jwt-secret` are not JWTs; the service-role key runs to 2036).
+  **The Supabase rotation was deferred to October by the owner** — a decision on record in the 2026-08-02 handoff section, not an oversight.
 
-  **The most likely reconciliation, and the reason this is dangerous:** new Supabase API keys may have been *created* — plausibly the newer `sb_secret_…` style, which can carry a 90-day expiry — **without the legacy keys being revoked and without production being switched to them.** Creating a new credential is not rotation. If that is what happened, the leaked key still works, production still uses it, and the exposure feels closed while being entirely open. **Confirm in the Supabase dashboard whether the legacy `service_role` key has been revoked.**
+  ⏰ **The three LLM keys expire 2026-10-26, and expiry is SILENT.** `ANTHROPIC_API_KEY`, `GROQ_API_KEY` and `GEMINI_API_KEY` were issued **2026-07-28** with a 90-day life. The SSM record agrees exactly: those three sit at version 2, modified 2026-07-29 — the day after issue.
 
-  **What is actually outstanding:** rotate `DATABASE_URL`, `SUPABASE_JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY`, revoke the old ones, and `put-parameter --overwrite` each — which bumps them to version 2 and makes this table self-verifying next time.
+  **`/v1/buddy/meet/turn` returns `{fallback:true}` at HTTP 200 on any failure**, so an expired key does not error. Buddy silently drops to template tier and nothing surfaces. Meanwhile `docs/secrets-rotation.md` schedules the rotation *for 2026-10-26* — the expiry date itself, i.e. **zero margin**. **Rotate in early October.** The owner's stated target is **2026-10-02**.
+
+  **This resolves an apparent contradiction; do not re-investigate it.** An owner report on 2026-08-06 described "the Supabase credentials, rotated, expiring in ~90 days in October", which the SSM evidence appeared to refute outright. Two separate facts had merged: the **LLM** keys were rotated and do expire in October; the **Supabase** keys were neither. Both halves were true — of different keys.
+
+  **What is actually outstanding:** rotate `DATABASE_URL`, `SUPABASE_JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY`, revoke the old ones, and `put-parameter --overwrite` each — which bumps them to version 2 and makes the table above self-verifying next time.
 
   **Why SSM Parameter Store over AWS Secrets Manager:**
   - Standard `SecureString` parameters are **free** under the AWS-managed `aws/ssm` KMS key; Secrets Manager is $0.40/secret/month × 7 secrets = $2.80/mo with no added benefit for this app.

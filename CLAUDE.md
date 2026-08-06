@@ -124,17 +124,22 @@ unchanged in production — SSM version 1, untouched since 2026-07-29, and
 byte-identical to `packages/db/.env`. The service-role key decodes to `exp`
 **2036**-03-26, so it does not lapse on its own.
 
-**Do not record these as rotated.** An owner report on 2026-08-06 said the
-Supabase credentials had been rotated with a 2026-10-02 expiry; checking
-production found no trace of either. New keys may have been *created* without
-the old ones being revoked or production being switched — which leaves the leak
-open while looking closed. Full evidence in `ENHANCEMENTS.md` → 🔧 Backend &
-Data → Secrets Management.
+**Do not record these as rotated.** Their rotation was **deferred to October by
+the owner** — a decision, not an oversight. Full evidence in `ENHANCEMENTS.md`
+→ 🔧 Backend & Data → Secrets Management.
 
 The four non-Supabase keys (`ANTHROPIC_API_KEY`, `GROQ_API_KEY`,
 `GEMINI_API_KEY`, `INTERNAL_SECRET`) **were** rotated — SSM version 2. And the
 SSM migration itself is done: App Runner reads all seven by ARN, so the
-plaintext-env exposure is closed even though the values are not.
+plaintext-env exposure is closed even though the Supabase values are not.
+
+⏰ **The three LLM keys expire 2026-10-26, and expiry is SILENT.** Anthropic,
+Groq and Gemini were issued 2026-07-28 with a 90-day life.
+`/v1/buddy/meet/turn` returns `{fallback:true}` at **200** on any failure, so an
+expired key does not error — Buddy quietly drops to template tier and nobody is
+told. `docs/secrets-rotation.md` schedules the rotation *for the expiry date
+itself*, i.e. **zero margin**. **Rotate in early October, not on the 26th.**
+Owner's target is 2026-10-02.
 
 **Default to read-only.** `SELECT` freely to answer a question about real data.
 A write, migration, or `pg_restore` against live is a separate decision that
