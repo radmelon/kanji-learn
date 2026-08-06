@@ -259,6 +259,26 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 🎨 UI & Experience
 
+- [ ] **Backfill `placement_sessions.inferred_level` for pre-B146 rows — two API surfaces now disagree about a learner's level** — The coaching copy floor (2026-08-04) changed `CoachingService` to **recompute** the level from today's difficulty bands rather than read `placement_sessions.inferred_level`, because the stored value could contradict the credible-interval bounds shown in the same sentence — rendering *"puts you at N4, and the honest range runs from N3 to N2"* on the owner's own session.
+
+  **The stored values are stale, not drifting.** `kanji_difficulty` has not changed since 2026-07-31. Those rows were written by a build predating [`504b1ea` *fix(placement): the level bands were built from the learner's own answers*](https://github.com/radmelon/kanji-learn/commit/504b1ea), which landed 2026-08-01 — and the single live session completed after it is the only one whose stored level agrees with a recomputation. **They will not self-heal until each learner retakes the placement test.**
+
+  **The consequence is a live inconsistency.** `apps/api/src/services/tutor-report.service.ts:141` and `apps/api/src/services/tutor-analysis.service.ts:168` still read the column raw — the latter interpolates it into an LLM prompt as `inferred level = N4`. On **3 of the 4 live sessions** those two surfaces now report a different level from the Journal. Both are exposed through `apps/api/src/routes/report.ts`. Mobile is unaffected: it renders the level from the completion response at test time and never reads it back.
+
+  **Two options.** The durable one is a migration that recomputes and backfills `inferred_level` for pre-B146 rows, which also repairs anything else reading the column. The cheap one is having the tutor path recompute the same way coaching now does, leaving the column stale but unread. The migration is better; the coaching branch deliberately did not attempt it because a data backfill is not a copy change.
+
+  Found 2026-08-04 by the whole-branch review of the copy floor, checking rendered copy against live rows.
+
+  `[Effort: M]` `[Impact: Med — a tutor and a learner currently see different levels for the same test]` `[Backend: Yes — migration]` `[Status: 💡 Idea]`
+
+- [ ] **Build a live-render smoke check for coaching copy before the next copy slice** — Eight truthfulness defects were found on the copy-floor branch. **Every one was found by rendering a sentence and checking it against its detector or against live data. Not one was found by a failing test**, and 541 shared tests pass either way.
+
+  The reason is structural: every fixture in the suite is self-consistent by construction, so a fixture can never reproduce the disagreement between a stored value and a recomputed one, or a superlative that is true of the fixture and false of a real session. `apps/api/test/integration/coaching-snapshot.test.ts` even contained an invariant assertion that live data violated, because it seeded its input from the same source it asserted against.
+
+  **What to build:** a script that pulls each real placement session and learner snapshot, renders all ten finding sentences, and prints them for a human to read. It cannot live in CI — it needs live read access — so it belongs beside `scripts/with-live-db.sh` as a manual pre-merge tool. Recorded in the copy-floor spec's §12.5.
+
+  `[Effort: S]` `[Impact: High — it is the only thing that has ever caught this defect class]` `[Backend: No — read-only script]` `[Status: 💡 Idea]`
+
 - [ ] **Review the Journal's UI/UX — nothing owns it, and it is the surface Buddy's coaching lands on** — The Journal was built by the [2026-07-31 notebook spec](https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-07-31-buddy-home-notebook-design.md) and has not been revisited since. **Verified 2026-08-03: no slice owns its presentation layer.** The parent coaching spec's §12 lists six slices — analyzer, notebook surface, conversational surface, companion mode, IRT explainer, goal beat — and none is presentation. The notebook spec's own §15 out-of-scope list defers voice conversation, the localised tutor report, Phase 4 social and Progress refinements, and lists **no** Journal presentation work, because it considered the surface finished when it shipped. So this is not deferred; it is unowned.
 
   **Deliberately not specced on 2026-08-03**, when the coaching copy floor was written. The owner's complaint that Buddy's note gave "less than zero value" was entirely about *content* — which test, which kanji, what to do — and no part of it was about layout, spacing or hierarchy. Speccing presentation then would have been guessing at a second problem before the first was fixed.
