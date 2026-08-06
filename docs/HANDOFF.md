@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-04 (**The copy floor is BUILT and reviewed on a branch. Nothing merged, nothing pushed. It fixes the note the owner called worthless.**)
+# Session Handoff — 2026-08-04 (**The copy floor is reviewed and open as PR #13. Not merged, not deployed. It fixes the note the owner called worthless.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -11,12 +11,34 @@
 
 > ## ▶️ What the next session does
 >
-> **Land branch `coaching-copy-floor`** — 25 commits, `bbb1d9e..HEAD`, off `main`.
-> It has **no upstream**; nothing has left this machine. The whole-branch review
-> returned **Ready to merge: Yes**, no Critical, no Important.
+> **Review and land https://github.com/radmelon/kanji-learn/pull/13**, then
+> deploy. The whole-branch review returned **Ready to merge: Yes**, no Critical
+> and no Important outstanding.
 >
-> Then deploy. **API only** — no migration, no EAS build. It changes what the
-> Journal says and what slice 3's template fallback produces.
+> **Deploy is API-only — no migration, no EAS build.** It changes what the
+> Journal says and what slice 3's template fallback produces. Verify with
+> response content per `docs/SOP.md`; the canary is below.
+>
+> ### 🔎 How to verify this deploy
+>
+> The pass condition is **not** "a row exists" — slice 2 already produced rows.
+> It is that the text **names specific kanji, dates and levels**:
+>
+> ```bash
+> ./scripts/with-live-db.sh psql -c "SELECT left(body, 400) FROM notebook_entries WHERE source->>'kind' = 'coaching_analysis' AND superseded_at IS NULL ORDER BY created_at DESC LIMIT 3"
+> ```
+>
+> If it still reads "A handful of kanji are giving you trouble", the formatters
+> are degrading to `BASE` in production for a reason no test reproduced.
+>
+> ### 📋 Then, in priority order
+>
+> 1. **Slice 3's content check on 2026-08-10** — the owner's next due session.
+>    Still open; see the slice 3 section below.
+> 2. **The `inferred_level` backfill** — this branch made a pre-existing
+>    staleness visible. See the warning below and `ENHANCEMENTS.md`.
+> 3. **A live-render smoke check** before any further copy work. See the red
+>    section below for why this is the highest-value item on the list.
 
 ### 📦 What it does
 
