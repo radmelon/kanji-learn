@@ -304,25 +304,28 @@ finding:
 
 ### Motivate
 
-> **`fluency_gain`** — You are answering about 22% faster than you were a month
-> ago, across 41 kanji, and your accuracy has not slipped while doing it. Speed
-> usually improves before anything else does, so this is a sign that recalling
-> these characters is becoming automatic rather than effortful.
+> **`fluency_gain`** — You are answering about 22% faster than you were earlier
+> in the last 30 days, across 41 kanji, and your accuracy has held up on those.
+> Speed usually improves before anything else does, so this is a sign that
+> recalling these characters is becoming automatic rather than effortful.
 
-> **`theta_delta`** — Your ability estimate has risen from 0.31 to 0.68 between
-> your placement tests on 12 July and 29 July. That rise is larger than the
-> uncertainty in both measurements combined, so it is real progress rather than
-> the test landing differently on the day.
+> **`theta_delta`** — Your ability estimate has risen between your placement
+> tests on 12 July and 29 July, and the rise is larger than the uncertainty in
+> both measurements combined — so it is real progress rather than the test
+> landing differently on the day.
 
 > **`hardest_cleared`** — You cleared 願, which was the hardest item the test
-> put in front of you: it has 19 strokes and three readings. The test weighs
-> stroke count and number of readings alongside JLPT level, which is why 願
-> counted as harder than some N2 kanji you also saw.
+> put in front of you: it has 19 strokes and three readings. Difficulty here
+> weighs stroke count and number of readings alongside JLPT level, so the
+> hardest item is not always the one from the highest level you saw.
 
-> **`retest_due`** — You took your placement test 34 days ago, and the estimate
-> of your level has drifted since then because it has had no new information.
-> You can take the test again from your Profile, and doing so would narrow the
-> range around your level rather than simply repeating what you already know.
+> **`retest_due`** — Retaking your placement test would sharpen your level
+> estimate rather than simply repeat what you already know, and it has been 34
+> days since the last one. You can start it from your Profile.
+
+**⚠️ All four of these were rewritten during implementation, three of them after
+the drafts above proved untrue.** The reasons are in §12.4; do not restore the
+originals without reading it.
 
 ### 6.1 What a "hook" is, and where the explanation lives
 
@@ -523,6 +526,62 @@ rather than silently:
    `LearnerSnapshot`'s contract and `CoachingService`'s assembly — which means
    the API package's tests are in scope for those two, and the "shared lane
    only, sub-second" framing in §1 holds for the copy work but not for them.
+
+### 12.4 Every Motivate sentence was rewritten, three because the draft was untrue
+
+Found by rendering the copy and checking each claim against its detector and
+against live data — never by a failing test. All four drafts passed their tests.
+
+- **`hardest_cleared` was false on live, and inverted this spec's own insight.**
+  The draft claimed 願 "counted as harder than some N2 kanji you also saw". The
+  finding's evidence carries **only** the hardest item — no other item, and no
+  JLPT level at all — so the comparison had nothing behind it. Worse, the
+  owner's 願 session contains 願(N3) plus seven N2s and one more N3: **nothing
+  easier than N3 was on it**, and the claim is false on two of the four sessions
+  live has. §9's actual insight is the reverse — 願, at the *easier* JLPT level,
+  outranked 刊 and 筆 at the harder one. The shipped clause now describes the
+  difficulty model, which the evidence does support, and needs only one
+  counterexample to be true.
+
+- **`theta_delta` printed raw logits.** θ is centred near zero, so the
+  reachable negative case rendered *"Your ability estimate has risen from -0.42
+  to 0.12"* — a negative "ability" shown to a learner as praise, in the one band
+  whose job is motivation. The numbers are gone; the dates and the
+  combined-standard-error basis remain, which is what carried the meaning.
+
+- **`retest_due` attributed the finding to elapsed time, which is not what fires
+  it.** `widenForStaleness` contributes 0.0185 of variance at 34 days, while
+  live standard errors of 0.585 and 0.546 already exceed `RETEST_FLOOR` — so a
+  learner who finishes a test *today* was told *"You took your placement test 0
+  days ago, and the estimate of your level has drifted since then."* It also
+  rendered "1 days ago".
+
+  **This one took three attempts.** The second said the estimate carried
+  "uncertainty", reintroducing the exact jargon §3's audit flags as this
+  finding's failing — the word appears verbatim in two of its own evidence
+  labels. The third borrowed `level_estimate`'s "range" vocabulary to make them
+  one voice, and instead made them **contradict**: one paragraph explained the
+  range as inherent to a twelve-question test while the next called it excess,
+  the retake instruction appeared twice, and "that range" pointed at a number
+  `level_estimate` never displayed. The shipped sentence describes what a retake
+  *buys* and mentions no range at all.
+
+  Per §6.1's precedent, the residual overlap — both findings mention retaking —
+  is accepted and **pinned by a test that renders the pair together**, across
+  both `level_estimate` branches.
+
+- **`fluency_gain` named a comparison the detector does not make.** "faster than
+  you were a month ago" reused `windowDays` as a lookback distance; the detector
+  splits the window at its midpoint and compares the later half against the
+  earlier, a ~15-day step. It now says "earlier in the last 30 days". "your
+  accuracy has not slipped" also became "has held up on those", because
+  `accuracyHeld` allows a fall of up to `ACCURACY_SLACK` per card and the cited
+  kanji are exactly the subset that satisfied it.
+
+**The rule this establishes, and the one worth carrying to the next slice:**
+the analyzer's vocabulary may appear in learner copy only when the sentence
+explains it in the same breath. `theta_delta` may say "uncertainty" because it
+immediately glosses it; `retest_due` may not, because it led with it bare.
 
 ---
 
