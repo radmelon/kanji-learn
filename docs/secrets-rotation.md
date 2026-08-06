@@ -40,6 +40,37 @@ now** — that is what closes the plaintext exposure, and it makes the later
 cutover a `put-parameter --overwrite` plus one deploy, with no App Runner
 config change at all, because the ARNs do not move.
 
+## 🔴 The deferral expires 2026-10-02
+
+**The SSM migration is DONE** (2026-07-29, verified against AWS 2026-08-06: all
+seven are `SecureString` under `/kanji-learn/prod/`, read by ARN through
+`RuntimeEnvironmentSecrets`). The plaintext-env exposure is closed. The
+**values** are a separate question, and half of them are still the leaked ones.
+
+Deferring the Supabase three until the region migration is correct reasoning —
+that migration reissues them by construction. **But the deferral has a
+deadline.** Verified 2026-08-06: `DATABASE_URL`, `SUPABASE_JWT_SECRET` and
+`SUPABASE_SERVICE_ROLE_KEY` are still SSM **version 1**, byte-identical to the
+values exposed on 2026-04-20, and `service_role` **bypasses RLS entirely** — so
+that key is unrestricted database access, including to the tables migration 0036
+just closed.
+
+**If the migration has not cut over by 2026-10-02, rotate them anyway**, as part
+of the LLM-key rotation happening that day. One `put-parameter --overwrite` per
+secret plus one deploy; wasted only if the migration lands immediately after.
+
+*Why a date at all:* each deferral here has been individually reasonable, and
+nothing ever forced a re-decision — which is how credentials exposed in April
+were still live in August. A deferral without a date is drift, not a decision.
+
+⚠️ **The migration does NOT rotate the three LLM keys.** `ANTHROPIC_API_KEY`,
+`GROQ_API_KEY` and `GEMINI_API_KEY` were issued 2026-07-28 and **expire
+2026-10-26**, independently of any Supabase work. Their expiry is **silent**:
+`/v1/buddy/meet/turn` returns `{fallback:true}` at HTTP 200 on failure, so Buddy
+drops to template tier and nothing surfaces. This document schedules that
+rotation for 2026-10-26 — the expiry date itself, i.e. **zero margin**.
+**Rotate in early October.**
+
 ### Not secrets, and staying as plain env vars
 
 `API_BASE_URL`, `AWS_REGION`, `CORS_ORIGIN`, `HOST`, `LOG_LEVEL`,

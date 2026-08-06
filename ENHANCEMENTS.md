@@ -599,6 +599,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   **What is actually outstanding:** rotate `DATABASE_URL`, `SUPABASE_JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY`, revoke the old ones, and `put-parameter --overwrite` each — which bumps them to version 2 and makes the table above self-verifying next time.
 
+  ⏳ **The deferral expires 2026-10-02.** Rotating the Supabase three is deferred to the `ap-southeast-2` → `us-east-1` migration, which reissues them by construction — sound reasoning, since rotating now is throwaway work. **But if cutover has not happened by 2026-10-02, rotate them anyway**, alongside the LLM keys being done that day. The exposed values stay live until one or the other occurs, and they have been live since 2026-04-20 — each deferral individually reasonable, none ever forcing a re-decision. Migration spike: `docs/superpowers/plans/2026-08-06-supabase-region-migration-spike.md`. Full backstop: `docs/secrets-rotation.md`.
+
   **Why SSM Parameter Store over AWS Secrets Manager:**
   - Standard `SecureString` parameters are **free** under the AWS-managed `aws/ssm` KMS key; Secrets Manager is $0.40/secret/month × 7 secrets = $2.80/mo with no added benefit for this app.
   - No automated rotation infrastructure needed — quarterly manual rotation is the operating model, not Lambda-driven DB-credential rotation.
