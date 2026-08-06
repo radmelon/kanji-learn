@@ -528,12 +528,46 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 - [x] **Configure Groq & Gemini API keys on App Runner** — ~~SHIPPED~~ 2026-04-19 (App Runner operation `fed113f85bcf4883a6d0d3ad927d2ea5`, SUCCEEDED). `GROQ_API_KEY` + `GEMINI_API_KEY` injected alongside the existing `ANTHROPIC_API_KEY`; post-deploy health check HTTP 200 in 470ms. The LLM router's tier 2 fallback path now has credentials, closing the "Both tier 2 providers failed" failure mode that had caused tutor-report analysis outages earlier in the month.
   `[Effort: XS]` `[Impact: High]` `[Backend: Yes]` `[Status: ✅ Shipped]`
 
+- [x] **`GET /health` returns the build's git SHA — deploys are verifiable by one curl** — ~~SHIPPED~~ 2026-08-06. `scripts/deploy-api.sh` computes `git rev-parse --short HEAD` (with a `-dirty` suffix when the tree has uncommitted changes) and passes it as `--build-arg GIT_SHA`; the Dockerfile bakes it to `ENV` as the last layer before `EXPOSE`, and `health.ts` returns it as `sha`. Verify a deploy by comparing it to `git rev-parse --short HEAD`.
+
+  **Why it exists.** `docs/SOP.md` requires every deploy be verified by response *content* because status codes lie here — a Phase 5 rollout was reported "verified" while App Runner served a 6-week-old image. Until now each feature needed its own bespoke canary, and they got progressively worse: Phase 5 used `components` on `GET /v1/kanji/:id`; the coaching copy floor (2026-08-06) required opening the app to force a staleness-gated refresh and then comparing row timestamps, because `ANALYSIS_STALE_HOURS` means **a deploy rewrites no rows and the pre-deploy text is indistinguishable from a failed rollout.** That check was nearly read as a failure.
+
+  A SHA cannot be faked by route shadowing, needs no auth, no learner and no waiting. The repo is public, so the value discloses nothing not already on GitHub.
+
+  **Not yet proven in production** — the field only appears on the first deploy that carries it, so it verifies itself on the next rollout.
+
+  `[Effort: S]` `[Impact: High — retires a recurring class of false "verified"]` `[Backend: Yes]` `[Status: ✅ Shipped — proves itself on the next deploy]`
+
 - [ ] **Secrets Management — Rotate Exposed Keys + Move to SSM Parameter Store** — All production secrets are currently stored as plaintext `RuntimeEnvironmentVariables` on App Runner and mirrored in `packages/db/.env` for local development. This works at today's scale but carries real risk: (a) keys pasted through chat / screen share / support logs can leak; (b) App Runner env vars are visible to anyone with AWS console access to the account — there's no per-variable access control; (c) there's no rotation cadence, so a leaked key stays valid until manually revoked; (d) `aws apprunner describe-service` without a scoped `--query` returns the full plaintext map, so routine ops commands can dump secrets into logs.
 
   **Known exposure events (2026-04-19 → 2026-04-20):**
   - 2026-04-19 — `GROQ_API_KEY` and `GEMINI_API_KEY` pasted through chat when being added to App Runner for the first time.
   - 2026-04-20 — `ANTHROPIC_API_KEY` echoed via an unmasked `grep` on `packages/db/.env`.
-  - 2026-04-20 — `DATABASE_URL` (with Supabase postgres password), `INTERNAL_SECRET`, `SUPABASE_JWT_SECRET`, and `SUPABASE_SERVICE_ROLE_KEY` returned in the response body of an `aws apprunner describe-service` call. **All seven keys now require rotation.**
+  - 2026-04-20 — `DATABASE_URL` (with Supabase postgres password), `INTERNAL_SECRET`, `SUPABASE_JWT_SECRET`, and `SUPABASE_SERVICE_ROLE_KEY` returned in the response body of an `aws apprunner describe-service` call. **All seven keys required rotation.**
+
+  ✅ **Half of this shipped 2026-07-29 — the SSM migration is DONE.** **Verified against live AWS on 2026-08-06.** All seven secrets are `SecureString` parameters under `/kanji-learn/prod/`, and App Runner reads them through `RuntimeEnvironmentSecrets` by ARN. `RuntimeEnvironmentVariables` now holds only ten non-sensitive values (`HOST`, `PORT`, `CORS_ORIGIN`, `LOG_LEVEL`, `SES_SENDER_EMAIL`, …). **The plaintext-env exposure described above is closed.**
+
+  🔴 **The rotation is HALF done — and it is the wrong half.** SSM parameter versions are the record. Version 2 means written twice — created, then rotated. Version 1 means never touched since creation:
+
+  | Parameter | Version | Rotated? |
+  |---|---|---|
+  | `anthropic-api-key` | 2 | ✅ |
+  | `groq-api-key` | 2 | ✅ |
+  | `gemini-api-key` | 2 | ✅ |
+  | `internal-secret` | 2 | ✅ |
+  | `database-url` | **1** | ❌ |
+  | `supabase-jwt-secret` | **1** | ❌ |
+  | `supabase-service-role-key` | **1** | ❌ |
+
+  **Confirmed by value, not merely by version.** On 2026-08-06 the three Supabase parameters were fetched with `--with-decryption` and compared by sha256 fingerprint against `packages/db/.env` (fingerprints and JWT time claims only; **no value was printed**). All three are **byte-identical in production and locally**, and `supabase-service-role-key` decodes to `iat` 2026-03-27, `exp` **2036-03-26**, `role=service_role`.
+
+  **That means the credentials exposed on 2026-04-20 are still live in production and remain valid until 2036.** The `iat` predates the exposure, so this is the leaked key itself, not a successor.
+
+  ⚠️ **This contradicts an owner report of 2026-08-06** that the Supabase credentials had been rotated and that the replacements expire **2026-10-02**. No evidence of either was found: the parameters are untouched since 2026-07-29, and none of the three carries a decodable October expiry (`database-url` and `supabase-jwt-secret` are not JWTs; the service-role key runs to 2036).
+
+  **The most likely reconciliation, and the reason this is dangerous:** new Supabase API keys may have been *created* — plausibly the newer `sb_secret_…` style, which can carry a 90-day expiry — **without the legacy keys being revoked and without production being switched to them.** Creating a new credential is not rotation. If that is what happened, the leaked key still works, production still uses it, and the exposure feels closed while being entirely open. **Confirm in the Supabase dashboard whether the legacy `service_role` key has been revoked.**
+
+  **What is actually outstanding:** rotate `DATABASE_URL`, `SUPABASE_JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY`, revoke the old ones, and `put-parameter --overwrite` each — which bumps them to version 2 and makes this table self-verifying next time.
 
   **Why SSM Parameter Store over AWS Secrets Manager:**
   - Standard `SecureString` parameters are **free** under the AWS-managed `aws/ssm` KMS key; Secrets Manager is $0.40/secret/month × 7 secrets = $2.80/mo with no added benefit for this app.

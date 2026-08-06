@@ -28,10 +28,20 @@
 > 3. **The `inferred_level` backfill** — `[Effort: M]`, needs a migration. Three
 >    of four live sessions still show a tutor and the Journal reporting
 >    different levels. See the 2026-08-04 section and `ENHANCEMENTS.md`.
-> 4. **Rotate the seven exposed production keys.** Open since 2026-04-20.
->    Filed under 🔧 *Backend & Data* in `ENHANCEMENTS.md`, not 🚨 *Security* —
->    which is why that section reads "0 open" and the backlog looks clean. It is
->    the highest-risk open item and its filing hides that.
+> 4. **🔴 The Supabase credentials exposed on 2026-04-20 are still live in
+>    production.** Verified 2026-08-06 against AWS: `DATABASE_URL`,
+>    `SUPABASE_JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` are SSM **version 1**,
+>    untouched since 2026-07-29 and byte-identical to `packages/db/.env`; the
+>    service-role key runs to **2036**-03-26. An owner report the same day said
+>    they had been rotated with a 2026-10-02 expiry — **no evidence of either was
+>    found.** Likely new keys were created without the old being revoked or
+>    production switched. Confirm in the Supabase dashboard, then rotate and
+>    `put-parameter --overwrite`. Evidence in `ENHANCEMENTS.md`.
+>
+>    Good news in the same check: the **SSM migration is done** (all seven read
+>    by ARN, plaintext-env exposure closed) and the four non-Supabase keys **are**
+>    rotated. This item is filed under 🔧 *Backend & Data*, not 🚨 *Security*,
+>    which is why that section reads "0 open" and the backlog looks clean.
 
 ### 🚀 Deploy — 2026-08-06, verified
 
