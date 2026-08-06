@@ -1118,8 +1118,10 @@ describe('templateCopy — retest_due', () => {
   // and 0.546), so a learner who finished a placement test TODAY can already
   // get this finding. The old copy attributed it to elapsed days
   // ("drifted since then") and read "You took your placement test 0 days
-  // ago" for exactly that learner. The fix leads with the uncertainty, which
-  // is what actually fires the finding.
+  // ago" for exactly that learner. The fix leads with the range around the
+  // learner's level being wider than it needs to be — the same cause, and
+  // the same vocabulary level_estimate already uses for it — rather than the
+  // analyzer's own word for that spread.
   //
   // MUTATION CAUGHT: "the value of the test goes up when it is repeated" —
   // true, obscure, and it never says where to go. Profile has a Placement Test
@@ -1127,14 +1129,30 @@ describe('templateCopy — retest_due', () => {
   //
   // MUTATION CAUGHT: reverting to "You took your placement test N days ago,
   // and the estimate of your level has drifted since then" — attributes the
-  // finding to elapsed time rather than the uncertainty that actually fires it.
-  it('leads with the uncertainty, names the elapsed days, what retaking achieves, and where', () => {
+  // finding to elapsed time rather than the range that actually fires it.
+  it('leads with the range, names the elapsed days, what retaking achieves, and where', () => {
     const text = templateCopy(retestFinding, NOW)
-    expect(text).toContain('uncertainty')
+    expect(text).toContain('The range around your level is wider than it needs to be')
     expect(text).toContain('34 days')
     expect(text).toContain('Profile')
     expect(text.toLowerCase()).toContain('narrow')
     expect(text).not.toContain('drifted')
+  })
+
+  // "uncertainty" is the analyzer's vocabulary, not a learner's — it appears
+  // verbatim in this finding's own evidence labels, CURRENT_UNCERTAINTY
+  // ('current uncertainty') and UNCERTAINTY_WHEN_MEASURED ('uncertainty when
+  // measured') on retestFinding above, and the design spec's own audit names
+  // it as this finding's jargon failing: "Days ✅ · jargon ❌ · location ❌"
+  // (docs/superpowers/specs/2026-08-03-coaching-copy-floor-design.md:103).
+  // An earlier draft of this test asserted exactly this and was overwritten
+  // when a since-reverted fix reached for the word as its sentence's lead;
+  // restored here so that mistake cannot recur silently.
+  //
+  // MUTATION CAUGHT: reaching for the analyzer's word instead of the
+  // learner's when describing what retaking the test fixes.
+  it('never reaches for the analyzer\'s word "uncertainty"', () => {
+    expect(templateCopy(retestFinding, NOW)).not.toContain('uncertainty')
   })
 
   // Finding 3's own reachable case: a learner who completed a placement test
@@ -1156,7 +1174,7 @@ describe('templateCopy — retest_due', () => {
       ],
     }
     const text = templateCopy(zeroDays, NOW)
-    expect(text).toContain('uncertainty')
+    expect(text).toContain('The range around your level is wider than it needs to be')
     expect(text).toContain('Profile')
     expect(text).not.toContain('days ago')
     expect(text).not.toContain('0 days')

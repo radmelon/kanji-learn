@@ -373,12 +373,21 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // RETEST_FLOOR (0.5) — driven by the SE term, not the drift term. At 34
     // days, drift contributes only 0.0185 to the variance; live ability_se
     // values already exceed 0.5 on their own (verified: 0.585, 0.546), so a
-    // learner can hit this finding at 0 elapsed days. Lead with the
-    // uncertainty, which is what actually fires the finding, and only mention
+    // learner can hit this finding at 0 elapsed days. Lead with the estimate's
+    // spread, which is what actually fires the finding, and only mention
     // elapsed time when it is non-zero and correctly pluralised.
+    //
+    // "The range around your level is wider than it needs to be" — not "your
+    // level estimate is carrying more uncertainty than it should". Same
+    // finding, same cause, but "uncertainty" is the analyzer's word for it:
+    // it is literally how CURRENT_UNCERTAINTY and UNCERTAINTY_WHEN_MEASURED
+    // are labelled below, not a learner's. level_estimate already has a
+    // vocabulary for this exact concept ("the honest range"); reusing it here
+    // says the same true thing in the learner's language instead, and makes
+    // the two findings read as one voice when both fire together.
     const n = Number(days)
     const elapsed = n >= 1 ? `, and your placement test was ${n} ${n === 1 ? 'day' : 'days'} ago` : ''
-    return `Your level estimate is carrying more uncertainty than it should${elapsed}. Taking the test again from your Profile would narrow the range around your level rather than simply repeating what you already know.`
+    return `The range around your level is wider than it needs to be${elapsed}. Taking the test again from your Profile would narrow that range rather than simply repeating what you already know.`
   },
 }
 
