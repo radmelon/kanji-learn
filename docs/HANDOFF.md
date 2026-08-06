@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-04 (**The copy floor is reviewed and open as PR #13. Not merged, not deployed. It fixes the note the owner called worthless.**)
+# Session Handoff — 2026-08-06 (**The copy floor is merged, deployed and verified live. The note the owner called worthless now names the kanji, the test and the date.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,7 +7,98 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-04
+## START HERE — 2026-08-06
+
+> ## ▶️ What the next session does
+>
+> **Nothing is blocked and nothing is half-finished.** PR #13 is merged
+> (`7bb1e22`), deployed, and verified three ways — a dated App Runner operation,
+> a post-deploy database row, and the owner reading it on their own screen.
+>
+> Pick from the priority list. There is no carried-over obligation.
+>
+> ### 📋 In priority order
+>
+> 1. **A live-render smoke check for coaching copy** — `[Effort: S]`
+>    `[Impact: High]`, in `ENHANCEMENTS.md`. Still the highest-value thing to
+>    build before the next copy slice, for the reason in the red section below.
+> 2. **Slice 3's content check — unblocks Monday 2026-08-10.** Nothing to do
+>    before then; `buddy_session_utterances` was empty (0 rows) on 2026-08-06,
+>    which is expected, not a bug. Detail in the 2026-08-03 section.
+> 3. **The `inferred_level` backfill** — `[Effort: M]`, needs a migration. Three
+>    of four live sessions still show a tutor and the Journal reporting
+>    different levels. See the 2026-08-04 section and `ENHANCEMENTS.md`.
+> 4. **Rotate the seven exposed production keys.** Open since 2026-04-20.
+>    Filed under 🔧 *Backend & Data* in `ENHANCEMENTS.md`, not 🚨 *Security* —
+>    which is why that section reads "0 open" and the backlog looks clean. It is
+>    the highest-risk open item and its filing hides that.
+
+### 🚀 Deploy — 2026-08-06, verified
+
+API-only. No migration, no EAS build: the merged range touched `apps/api`,
+`packages/shared` and docs, nothing else.
+
+| Step | Evidence |
+|---|---|
+| Merge | PR #13 → `7bb1e22`, merged 07:27 UTC |
+| Typecheck | `apps/api` `tsc --noEmit` exit 0 |
+| ECR image | `79bbbdae…` (Aug 4) → **`f3600d18…`**, pushed `16:33:45+09:00` |
+| App Runner | op `3f1c50c093164d47a9105f6ca6d0f0f0`, started `16:33:47` — **2 seconds after the push**, so this is not a redeploy of the old image. SUCCEEDED `16:37:52`. Service RUNNING. |
+| Content (b) | Notebook entry written `07:51:02Z`, **after** the `07:33:47Z` deploy, reading *"You cleared 願, the hardest item you got right: it has 19 strokes and 3 readings"* and *"Your placement test on 1 August puts you at N3, and the honest range runs from N3 to N2"* |
+| Owner | Opened the Journal and confirmed the copy shows actual analysis |
+
+Both defects the previous handoff called the worst are fixed **in production**:
+`hardest_cleared` no longer claims the item was the hardest *asked*, and
+`level_estimate` no longer prints a level outside the range in the same
+sentence (`N3` now sits inside `N3..N2`).
+
+### 🔴 The verification query in the last handoff could not have proven anything
+
+The previous section said to check `notebook_entries` and see whether the text
+names specific kanji. **Run alone, immediately after deploying, that query
+returns a pre-deploy row and reads exactly like a `BASE` degradation.** It was
+nearly read that way on 2026-08-06.
+
+The reason is `ANALYSIS_STALE_HOURS = 6` in
+`apps/api/src/services/buddy/coaching.service.ts:31`: **a deploy rewrites no
+rows.** The notebook GET is staleness-gated, so the old text sits there looking
+like a failure until something forces a refresh.
+
+Two things are required, and neither is optional:
+
+1. **A learner opens the Journal** — which is what writes a fresh entry, once
+   the newest one is more than 6 hours old.
+2. **The query compares `created_at` against the deploy timestamp**, rather than
+   just reading the newest row:
+
+```bash
+./scripts/with-live-db.sh psql -c "SELECT created_at, (created_at > timestamptz '<deploy time>') AS post_deploy, left(body, 400) FROM notebook_entries WHERE source->>'kind' = 'coaching_analysis' AND superseded_at IS NULL ORDER BY created_at DESC LIMIT 3"
+```
+
+This is the same failure `docs/SOP.md` warns about for status codes, moved onto
+a SQL query: **a signal that predates the build cannot verify the build.**
+
+### 🧾 Two things a future reader will otherwise get wrong
+
+- **A finding vanishing from the note is usually not a regression.**
+  `leech` was in the 2026-08-05 entry and absent from the 2026-08-06 one, which
+  looks like the leech detector breaking. It is
+  `packages/shared/src/coaching/selection.ts` working as specced: three slots,
+  ranked by `magnitude x confidence x novelty`. leech had been raised 9.9 hours
+  earlier so its novelty had decayed to **0.2717**, near the 0.25 floor, while
+  `mechanics_explainer` had never been raised and scored **1.0** — a 3.68x
+  multiplier advantage. leech's magnitude is deliberately low (32/995 ≈ 3.2% of
+  the deck, "fires quietly, which is correct"). It returns as novelty recovers
+  on the 14-day half-life; §4's *never reaches zero* property guarantees it.
+  **Before chasing a missing finding, compute its novelty.**
+- **`GET /health` cannot identify a build.** It returns
+  `{ok, status, ts}` — byte-identical on every image ever deployed. That is why
+  check (b) here always costs an expedition, and why the SOP has to keep
+  repeating that status codes lie. Baking the git SHA in at `docker build` and
+  returning it would reduce every future content check to one curl.
+  `[Effort: S]`, not yet on the enhancement list.
+
+## Previous — 2026-08-04 (the copy floor, built and reviewed)
 
 > ## ▶️ What the next session does
 >
