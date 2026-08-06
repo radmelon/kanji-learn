@@ -188,7 +188,31 @@ aws apprunner list-operations \
   --region us-east-1 --query 'OperationSummaryList[0].[Type,Status,StartedAt]' --output text
 ```
 
-**(b) Response CONTENT, using a field only the new code returns.** For Phase 5 the canary is `components` on `GET /v1/kanji/:id` (landed in `d621542`) — a key that cannot be faked by route shadowing. Pick an equivalent canary for whatever you are shipping.
+**(b) Response CONTENT, using a field only the new code returns.**
+
+```bash
+curl -s https://73x3fcaaze.us-east-1.awsapprunner.com/health
+# {"ok":true,"status":"healthy","ts":"…","sha":"7522503"}
+git rev-parse --short HEAD
+```
+
+**`sha` must equal the commit you deployed.** It is baked into the image at
+`docker build --build-arg GIT_SHA=…` by `scripts/deploy-api.sh`, so it cannot be
+faked by route shadowing, needs no auth, and answers instantly. A `-dirty`
+suffix means the tree had uncommitted changes at build time — the image contains
+work that is in no commit.
+
+`sha: "unknown"` means the image was built without the build-arg (a plain
+`docker build`, or a build predating 2026-08-06).
+
+**Added 2026-08-06, and it replaces per-feature canaries.** Before it, every
+deploy needed its own: Phase 5 used `components` on `GET /v1/kanji/:id`, and the
+coaching copy floor needed something worse still — opening the app to force a
+staleness-gated refresh, then comparing row timestamps, because
+`ANALYSIS_STALE_HOURS` means a deploy rewrites no rows and **the pre-deploy text
+is indistinguishable from a failed rollout.** That check was nearly read as a
+failure. A feature-specific canary still proves the *feature* works end to end;
+`sha` proves the *build* is live, which is the question this section asks.
 
 ### ECR login fails: `The specified item already exists in the keychain. (-25299)`
 

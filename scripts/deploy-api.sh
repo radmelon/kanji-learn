@@ -51,9 +51,20 @@ aws ecr describe-repositories \
 
 # ── Step 3: Build image ───────────────────────────────────────────────────────
 
+# Build marker, returned by GET /health so a deploy is verifiable by content.
+# A dirty tree gets a "-dirty" suffix: shipping uncommitted work while /health
+# reports a clean SHA would be a verification that lies, which is the exact
+# failure mode this marker exists to end.
+GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if ! git diff --quiet HEAD 2>/dev/null; then
+  GIT_SHA="${GIT_SHA}-dirty"
+fi
+echo "🏷️  Build marker: $GIT_SHA"
+
 echo "🐳 Building Docker image…"
 docker build \
   --platform linux/amd64 \
+  --build-arg GIT_SHA="$GIT_SHA" \
   -f "$DOCKERFILE" \
   -t "$FULL_IMAGE" \
   "$CONTEXT"

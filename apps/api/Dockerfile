@@ -46,6 +46,13 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 
+# Build marker — surfaced by GET /health so a deploy can be verified by CONTENT
+# rather than by a status code. Deliberately the LAST thing before EXPOSE: it
+# changes on every commit, so anything below it is re-layered on every build.
+# Defaults to "unknown" so a plain `docker build` still works.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
