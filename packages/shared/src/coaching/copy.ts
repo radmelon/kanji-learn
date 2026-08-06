@@ -144,7 +144,9 @@ interface ReadingLagSource {
  * Per-kind copy. A formatter returns `null` when its evidence is absent, and
  * `templateCopy` substitutes BASE[kind] — never a half-built sentence.
  *
- * Tasks 5 and 6 fill the remaining eight.
+ * All ten kinds are filled as of Task 6. `mechanics_explainer` is the one
+ * exception by contract (§3): it has no evidence to read, so its formatter is
+ * `() => null` permanently, not a placeholder.
  */
 const FORMATTERS: Record<FindingKind, Formatter> = {
   level_estimate: (f) => {
@@ -310,10 +312,74 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     return `${suggested.character} keeps catching you out. When something new will not stick, it usually helps to connect it to something you already know well: that connection is what we call a hook. It can be a small story, an image, or a resemblance to a word or a thing you are already familiar with, and it works because memory holds on to the familiar far more readily than the unfamiliar. Would you like to build one for ${suggested.character} together?`
   },
 
-  fluency_gain: () => null,
-  theta_delta: () => null,
-  hardest_cleared: () => null,
-  retest_due: () => null,
+  fluency_gain: (f) => {
+    const faster = ev(f, EVIDENCE_LABELS.PERCENT_FASTER)
+    const measured = ev(f, EVIDENCE_LABELS.KANJI_MEASURED)
+    const window = ev(f, EVIDENCE_LABELS.WINDOW_DAYS)
+    if (faster === undefined || measured === undefined || window === undefined) return null
+    // Finding 4: coaching.service.ts splits the window at its MIDPOINT —
+    // early is 30-15 days ago, late is the last 15 days — so the comparison
+    // is the second half of the window against the first, a ~15-day step, not
+    // a 30-day lookback. windowDays is the window's LENGTH; reusing it as a
+    // distance ("30 days ago") claims a lookback the detector doesn't do.
+    // "earlier in the last N days" states what is actually measured.
+    //
+    // "has held up on those" (not "has not slipped while doing it"):
+    // accuracyHeld permits a fall of up to ACCURACY_SLACK (0.05) per card, and
+    // the cited kanji are precisely the subset that satisfied it — the old
+    // global phrasing overstated a claim that is actually scoped to them.
+    return `You are answering about ${faster}% faster than you were earlier in the last ${window} days, across ${measured} kanji, and your accuracy has held up on those. Speed usually improves before anything else does, so this is a sign that recalling these characters is becoming automatic rather than effortful.`
+  },
+
+  theta_delta: (f) => {
+    const then = ev(f, EVIDENCE_LABELS.ABILITY_THEN)
+    const now = ev(f, EVIDENCE_LABELS.ABILITY_NOW)
+    const thenOn = ev(f, EVIDENCE_LABELS.PREVIOUSLY_MEASURED_ON)
+    const nowOn = ev(f, EVIDENCE_LABELS.MEASURED_ON)
+    // `then`/`now` are still read here — their absence still means the
+    // finding is malformed and must degrade to BASE — but Finding 5 drops
+    // them from the rendered sentence: θ is centred near zero, so `then` can
+    // be negative, and a negative "ability estimate" printed as praise reads
+    // as an insult in the one band meant to motivate. "Has risen" plus the
+    // uncertainty basis carries the full meaning without the raw logits.
+    if (then === undefined || now === undefined || thenOn === undefined || nowOn === undefined) return null
+    return `Your ability estimate has risen between your placement tests on ${humanDate(String(thenOn))} and ${humanDate(String(nowOn))}, and the rise is larger than the uncertainty in both measurements combined — so it is real progress rather than the test landing differently on the day.`
+  },
+
+  hardest_cleared: (f) => {
+    const kanji = f.evidence.find((e) => e.label === EVIDENCE_LABELS.HARDEST_KANJI_CLEARED)
+    const strokes = ev(f, EVIDENCE_LABELS.STROKE_COUNT)
+    const readings = ev(f, EVIDENCE_LABELS.READING_COUNT)
+    if (!kanji?.character || strokes === undefined || readings === undefined) return null
+    // Finding 2: spell(1) is 'one', and a hard-coded plural renders 'one
+    // readings' — 344 of 2,294 live kanji have exactly one reading.
+    const readingCount = Number(readings)
+    const readingWord = readingCount === 1 ? 'reading' : 'readings'
+    // Finding 1 (CRITICAL): detectHardestCleared emits five fields about the
+    // hardest item ALONE — character, difficulty, strokes, readings, date.
+    // Nothing about any other item, and no JLPT level at all. The old closing
+    // clause claimed a specific comparison ("counted as harder than some
+    // kanji at an easier JLPT level") that this evidence cannot carry, and
+    // which is false on two of live's four sessions (verified: the owner's
+    // own 願 session had nine items, none below N3). State the mechanism
+    // instead — true regardless of what else was on the test.
+    return `You cleared ${kanji.character}, which was the hardest item the test put in front of you: it has ${strokes} strokes and ${spell(readingCount)} ${readingWord}. Difficulty here weighs stroke count and number of readings alongside JLPT level, so the hardest item is not always the one from the highest level you saw.`
+  },
+
+  retest_due: (f) => {
+    const days = ev(f, EVIDENCE_LABELS.DAYS_SINCE_THE_TEST)
+    if (days === undefined) return null
+    // Finding 3: detectRetestDue fires on widenForStaleness(se, days) clearing
+    // RETEST_FLOOR (0.5) — driven by the SE term, not the drift term. At 34
+    // days, drift contributes only 0.0185 to the variance; live ability_se
+    // values already exceed 0.5 on their own (verified: 0.585, 0.546), so a
+    // learner can hit this finding at 0 elapsed days. Lead with the
+    // uncertainty, which is what actually fires the finding, and only mention
+    // elapsed time when it is non-zero and correctly pluralised.
+    const n = Number(days)
+    const elapsed = n >= 1 ? `, and your placement test was ${n} ${n === 1 ? 'day' : 'days'} ago` : ''
+    return `Your level estimate is carrying more uncertainty than it should${elapsed}. Taking the test again from your Profile would narrow the range around your level rather than simply repeating what you already know.`
+  },
 }
 
 export function templateCopy(finding: Finding, now?: string): string {

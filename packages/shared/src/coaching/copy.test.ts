@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { analysisBody, humanDate, humanDateRange, templateCopy } from './copy'
 import type { Finding, FindingKind } from './types'
-import { EVIDENCE_LABELS } from './types'
+import { EVIDENCE_LABELS, FINDING_PRIORITY } from './types'
 
 function finding(kind: FindingKind, since: string | null = null): Finding {
   return { kind, magnitude: 0.8, confidence: 1, evidence: [], since }
@@ -357,6 +357,128 @@ const readingLagChosenSourceContradictsFinding: Finding = {
     { label: EVIDENCE_LABELS.QUIZ_READING_ACCURACY, value: 0.55 },
     { label: EVIDENCE_LABELS.QUIZ_MEANING_ACCURACY, value: 0.9 },
     { label: EVIDENCE_LABELS.QUIZ_READING_ANSWERS, value: 10 },
+  ],
+  since: null,
+}
+
+// Mirrors detectFluencyGain (detectors/fluency.ts): percent faster, the
+// honest (accuracy-held) kanji count, and windowDays as carried on the
+// snapshot rather than a constant this layer owns.
+const fluencyFinding: Finding = {
+  kind: 'fluency_gain',
+  magnitude: 0.6,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.PERCENT_FASTER, value: 22 },
+    { label: EVIDENCE_LABELS.AVG_SECONDS_BEFORE, value: 18.4 },
+    { label: EVIDENCE_LABELS.AVG_SECONDS_NOW, value: 14.4 },
+    { label: EVIDENCE_LABELS.KANJI_MEASURED, value: 41 },
+    { label: EVIDENCE_LABELS.WINDOW_DAYS, value: 30 },
+  ],
+  since: null,
+}
+
+// Mirrors detectThetaDelta (detectors/fluency.ts): both theta estimates and
+// both completedAt dates, sliced to 10 chars exactly as the detector emits
+// them (humanDate is the formatter's job, not the fixture's).
+const thetaDeltaFinding: Finding = {
+  kind: 'theta_delta',
+  magnitude: 0.5,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.ABILITY_THEN, value: 0.31 },
+    { label: EVIDENCE_LABELS.ABILITY_NOW, value: 0.68 },
+    { label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' },
+    { label: EVIDENCE_LABELS.PREVIOUSLY_MEASURED_ON, value: '2026-07-12' },
+  ],
+  since: null,
+}
+
+// Finding 5's own worked case: θ is centred near zero, so the EARLIER
+// estimate is often negative — detectThetaDelta only requires
+// `rise = now.theta - previous.theta > 0`, never that either side be
+// positive. Mirrors the reviewer's own example (-0.42 to 0.12).
+const thetaDeltaFindingNegativeStart: Finding = {
+  kind: 'theta_delta',
+  magnitude: 0.5,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.ABILITY_THEN, value: -0.42 },
+    { label: EVIDENCE_LABELS.ABILITY_NOW, value: 0.12 },
+    { label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' },
+    { label: EVIDENCE_LABELS.PREVIOUSLY_MEASURED_ON, value: '2026-07-12' },
+  ],
+  since: null,
+}
+
+// Mirrors detectHardestCleared (detectors/milestones.ts). Values are the
+// owner's own live hardest-cleared: 願 (N3, 19 strokes, 3 readings), which
+// outranked two N2 kanji on item difficulty's blend of JLPT rank, frequency,
+// grade, stroke count and reading count — 刊 (5 strokes) and 筆 (12 strokes).
+// Only the fields the formatter reads (character, strokes, readings) are
+// asserted on; the finding's evidence does not carry what it outranked, so
+// the copy must not invent a specific JLPT level for the comparison.
+//
+// Finding 8 (Minor): ITEM_DIFFICULTY used to read 1.42 here despite the
+// comment above's own claim that these are the owner's live values. Live
+// session 21c54a5e (user of the 願 session above), re-verified 2026-08-06:
+// difficulty_at_ask = 1.00716, which the detector's own rounding
+// (`Math.round(x * 100) / 100`) renders as 1.01. The formatter does not read
+// this field, but the fixture should not assert a number that never occurred.
+const hardestFinding: Finding = {
+  kind: 'hardest_cleared',
+  magnitude: 0.7,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.HARDEST_KANJI_CLEARED, value: '願', kanjiId: 512, character: '願' },
+    { label: EVIDENCE_LABELS.ITEM_DIFFICULTY, value: 1.01 },
+    { label: EVIDENCE_LABELS.STROKE_COUNT, value: 19 },
+    { label: EVIDENCE_LABELS.READING_COUNT, value: 3 },
+    { label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' },
+  ],
+  since: null,
+}
+
+// Finding 2's own case, and a kanji from the owner's own live session (the
+// second-hardest item, right after 願 above): 刊 has exactly ONE reading.
+// Verified live 2026-08-06, same session: kanji_id 255, 5 strokes, 1 reading,
+// difficulty_at_ask 0.950676 (rounds to 0.95). 344 of 2,294 live kanji share
+// this one-reading shape, and a hard-coded plural renders "one readings" for
+// every one of them.
+const hardestFindingOneReading: Finding = {
+  kind: 'hardest_cleared',
+  magnitude: 0.6,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.HARDEST_KANJI_CLEARED, value: '刊', kanjiId: 255, character: '刊' },
+    { label: EVIDENCE_LABELS.ITEM_DIFFICULTY, value: 0.95 },
+    { label: EVIDENCE_LABELS.STROKE_COUNT, value: 5 },
+    { label: EVIDENCE_LABELS.READING_COUNT, value: 1 },
+    { label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-07-29' },
+  ],
+  since: null,
+}
+
+// Mirrors detectRetestDue (detectors/milestones.ts): the widened/original SE
+// pair plus elapsed days. The formatter reads only DAYS_SINCE_THE_TEST — the
+// two uncertainty values are included so the fixture matches the real shape,
+// the same convention hookCoverageFinding above follows for its unread
+// AVG_LAPSES_* items.
+//
+// Finding 8 (Minor): UNCERTAINTY_WHEN_MEASURED used to read 0.4, but
+// widenForStaleness(0.4, 34) = 0.42 — not the 0.78 asserted below, and 0.42 is
+// BELOW RETEST_FLOOR (0.5), so this exact finding could never have been
+// emitted. 0.77 is self-consistent with the other two fields:
+// widenForStaleness(0.77, 34) = 0.7819..., which the detector's own rounding
+// renders as the 0.78 CURRENT_UNCERTAINTY already asserted here.
+const retestFinding: Finding = {
+  kind: 'retest_due',
+  magnitude: 0.6,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.CURRENT_UNCERTAINTY, value: 0.78 },
+    { label: EVIDENCE_LABELS.UNCERTAINTY_WHEN_MEASURED, value: 0.77 },
+    { label: EVIDENCE_LABELS.DAYS_SINCE_THE_TEST, value: 34 },
   ],
   since: null,
 }
@@ -828,5 +950,265 @@ describe('leech and hook_coverage together', () => {
     expect(both).not.toContain('undefined')
     // The full definition appears once; leech carries only the short form.
     expect(both.match(/memory holds on to the familiar/g) ?? []).toHaveLength(1)
+  })
+})
+
+describe('templateCopy — fluency_gain', () => {
+  // MUTATION CAUGHT: inlining "a month" instead of reading the window, which
+  // hardcodes a constant this layer does not own.
+  it('names the speed, the window and the kanji count', () => {
+    const text = templateCopy(fluencyFinding, NOW)
+    expect(text).toContain('22%')
+    expect(text).toContain('41')
+    expect(text).toContain('30 days')
+  })
+
+  // Finding 4: coaching.service.ts splits the window at its MIDPOINT (15 of
+  // 30 days) — early is 30-15 days ago, late is the last 15 — so the
+  // comparison is the window's second half against its first, a ~15-day step.
+  // windowDays is the window's LENGTH, not a lookback distance; the old copy
+  // reused it as one ("faster than you were 30 days ago"), claiming a
+  // comparison point the detector does not measure against.
+  //
+  // MUTATION CAUGHT: reverting to "faster than you were ${window} days ago".
+  it('frames the window as a span the comparison happens within, not a lookback', () => {
+    const text = templateCopy(fluencyFinding, NOW)
+    expect(text).toContain('faster than you were earlier in the last 30 days')
+    expect(text).not.toContain('30 days ago')
+  })
+
+  // Finding 4 (Minor): accuracyHeld permits a fall of up to ACCURACY_SLACK
+  // (0.05) per card, and KANJI_MEASURED counts only the cards that satisfied
+  // it — "has not slipped while doing it" stated that as a fact about the
+  // learner's accuracy generally, when it is actually scoped to the cited
+  // subset.
+  //
+  // MUTATION CAUGHT: reverting to "has not slipped while doing it".
+  it('scopes the accuracy claim to the measured kanji', () => {
+    const text = templateCopy(fluencyFinding, NOW)
+    expect(text).toContain('your accuracy has held up on those')
+    expect(text).not.toContain('has not slipped')
+  })
+
+  // Finding 7: the old mutation comment above named two mutations, but every
+  // assertion in this describe block lived in the sentence's FIRST clause — a
+  // reversion of the CLOSING clause to the original evocative, unfalsifiable
+  // "has the shape of something becoming automatic" would have passed all of
+  // them silently. This pins the falsifiable half of that sentence.
+  //
+  // MUTATION CAUGHT: reverting the closing sentence to "...so this has the
+  // shape of something becoming automatic rather than effortful".
+  it('states why the speed gain matters in falsifiable terms', () => {
+    const text = templateCopy(fluencyFinding, NOW)
+    expect(text).toContain('recalling these characters is becoming automatic')
+    expect(text).not.toContain('shape of something')
+  })
+})
+
+describe('templateCopy — theta_delta', () => {
+  // Finding 5: θ is centred near zero, so the earlier estimate is reachably
+  // negative, and printing the raw logits rendered "Your ability estimate has
+  // risen from -0.42 to 0.12" — a negative "ability estimate" shown to a
+  // learner as PRAISE, in the one band meant to motivate. "Has risen", plus
+  // "larger than the uncertainty in both measurements combined, so it is real
+  // progress", carries the full meaning without the numbers.
+  //
+  // MUTATION CAUGHT: "real movement, not noise" without saying why it is not
+  // noise. The detector compares the rise against sqrt(se² + prevSe²) — the
+  // combined standard error — so the claim has a stateable basis.
+  //
+  // MUTATION CAUGHT: reverting to "...has risen from ${then} to ${now}
+  // between...", which reintroduces the raw logits this fix removes.
+  it('names both dates and why it is not noise, without the raw logits', () => {
+    const text = templateCopy(thetaDeltaFinding, NOW)
+    expect(text).toContain('risen')
+    expect(text).toContain('12 July')
+    expect(text).toContain('29 July')
+    expect(text.toLowerCase()).toContain('uncertainty')
+    expect(text).not.toContain('0.31')
+    expect(text).not.toContain('0.68')
+  })
+
+  // Finding 5's own reachable case: a negative starting θ must not leak into
+  // the rendered sentence. Dropping the numbers entirely makes this true by
+  // construction, but a dedicated fixture pins it at the exact case that
+  // motivated removing them, so a future re-add of the numbers is caught
+  // here even if it somehow escaped the test above.
+  //
+  // MUTATION CAUGHT: re-adding `${then}` (or `${now}`) to the sentence, which
+  // would render "-0.42" — a negative "ability estimate" shown as praise.
+  it('reads cleanly when the earlier estimate was negative', () => {
+    const text = templateCopy(thetaDeltaFindingNegativeStart, NOW)
+    expect(text).toContain('risen')
+    expect(text).toContain('12 July')
+    expect(text).toContain('29 July')
+    expect(text).not.toContain('-0.42')
+    expect(text).not.toContain('0.12')
+  })
+
+  // Finding 5: ABILITY_THEN/ABILITY_NOW must stay in the undefined-guard even
+  // though the sentence no longer prints them — their absence still means the
+  // finding is malformed, and must degrade to BASE rather than rendering a
+  // "risen between placement tests" sentence with no ability claim behind it.
+  //
+  // MUTATION CAUGHT: dropping `then`/`now` from the guard now that the
+  // sentence does not interpolate them, which would render a full sentence
+  // even when the finding carries no theta values at all.
+  it('still degrades to BASE when the ability values are absent', () => {
+    const strippedTheta: Finding = {
+      ...thetaDeltaFinding,
+      evidence: thetaDeltaFinding.evidence.filter(
+        (e) => e.label !== EVIDENCE_LABELS.ABILITY_THEN && e.label !== EVIDENCE_LABELS.ABILITY_NOW,
+      ),
+    }
+    const text = templateCopy(strippedTheta, NOW)
+    expect(text).toBe(templateCopy({ ...thetaDeltaFinding, evidence: [] }, NOW))
+  })
+})
+
+describe('templateCopy — hardest_cleared', () => {
+  // Finding 1 (CRITICAL): detectHardestCleared emits five fields about the
+  // hardest item ALONE (character, difficulty, strokes, readings, date) —
+  // nothing about any other item on the test, and no JLPT level at all. The
+  // old closing clause claimed 願 "counted as harder than some kanji at an
+  // easier JLPT level that you also saw" — false for the owner's own live
+  // session (nine items, none below N3) and backwards even where true: spec
+  // §9's point is that 願 (N3, the EASIER level) outranked two N2 kanji, not
+  // the trivial converse. The fix states the computation instead of a
+  // specific comparison, which is true regardless of what else was on the
+  // test.
+  //
+  // MUTATION CAUGHT: a bare superlative with no basis at all ("the hardest
+  // kanji the test put in front of you", full stop).
+  //
+  // MUTATION CAUGHT: reverting to "...which is why 願 counted as harder than
+  // some kanji at an easier JLPT level that you also saw."
+  it('names the kanji and its basis without comparing it to anything else on the test', () => {
+    const text = templateCopy(hardestFinding, NOW)
+    expect(text).toContain('願')
+    expect(text).toContain('19 strokes')
+    expect(text).toContain('three readings')
+    expect(text).toContain('JLPT')
+    expect(text).toContain('not always the one from the highest level you saw')
+    expect(text).not.toContain('counted as harder than')
+    expect(text).not.toContain('easier JLPT level that you also saw')
+  })
+
+  // Finding 2 (Important): spell(1) returns 'one', and a hard-coded plural
+  // renders "one readings" — 344 of 2,294 live kanji have exactly one
+  // reading, and 刊 (one reading) was the SECOND-hardest item in the owner's
+  // own live session, one misfire away from being the hardest-cleared kanji
+  // shown here instead of 願.
+  //
+  // MUTATION CAUGHT: hard-coding "readings" regardless of count, which
+  // renders "one readings" for 刊 and for every other single-reading kanji.
+  it('pluralises the reading count correctly for a kanji with exactly one reading', () => {
+    const text = templateCopy(hardestFindingOneReading, NOW)
+    expect(text).toContain('刊')
+    expect(text).toContain('one reading')
+    expect(text).not.toContain('one readings')
+  })
+})
+
+describe('templateCopy — retest_due', () => {
+  // Finding 3: detectRetestDue fires when widenForStaleness(se, days) clears
+  // RETEST_FLOOR (0.5) — driven by the SE term. At 34 days, the drift term
+  // (0.004/day) contributes only 0.0185 to the variance; live ability_se
+  // values already clear 0.5 on their own (verified live 2026-08-06: 0.585
+  // and 0.546), so a learner who finished a placement test TODAY can already
+  // get this finding. The old copy attributed it to elapsed days
+  // ("drifted since then") and read "You took your placement test 0 days
+  // ago" for exactly that learner. The fix leads with the uncertainty, which
+  // is what actually fires the finding.
+  //
+  // MUTATION CAUGHT: "the value of the test goes up when it is repeated" —
+  // true, obscure, and it never says where to go. Profile has a Placement Test
+  // row (profile.tsx:729), so the location can be named honestly.
+  //
+  // MUTATION CAUGHT: reverting to "You took your placement test N days ago,
+  // and the estimate of your level has drifted since then" — attributes the
+  // finding to elapsed time rather than the uncertainty that actually fires it.
+  it('leads with the uncertainty, names the elapsed days, what retaking achieves, and where', () => {
+    const text = templateCopy(retestFinding, NOW)
+    expect(text).toContain('uncertainty')
+    expect(text).toContain('34 days')
+    expect(text).toContain('Profile')
+    expect(text.toLowerCase()).toContain('narrow')
+    expect(text).not.toContain('drifted')
+  })
+
+  // Finding 3's own reachable case: a learner who completed a placement test
+  // TODAY already has ability_se above RETEST_FLOOR on live (0.585, 0.546
+  // verified above), so DAYS_SINCE_THE_TEST can be exactly 0. The old copy
+  // rendered "You took your placement test 0 days ago", which reads as
+  // broken — the fix omits the elapsed-time clause entirely rather than
+  // stating a true-but-useless zero.
+  //
+  // MUTATION CAUGHT: dropping the `n >= 1` guard, which would render "...than
+  // it should, and your placement test was 0 days ago" for this fixture.
+  it('omits the elapsed-time clause entirely at zero days', () => {
+    const zeroDays: Finding = {
+      ...retestFinding,
+      evidence: [
+        { label: EVIDENCE_LABELS.CURRENT_UNCERTAINTY, value: 0.59 },
+        { label: EVIDENCE_LABELS.UNCERTAINTY_WHEN_MEASURED, value: 0.59 },
+        { label: EVIDENCE_LABELS.DAYS_SINCE_THE_TEST, value: 0 },
+      ],
+    }
+    const text = templateCopy(zeroDays, NOW)
+    expect(text).toContain('uncertainty')
+    expect(text).toContain('Profile')
+    expect(text).not.toContain('days ago')
+    expect(text).not.toContain('0 days')
+  })
+
+  // Finding 3's grammatical edge: "1 days ago" is reachable (a placement test
+  // completed yesterday) and ungrammatical.
+  //
+  // MUTATION CAUGHT: hard-coding the plural ("days") regardless of count,
+  // which renders "1 days ago" for this exact fixture.
+  it('pluralises correctly at exactly one day', () => {
+    const oneDay: Finding = {
+      ...retestFinding,
+      evidence: [
+        { label: EVIDENCE_LABELS.CURRENT_UNCERTAINTY, value: 0.55 },
+        { label: EVIDENCE_LABELS.UNCERTAINTY_WHEN_MEASURED, value: 0.55 },
+        { label: EVIDENCE_LABELS.DAYS_SINCE_THE_TEST, value: 1 },
+      ],
+    }
+    const text = templateCopy(oneDay, NOW)
+    expect(text).toContain('1 day ago')
+    expect(text).not.toContain('1 days ago')
+  })
+})
+
+// Every kind gets exactly one fixture — building this record forces that,
+// which is the point. Six are reused from Tasks 4 and 5; the four above are
+// this task's own.
+const ALL_KINDS = Object.keys(FINDING_PRIORITY) as FindingKind[]
+
+const FIXTURES: Record<FindingKind, Finding> = {
+  reading_lag: readingLagPlacementFinding,
+  leech: leechFinding,
+  commitment_gap: commitmentGapFinding,
+  hook_coverage: hookCoverageFinding,
+  level_estimate: levelEstimateFinding,
+  mechanics_explainer: mechanicsFinding,
+  fluency_gain: fluencyFinding,
+  theta_delta: thetaDeltaFinding,
+  hardest_cleared: hardestFinding,
+  retest_due: retestFinding,
+}
+
+describe('no formatter ever renders undefined', () => {
+  // MUTATION CAUGHT: the whole defect class this work exists to prevent. Any
+  // formatter that interpolates a missing evidence value produces the string
+  // "undefined" inside a sentence a learner reads. Checking every kind against
+  // both full and stripped evidence is cheaper than trusting ten formatters.
+  it.each(ALL_KINDS)('%s renders cleanly with full and with stripped evidence', (kind) => {
+    const full = FIXTURES[kind]
+    expect(templateCopy(full, NOW)).not.toContain('undefined')
+    expect(templateCopy({ ...full, evidence: [] }, NOW)).not.toContain('undefined')
+    expect(templateCopy({ ...full, evidence: [] }, NOW).trim()).not.toBe('')
   })
 })
