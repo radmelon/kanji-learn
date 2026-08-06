@@ -62,6 +62,30 @@ Both defects the previous handoff called the worst are fixed **in production**:
 `level_estimate` no longer prints a level outside the range in the same
 sentence (`N3` now sits inside `N3..N2`).
 
+### 🔒 Security — one gap closed, one still open (2026-08-06)
+
+**Closed: migration `0036`, applied to live.** The Supabase linter flagged
+`public.kanji_difficulty` as PostgREST-reachable with RLS disabled — the only
+one of 39 public tables missing it. **The linter understated it.** `anon` holds
+INSERT/UPDATE/DELETE/**TRUNCATE** there, as it does on every table by default;
+everywhere else RLS makes those grants inert, and here nothing did. Probed
+read-only beforehand: `anon` saw all **2,294 rows** and a `DELETE` would have
+taken every one — the IRT parameters the placement test scores against. After:
+anon reads **0**, anon `DELETE` affects **0**, `postgres` still reads 2,294,
+data unchanged. **39/39 tables now have RLS.** No anon policy was added, since
+`apps/mobile` makes zero `.from(` calls and no client reads any table directly.
+
+**Still open: the exposed Supabase credentials are live.** See priority item 4
+above. `service_role` **bypasses RLS entirely**, which is worth holding next to
+the fix above — 0036 closes a hole that key walks straight through. The one
+unanswered question needs the Supabase dashboard: **is the legacy `service_role`
+key revoked?**
+
+⚠️ **Do not re-verify secrets by printing them.** Both checks above were done by
+sha256 fingerprint and JWT time-claims only; no value entered the session.
+`aws apprunner describe-service` returning the plaintext env map is how the
+2026-04-20 exposure happened — pipe it into a decoder, never a terminal.
+
 ### 🔴 The verification query in the last handoff could not have proven anything
 
 The previous section said to check `notebook_entries` and see whether the text
