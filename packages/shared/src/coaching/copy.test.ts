@@ -85,6 +85,30 @@ const levelEstimateFindingCollapsed: Finding = {
   since: null,
 }
 
+// Finding 1 (CRITICAL, coaching-copy-floor final review): defence in depth.
+// coaching.service.ts's levelInterval() now derives `level` from the SAME
+// bands as `low`/`high`, which makes containment true by construction for
+// anything assembled from there — but copy.ts must not trust that forever.
+// Reproduces the owner's own live render (session 21c54a5e, a stored
+// inferred_level from before commit 504b1ea): low='N3', high='N2',
+// level='N4' — N4 sits OUTSIDE N3..N2 on the JLPT ladder (ability order N5 <
+// N4 < N3 < N2 < N1), so the un-guarded sentence reads "puts you at N4...the
+// honest range runs from N3 to N2".
+const levelEstimateFindingOutOfRange: Finding = {
+  kind: 'level_estimate',
+  magnitude: 0.5,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.MOST_LIKELY_LEVEL, value: 'N4' },
+    { label: EVIDENCE_LABELS.LOWER_BOUND, value: 'N3' },
+    { label: EVIDENCE_LABELS.UPPER_BOUND, value: 'N2' },
+    { label: EVIDENCE_LABELS.ABILITY_ESTIMATE, value: 1.15 },
+    { label: EVIDENCE_LABELS.STANDARD_ERROR, value: 0.35 },
+    { label: EVIDENCE_LABELS.MEASURED_ON, value: '2026-08-01' },
+  ],
+  since: null,
+}
+
 // Mirrors detectMechanicsExplainer: fixed copy, no evidence, since always null.
 const mechanicsFinding: Finding = {
   kind: 'mechanics_explainer',
@@ -361,6 +385,32 @@ const readingLagChosenSourceContradictsFinding: Finding = {
   since: null,
 }
 
+// Finding 3 (Important, coaching-copy-floor final review): the reviewer's own
+// reachable case. Both shapes present; quiz wins the count comparison (20
+// reading answers >= placement's 13) and becomes `chosen`, but quiz's own gap
+// (88% meaning vs 86% reading = 2 points) sits UNDER quiz's own population
+// baseline (POPULATION_QUIZ_READING_GAP = 0.073, i.e. 7.3 points) — readings
+// trail meanings by MORE than 2 points for everybody on quiz, so 2 points is
+// not unusual. The existing `chosen.reading >= chosen.meaning` guard does not
+// catch this (86 < 88), so without Finding 3's fix the sentence would claim
+// "a wider gap than most people have" about a gap that is actually narrower
+// than most people's.
+const readingLagChosenBelowOwnBaselineFinding: Finding = {
+  kind: 'reading_lag',
+  magnitude: 0.2,
+  confidence: 1,
+  evidence: [
+    { label: EVIDENCE_LABELS.MEANING_ACCURACY, value: 1.0 },
+    { label: EVIDENCE_LABELS.READING_ACCURACY, value: 0.25 },
+    { label: EVIDENCE_LABELS.EXPECTED_READING_PENALTY, value: -0.033 },
+    { label: EVIDENCE_LABELS.ITEMS_WITH_READING_ASKED, value: 13 },
+    { label: EVIDENCE_LABELS.QUIZ_READING_ACCURACY, value: 0.86 },
+    { label: EVIDENCE_LABELS.QUIZ_MEANING_ACCURACY, value: 0.88 },
+    { label: EVIDENCE_LABELS.QUIZ_READING_ANSWERS, value: 20 },
+  ],
+  since: null,
+}
+
 // Mirrors detectFluencyGain (detectors/fluency.ts): percent faster, the
 // honest (accuracy-held) kanji count, and windowDays as carried on the
 // snapshot rather than a constant this layer owns.
@@ -623,6 +673,23 @@ describe('templateCopy — level_estimate', () => {
     const text = templateCopy({ ...levelEstimateFindingCollapsed, confidence: 0.33 }, NOW)
     expect(text).toContain('Early signal')
     expect(text).not.toContain('confident')
+  })
+
+  // Finding 1 (CRITICAL, coaching-copy-floor final review): the defence in
+  // depth this pass adds. `level`, `low` and `high` are meant to always agree
+  // now that coaching.service.ts derives all three from the same bands — but
+  // this formatter must not assume that holds forever, because a
+  // self-contradicting sentence in front of a learner is worse than silence.
+  //
+  // MUTATION CAUGHT: removing (or weakening) the containment guard, which
+  // would render "puts you at N4...the honest range runs from N3 to N2" —
+  // the owner's own live render, verified against session 21c54a5e.
+  it('degrades to BASE when the level sits outside its own low/high bounds', () => {
+    const fallback = templateCopy({ ...levelEstimateFindingOutOfRange, evidence: [] }, NOW)
+    const text = templateCopy(levelEstimateFindingOutOfRange, NOW)
+    expect(text).toBe(fallback)
+    expect(text).not.toContain('N4')
+    expect(text).not.toContain('N3 to N2')
   })
 })
 
@@ -976,6 +1043,27 @@ describe('templateCopy — reading_lag', () => {
     expect(text).not.toContain('77%')
   })
 
+  // Finding 3 (Important, coaching-copy-floor final review): the guard above
+  // only catches a chosen source whose numbers run backwards (reading >=
+  // meaning). It says nothing about whether the gap is UNUSUAL — readings
+  // trail meanings by the source's own population baseline for EVERYONE, so
+  // "a wider gap than most people have" needs the chosen source's gap to
+  // exceed ITS OWN baseline, not just be positive.
+  //
+  // MUTATION CAUGHT: dropping the `chosen.meaning - chosen.reading <=
+  // chosen.baseline` guard (or comparing against the wrong source's
+  // baseline), which would render "86% against 88%...which is a wider gap
+  // than most people have" — a 2-point gap that is actually narrower than
+  // quiz's own 7.3-point population baseline.
+  it("falls back to BASE when the chosen source's gap does not exceed its own population baseline", () => {
+    const fallback = templateCopy({ ...readingLagChosenBelowOwnBaselineFinding, evidence: [] }, NOW)
+    const text = templateCopy(readingLagChosenBelowOwnBaselineFinding, NOW)
+    expect(text).toBe(fallback)
+    expect(text).not.toContain('86%')
+    expect(text).not.toContain('88%')
+    expect(text).not.toContain('wider gap than most people have')
+  })
+
   // MUTATION CAUGHT: removing the `!placement && !quiz` guard, which leaves
   // `chosen` undefined and throws reading `chosen.reading` instead of
   // degrading to BASE.
@@ -1140,30 +1228,61 @@ describe('templateCopy — hardest_cleared', () => {
   //
   // MUTATION CAUGHT: reverting to "...which is why 願 counted as harder than
   // some kanji at an easier JLPT level that you also saw."
+  //
+  // Finding 5 (Minor, this pass): "three readings" is now "3 readings" —
+  // spell() was dropped from this clause (see the two assertions below and
+  // the dedicated test further down); updated here too so this test does not
+  // pin the wording Finding 5 removed.
   it('names the kanji and its basis without comparing it to anything else on the test', () => {
     const text = templateCopy(hardestFinding, NOW)
     expect(text).toContain('願')
-    expect(text).toContain('19 strokes')
-    expect(text).toContain('three readings')
+    expect(text).toContain('19 strokes and 3 readings')
     expect(text).toContain('JLPT')
     expect(text).toContain('not always the one from the highest level you saw')
     expect(text).not.toContain('counted as harder than')
     expect(text).not.toContain('easier JLPT level that you also saw')
   })
 
-  // Finding 2 (Important): spell(1) returns 'one', and a hard-coded plural
-  // renders "one readings" — 344 of 2,294 live kanji have exactly one
-  // reading, and 刊 (one reading) was the SECOND-hardest item in the owner's
-  // own live session, one misfire away from being the hardest-cleared kanji
-  // shown here instead of 願.
+  // Finding 2 (CRITICAL, coaching-copy-floor final review): detectHardestCleared
+  // filters to meaningCorrect FIRST, then takes the max difficulty among
+  // survivors — it knows the hardest item the learner GOT RIGHT, never the
+  // hardest item the test ASKED. The old opening clause claimed the latter
+  // ("which was the hardest item the test put in front of you"); verified
+  // false on 2 of 4 live sessions (session 01eba1c0: hardest asked difficulty
+  // 2.00354, hardest cleared 1.21478; session cf02c508: hardest asked
+  // 0.444002, hardest cleared 0.442778). The evidence carries nothing about
+  // un-cleared items, so the formatter cannot check a claim about them.
+  //
+  // MUTATION CAUGHT: reverting the opening clause to "which was the hardest
+  // item the test put in front of you".
+  it('claims only the hardest item cleared, not the hardest item asked', () => {
+    const text = templateCopy(hardestFinding, NOW)
+    expect(text).toContain('the hardest item you got right')
+    expect(text).not.toContain('put in front of you')
+  })
+
+  // Finding 2 (Important, prior pass): spell(1) returns 'one', and a
+  // hard-coded plural renders "one readings" — 344 of 2,294 live kanji have
+  // exactly one reading, and 刊 (one reading) was the SECOND-hardest item in
+  // the owner's own live session, one misfire away from being the
+  // hardest-cleared kanji shown here instead of 願.
+  //
+  // Finding 5 (Minor, this pass): spell() has since been dropped from this
+  // clause entirely, so a single reading now renders as the numeral "1", not
+  // the word "one" — see that fix's own comment in copy.ts for why (the
+  // stroke clause beside it was never spelled, so mixing the two read
+  // inconsistently for any kanji with more than five readings).
   //
   // MUTATION CAUGHT: hard-coding "readings" regardless of count, which
-  // renders "one readings" for 刊 and for every other single-reading kanji.
+  // renders "1 readings" for 刊 and for every other single-reading kanji.
+  // MUTATION CAUGHT: reintroducing spell() on this clause, which would
+  // render "one reading" instead of "1 reading".
   it('pluralises the reading count correctly for a kanji with exactly one reading', () => {
     const text = templateCopy(hardestFindingOneReading, NOW)
     expect(text).toContain('刊')
-    expect(text).toContain('one reading')
-    expect(text).not.toContain('one readings')
+    expect(text).toContain('1 reading.')
+    expect(text).not.toContain('1 readings.')
+    expect(text).not.toContain('one reading')
   })
 
   // Finding 2 (Minor, this pass): the identical defect in the identical
@@ -1178,6 +1297,21 @@ describe('templateCopy — hardest_cleared', () => {
     expect(text).toContain('一')
     expect(text).toContain('1 stroke ')
     expect(text).not.toContain('1 strokes')
+  })
+
+  // Finding 2 (CRITICAL, coaching-copy-floor final review): the removed
+  // "hardest item the test put in front of you" claim must not survive in
+  // the fallback either — the owner's precedent on BASE.leech (see that
+  // fallback test's own comment) is explicit that a claim removed from a
+  // formatter must not reappear in the string that renders when there is no
+  // evidence to support any claim at all.
+  //
+  // MUTATION CAUGHT: restoring "the hardest kanji the test put in front of
+  // you" to BASE.hardest_cleared.
+  it('falls back with evidence stripped, without the false superlative', () => {
+    const text = templateCopy({ ...hardestFinding, evidence: [] }, NOW)
+    expect(text).not.toContain('undefined')
+    expect(text).not.toContain('put in front of you')
   })
 })
 
@@ -1273,6 +1407,24 @@ describe('templateCopy — retest_due', () => {
     const text = templateCopy(oneDay, NOW)
     expect(text).toContain('1 day since the last one')
     expect(text).not.toContain('1 days since')
+  })
+
+  // Finding 4 (Important, coaching-copy-floor final review): BASE.retest_due
+  // itself said "has drifted since it was taken" — false the moment
+  // detectRetestDue can fire at all, since it triggers on standard error
+  // alone and live SEs already exceed the floor on their own (verified
+  // 0.585, 0.546 — a learner who finished a test TODAY could be told it "has
+  // drifted"). The formatter's own sentence was already fixed to avoid this
+  // (see "names what retaking buys..." above, and the `not.toContain
+  // ('drifted')` it already asserts); this fixture hits the base string that
+  // renders when there is no evidence at all, which that test cannot reach.
+  //
+  // MUTATION CAUGHT: restoring "has drifted since it was taken" (or "the
+  // value of the test goes up when it is repeated") to BASE.retest_due.
+  it('falls back with evidence stripped, without the drifted claim', () => {
+    const text = templateCopy({ ...retestFinding, evidence: [] }, NOW)
+    expect(text).not.toContain('undefined')
+    expect(text).not.toContain('drifted')
   })
 })
 

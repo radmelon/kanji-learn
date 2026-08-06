@@ -241,20 +241,24 @@ export class CoachingService {
 
     // `level` is non-nullable on the contract. A session whose inferredLevel
     // never resolved cannot describe a level, and inventing one would be worse
-    // than staying silent -- level_estimate simply does not fire.
+    // than staying silent -- level_estimate simply does not fire. The stored
+    // value gates that check and backstops levelInterval's own no-bands case;
+    // it is not what ends up in `level` below -- levelInterval recomputes
+    // that from today's corpus so it can never disagree with levelLow/
+    // levelHigh (Finding 1, coaching-copy-floor final review).
     const theta = latest.abilityTheta
     const se = latest.abilitySe
     if (theta === null || se === null || latest.inferredLevel === null) return null
 
     const items = await this.placementItems(latest.id)
-    const { levelLow, levelHigh } = await this.levelInterval(theta, se, latest.inferredLevel as JlptLevel)
+    const { level, levelLow, levelHigh } = await this.levelInterval(theta, se, latest.inferredLevel as JlptLevel)
 
     const prev = sessions[1]
     return {
       theta,
       se,
       completedAt: latest.completedAt!.toISOString(),
-      level: latest.inferredLevel as JlptLevel,
+      level,
       thetaLow: theta - Z_80 * se,
       thetaHigh: theta + Z_80 * se,
       levelLow,
@@ -306,7 +310,23 @@ export class CoachingService {
   }
 
   /**
-   * Level labels for the ends of the credible interval.
+   * `level` and the labels for the ends of the credible interval -- all THREE
+   * from the SAME bands, at the SAME `theta`, in the same call. copy.ts's
+   * level_estimate formatter interpolates all three into one sentence, so
+   * they must never be able to disagree.
+   *
+   * Finding 1 (CRITICAL, coaching-copy-floor final review): `level` used to
+   * come from the caller's `fallback` -- placementSessions.inferredLevel,
+   * STORED AT TEST TIME -- while `levelLow`/`levelHigh` were recomputed HERE
+   * from TODAY's corpus. A recalibration between those two moments can leave
+   * them disagreeing: verified live, session 21c54a5e (theta=1.1453,
+   * se=0.3511, stored inferred_level='N4') recomputes to levelLow='N3',
+   * levelHigh='N2' today -- N4 sits outside N3..N2. Those rows were written
+   * by a pre-B146 build (the fix, 504b1ea, landed 2026-08-01) and will not
+   * self-heal until each learner retakes the test. Deriving `level` here,
+   * from the same bands and the same `theta` used for the bounds, makes
+   * containment true by construction instead of assuming two
+   * independently-sourced values agree.
    *
    * Bands come from the whole difficulty CORPUS, never from the items this
    * test happened to ask -- levelBands' own header records B146, where reading
@@ -317,16 +337,20 @@ export class CoachingService {
     theta: number,
     se: number,
     fallback: JlptLevel,
-  ): Promise<{ levelLow: JlptLevel; levelHigh: JlptLevel }> {
+  ): Promise<{ level: JlptLevel; levelLow: JlptLevel; levelHigh: JlptLevel }> {
     const corpus = await this.db
       .select({ b: kanjiDifficulty.b, level: kanji.jlptLevel })
       .from(kanjiDifficulty)
       .innerJoin(kanji, eq(kanji.id, kanjiDifficulty.kanjiId))
 
     const bands = levelBands(corpus as { b: number; level: JlptLevel | null }[], JLPT_LEVELS)
-    if (bands.levels.length === 0) return { levelLow: fallback, levelHigh: fallback }
+    // No bands at all (an empty corpus): nothing to recompute against, so
+    // fall back to the stored level for all three rather than inventing one
+    // from no data -- same fallback this always returned.
+    if (bands.levels.length === 0) return { level: fallback, levelLow: fallback, levelHigh: fallback }
 
     return {
+      level: inferredLevel(theta, bands.boundaries, bands.levels),
       levelLow: inferredLevel(theta - Z_80 * se, bands.boundaries, bands.levels),
       levelHigh: inferredLevel(theta + Z_80 * se, bands.boundaries, bands.levels),
     }

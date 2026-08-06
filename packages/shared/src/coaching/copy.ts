@@ -1,5 +1,7 @@
 import type { Finding, FindingKind, Evidence } from './types'
-import { EVIDENCE_LABELS } from './types'
+import { EVIDENCE_LABELS, POPULATION_PLACEMENT_READING_GAP, POPULATION_QUIZ_READING_GAP } from './types'
+import { JLPT_LEVELS } from '../milestones/constants'
+import type { JlptLevel } from '../types'
 
 /**
  * The offline floor (spec §1).
@@ -50,10 +52,23 @@ const BASE: Record<FindingKind, string> = {
     'You are answering faster than you were, without losing accuracy.',
   theta_delta:
     'Your ability estimate has moved up since your last placement.',
+  // Finding 2 (CRITICAL, coaching-copy-floor final review): the removed
+  // "hardest item the test put in front of you" claim (see the formatter's
+  // own comment) must not survive here either — the owner's precedent on
+  // BASE.leech is explicit that a claim removed from the formatter must not
+  // reappear in the fallback nothing-to-say string.
   hardest_cleared:
-    'You cleared the hardest kanji the test put in front of you.',
+    'You cleared the hardest kanji you got right on the test.',
+  // Finding 4 (Important, coaching-copy-floor final review): "has drifted
+  // since it was taken" is false the moment detectRetestDue can fire —
+  // it triggers on standard error alone, and live SEs already exceed the
+  // floor on their own, so a learner who finished a test TODAY could be told
+  // it "has drifted since it was taken". The formatter's own sentence was
+  // already fixed to avoid this (see its comment); this is the string that
+  // renders when there is no evidence at all, and it must not say the thing
+  // the formatter was fixed to stop saying.
   retest_due:
-    'Your placement estimate has drifted since it was taken. Repeating the test now would sharpen it — the value of the test goes up when it is repeated.',
+    'Taking your placement test again would sharpen your level estimate rather than simply repeat what you already know.',
 }
 
 /** Below this, say it as a suspicion rather than a fact (§2). */
@@ -121,6 +136,17 @@ function pct(v: string | number): string {
 }
 
 /**
+ * JLPT_LEVELS' ascending ABILITY index (N5=0 .. N1=4), or -1 for anything
+ * else. Ability runs the OPPOSITE direction from JLPT numbering — N5 is the
+ * least advanced band — so this is "rank by ability", the order
+ * `low <= level <= high` must hold in for level_estimate's containment guard
+ * (Finding 1, coaching-copy-floor final review).
+ */
+function jlptRank(value: string | number): number {
+  return JLPT_LEVELS.indexOf(String(value) as JlptLevel)
+}
+
+/**
  * Small counts read better as words in prose: 'three readings', 'Two kanji'.
  * Always lowercase — capitalise at the call site when it starts a sentence, so
  * there is one spelling table rather than a cased and an uncased copy of it.
@@ -154,6 +180,14 @@ interface ReadingLagSource {
   meaning: string | number
   count: number
   unit: 'answers' | 'reading answers'
+  /**
+   * This source's OWN population baseline gap (Finding 3, coaching-copy-floor
+   * final review) — POPULATION_PLACEMENT_READING_GAP for placement,
+   * POPULATION_QUIZ_READING_GAP for quiz. Readings trail meanings by this
+   * much for EVERYONE on this source (reading-lag.ts's own comment), so only
+   * a gap that EXCEEDS it is a finding about this particular learner.
+   */
+  baseline: number
 }
 
 /**
@@ -171,6 +205,27 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     const high = ev(f, EVIDENCE_LABELS.UPPER_BOUND)
     const on = ev(f, EVIDENCE_LABELS.MEASURED_ON)
     if (level === undefined || low === undefined || high === undefined || on === undefined) return null
+
+    // Finding 1 (CRITICAL, coaching-copy-floor final review): `level` and
+    // `low`/`high` can be assembled at different moments. `level` used to be
+    // `placementSessions.inferredLevel`, stored at TEST time; `low`/`high`
+    // are recomputed by coaching.service.ts's levelInterval() from TODAY's
+    // corpus. A recalibration between those two moments left live rows
+    // written before commit 504b1ea with a stored level outside its own
+    // recomputed bounds — verified live, session 21c54a5e (theta=1.1453,
+    // se=0.3511, stored inferred_level='N4'): today's bands put low=N3,
+    // high=N2, and N4 sits outside N3..N2. coaching.service.ts now derives
+    // `level` from the SAME bands as `low`/`high` in the same call, which
+    // makes containment true by construction for anything assembled from
+    // here on — but this formatter must not trust that forever. A future
+    // source of disagreement (a bug, a hand-built caller, a stale cache)
+    // must not put a self-contradicting sentence in front of a learner, so
+    // refuse to render unless low <= level <= high on the JLPT ladder.
+    const lowRank = jlptRank(low)
+    const highRank = jlptRank(high)
+    const midRank = jlptRank(level)
+    if (lowRank === -1 || highRank === -1 || midRank === -1 || midRank < lowRank || midRank > highRank) return null
+
     const date = humanDate(String(on))
     // Collapse only means the interval doesn't cross a band edge — the
     // outer bands are unbounded (live corpus midpoints run roughly -1.454 /
@@ -185,14 +240,16 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // paragraph. State only what's true by construction: the whole interval
     // stays inside one level.
     //
-    // Interpolates `low`, not `level`: `level` is the stored
-    // placementSessions.inferredLevel from when the test was taken; `low`
-    // and `high` are recomputed here from today's corpus. A recalibration
-    // between those two moments can leave them disagreeing, the same class
-    // of band/ladder mismatch coaching.service.ts already carries a scar
-    // comment about (B146). Interpolating `low` keeps the containment claim
-    // true by construction instead of asserting it about a band the
-    // interval may no longer be in.
+    // Interpolates `low`, not `level`, in the collapsed sentence below.
+    // Before Finding 1's fix this was load-bearing: `level` was the stored
+    // placementSessions.inferredLevel from test time, `low`/`high` were
+    // recomputed from today's corpus, and the two could disagree — the same
+    // class of band/ladder mismatch coaching.service.ts's B146 scar comment
+    // describes. The guard above now closes that gap at the source (`level`
+    // comes from the same bands as `low`/`high`), so when low === high,
+    // level === low is guaranteed rather than merely likely. `low` stays the
+    // interpolated value anyway — it reads identically either way now, and
+    // this sentence has one fewer name to track.
     if (low === high) {
       return `Your placement test on ${date} puts you at ${level}. The honest range around that estimate stays entirely within ${low}, rather than reaching into a neighbouring level. Your level estimate is only recalculated when you take the placement test again, rather than from day-to-day studying.`
     }
@@ -217,11 +274,11 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // set of rows — so it earns the more specific "reading answers" unit.
     const placement: ReadingLagSource | null =
       placementReading !== undefined && placementMeaning !== undefined && placementCount !== undefined
-        ? { reading: placementReading, meaning: placementMeaning, count: Number(placementCount), unit: 'answers' }
+        ? { reading: placementReading, meaning: placementMeaning, count: Number(placementCount), unit: 'answers', baseline: POPULATION_PLACEMENT_READING_GAP }
         : null
     const quiz: ReadingLagSource | null =
       quizReading !== undefined && quizMeaning !== undefined && quizCount !== undefined
-        ? { reading: quizReading, meaning: quizMeaning, count: Number(quizCount), unit: 'reading answers' }
+        ? { reading: quizReading, meaning: quizMeaning, count: Number(quizCount), unit: 'reading answers', baseline: POPULATION_QUIZ_READING_GAP }
         : null
     if (!placement && !quiz) return null
 
@@ -241,6 +298,24 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // sentence claiming readings trail must not render when the numbers it
     // is about to cite say the opposite; fall back to BASE instead.
     if (Number(chosen.reading) >= Number(chosen.meaning)) return null
+
+    // Finding 3 (Important, coaching-copy-floor final review): the guard
+    // above only rejects a chosen source whose numbers run backwards. It says
+    // nothing about whether the gap is UNUSUAL — readings trail meanings by
+    // `chosen.baseline` for everybody on that source, so "a wider gap than
+    // most people have" is true only when the chosen source's OWN gap
+    // exceeds its OWN baseline. Reachable: placement asks 13 (100%/25%,
+    // excess 0.783 over its -0.033 baseline) alongside quiz answering 20
+    // reading / 20 meaning (86%/88%, excess -0.053 under its 0.073 baseline)
+    // — the weighted blend clears LAG_FLOOR on placement's strength, quiz
+    // wins the count comparison (20 >= 13) and becomes `chosen`, and quiz's
+    // own 2-point gap is narrower than what is normal for quiz. Placement's
+    // baseline is negative, so this can never fire for a chosen placement
+    // source beyond what the raw guard above already catches — quiz's
+    // positive baseline is the one that needs it. Same shape as the guard
+    // above: refuse to render rather than cite numbers that contradict the
+    // sentence.
+    if (Number(chosen.meaning) - Number(chosen.reading) <= chosen.baseline) return null
 
     return `Your readings are trailing your meanings, ${pct(chosen.reading)} against ${pct(chosen.meaning)} across ${chosen.count} ${chosen.unit}, which is a wider gap than most people have. Next time you study, try saying the reading aloud before you reveal the answer.`
   },
@@ -375,8 +450,16 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     const strokes = ev(f, EVIDENCE_LABELS.STROKE_COUNT)
     const readings = ev(f, EVIDENCE_LABELS.READING_COUNT)
     if (!kanji?.character || strokes === undefined || readings === undefined) return null
-    // Finding 2: spell(1) is 'one', and a hard-coded plural renders 'one
-    // readings' — 344 of 2,294 live kanji have exactly one reading.
+    // Finding 2 (Important, prior pass): spell(1) is 'one', and a hard-coded
+    // plural renders 'one readings' — 344 of 2,294 live kanji have exactly
+    // one reading.
+    //
+    // Finding 5 (Minor, this pass): spell() has since been dropped from this
+    // clause entirely. It rendered "19 strokes and three readings" beside
+    // "8 strokes and 7 readings" — strokes were always numerals, readings
+    // were spelled below six — so 206 of 2,294 live kanji (more than five
+    // readings) flipped style mid-sentence. Both halves are numerals now;
+    // spell() stays in leech's sentence-opening count, where a word is right.
     const readingCount = Number(readings)
     const readingWord = readingCount === 1 ? 'reading' : 'readings'
     // The identical defect lived in the same clause on the stroke side: a
@@ -385,15 +468,24 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // than the reading case above, but it is the same bug fixed the same way.
     const strokeCount = Number(strokes)
     const strokeWord = strokeCount === 1 ? 'stroke' : 'strokes'
-    // Finding 1 (CRITICAL): detectHardestCleared emits five fields about the
-    // hardest item ALONE — character, difficulty, strokes, readings, date.
-    // Nothing about any other item, and no JLPT level at all. The old closing
-    // clause claimed a specific comparison ("counted as harder than some
-    // kanji at an easier JLPT level") that this evidence cannot carry, and
-    // which is false on two of live's four sessions (verified: the owner's
-    // own 願 session had nine items, none below N3). State the mechanism
-    // instead — true regardless of what else was on the test.
-    return `You cleared ${kanji.character}, which was the hardest item the test put in front of you: it has ${strokeCount} ${strokeWord} and ${spell(readingCount)} ${readingWord}. Difficulty here weighs stroke count and number of readings alongside JLPT level, so the hardest item is not always the one from the highest level you saw.`
+    // Finding 2 (CRITICAL, this pass): detectHardestCleared filters to
+    // meaningCorrect FIRST, then takes the max difficulty among survivors —
+    // it knows the hardest item the learner GOT RIGHT, never the hardest
+    // item the test ASKED. The opening clause used to claim the latter
+    // ("which was the hardest item the test put in front of you"); verified
+    // false on 2 of 4 live sessions (session 01eba1c0: hardest asked
+    // difficulty 2.00354, hardest cleared 1.21478; session cf02c508: hardest
+    // asked 0.444002, hardest cleared 0.442778). The evidence carries
+    // nothing about un-cleared items, so this formatter cannot check a claim
+    // about them — state only what the detector actually knows.
+    //
+    // Finding 1 (CRITICAL, prior pass): the CLOSING clause used to claim a
+    // specific comparison ("counted as harder than some kanji at an easier
+    // JLPT level") this evidence cannot carry either, and which is false on
+    // two of live's four sessions (the owner's own 願 session had nine
+    // items, none below N3). States the mechanism instead — true regardless
+    // of what else was on the test.
+    return `You cleared ${kanji.character}, the hardest item you got right: it has ${strokeCount} ${strokeWord} and ${readingCount} ${readingWord}. Difficulty here weighs stroke count and number of readings alongside JLPT level, so the hardest item is not always the one from the highest level you saw.`
   },
 
   retest_due: (f) => {
