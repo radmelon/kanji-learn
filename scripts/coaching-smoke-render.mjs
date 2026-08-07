@@ -41,6 +41,26 @@
  *     scripts/coaching-smoke-render.mjs
  *
  * Optional: --user <uuid> to render a single learner.
+ *
+ * ─── --as-of <iso>: RENDERING A KIND THAT IS SILENT TODAY ───────────────────
+ * Three kinds reported SILENT on every run up to 2026-08-07, and the report
+ * told you to "construct a learner whose data makes them fire" — i.e. build a
+ * fixture, which is the exact blind spot documented above.
+ *
+ * There is a better instrument. All three were silent for TIMING reasons, not
+ * missing data: this learner's real history already satisfies each detector,
+ * just not at this instant. So rewind the clock over real rows instead:
+ *
+ *   --as-of 2026-08-08          commitment_gap  (the period ends 08-08; before
+ *                               that getLastCompletedPeriod skips it)
+ *   --as-of 2026-05-21          fluency_gain    (needs one card reviewed in
+ *                               BOTH halves of the 30-day window; 158 cards
+ *                               qualified then, none do in the current window)
+ *   --as-of 2026-08-01T20:00Z   theta_delta     (needs two placements far
+ *                               enough apart to clear their combined noise)
+ *
+ * Every number rendered is a real stored value. What is simulated is only WHEN
+ * you are standing, which is precisely the variable that made them silent.
  */
 
 import { createRequire } from 'node:module'
@@ -61,7 +81,16 @@ const args = process.argv.slice(2)
 const userIdx = args.indexOf('--user')
 const SINGLE_USER = userIdx >= 0 ? args[userIdx + 1] : null
 
-const now = new Date().toISOString()
+const asOfIdx = args.indexOf('--as-of')
+const AS_OF = asOfIdx >= 0 ? args[asOfIdx + 1] : null
+if (AS_OF && Number.isNaN(Date.parse(AS_OF))) {
+  console.error(`--as-of: not a parsable date: ${AS_OF}`)
+  process.exit(1)
+}
+
+// A bare date means midnight UTC, which is what the --as-of examples above
+// assume. Date.parse handles both that and a full ISO instant.
+const now = AS_OF ? new Date(AS_OF).toISOString() : new Date().toISOString()
 const svc = new CoachingService(db)
 
 const bar = (c) => c.repeat(78)
@@ -82,6 +111,11 @@ async function main() {
 
   console.log(bar('═'))
   console.log(`COACHING LIVE-RENDER SMOKE CHECK   ${now}`)
+  if (AS_OF) {
+    console.log('⏪ --as-of: the clock is rewound over REAL rows. Every value below is')
+    console.log('   a stored one; only the instant you are standing at is simulated.')
+    console.log('   Coverage here does NOT describe what production shows today.')
+  }
   console.log(`${learners.length} learner(s). Read each sentence against the evidence under it.`)
   console.log(bar('═'))
 
@@ -92,11 +126,15 @@ async function main() {
     const userId = row.user_id
     let priors = []
     try {
+      // In --as-of mode the priors must also be the ones that existed THEN.
+      // Carrying today's priors back would decay novelty for findings that had
+      // not been raised yet, and novelty drives selection.
       const priorRows = await db.execute(sql`
         SELECT source
           FROM notebook_entries
          WHERE user_id = ${userId}
            AND source->>'kind' = ${COACHING_SOURCE_KIND}
+           AND (${AS_OF}::timestamptz IS NULL OR created_at <= ${AS_OF}::timestamptz)
          ORDER BY created_at DESC
          LIMIT 1
       `)
@@ -107,7 +145,11 @@ async function main() {
 
     let snapshot
     try {
-      snapshot = await svc.assembleSnapshot(userId, now, priors)
+      // `historical` closes the review/quiz windows at `now` and time-filters
+      // placement — the two things `now` alone does not reach. Omitted without
+      // --as-of, so the default run is the production call it has always made.
+      snapshot = await svc.assembleSnapshot(userId, now, priors,
+        AS_OF ? { historical: true } : {})
     } catch (e) {
       console.log(`\n${bar('─')}\nLEARNER ${userId}\n  ! assembleSnapshot failed: ${e.message}`)
       continue
@@ -176,9 +218,11 @@ async function main() {
   if (silent.length === 0) {
     console.log('  All ten kinds rendered. Every shipped sentence has now been read against live data.')
   } else {
-    console.log(`  ${silent.length} kind(s) never fired on any live learner, so their copy remains`)
-    console.log('  unverified against reality — tests alone have never caught a defect in this')
-    console.log('  class. To check these, construct a learner whose data makes them fire.')
+    console.log(`  ${silent.length} kind(s) did not fire, so their copy is unverified at this`)
+    console.log('  instant — tests alone have never caught a defect in this class.')
+    console.log('  Prefer --as-of <iso> over building a fixture: all three kinds silent on')
+    console.log('  2026-08-07 were silent for TIMING reasons, and rewinding the clock')
+    console.log('  rendered every one of them from real stored rows. See the header comment.')
   }
   console.log(bar('═'))
 }

@@ -24,7 +24,7 @@ import type { ReviewResult } from '@kanji-learn/shared'
 import { pickBuddyMomentAction, snoozedKanjiIds, type ReviewedCard } from '@kanji-learn/shared'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Pressable,
-  PanResponder, Animated, Alert, ScrollView,
+  PanResponder, Animated, Alert, ScrollView, AppState,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
@@ -143,6 +143,22 @@ function StudySession() {
       ? Math.max(0, Math.ceil((goalMinutes * 60_000 - (now - studyStartMs)) / 60_000))
       : null
   const cardStartMs = useRef(Date.now())
+  // ── B-231: the card timer must not run while the app is backgrounded ───────
+  // This is wall-clock elapsed time, so locking the phone mid-card used to
+  // count the time it spent in a pocket. Live `response_time_ms` reached
+  // **163 hours**, and those rows fed a learner-facing claim: `fluency_gain`
+  // told one learner they were "66% faster… becoming automatic rather than
+  // effortful" off a mean of 17 minutes per card.
+  //
+  // `packages/shared/.../detectors/fluency.ts` now discards implausible rows on
+  // the way in, but that only defends the analysis — it cannot repair the data.
+  // This is the other half: stop writing them.
+  //
+  // Accumulated rather than reset, because a learner may background the app
+  // several times on one card; each absence is subtracted, and the foreground
+  // thinking time on either side is still counted.
+  const backgroundedMs = useRef(0)
+  const leftForegroundAt = useRef<number | null>(null)
   // Guard: ensure handleFinish is only called once per isComplete=true cycle.
   // Without this, a React-Native batching edge case can cause handleFinish to
   // fire a second time when setSessionSummary(null) renders before Zustand's
@@ -357,9 +373,33 @@ function StudySession() {
     // the last one.
     setHintUsed(false)
     cardStartMs.current = Date.now()
+    // A new card starts a new measurement: last card's absences are not this
+    // card's. `leftForegroundAt` is cleared too — advancing cards while
+    // backgrounded is not reachable, but a stale stamp here would silently
+    // subtract another card's absence from this one.
+    backgroundedMs.current = 0
+    leftForegroundAt.current = null
     swipeX.setValue(0)
     swipeY.setValue(0)
   }, [currentIndex])
+
+  // Pairs with cardStartMs above. 'inactive' is included deliberately: on iOS
+  // it is the state during the app-switcher and the notification shade, which
+  // is exactly the "put the phone down mid-card" case, and it does not always
+  // progress to 'background'.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        if (leftForegroundAt.current !== null) {
+          backgroundedMs.current += Date.now() - leftForegroundAt.current
+          leftForegroundAt.current = null
+        }
+      } else if (leftForegroundAt.current === null) {
+        leftForegroundAt.current = Date.now()
+      }
+    })
+    return () => sub.remove()
+  }, [])
 
   useEffect(() => {
     if (!isComplete) {
@@ -386,7 +426,10 @@ function StudySession() {
         const result: ReviewResult = {
           kanjiId: item.kanjiId,
           quality: capped,
-          responseTimeMs: Date.now() - cardStartMs.current,
+          // B-231: foreground time only. Math.max guards the one ordering that
+          // could still go negative — a resume that lands after this grade —
+          // rather than trusting the AppState listener to have run first.
+          responseTimeMs: Math.max(0, Date.now() - cardStartMs.current - backgroundedMs.current),
           reviewType: item.reviewType,
           hintUsed,
         }

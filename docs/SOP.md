@@ -205,6 +205,13 @@ work that is in no commit.
 `sha: "unknown"` means the image was built without the build-arg (a plain
 `docker build`, or a build predating 2026-08-06).
 
+⚠️ **(b) goes green before (a) does — do not read that as a failure.** Verified
+2026-08-07: `/health` served the new `sha` while `list-operations` still
+reported `IN_PROGRESS`, which only flipped to `SUCCEEDED` about a minute later.
+App Runner closes the operation after its own health checks settle, so the new
+image is already serving by then. **Content is the earlier and the stronger
+signal.** If content matches and the operation is still running, you are done.
+
 **Added 2026-08-06, and it replaces per-feature canaries.** Before it, every
 deploy needed its own: Phase 5 used `components` on `GET /v1/kanji/:id`, and the
 coaching copy floor needed something worse still — opening the app to force a

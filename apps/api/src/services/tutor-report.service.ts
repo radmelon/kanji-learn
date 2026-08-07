@@ -14,6 +14,7 @@ import {
   writingAttempts,
 } from '@kanji-learn/db'
 import type { Db } from '@kanji-learn/db'
+import { loadLevelBands, deriveLevel } from './level-bands'
 
 // ─── ReportData interface ────────────────────────────────────────────────────
 
@@ -133,23 +134,41 @@ export class TutorReportService {
 
   // ── Placement sessions ─────────────────────────────────────────────────────
 
+  /**
+   * B-233: `inferredLevel` is DERIVED here from the stored `ability_theta`
+   * against today's corpus — it is no longer read from
+   * `placement_sessions.inferred_level`.
+   *
+   * That column is a cached derivation (migration 0029, on `ability_theta`:
+   * "inferred_level is now DERIVED from this (spec §7.5) rather than computed
+   * independently"), and reading it here while `CoachingService` recomputed its
+   * own is what made the tutor and the Journal state different levels for the
+   * same learner. Sharing `loadLevelBands` makes them agree by construction.
+   *
+   * A session with no theta now reports `null` rather than its stored label.
+   * That is the honest answer: there is nothing behind that number, and
+   * coaching already declines to say anything about those learners.
+   */
   private async getPlacement(userId: string) {
-    const rows = await this.db
-      .select({
-        id: placementSessions.id,
-        completedAt: placementSessions.completedAt,
-        inferredLevel: placementSessions.inferredLevel,
-        summaryJson: placementSessions.summaryJson,
-      })
-      .from(placementSessions)
-      .where(eq(placementSessions.userId, userId))
-      .orderBy(placementSessions.startedAt)
+    const [rows, bands] = await Promise.all([
+      this.db
+        .select({
+          id: placementSessions.id,
+          completedAt: placementSessions.completedAt,
+          abilityTheta: placementSessions.abilityTheta,
+          summaryJson: placementSessions.summaryJson,
+        })
+        .from(placementSessions)
+        .where(eq(placementSessions.userId, userId))
+        .orderBy(placementSessions.startedAt),
+      loadLevelBands(this.db),
+    ])
 
     return {
       sessions: rows.map((r) => ({
         id: r.id,
         completedAt: r.completedAt,
-        inferredLevel: r.inferredLevel,
+        inferredLevel: deriveLevel(bands, r.abilityTheta),
         summaryJson: r.summaryJson,
       })),
     }

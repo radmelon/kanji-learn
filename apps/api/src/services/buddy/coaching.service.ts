@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, lt, ne, sum } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, lt, lte, ne, sum } from 'drizzle-orm'
 import {
   placementSessions, placementResults, kanji, kanjiDifficulty,
   userKanjiProgress, reviewLogs, testResults, mnemonics,
@@ -7,8 +7,9 @@ import {
 import type { Db } from '@kanji-learn/db'
 import { CommitmentService } from './commitment.service'
 import { NotebookService } from '../notebook.service'
+import { loadLevelBands } from '../level-bands'
 import {
-  levelBands, inferredLevel, JLPT_LEVELS,
+  inferredLevel, MAX_PLAUSIBLE_RESPONSE_MS,
   analyze, carryForward, selectionsMatch, analysisBody,
   type JlptLevel, type LearnerSnapshot, type PlacementSnapshot,
   type PlacementItemOutcome, type PriorFinding,
@@ -76,15 +77,41 @@ export class CoachingService {
     this.notebook = new NotebookService(db)
   }
 
+  /**
+   * `historical: true` means "assemble the snapshot this learner ACTUALLY had
+   * at `now`", where `now` is a past instant. DIAGNOSTICS ONLY — it exists for
+   * `scripts/coaching-smoke-render.mjs --as-of`, and every caller in production
+   * omits it, so the shipped behaviour is byte-identical to before it existed.
+   *
+   * Two things need it, and both are places where `now` alone is not enough:
+   *
+   *   1. `placement` always reads the two most recent completed sessions. It
+   *      has no time filter at all, because in production "now" and "the latest
+   *      placement" never disagree. Without this flag `theta_delta` can only
+   *      ever be rendered against the newest pair.
+   *   2. The review and quiz windows are HALF-OPEN — `>= windowStart` with no
+   *      upper bound. Also harmless in production, where no row is in the
+   *      future. But at a past instant the "late" half silently absorbs every
+   *      review since, so the numbers rendered are not the ones the learner
+   *      would have seen — which is the one thing that tool has to get right.
+   *      This was found on 2026-08-07 by checking a rendered sentence against
+   *      an independent SQL computation and getting a different answer.
+   *
+   * It is a parameter rather than script-side surgery on the returned snapshot
+   * because the smoke check's whole value is that it drives the PRODUCTION
+   * path; a script that rebuilds `placement` itself is checking its own
+   * arithmetic, not the shipped code's.
+   */
   async assembleSnapshot(
     userId: string,
     now: string,
     priors: PriorFinding[],
+    opts: { historical?: boolean } = {},
   ): Promise<LearnerSnapshot> {
     return {
       now,
-      placement: await this.placement(userId),
-      reviews: await this.reviews(userId, now),
+      placement: await this.placement(userId, opts.historical ? now : undefined),
+      reviews: await this.reviews(userId, now, opts.historical === true),
       commitment: await this.commitment(userId, now),
       hooks: await this.hooks(userId),
       priorFindings: priors,
@@ -227,11 +254,14 @@ export class CoachingService {
     return { written: 'inserted', findings }
   }
 
-  private async placement(userId: string): Promise<PlacementSnapshot | null> {
+  private async placement(userId: string, asOf?: string): Promise<PlacementSnapshot | null> {
     const sessions = await this.db.select().from(placementSessions)
       .where(and(
         eq(placementSessions.userId, userId),
         isNotNull(placementSessions.completedAt),
+        // Undefined is dropped by `and()`, so production keeps the unfiltered
+        // query it has always run. See assembleSnapshot's note.
+        asOf ? lte(placementSessions.completedAt, new Date(asOf)) : undefined,
       ))
       .orderBy(desc(placementSessions.completedAt))
       .limit(2)
@@ -338,12 +368,9 @@ export class CoachingService {
     se: number,
     fallback: JlptLevel,
   ): Promise<{ level: JlptLevel; levelLow: JlptLevel; levelHigh: JlptLevel }> {
-    const corpus = await this.db
-      .select({ b: kanjiDifficulty.b, level: kanji.jlptLevel })
-      .from(kanjiDifficulty)
-      .innerJoin(kanji, eq(kanji.id, kanjiDifficulty.kanjiId))
-
-    const bands = levelBands(corpus as { b: number; level: JlptLevel | null }[], JLPT_LEVELS)
+    // Shared with the tutor via level-bands.ts (B-233) — one derivation, so the
+    // Journal and the tutor cannot state different levels for the same session.
+    const bands = await loadLevelBands(this.db)
     // No bands at all (an empty corpus): nothing to recompute against, so
     // fall back to the stored level for all three rather than inventing one
     // from no data -- same fallback this always returned.
@@ -367,9 +394,12 @@ export class CoachingService {
    */
   private static readonly PASS_QUALITY = 4
 
-  private async reviews(userId: string, now: string): Promise<ReviewSnapshot> {
+  private async reviews(userId: string, now: string, historical = false): Promise<ReviewSnapshot> {
     const nowMs = Date.parse(now)
     const windowStart = new Date(nowMs - REVIEW_WINDOW_DAYS * 86_400_000)
+    // Closed only when rewinding — see assembleSnapshot. `undefined` is dropped
+    // by `and()`, so production runs the identical half-open query it always has.
+    const windowEnd = historical ? new Date(nowMs) : null
     const midpoint = nowMs - (REVIEW_WINDOW_DAYS / 2) * 86_400_000
 
     const [progress, logs, quiz, hooks] = await Promise.all([
@@ -389,12 +419,14 @@ export class CoachingService {
         .where(and(
           eq(reviewLogs.userId, userId),
           gte(reviewLogs.reviewedAt, windowStart),
+          windowEnd ? lte(reviewLogs.reviewedAt, windowEnd) : undefined,
         ))
         .orderBy(reviewLogs.reviewedAt),
       this.db.select().from(testResults)
         .where(and(
           eq(testResults.userId, userId),
           gte(testResults.createdAt, windowStart),
+          windowEnd ? lte(testResults.createdAt, windowEnd) : undefined,
         )),
       this.db.select({ kanjiId: mnemonics.kanjiId }).from(mnemonics)
         .where(and(
@@ -414,6 +446,21 @@ export class CoachingService {
     const mean = (xs: number[]): number | null =>
       xs.length === 0 ? null : xs.reduce((s, x) => s + x, 0) / xs.length
 
+    /**
+     * B-231: drop reviews whose stored time is a backgrounded app rather than a
+     * response, BEFORE they reach the per-card mean. This is the only layer that
+     * can see individual reviews — by the time `detectFluencyGain` runs, a single
+     * 163-hour row has already set that card's average, and nothing downstream
+     * can tell it apart from a genuinely slow learner.
+     *
+     * Filtered, not clamped: a clamped row still votes, and these rows carry no
+     * information about recall at all. A card whose reviews are ALL implausible
+     * ends up with a null mean, which `hasBothHalves` already excludes.
+     */
+    const plausibleMs = (rows: { responseTimeMs: number }[]): number[] =>
+      rows.map((l) => l.responseTimeMs)
+        .filter((ms) => ms > 0 && ms <= MAX_PLAUSIBLE_RESPONSE_MS)
+
     const cards: CardSnapshot[] = progress.map((p) => {
       const mine = byKanji.get(p.kanjiId) ?? []
       const early = mine.filter((l) => l.reviewedAt.getTime() < midpoint)
@@ -430,8 +477,8 @@ export class CoachingService {
         regressions: mine.filter(
           (l) => l.prevStatus === 'remembered' && l.nextStatus === 'learning',
         ).length,
-        responseMsEarly: mean(early.map((l) => l.responseTimeMs)),
-        responseMsLate: mean(late.map((l) => l.responseTimeMs)),
+        responseMsEarly: mean(plausibleMs(early)),
+        responseMsLate: mean(plausibleMs(late)),
         accuracyEarly: accuracy(early),
         accuracyLate: accuracy(late),
         recentQualities: mine.slice(-10).map((l) => l.quality),

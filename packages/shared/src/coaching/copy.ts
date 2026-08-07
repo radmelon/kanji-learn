@@ -442,7 +442,16 @@ const FORMATTERS: Record<FindingKind, Formatter> = {
     // as an insult in the one band meant to motivate. "Has risen" plus the
     // uncertainty basis carries the full meaning without the raw logits.
     if (then === undefined || now === undefined || thenOn === undefined || nowOn === undefined) return null
-    return `Your ability estimate has risen between your placement tests on ${humanDate(String(thenOn))} and ${humanDate(String(nowOn))}, and the rise is larger than the uncertainty in both measurements combined — so it is real progress rather than the test landing differently on the day.`
+    const thenLabel = humanDate(String(thenOn))
+    const nowLabel = humanDate(String(nowOn))
+    // B-232: this shipped reading "on 1 August and 1 August" for a learner who
+    // sat three placements in one day. detectThetaDelta now requires a 7-day
+    // gap, so this cannot be reached — it stays as the contract's own backstop,
+    // because a sentence naming one date twice has failed to build, and the
+    // rule in this file is that a formatter which cannot build its sentence
+    // returns null rather than emitting a broken one.
+    if (thenLabel === nowLabel) return null
+    return `Your ability estimate has risen between your placement tests on ${thenLabel} and ${nowLabel}, and the rise is larger than the uncertainty in both measurements combined — so it is real progress rather than the test landing differently on the day.`
   },
 
   hardest_cleared: (f) => {
