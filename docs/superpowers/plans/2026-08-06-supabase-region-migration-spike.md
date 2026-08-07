@@ -249,10 +249,19 @@ SELECT count(*) FILTER (WHERE relrowsecurity) || ' of ' || count(*) || ' public 
 Expected: `39 of 39 public tables have RLS` — the same as live after migration
 0036.
 
-- [ ] **Step 9: Delete the throwaway project and record the result**
+- [ ] **Step 9: Delete the project, DOWNGRADE THE PLAN, and record the result**
 
-Delete `kanji-learn-spike` from the dashboard. Then fill in the block below in
-this file and commit:
+Delete `kanji-learn-spike` from the dashboard.
+
+🔴 **Then downgrade the organisation back off Pro.** The free tier is capped at
+**2 active projects per account** — not per organisation, confirmed 2026-08-07
+when the UI refused a third project in an empty second org — so this spike
+required a Pro upgrade (~$25/mo). **Deleting the project does not cancel the
+plan.** A spike that leaves a subscription running is the kind of cost nobody
+notices until it has recurred several times. Downgrade in the same sitting as
+the deletion, not "later".
+
+Then fill in the block below in this file and commit:
 
 ```markdown
 ## Task 1 Result — recorded YYYY-MM-DD
