@@ -6,21 +6,6 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
-- [ ] **(B-233) The tutor reads a stored JLPT level while the Journal recomputes one — so they disagree** — Diagnosed 2026-08-07. This is the structural half of the `inferred_level` split; migration `0037` is the one-time data half.
-
-  `apps/api/src/services/tutor-report.service.ts:141` and `apps/api/src/services/tutor-analysis.service.ts:168` read the **stored** `placement_sessions.inferred_level`. `apps/api/src/services/buddy/coaching.service.ts:374` **recomputes** the level from `ability_theta` against today's corpus and deliberately does not trust the stored column — its comment at `:344` names the exact live row. Same learner, same session, two different levels.
-
-  Migration `0037` corrects the three rows that a known bug (B146, fixed by `504b1ea` on 2026-08-01) wrote wrong, which makes the two agree **today**. It does not make them agree **structurally**: `inferred_level` is frozen at test time, and `kanji_difficulty` is mutable (`b_observed` / `observed_n` accumulate). The moment the corpus is recomputed, the bands move and the stored labels go stale again — and the next reader sees the same symptom with no bug to blame.
-
-  Two defensible fixes, and this needs a decision rather than a patch:
-
-  1. **Derive on read** — the tutor computes the level the way coaching already does. One source of truth: θ plus today's bands. Deletes the divergence permanently.
-  2. **Keep the column but treat it as history** — it records what the learner was *told* on the day, which is legitimate. Then the tutor must present it as dated history ("on 1 August you were placed at N3"), never as the current level, and anything wanting *current* must recompute.
-
-  What is not defensible is the present state: a stored value presented as current, next to a recomputed value, with nothing marking which is which.
-
-  `[Effort: S–M]` `[Impact: Medium — the visible symptom is Buddy contradicting itself]` `[Status: 🔍 Diagnosed, fix undecided]`
-
 - [ ] **(B-230) The Progress screen states the SRS band boundaries wrong — and its own bands do not tile** — Found 2026-08-02 by the adversarial review closing B-228, which correctly refused to fold it in.
 
   `apps/mobile/app/(tabs)/progress.tsx` explains the status ladder in its info
@@ -1167,6 +1152,15 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 ---
 
 ## ✅ Fixed Bugs
+
+### (B-233) The tutor read a stored JLPT level while the Journal recomputed one (2026-08-07)
+- **Symptom:** Same learner, same placement session, two different levels — tutor said N4, Journal said N3. Reported repeatedly from 2026-08-04.
+- **Root cause:** `tutor-report.service.ts` read `placement_sessions.inferred_level`; `coaching.service.ts` recomputed from `ability_theta` against today's corpus and deliberately did not trust the column. Migration `0037` corrected the three rows a pre-B146 build had written wrong, which fixed the symptom **and not the cause** — `kanji_difficulty` is a recalibrating table (`refreshKanjiDifficulty` upserts all 2,294 rows, and `placement_results.difficulty_at_ask` exists precisely *"so a session is replayable after kanji_difficulty is recalibrated"*), so the next recalibration would have reopened it with no bug to blame.
+- **The schema had already decided.** Migration 0029, on `ability_theta`: *"inferred_level is now **DERIVED** from this (spec §7.5) rather than computed independently."* The column is a cached derivation, not an independent record — so "keep it as dated history" would have been reinterpreting it against spec, not preserving it.
+- **Fix:** Derive on read. New `apps/api/src/services/level-bands.ts` holds the single derivation (`loadLevelBands` + `deriveLevel`); both `TutorReportService.getPlacement` and `CoachingService.levelInterval` use it, so the two agree by construction rather than by discipline. The stored column remains as an audit trail of what each learner was told; **nothing reads it to answer "what level is this?"**.
+- **Behaviour change worth knowing:** a session with no `ability_theta` now reports `null` (the tutor prompt renders `unknown`) instead of its stored label. Two live sessions are in that state. This is the honest answer — there is nothing behind that number, and coaching already declined to describe those learners.
+- **Verified:** new `tutor-coaching-level-agreement.test.ts` (4 tests). The load-bearing one stores a level that *contradicts* θ and asserts the tutor ignores it — agreement alone would still pass if both sides read the same column. Against live: all four θ-bearing sessions derive N3 from bands `[-1.454, -0.149, 1.241, 3.112]`; both θ-null sessions now derive `null` where they previously reported N4 and N1.
+- ⚠️ **The wrong level differs by database.** θ=1.14527 derives **N3** against live and **N1** against the local test DB, whose `kanji_difficulty` is seeded differently. A test asserting a literal level asserts a fact about whichever corpus is loaded — pick the contradicting value relative to the derived one, as that test does.
 
 ### (B-231) `fluency_gain` praised the learner for app backgrounding (2026-08-07)
 - **Symptom:** Rendered *"You are answering about 66% faster than you were earlier… becoming automatic rather than effortful"* off evidence reading `average seconds before = 1026.3, now = 345.7` — 17 minutes per card falling to 5.8. Found by rendering against live data (`scripts/coaching-smoke-render.mjs --as-of 2026-05-21`), not by any test; 541 shared tests passed with the defect present.

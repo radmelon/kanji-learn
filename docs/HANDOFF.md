@@ -25,10 +25,18 @@
 >    recomputes and never read the stored column — but do not mistake the
 >    corrected Journal output for "the fix is deployed".
 >
-> 2. **`B-233` is the one real decision left** — the tutor reads a stored level,
->    coaching recomputes one. `0037` made them agree *today*; it did not make
->    them agree *structurally*. Two defensible fixes are written up in
->    `BUGS.md`; it needs a choice, not a patch.
+> 2. **`B-233` is closed — the tutor now DERIVES the level** (owner's call,
+>    2026-08-07). `apps/api/src/services/level-bands.ts` holds the single
+>    derivation and both the tutor and coaching use it, so they agree by
+>    construction. **`placement_sessions.inferred_level` is no longer read by
+>    anything** that answers "what level is this?" — it stays only as an audit
+>    trail of what each learner was told.
+>
+>    ⚠️ **A session with no `ability_theta` now reports `unknown` to the tutor**
+>    instead of its stored label. Two live sessions are in that state
+>    (2026-04-17, 2026-07-07). This is intended: coaching already declined to
+>    describe those learners, and the stored label had nothing behind it. If the
+>    owner wants a level for them, it needs a re-test, not a column.
 > 2. **💸 The Pro subscription is still running (~$25/mo), by decision.** The
 >    owner chose on 2026-08-07 to keep `kanji-learn-spike`
 >    (`relkhnwjhutwoglgmxyh`) alive rather than delete it — the untested
@@ -250,11 +258,46 @@ finished:
    for those learners, so the Journal says nothing about their level either
    way — including for `602a09f3`, whose only session is one of them. **They
    need a re-test, not a backfill.**
-2. **It fixes the data, not the design** — filed as **`B-233`**. The tutor reads
-   the stored column; coaching recomputes. They agree after 0037 and diverge
-   again the moment `kanji_difficulty` is recomputed, with no bug to blame next
-   time. The durable fix is a decision — derive on read, or keep the column
-   explicitly as dated history — and it is the owner's.
+2. **It fixed the data, not the design** — which is why `B-233` followed it and
+   is now also closed. See below.
+
+### ✅ `B-233` — the tutor derives the level now, and cannot drift again
+
+The backfill made the tutor and the Journal agree *on the day*. It could not
+make them agree *structurally*: `kanji_difficulty` is a recalibrating table, so
+the next recalibration would have reopened the split with no bug to blame.
+
+**The schema had already answered this**, which is what settled the design.
+Migration 0029, on `ability_theta`:
+
+> *"Posterior mean ability estimate. **inferred_level is now DERIVED from
+> this** (spec §7.5) rather than computed independently."*
+
+So the column is a **cached derivation**, not an independent record of what the
+learner was told. `apps/api/src/services/level-bands.ts` now holds the single
+derivation — `loadLevelBands` + `deriveLevel` — and both `TutorReportService`
+and `CoachingService` use it. They agree by construction rather than by
+discipline, and **nothing reads the stored column to answer "what level is
+this?"** any more.
+
+⚠️ **Two things a future reader needs:**
+
+- **θ-null sessions now report `unknown`** rather than their stored label. Two
+  live rows are in that state. Intended — coaching already stayed silent about
+  those learners, and the stored label had nothing behind it.
+- **The "wrong" level is database-dependent.** θ=1.14527 derives **N3** against
+  live and **N1** against the local test DB, whose `kanji_difficulty` is seeded
+  differently. A test asserting a literal level is asserting a fact about
+  whichever corpus happens to be loaded — `tutor-coaching-level-agreement.test.ts`
+  picks its contradicting value *relative to* the derived one for exactly this
+  reason. That test is the invariant: it stores a level that contradicts θ and
+  asserts the tutor ignores it, because plain agreement would still pass if both
+  sides read the same column.
+
+**Recalibration is real but unwired.** `refreshKanjiDifficulty` upserts all
+2,294 rows and has **no production caller** — no route, no cron, only tests
+import it. It has run once, 2026-07-31. So this was never going to fire on a
+timer; it was going to fire the first time somebody ran that job by hand.
 
 ### ✅ Deploy — 2026-08-07, verified by SHA
 
