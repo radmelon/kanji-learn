@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-06 (**The copy floor is merged, deployed and verified live. The note the owner called worthless now names the kanji, the test and the date.**)
+# Session Handoff — 2026-08-07 (**The copy floor is live and verified. Also: a live-render smoke check now exists, the last RLS hole is closed, and the October credential question is answered.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,46 +7,109 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-06
+## START HERE — 2026-08-07
 
 > ## ▶️ What the next session does
 >
-> **Nothing is blocked and nothing is half-finished.** PR #13 is merged
-> (`7bb1e22`), deployed, and verified three ways — a dated App Runner operation,
-> a post-deploy database row, and the owner reading it on their own screen.
->
-> Pick from the priority list. There is no carried-over obligation.
+> **Nothing is blocked and nothing is half-finished.** Seven commits landed on
+> `main` (`7bb1e22..1d7d6ce`), everything is pushed, and the working tree is
+> clean. Pick from the list; there is no carried-over obligation.
 >
 > ### 📋 In priority order
 >
-> 1. **A live-render smoke check for coaching copy** — `[Effort: S]`
->    `[Impact: High]`, in `ENHANCEMENTS.md`. Still the highest-value thing to
->    build before the next copy slice, for the reason in the red section below.
-> 2. **Slice 3's content check — unblocks Monday 2026-08-10.** Nothing to do
->    before then; `buddy_session_utterances` was empty (0 rows) on 2026-08-06,
->    which is expected, not a bug. Detail in the 2026-08-03 section.
+> 1. **Slice 3's content check — Monday 2026-08-10.** The one item with a date
+>    on it. Verified 2026-08-06: the owner's latest `source='session'`
+>    commitment is `week_start = 2026-08-01`, `anchorIsNewPeriod` needs ≥7 days,
+>    and `buddy_day = 1`, so the session is not due until the 10th.
+>    `buddy_session_utterances` being empty before then is expected, not a bug.
+>    Detail in the 2026-08-03 section.
+> 2. **The Supabase migration spike** — Task 1 of
+>    `docs/superpowers/plans/2026-08-06-supabase-region-migration-spike.md`.
+>    **Do this in August.** The cutover waits for the owner's return (below),
+>    but the spike is read-only against live plus a throwaway project — it does
+>    not need the owner anywhere in particular, and it is the only thing
+>    standing between here and a schedulable migration date.
 > 3. **The `inferred_level` backfill** — `[Effort: M]`, needs a migration. Three
 >    of four live sessions still show a tutor and the Journal reporting
 >    different levels. See the 2026-08-04 section and `ENHANCEMENTS.md`.
-> 4. **⏰ Rotate the three LLM keys in early October — they expire 2026-10-26
+> 4. **Three coaching kinds have still never been rendered against live data** —
+>    `commitment_gap`, `fluency_gain`, `theta_delta`. The smoke check (below)
+>    reports them `SILENT`. Checking them needs a learner whose data makes them
+>    fire. Every truthfulness defect this feature has ever had was found by
+>    rendering, never by a test.
+> 5. **⏰ Rotate the three LLM keys in early October — they expire 2026-10-26
 >    and expiry is SILENT.** Anthropic, Groq and Gemini were issued 2026-07-28
 >    with a 90-day life. `/v1/buddy/meet/turn` returns `{fallback:true}` at
 >    **200** on any failure, so an expired key does not error — Buddy just drops
 >    to template tier and nobody is told. `docs/secrets-rotation.md` schedules
 >    the rotation *for the expiry date*, i.e. zero margin. Owner's target:
->    **2026-10-02**.
-> 5. **🔴 The Supabase credentials exposed on 2026-04-20 are still live in
->    production.** Verified 2026-08-06 against AWS: `DATABASE_URL`,
->    `SUPABASE_JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` are SSM **version 1**,
->    untouched since 2026-07-29 and byte-identical to `packages/db/.env`; the
->    service-role key runs to **2036**-03-26. Rotation was **deferred to October
->    by the owner**, so this is a decision, not a gap — but `service_role`
->    bypasses RLS, so the leaked key is full database access until then.
->
->    Good news in the same check: the **SSM migration is done** (all seven read
->    by ARN, plaintext-env exposure closed) and the four non-Supabase keys **are**
->    rotated. This item is filed under 🔧 *Backend & Data*, not 🚨 *Security*,
->    which is why that section reads "0 open" and the backlog looks clean.
+>    **2026-10-02**. **The migration does not cover these** — they are
+>    independent of it.
+> 6. **🔴 The Supabase credentials exposed on 2026-04-20 are still live.**
+>    Verified 2026-08-06 against AWS: SSM **version 1**, byte-identical to
+>    `packages/db/.env`; the service-role key runs to **2036**-03-26. Deferred
+>    to the region migration, which reissues them by construction — a decision,
+>    not a gap. But `service_role` **bypasses RLS**, so it is unrestricted
+>    database access until then, including to the table 0036 just closed.
+>    **The deferral now expires 2026-10-02** — see `docs/secrets-rotation.md`.
+
+### 🗓️ The region migration is delayed to September (owner, 2026-08-07)
+
+**Cutover waits until the owner is back in the USA at the end of August.** The
+target is `us-east-1`, confirmed 2026-08-06 — App Runner, ECR, SES and Lambda
+are already there, the DB is in `aws-1-ap-southeast-2`, and `API → DB` is paid
+many times per request, so co-location is the entire point.
+
+**Two consequences worth acting on:**
+
+- **The spike should still happen in August.** It is read-only plus a throwaway
+  project. Running it now means September is execution rather than discovery,
+  and the migration cannot be given a date until it returns.
+- **The 2026-10-02 rotation backstop gets tighter, not looser.** Cutover now
+  starts in September at the earliest and needs a mobile release inside it
+  (`EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are compiled
+  in, so every installed build points at the old project afterwards). If that
+  runs past 2026-10-02, rotate the Supabase keys anyway rather than extending
+  the deferral a third time.
+
+### ✅ What this session shipped
+
+| Commit | |
+|---|---|
+| `7522503` | Handoff: the copy floor is live, and why the old verification query proved nothing |
+| `cd181af` | `GET /health` returns the build's git SHA |
+| `77832e7` | The exposed Supabase credentials are still live in production |
+| `307e31b` | Migration 0036 — RLS on `kanji_difficulty`, applied to live |
+| `34d3b29` | Handoff: record 0036, and that `service_role` walks through it |
+| `f90681e` | Live-render smoke check for coaching copy |
+| `1d7d6ce` | Migration spike plan, and a deadline on the rotation deferral |
+
+**Two of those change how you work, not just what exists:**
+
+- **`curl <service-url>/health` now returns `sha`.** Deploy verification is one
+  curl compared against `git rev-parse --short HEAD`, instead of a bespoke
+  per-feature canary. `-dirty` means the image carries uncommitted work.
+  **It has not proven itself in production yet** — the field only appears on the
+  first deploy that carries it, and this session's only deploy predated it.
+- **`scripts/coaching-smoke-render.mjs` renders all ten coaching sentences
+  against live data**, each above the evidence it was built from:
+
+  ```bash
+  ./scripts/with-live-db.sh node \
+    --import ./packages/db/node_modules/tsx/dist/esm/index.cjs \
+    scripts/coaching-smoke-render.mjs
+  ```
+
+  It drives the real `CoachingService.assembleSnapshot`, then `analyze(…, 10)`
+  to bypass the top-3 cap, and labels each kind **SHOWN** / **HIDDEN** /
+  **SILENT**. That distinction was the point: coverage was 5/10, the first run
+  rendered **7/10**, because `reading_lag` and `retest_due` had been firing all
+  along and losing the cut — shipped-but-unread, not never-triggered. First run
+  found no truthfulness defects, worth recording given the branch's base rate
+  was eight. It did surface one gap: `hook_coverage` renders *"字 keeps catching
+  you out"*, true by `pickHookCandidate`'s filter, but the struggle score is
+  **not in the finding's evidence**, so the claim cannot be checked against its
+  own evidence.
 
 ### 🚀 Deploy — 2026-08-06, verified
 
@@ -423,7 +486,7 @@ cannot fail is worse than no test.
 
 # Previous — 2026-08-03 later (**Slice 2 is LIVE and verified. It works, and the note it writes is useless. Fix the copy floor BEFORE slice 3.**)
 
-## Previously START HERE — 2026-08-03 (later)
+## Previous — 2026-08-03 (later)
 
 > ## ▶️ What the next session does
 >
@@ -812,7 +875,7 @@ implementers began finding their own gaps before review did — and two did.
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-02 (later)
+## Previous — 2026-08-02 (later)
 
 > ## ▶️ What the next session does
 >
@@ -1019,7 +1082,7 @@ step was actually run rather than eyeballed as obviously-fine arithmetic.
 
 # Previous — 2026-08-02 (**B148 is cut and submitted. Next session starts the coaching analyzer.**)
 
-## START HERE — 2026-08-02 (superseded by the section above)
+## Previous — 2026-08-02 (superseded by the section above)
 
 > ## ▶️ What the next session does
 >
@@ -1760,7 +1823,7 @@ hand-copied the same numbers and one drifted.
 > **Canonical URL:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
 
-## START HERE — 2026-08-01 (morning, superseded by the section above)
+## Previous — 2026-08-01 (morning, superseded by the section above)
 
 > ## ✅ Phase 6 is on `main`, and the API serving it is live
 >
@@ -1839,7 +1902,7 @@ hand-copied the same numbers and one drifted.
 > **Canonical URL:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
 
-## START HERE — 2026-07-31 (night)
+## Previous — 2026-07-31 (night)
 
 > ## 🟡 Phase 6 — Buddy's home — is on branch `buddy-home-notebook`, pushed, not merged
 >
@@ -1968,7 +2031,7 @@ hand-copied the same numbers and one drifted.
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-07-31 (later)
+## Previous — 2026-07-31 (later)
 
 > ## ✅ The stack is unstacked. `main` is deployed and live.
 >
@@ -2177,7 +2240,7 @@ hand-copied the same numbers and one drifted.
 
 # Previous — 2026-07-31 earlier (**Weekly Buddy Review: spec, plan, and slice 1 complete — on a branch, not `main`**)
 
-## START HERE — 2026-07-31 (superseded by the section above)
+## Previous — 2026-07-31 (superseded by the section above)
 
 > ## 🚨 FIRST: the live API is three days behind `main`, and the placement model was never deployed
 >
@@ -2461,7 +2524,7 @@ hand-copied the same numbers and one drifted.
 
 # Previous — 2026-07-30 later (**placement model shipped to `main`; Arc brainstorm next**)
 
-## START HERE — 2026-07-30 (later)
+## Previous — 2026-07-30 (later)
 
 > ## 🎯 Next session: brainstorm the New Learner Arc around a weekly Buddy check-in
 >
@@ -2753,7 +2816,7 @@ hand-copied the same numbers and one drifted.
 
 # Previous — 2026-07-29 (**placement model planned; repair partially executed, paused for a live-DB session**)
 
-## START HERE — 2026-07-29 (later)
+## Previous — 2026-07-29 (later)
 
 > ## 🟡 Placement model: designed, planned, repair 4/5 done — needs a live-DB session next
 >
@@ -2836,7 +2899,7 @@ hand-copied the same numbers and one drifted.
 
 # Previous — 2026-07-29 (**local build-and-test protocol landed**)
 
-## START HERE — 2026-07-29
+## Previous — 2026-07-29
 
 > ## ✅ Local build-and-test protocol is now real
 >
@@ -2885,7 +2948,7 @@ hand-copied the same numbers and one drifted.
 
 # Previous — 2026-07-29 (**next: a local build-and-test protocol**)
 
-## START HERE — 2026-07-29
+## Previous — 2026-07-29
 
 > ## 🔧 Next session: a local build-and-test protocol, reusable across projects
 >
