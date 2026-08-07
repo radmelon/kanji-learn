@@ -264,6 +264,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   🔴 **So the gap is DELIVERY, not capability.** Those sentences land in the **Journal**, gated by `ANALYSIS_STALE_HOURS = 6` (`coaching.service.ts`), typically days later — never at the moment the test ends, which is the entire point of this entry. The work is plausibly "render findings that already exist at the moment they are freshest", not "build placement analysis". **Re-estimate before planning.**
 
+  🧭 **Child of *"Nothing owns where Buddy's output surfaces, or when"*** (top of 🎨 UI & Experience). This is the purest instance in the group — nothing needs building, only routing. It does not fold into the Journal UI/UX review: different screen, different moment, and a first-timer with an empty Journal has no reason to open that tab at all.
+
   **What the results could produce, at the moment they are freshest:**
   - **A read on the learner**, not a score — which JLPT level they sit at, which grades are solid, where the boundary is ragged.
   - **A suggested study plan** — daily goal and horizon derived from measured performance, rather than the 15/day default everyone gets regardless.
@@ -283,6 +285,8 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
   ✅ **STILL TRUE 2026-08-07, now with a count and a proven beachhead.** Re-verified: **61 written explanation blocks** sit behind ⓘ — 29 in `progress.tsx`, 27 in `index.tsx`, 5 in `journal.tsx`. The one-shot overlay this entry warns about is also still there, unchanged: `study.tsx:58`, `kl_has_seen_study_help`, still impossible to summon again.
 
   **The beachhead is `mechanics_explainer`** (`packages/shared/src/coaching/detectors/orient.ts:64`). It is **already Buddy volunteering an explanation nobody asked for**, it renders `SHOWN` in production, and it was verified against live data on 2026-08-07. So "Buddy teaches unprompted" is shipped, proven machinery — this entry is about **new content and new triggers on it**, not a new subsystem. That was the original judgement and it has since been demonstrated rather than assumed.
+
+  🧭 **Child of *"Nothing owns where Buddy's output surfaces, or when"*** (top of 🎨 UI & Experience). `mechanics_explainer` settles *whether* Buddy can teach unprompted; what is unowned is **which surface and which trigger** — a panel's ⓘ, a milestone, a session end. Settle the parent before choosing, or this ships a second delivery channel with the same no-owner problem.
 
   **Progressive disclosure tied to milestones is the right shape**, and better than a front-loaded tour, because a tour given on day one explains panels the learner has no data in yet. Earning the first milestone is the ideal moment to explain the Progress tab: they now have something to look at, and they have just done something worth congratulating.
 
@@ -326,6 +330,35 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
 ## 🎨 UI & Experience
 
+- [ ] **🧭 PARENT — Nothing owns where Buddy's output surfaces, or when** — Raised 2026-08-07, after re-verifying the New Learner Experience group and finding that four separate entries are the same missing decision wearing four costumes.
+
+  **The gap, verified against the spec.** The coaching design's [§12](https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-01-buddy-coaching-analysis-design.md) slices the work six ways — pure analyzer, snapshot assembly + notebook surface, conversational surface, companion mode, IRT explainer + Profile section, goal beat. **None of them owns placement.** Slice 2 owns *writing* the notebook entry ("template copy only"); no slice asks whether the notebook is the right destination for a given finding.
+
+  **Slice 5 is the exception that proves it.** The IRT explainer is the only coaching content ever routed to a surface other than the notebook — it went to Profile — and §12 flags it as *"independent of everything above."* Putting output somewhere new was, structurally, an orphan.
+
+  **The consequence is that everything lands in one place on one cadence.** All coaching output → `notebook_entries` → the Journal tab, gated by `ANALYSIS_STALE_HOURS = 6`. Nothing chose that; it is what the slicing produced.
+
+  🔴 **The sharpest evidence is the top-3 cap.** `analyze()` takes `DEFAULT_FINDING_COUNT = 3`. Verified by live render on 2026-08-07: **7 of 10 finding kinds fire for real learners, and 3 reach the learner.** `reading_lag` and `retest_due` had been firing all along and silently losing the cut — shipped-but-unread, for weeks. That cap is not a content decision; **it is a placement decision made by default**, because one entry in one tab is the only surface that exists. Give findings more than one destination and "how many fit" becomes a different question.
+
+  **A lens worth applying when this is settled:** Buddy's output has both an **anchor** and a **half-life**. Some is anchored to an *event* — you have just finished a placement test, you have just earned a milestone — and is close to worthless a week later. Some is anchored to the *record* — your trajectory, what you and Buddy settled — and is close to worthless in the moment. The Journal is a record surface, and it is currently receiving both kinds.
+
+  **What folds into this, and why none of them should be settled alone:**
+
+  | Entry | The placement question inside it |
+  |---|---|
+  | **The placement test ends without analysis** (New Learner Experience) | The analysis already exists and already renders — it arrives in the Journal days later instead of at the test. Pure placement. |
+  | **Explanatory content is never brought to the learner** (New Learner Experience) | 61 written blocks behind ⓘ. `mechanics_explainer` proves Buddy can volunteer one unasked; the open question is *at which panel, on what trigger*. |
+  | **Review the Journal's UI/UX** (below) | What the Journal should hold **once it is no longer the only destination**. Speccing its layout first would design around a load it may not keep. |
+  | **Co-authored hooks: Journal or Progress** (below) | Already an explicit placement question, and already says it wants settling alongside the retention question (§14.1). |
+
+  **Constraints inherited from the children, which any answer must respect:** never interrupt a study session; anything shown must be dismissible *and* re-openable (the `kl_has_seen_study_help` one-shot is the anti-pattern); and the `mnemonicCoachingEnabled` opt-out exists because interruption has a real cost.
+
+  ✅ **The trigger has fired.** The Journal UI/UX entry said to revisit *"once the copy floor ships"*. It shipped 2026-08-06 and its output was rendered against live data on 2026-08-07 — so this group is no longer waiting on anything, and can be specced from observed output rather than guesses.
+
+  **This is a decision, not a task.** It produces a routing table — which finding, to which surface, at which moment — that the four entries below then implement. Do not implement it directly.
+
+  `[Effort: S to decide, and it unblocks four entries]` `[Impact: High — the reason four separate "why doesn't the learner see this?" items keep arriving]` `[Backend: No, for the decision]` `[Status: ❓ Open question — settle before speccing any child]`
+
 - [x] **Backfill `placement_sessions.inferred_level` for pre-B146 rows — two API surfaces now disagree about a learner's level** — ~~SHIPPED~~ 2026-08-07. **Both** options this entry weighed were done, because each fixes a different half. The migration (`0037`) repaired the data: `UPDATE 3`, the three pre-`504b1ea` sessions going N4 → N3, with the post-fix session and both θ-null rows correctly untouched. Then **B-233** made the tutor derive the level on read (`apps/api/src/services/level-bands.ts`, shared with `CoachingService`), because the backfill alone could not hold — `kanji_difficulty` is a recalibrating table, so the next recalibration would have reopened the split with no bug to blame. Verified against live: all four θ-bearing sessions derive N3 from bands `[-1.454, -0.149, 1.241, 3.112]`. Deployed in `3254290`.
 
   ⚠️ **One behaviour change:** a session with no `ability_theta` now reports `unknown` to the tutor instead of its stored label. Two live rows are in that state; they need a re-test, not a column.
@@ -368,7 +401,7 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   `[Effort: S]` `[Impact: High — it is the only thing that has ever caught this defect class]` `[Backend: No — read-only script]` `[Status: ✅ Shipped & Verified]`
 
-- [ ] **Review the Journal's UI/UX — nothing owns it, and it is the surface Buddy's coaching lands on** — The Journal was built by the [2026-07-31 notebook spec](https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-07-31-buddy-home-notebook-design.md) and has not been revisited since. **Verified 2026-08-03: no slice owns its presentation layer.** The parent coaching spec's §12 lists six slices — analyzer, notebook surface, conversational surface, companion mode, IRT explainer, goal beat — and none is presentation. The notebook spec's own §15 out-of-scope list defers voice conversation, the localised tutor report, Phase 4 social and Progress refinements, and lists **no** Journal presentation work, because it considered the surface finished when it shipped. So this is not deferred; it is unowned.
+- [ ] **Review the Journal's UI/UX — nothing owns it, and it is the surface Buddy's coaching lands on** — 🧭 **Child of the placement parent at the top of this section — read it first.** The Journal's layout depends on what it should still be holding once it is no longer the only destination for Buddy's output; speccing it before that is settled designs around a load it may not keep. ✅ Its own trigger (*"read the Journal again once the copy floor ships"*) **fired 2026-08-06** — the copy floor is live and its output was rendered against real data 2026-08-07, so this is now actionable from observation rather than guesswork. The Journal was built by the [2026-07-31 notebook spec](https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-07-31-buddy-home-notebook-design.md) and has not been revisited since. **Verified 2026-08-03: no slice owns its presentation layer.** The parent coaching spec's §12 lists six slices — analyzer, notebook surface, conversational surface, companion mode, IRT explainer, goal beat — and none is presentation. The notebook spec's own §15 out-of-scope list defers voice conversation, the localised tutor report, Phase 4 social and Progress refinements, and lists **no** Journal presentation work, because it considered the surface finished when it shipped. So this is not deferred; it is unowned.
 
   **Deliberately not specced on 2026-08-03**, when the coaching copy floor was written. The owner's complaint that Buddy's note gave "less than zero value" was entirely about *content* — which test, which kanji, what to do — and no part of it was about layout, spacing or hierarchy. Speccing presentation then would have been guessing at a second problem before the first was fixed.
 
@@ -378,7 +411,7 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   `[Effort: M]` `[Impact: Med — the surface all coaching output lands on]` `[Backend: No]` `[Status: 💡 Idea]`
 
-- [ ] **Decide whether co-authored hooks belong in the Journal or under Progress** — Open question raised by the owner 2026-08-03, to be settled as part of the Journal UI/UX review above rather than in isolation.
+- [ ] **Decide whether co-authored hooks belong in the Journal or under Progress** — 🧭 **Child of the placement parent at the top of this section.** This entry already knew it was a placement question — it is the one that named the pattern before the pattern was named. Open question raised by the owner 2026-08-03, to be settled as part of the Journal UI/UX review above rather than in isolation.
 
   The tension is real in both directions. **For the Journal:** a hook is something the learner and Buddy *made together*, and the Journal's whole premise is the shared record of what was decided — the notebook spec's §4 is titled "Authorship and rights". **For Progress:** a hook is an artifact you go back and *use*, and Progress is where the learner already looks things up; a growing list of hooks is closer to a collection than to a conversation. There is also a volume argument — hooks accumulate without bound while Journal entries age into an archive.
 
