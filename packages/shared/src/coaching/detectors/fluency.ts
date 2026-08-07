@@ -22,17 +22,57 @@ const ACCURACY_SLACK = 0.05
  * p50 15.8s, p75 30.4s. That spread is wide enough that a 10% shift in a
  * per-card mean is well inside noise for a card with few reviews. The
  * confidence scale below is the hedge — a fluency claim from 3 cards must not
- * be spoken like one from 50 — but if this finding turns out to fire on
- * nothing but jitter, RAISE THE FLOOR rather than adding cleverness.
+ * be spoken like one from 50.
+ *
+ * 🛑 THIS COMMENT USED TO SAY: "if this finding turns out to fire on nothing
+ * but jitter, RAISE THE FLOOR rather than adding cleverness." **That advice was
+ * wrong, and following it would have made B-231 worse.** Do not reinstate it.
+ *
+ * It did fire on nothing but jitter — see B-231, found 2026-08-07 by rendering
+ * this sentence against live data. But raising SPEEDUP_FLOOR is the one fix
+ * that cannot work: the bad deltas are enormous (1026s → 346s) and clear any
+ * floor trivially, while genuine 10–15% gains are exactly what a higher floor
+ * discards. **A floor selects FOR artifacts.** The input had to be bounded
+ * instead; see MAX_PLAUSIBLE_RESPONSE_MS.
  */
 const SPEEDUP_FLOOR = 0.1
 const SPEEDUP_CEILING = 0.5
 const CONFIDENCE_SCALE = 15
 
+/**
+ * A "response" slower than this is not a response — it is a backgrounded app.
+ *
+ * The mobile study screen measures a card by subtracting a stored start stamp
+ * from the current wall clock, with no pause when the app leaves the
+ * foreground. Lock the phone mid-card and the stored `response_time_ms` counts
+ * the time the phone was in a pocket. Live values run to **587,133,000 ms —
+ * 163 hours** (B-231), and 20 stored reviews exceed an hour.
+ *
+ * (Spelling that subtraction out literally here would trip the purity check in
+ * `analyze.test.ts`, which greps this directory's raw source — comments
+ * included — for clock reads. It is right to; the prose just has to work
+ * around it.)
+ *
+ * 2 minutes is deliberately generous: live p75 is 29.5s and p95 is 132s, so
+ * this discards ~5% of reviews and keeps every plausible think-hard answer.
+ * The bound is a DATA-VALIDITY filter, not a statistical trim — the point is
+ * that these rows never measured recall at all, so no amount of averaging makes
+ * them informative.
+ *
+ * Exported because `CoachingService` applies it to raw reviews BEFORE the
+ * per-card mean, which is the only layer that can see individual reviews. The
+ * card-level guard below is belt-and-braces for any other assembler.
+ */
+export const MAX_PLAUSIBLE_RESPONSE_MS = 120_000
+
 function hasBothHalves(c: CardSnapshot): boolean {
   return (
     c.responseMsEarly !== null && c.responseMsLate !== null &&
-    c.responseMsEarly > 0 && c.responseMsLate > 0
+    c.responseMsEarly > 0 && c.responseMsLate > 0 &&
+    // A mean this large survives only if the assembler did not filter. Excluded
+    // rather than clamped: clamping still lets a pocket-timed card vote.
+    c.responseMsEarly <= MAX_PLAUSIBLE_RESPONSE_MS &&
+    c.responseMsLate <= MAX_PLAUSIBLE_RESPONSE_MS
   )
 }
 
@@ -87,9 +127,34 @@ export function detectFluencyGain(snapshot: LearnerSnapshot): Finding | null {
  */
 const DELTA_CEILING = 1.5
 
+/**
+ * Two placements closer together than this are not two measurements of ability.
+ *
+ * B-232, found 2026-08-07 by rendering against live data. One learner sat three
+ * placements on ONE DAY (01:38, 17:40, 22:53 on 2026-08-01), and this detector
+ * happily reported the rise between two of them as progress. The sentence it
+ * produced said "between your placement tests on 1 August and 1 August" — and
+ * then, worse, "so it is real progress rather than the test landing differently
+ * on the day", about two tests sixteen hours apart on the same day.
+ *
+ * The noise model below only bounds MEASUREMENT error; it has nothing to say
+ * about a learner who has just seen these very items and remembers them. A
+ * retake hours later measures item familiarity, and the shape of that
+ * contamination is a rise, which is exactly what this detector rewards.
+ *
+ * 7 days is a judgement call, not a derived quantity: long enough that the rise
+ * plausibly reflects study rather than recall of the last sitting, short enough
+ * not to gate a learner who is genuinely retesting on a sensible cadence. It
+ * also makes the identical-date render structurally impossible.
+ */
+const MIN_PLACEMENT_GAP_MS = 7 * 86_400_000
+
 export function detectThetaDelta(snapshot: LearnerSnapshot): Finding | null {
   const p = snapshot.placement
   if (!p?.previous) return null
+
+  const gap = Date.parse(p.completedAt) - Date.parse(p.previous.completedAt)
+  if (!Number.isFinite(gap) || gap < MIN_PLACEMENT_GAP_MS) return null
 
   const rise = p.theta - p.previous.theta
   if (rise <= 0) return null
