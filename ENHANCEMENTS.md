@@ -205,10 +205,34 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 > Four observations from the owner, 2026-07-28, after B145 device testing. Recorded
 > together because they are one theme: **the app collects and computes a great deal
 > about a new learner and gives almost none of it back to them.**
+>
+> ⚠️ **All four re-verified against the code 2026-08-07. Three had drifted, and two
+> stated things that are now false — read each entry's dated correction before
+> acting on it.** The Buddy/coaching work (Phase 5, and the coaching analyzer
+> slices) landed in between and consumed data these entries describe as unused.
+>
+> **The theme has shifted rather than been resolved.** The app *does* give it back
+> now — but almost all of it arrives in **one place (the Journal) on one cadence**
+> (`ANALYSIS_STALE_HOURS = 6`, so days later). Placement analysis exists but not at
+> the test; explanations exist but not at the panel.
+>
+> So items 2 and 3 are now **delivery problems on shipped machinery**, which is a
+> far smaller class of work than their `[Effort]` tags imply. Item 4 is mostly
+> done. **Item 1's JLPT deadline is the only genuinely absent capability in the
+> group** — and it is absent completely, not partially.
 
-- [ ] **Onboarding collects interests and goals, then never uses them** — Owner (2026-07-28): *"We collect data from a new user regarding focus and interests. We don't make good use of these data. If a new user indicates that s/he is interested in the JLPT exam, we should check the upcoming exam dates for the user's location and Buddy should use that data to help motivate and schedule study effort and encouragement."*
+- [ ] **Give the JLPT goal a deadline — countdown, pace, seasonal encouragement** *(headline was "Onboarding collects interests and goals, then never uses them"; corrected 2026-08-07 — the data IS used now, the exam date is what is missing)* — Owner (2026-07-28): *"We collect data from a new user regarding focus and interests. We don't make good use of these data. If a new user indicates that s/he is interested in the JLPT exam, we should check the upcoming exam dates for the user's location and Buddy should use that data to help motivate and schedule study effort and encouragement."*
 
-  **Confirmed.** `learner_profiles.interests` and `.goals` are written by onboarding and read in exactly two places: the profile CRUD route that echoes them back, and `tutor-report.service.ts`, which surfaces them to a *tutor*. **Nothing in the learner's own experience consults either.** A questionnaire that shapes nothing is worse than no questionnaire — it sets an expectation of personalisation and then quietly discards the answer.
+  ⚠️ **CORRECTED 2026-08-07 — the original diagnosis is now false, but the ask is still open.** This entry read: *"read in exactly two places: the profile CRUD route… and `tutor-report.service.ts`… **Nothing in the learner's own experience consults either.**"* Re-verified against the code, both sentences are wrong now:
+
+  - `reasonsForLearning` → `resolveFrame` (`packages/shared/src/buddy/frame.ts:21`) → `milestoneFocusFromReasons` → `MilestonesSection.tsx:47`. **Reasons pick the milestone ruler** (JLPT vs school grade). That is learner-facing.
+  - Reasons *and* interests are now **required to finish onboarding** (`packages/shared/src/buddy/meeting.ts:28`) and are fed to the Meet Buddy prompt (`meeting-prompt.ts:6`: *"what they are into (interests)"*).
+
+  So the "questionnaire that shapes nothing" framing no longer holds — the Meet Buddy work (Phase 5) consumed both fields.
+
+  **What remains genuinely unbuilt is the JLPT deadline, and it is 100% absent.** A repo-wide search for `examDate` / `exam_date` / `nextExam` / `examSitting` returns **nothing but prose in ⓘ copy**. `resolveFrame` picks a *ruler*, never a *date*. Everything below — countdown, pace calculator, seasonal reminder copy — is still unstarted, and none of it is blocked by the correction above.
+
+  **Read the rest of this entry as a spec for the deadline feature, not as a report that the data is unused.**
 
   **The JLPT hook is the sharpest instance.** Exams run twice yearly (first Sunday of July and December) but **not every site offers both sittings**, so "the next exam" genuinely depends on where the learner is — which is why the ask is location-aware rather than a lookup table. `user_profiles.timezone` now carries a real IANA zone for every active account (Task 17), which is a usable first approximation without asking again.
 
@@ -222,11 +246,23 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   **Open:** where exam dates come from. Hard-coding two dates a year is trivial and stale by definition; scraping JLPT sites is fragile. A small seeded table with a yearly manual refresh is probably the honest answer.
 
-  `[Effort: M]` `[Impact: High — the data is already collected; this is unrealised value, not new capture]` `[Backend: Yes]` `[Status: 💡 Idea]`
+  `[Effort: M]` `[Impact: High — the exam deadline is the one capability in this group that is fully absent]` `[Backend: Yes]` `[Status: 💡 Idea — scope is the DEADLINE only; the "data is unused" premise was corrected 2026-08-07]`
 
 - [ ] **The placement test ends without analysis — its results are the best diagnostic we will ever have and we discard them** — Owner (2026-07-28): *"New users are encouraged to complete the placement test first thing. We don't really provide much analysis or diagnostics at the conclusion of the test. This is an underdeveloped opportunity."*
 
   **The one moment a learner volunteers a full diagnostic.** A new user takes the placement test before they have any reason to trust the app, and gets back a starting position and nothing else. No reading of where they are strong, no shape of what comes next, no sense that the effort bought them anything.
+
+  ✅ **STILL TRUE 2026-08-07 — and much cheaper than `[Effort: M]` now suggests.** Re-verified: the result screen is still three fields (`apps/mobile/src/lib/placement-result-copy.ts` — level, the label "estimated level", one sentence *"Your reviews are pitched around N3, and they'll keep adjusting as you study."*).
+
+  **But the analysis this entry asks for now EXISTS and is live in production.** The coaching detectors shipped it, and all three were rendered against real learner data on 2026-08-07:
+
+  - `level_estimate` — *"Your placement test on 1 August puts you at N3, and the honest range runs from N3 to N2… It narrows when you take the placement test again."* — which is the "read on the learner, not a score" bullet below.
+  - `hardest_cleared` — *"You cleared 願, the hardest item you got right: it has 19 strokes and 3 readings."*
+  - `mechanics_explainer` — what IRT is, and why a dozen questions suffice.
+
+  `PlacementSnapshot.items` already carries per-item outcomes, and `CoachingService.levelInterval` already derives the level and its 80% band from `ability_theta`.
+
+  🔴 **So the gap is DELIVERY, not capability.** Those sentences land in the **Journal**, gated by `ANALYSIS_STALE_HOURS = 6` (`coaching.service.ts`), typically days later — never at the moment the test ends, which is the entire point of this entry. The work is plausibly "render findings that already exist at the moment they are freshest", not "build placement analysis". **Re-estimate before planning.**
 
   **What the results could produce, at the moment they are freshest:**
   - **A read on the learner**, not a score — which JLPT level they sit at, which grades are solid, where the boundary is ragged.
@@ -238,11 +274,15 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   ~~**Note B-210 first.** Retaking the placement test currently destroys FSRS state on in-progress kanji, and any work that makes the test more attractive raises the odds of a retake. Fix that before inviting people back to it.~~ **B-210 was closed 2026-08-02** — `applyPlacementResults` no longer exists, `alreadyHas` covers every owned kanji at any status, and the write is `onConflictDoNothing()`. **A retake is safe, and this blocker no longer applies.** Noted here because the warning outlived the bug: `retest_due` already ships copy inviting a retake ("You can start it from your Profile"), so a reader acting on the struck-through text would have gone looking for a defect that was fixed four days earlier.
 
-  `[Effort: M]` `[Impact: High — first impression, and the only structured diagnostic we ever collect]` `[Backend: Yes]` `[Status: 💡 Idea]`
+  `[Effort: M → probably S–M, RE-ESTIMATE FIRST]` `[Impact: High — first impression, and the only structured diagnostic we ever collect]` `[Backend: Maybe — the findings already exist; this may be delivery only]` `[Status: 💡 Idea — best value in this group, see the 2026-08-07 correction]`
 
 - [ ] **Explanatory content exists but is never brought to the learner — Buddy should tour, then keep teaching** — Owner (2026-07-28): *"I feel like we have lots of explanatory text in different places, but we don't bring it forward to help a new user. Perhaps Buddy can do an initial guided tour of the most important aspects of the app and the UI. And then periodically, Buddy can add more details to different areas of the app and the UI and tie in some motivational therapy. For example, once the user hits the first milestone, Buddy can congratulate and then go through a short tour of the one or two panels under progress."*
 
   **The content is already written.** The Progress tab has `InfoSection[]` arrays behind ⓘ buttons (`INFO_BREAKDOWN`, `INFO_CONFIDENCE`, `INFO_VELOCITY`, "How evaluation works"), the Study tab has its grading explainer, onboarding has its own copy. All of it waits to be *asked for* — by a learner who does not yet know the question.
+
+  ✅ **STILL TRUE 2026-08-07, now with a count and a proven beachhead.** Re-verified: **61 written explanation blocks** sit behind ⓘ — 29 in `progress.tsx`, 27 in `index.tsx`, 5 in `journal.tsx`. The one-shot overlay this entry warns about is also still there, unchanged: `study.tsx:58`, `kl_has_seen_study_help`, still impossible to summon again.
+
+  **The beachhead is `mechanics_explainer`** (`packages/shared/src/coaching/detectors/orient.ts:64`). It is **already Buddy volunteering an explanation nobody asked for**, it renders `SHOWN` in production, and it was verified against live data on 2026-08-07. So "Buddy teaches unprompted" is shipped, proven machinery — this entry is about **new content and new triggers on it**, not a new subsystem. That was the original judgement and it has since been demonstrated rather than assumed.
 
   **Progressive disclosure tied to milestones is the right shape**, and better than a front-loaded tour, because a tour given on day one explains panels the learner has no data in yet. Earning the first milestone is the ideal moment to explain the Progress tab: they now have something to look at, and they have just done something worth congratulating.
 
@@ -255,23 +295,44 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   **Related:** the ⓘ-to-reopen entry below is the smallest slice of this idea and could ship first.
 
-  `[Effort: M–L]` `[Impact: High — content that already exists, reaching people who need it]` `[Backend: No, unless tour state is server-side]` `[Status: 💡 Idea]`
+  `[Effort: M–L]` `[Impact: High — 61 written explanation blocks nobody is shown]` `[Backend: No, unless tour state is server-side]` `[Status: 💡 Idea — new content and triggers on shipped machinery, demonstrated 2026-08-07, not assumed]`
 
-- [ ] **What is the Journal actually for? — the Study Log vision exists but was never built** — Owner (2026-07-28): *"I will likely have more input on this section. Not sure of its utility at this point. Don't we have a plan to repurpose this section for Buddy the tutor?"*
+- [ ] **What is the Journal actually for? — ANSWERED 2026-08-07: it is where Buddy writes** *(headline was "the Study Log vision exists but was never built"; Task 8 shipped it)* — Owner (2026-07-28): *"I will likely have more input on this section. Not sure of its utility at this point. Don't we have a plan to repurpose this section for Buddy the tutor?"*
 
   **Yes — and the recollection is right.** [`2026-04-09-kanji-buddy-design.md`](superpowers/specs/2026-04-09-kanji-buddy-design.md) §153 reimagines the Journal as the **Study Log**: *"a personal record of each learner's memory journey, not just a list of mnemonics."* The same spec names the Journal as Buddy's Stage 2 (**Anchor**) destination — where Buddy takes a learner whose kanji is not sticking — and lists it among the *"disconnected functional areas… the Journal sits as a personal scrapbook, disconnected from the learning loop."*
 
   **B-211 built the floor of that vision, not the vision.** The tab can now list what the learner has written, which it could never do before. The spec asks for more: entries as a record of *when and where* something was learned, effectiveness surfaced per hook, and opt-in sharing so friends can adopt a hook that demonstrably works, with attribution.
 
+  ⚠️ **LARGELY ANSWERED 2026-08-07 — the repurposing the owner half-remembered has since SHIPPED.** The owner asked *"Don't we have a plan to repurpose this section for Buddy the tutor?"* The answer is yes, and it is no longer a plan. The tab now opens on **Buddy's notebook** (Task 8): agreement, experiments, observations, settled decisions and tutor notes assembled by `assembleNotebook` and rendered by `NotebookBody`, with "Your hooks" kept below it unchanged. Live entry kinds:
+
+  | kind | rows |
+  |---|---|
+  | `coaching_analysis` | 6 |
+  | `onboarding_reasons` / `_intro` / `_appointment` | 3 each |
+  | `first_open` | 2 |
+  | `commitment` | 1 |
+
+  **So "what is the Journal for?" now has an answer: it is where Buddy writes.** Re-open the question only if that answer is unsatisfying in use — it is no longer unsettled by default.
+
+  **What is still unbuilt from the 2026-04-09 spec**, and all of it is hook-side rather than notebook-side: *when and where* a hook was built, effectiveness surfaced per hook, and opt-in sharing with attribution.
+
+  ⚠️ **The delivery critique now applies here instead.** Everything Buddy gives back lands in this one tab on one staleness-gated cadence (`ANALYSIS_STALE_HOURS = 6`), so the Journal has quietly become the single destination for all returned value — which is why the two entries above are really about getting it out of here and to the moment it matters.
+
   **The honest question underneath the owner's is whether the Journal should be a destination at all.** If Buddy routes learners there when a kanji fails, it is a *workspace* reached in flow, not a tab browsed on purpose. Those imply different designs, and the current tab is neither.
 
   **Do not design this in isolation** — it is one of the seven tabs the parent design says do not talk to each other, and the Study Log is the piece meant to connect the study loop to the memory record.
 
-  `[Effort: L — spec exists, needs re-grounding against what shipped]` `[Impact: Med-High — an entire tab whose purpose is unsettled]` `[Backend: Yes]` `[Status: 💡 Idea — revisit the 2026-04-09 spec before designing]`
+  `[Effort: L → mostly done; what remains is hook-side]` `[Impact: Low-Med — the tab's purpose is SETTLED as of Task 8; this is no longer an open question]` `[Backend: Yes]` `[Status: 💡 Idea — largely answered 2026-08-07; reopen only if the shipped answer disappoints in use]`
 
 ## 🎨 UI & Experience
 
-- [ ] **Backfill `placement_sessions.inferred_level` for pre-B146 rows — two API surfaces now disagree about a learner's level** — The coaching copy floor (2026-08-04) changed `CoachingService` to **recompute** the level from today's difficulty bands rather than read `placement_sessions.inferred_level`, because the stored value could contradict the credible-interval bounds shown in the same sentence — rendering *"puts you at N4, and the honest range runs from N3 to N2"* on the owner's own session.
+- [x] **Backfill `placement_sessions.inferred_level` for pre-B146 rows — two API surfaces now disagree about a learner's level** — ~~SHIPPED~~ 2026-08-07. **Both** options this entry weighed were done, because each fixes a different half. The migration (`0037`) repaired the data: `UPDATE 3`, the three pre-`504b1ea` sessions going N4 → N3, with the post-fix session and both θ-null rows correctly untouched. Then **B-233** made the tutor derive the level on read (`apps/api/src/services/level-bands.ts`, shared with `CoachingService`), because the backfill alone could not hold — `kanji_difficulty` is a recalibrating table, so the next recalibration would have reopened the split with no bug to blame. Verified against live: all four θ-bearing sessions derive N3 from bands `[-1.454, -0.149, 1.241, 3.112]`. Deployed in `3254290`.
+
+  ⚠️ **One behaviour change:** a session with no `ability_theta` now reports `unknown` to the tutor instead of its stored label. Two live rows are in that state; they need a re-test, not a column.
+
+  <details><summary>Original entry, kept for the reasoning</summary>
+
+  The coaching copy floor (2026-08-04) changed `CoachingService` to **recompute** the level from today's difficulty bands rather than read `placement_sessions.inferred_level`, because the stored value could contradict the credible-interval bounds shown in the same sentence — rendering *"puts you at N4, and the honest range runs from N3 to N2"* on the owner's own session.
 
   **The stored values are stale, not drifting.** `kanji_difficulty` has not changed since 2026-07-31. Those rows were written by a build predating [`504b1ea` *fix(placement): the level bands were built from the learner's own answers*](https://github.com/radmelon/kanji-learn/commit/504b1ea), which landed 2026-08-01 — and the single live session completed after it is the only one whose stored level agrees with a recomputation. **They will not self-heal until each learner retakes the placement test.**
 
@@ -281,7 +342,9 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   Found 2026-08-04 by the whole-branch review of the copy floor, checking rendered copy against live rows.
 
-  `[Effort: M]` `[Impact: Med — a tutor and a learner currently see different levels for the same test]` `[Backend: Yes — migration]` `[Status: 💡 Idea]`
+  </details>
+
+  `[Effort: M]` `[Impact: Med — a tutor and a learner saw different levels for the same test]` `[Backend: Yes — migration]` `[Status: ✅ Shipped & Verified 2026-08-07]`
 
 - [x] **Build a live-render smoke check for coaching copy** — Eight truthfulness defects were found on the copy-floor branch. **Every one was found by rendering a sentence and checking it against its detector or against live data. Not one was found by a failing test**, and 541 shared tests pass either way.
 
