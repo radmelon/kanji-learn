@@ -7,8 +7,9 @@ import {
 import type { Db } from '@kanji-learn/db'
 import { CommitmentService } from './commitment.service'
 import { NotebookService } from '../notebook.service'
+import { loadLevelBands } from '../level-bands'
 import {
-  levelBands, inferredLevel, JLPT_LEVELS, MAX_PLAUSIBLE_RESPONSE_MS,
+  inferredLevel, MAX_PLAUSIBLE_RESPONSE_MS,
   analyze, carryForward, selectionsMatch, analysisBody,
   type JlptLevel, type LearnerSnapshot, type PlacementSnapshot,
   type PlacementItemOutcome, type PriorFinding,
@@ -367,12 +368,9 @@ export class CoachingService {
     se: number,
     fallback: JlptLevel,
   ): Promise<{ level: JlptLevel; levelLow: JlptLevel; levelHigh: JlptLevel }> {
-    const corpus = await this.db
-      .select({ b: kanjiDifficulty.b, level: kanji.jlptLevel })
-      .from(kanjiDifficulty)
-      .innerJoin(kanji, eq(kanji.id, kanjiDifficulty.kanjiId))
-
-    const bands = levelBands(corpus as { b: number; level: JlptLevel | null }[], JLPT_LEVELS)
+    // Shared with the tutor via level-bands.ts (B-233) — one derivation, so the
+    // Journal and the tutor cannot state different levels for the same session.
+    const bands = await loadLevelBands(this.db)
     // No bands at all (an empty corpus): nothing to recompute against, so
     // fall back to the stored level for all three rather than inventing one
     // from no data -- same fallback this always returned.
