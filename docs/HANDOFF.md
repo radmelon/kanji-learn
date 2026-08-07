@@ -11,9 +11,9 @@
 
 > ## ▶️ What the next session does
 >
-> **Nothing is blocked and nothing is half-finished.** Ten commits landed on
-> `main` (`7bb1e22..7da83bf`), everything is pushed, and the working tree is
-> clean. One item below is **billing-sensitive and owner-only** — read item 1.
+> **Nothing is blocked and nothing is half-finished.** Everything since
+> `7bb1e22` (the copy-floor merge) is pushed and the working tree is clean.
+> One item below is **billing-sensitive and owner-only** — read item 1.
 >
 > ### 📋 In priority order
 >
