@@ -263,15 +263,85 @@ the deletion, not "later".
 
 Then fill in the block below in this file and commit:
 
-```markdown
-## Task 1 Result — recorded YYYY-MM-DD
+## Task 1 Result — recorded 2026-08-07
 
-- Probe verdict: AUTH PRESERVED | AUTH BROKEN
-- `pg_restore` errors touching auth: <verbatim, or "none">
-- RLS on target: N of 39
-- **Migration date can now be set: yes | no**
-- If no: what breaks, and what method to try next
+**Probe verdict: ✅ AUTH PRESERVED — the migration path is viable.** Run against
+a real `us-east-1` Supabase project (PostgreSQL 17.6, same as live), restored
+from a live `pg_dump` of `auth` + `public`.
+
+| Check | Target | Live |
+|---|---|---|
+| `auth.users` | 5 | 5 |
+| `auth.identities` | 6 | 6 |
+| RLS coverage | 39 of 39 | 39 of 39 |
+| `public` policies | 22 | 22 |
+| `user_profiles` joined to `auth.users` by uuid | 5 | 5 |
+| `kanji_difficulty` | 2,294 | 2,294 |
+
+**UUIDs survive `pg_dump`/`pg_restore` intact.** The orphaning risk this spike
+was built to test does not materialise, and all 11 `auth.uid()` policies match
+against the restored ids.
+
+### 🔴 But the naive single-pass restore FAILS. The method needs a second pass.
+
+A straight `pg_restore --no-owner --no-privileges` produced **195 errors** and
+left `auth.identities` at **0 of 6**, with:
+
 ```
+pg_restore: error: COPY failed for table "identities": ERROR:  insert or update
+on table "identities" violates foreign key constraint "identities_user_id_fkey"
+```
+
+**Cause.** Supabase **pre-creates the `auth` schema with its foreign keys already
+active** on a new project, so `pg_restore` cannot defer them the way it would on
+an empty database. Its TOC is ordered alphabetically — `identities` is entry
+4695, `users` comes later — so identities are copied before the rows they
+reference and every one is rejected. `auth.users` then loads fine, moments too
+late.
+
+**`--disable-triggers` is not available as a fix.** It requires superuser, and
+Supabase's `postgres` role is not one — the same restore logged **151
+`must be owner`** and **38 `permission denied`** errors against `auth` objects,
+which are owned by `supabase_auth_admin`. Those two categories are expected
+noise on any Supabase restore; ignore them.
+
+**The fix, verified working:** replay the auth tables that lost the ordering
+race, after the main restore.
+
+```bash
+pg_restore --data-only -n auth -t identities --no-owner --no-privileges \
+  -d "$TARGET_DATABASE_URL" kanji-spike.dump
+```
+
+Exit 0, and `auth.identities` went 0 → 6 immediately. **Add this second pass to
+the migration runbook.**
+
+`sessions`, `refresh_tokens` and `mfa_amr_claims` failed the same way and were
+**deliberately not replayed**: a new project means a new JWT secret, so every
+session is invalidated regardless and those tables should start empty. Their
+COPY errors are correct behaviour, not damage.
+
+### 🔌 Connection gotcha, cost half an hour
+
+**The direct connection (`db.<ref>.supabase.co:5432`) is IPv6-only** — it
+publishes an AAAA record and no A record. This machine has no IPv6 egress, so it
+failed with `could not translate host name`, which reads like a wrong hostname
+rather than a routing problem.
+
+**Use the Session pooler on port 5432**, whose username is
+`postgres.<project-ref>`, not `postgres`. **Never the transaction pooler on
+6543** — it does not support prepared statements and breaks a restore partway
+through, which is a far more confusing failure than a clean DNS error.
+
+### ▶️ Migration date can now be set: **YES**
+
+With the second pass added to the runbook. What remains untested, and belongs in
+the migration plan rather than here: **a real Google and Apple sign-in against
+the restored identities.** The rows are present and correctly linked, but only a
+live provider round-trip proves GoTrue relinks rather than creating a duplicate
+user. Users `6d6c500a` (google-only) and `7c707446` (apple-only) have no
+password identity, so a failed relink strands them — test as each of them before
+cutover.
 
 ```bash
 git add docs/superpowers/plans/2026-08-06-supabase-region-migration-spike.md
