@@ -1,4 +1,4 @@
-# Session Handoff — 2026-08-07 (**The copy floor is live and verified. Also: a live-render smoke check now exists, the last RLS hole is closed, and the October credential question is answered.**)
+# Session Handoff — 2026-08-07 (**All ten coaching kinds rendered against live data; the two defects that found are FIXED, and the level split is backfilled. Nothing is half-done — but none of it is deployed.**)
 
 > **Canonical URL — hand this to a new session:**
 > https://github.com/radmelon/kanji-learn/blob/main/docs/HANDOFF.md
@@ -7,13 +7,285 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
-## START HERE — 2026-08-07
+## START HERE — 2026-08-07 (later)
 
 > ## ▶️ What the next session does
 >
-> **Nothing is blocked and nothing is half-finished.** Everything since
-> `7bb1e22` (the copy-floor merge) is pushed and the working tree is clean.
-> One item below is **billing-sensitive and owner-only** — read item 1.
+> ### 📋 In priority order
+>
+> 1. **🚀 DEPLOY. Everything below is merged-quality and NONE of it is live.**
+>    The API carries the `B-231` response-time bound and the `B-232` placement
+>    gap; **the mobile timer fix needs an EAS build**, which nothing else this
+>    week has needed. Verification is now one curl — compare
+>    `curl …/health | jq -r .sha` against `git rev-parse --short HEAD`.
+>
+>    ⚠️ **The DB is already ahead of the code.** Migration `0037` was applied to
+>    live on 2026-08-07 (see below), so production is currently running old code
+>    against backfilled rows. That combination is harmless — `level_estimate`
+>    recomputes and never read the stored column — but do not mistake the
+>    corrected Journal output for "the fix is deployed".
+>
+> 2. **`B-233` is the one real decision left** — the tutor reads a stored level,
+>    coaching recomputes one. `0037` made them agree *today*; it did not make
+>    them agree *structurally*. Two defensible fixes are written up in
+>    `BUGS.md`; it needs a choice, not a patch.
+> 2. **💸 The Pro subscription is still running (~$25/mo), by decision.** The
+>    owner chose on 2026-08-07 to keep `kanji-learn-spike`
+>    (`relkhnwjhutwoglgmxyh`) alive rather than delete it — the untested
+>    Google/Apple sign-in relink is the reason to keep a restored project
+>    around. `packages/db/.env.spike.local` is therefore still on disk and still
+>    holds that project's live DB password. **This is a standing cost with no
+>    end date attached. Attach one.**
+> 3. **`commitment_gap` fires for real on 2026-08-08** — tomorrow, as of
+>    writing. It was silent only because `getLastCompletedPeriod` skips a period
+>    whose end is still in the future. Verified by rendering: it produces a
+>    correct sentence. Nothing to do; do not read its earlier silence as a bug.
+> 4. **Slice 3's content check — Monday 2026-08-10.** Unchanged. See the
+>    2026-08-03 section.
+> 5. **⏸️ The `inferred_level` backfill is WRITTEN AND VALIDATED, and needs one
+>    decision to land** — `packages/db/supabase/migrations/0037_backfill_inferred_level.sql`.
+>    **Not applied.** A write against live needs the owner's go-ahead in the
+>    moment, so it is sitting ready. See the section below for the diagnosis and
+>    the dry-run.
+> 6. **⏰ Rotate the three LLM keys in early October** — unchanged, expiry is
+>    silent, owner's target 2026-10-02.
+> 7. **🔴 The exposed Supabase credentials are still live** — unchanged,
+>    deferred to the region migration, deferral expires 2026-10-02.
+
+### ✅ Both defects are FIXED — and one fix exposed a flaw in the tool that found them
+
+`B-231` and `B-232` are fixed, tested and verified against live data; details in
+`BUGS.md` → Fixed. Summary of what changed:
+
+| | Fix |
+|---|---|
+| `B-231` | `MAX_PLAUSIBLE_RESPONSE_MS = 120_000` in `fluency.ts`. The assembler discards implausible rows **before** the per-card mean — the only layer that sees individual reviews — and `hasBothHalves` excludes over-bound means as backstop. Plus `apps/mobile/app/(tabs)/study.tsx` now subtracts backgrounded time, so new rows are clean. |
+| `B-232` | `MIN_PLACEMENT_GAP_MS = 7 days` in `detectThetaDelta`. Kills the identical-date render *and* the "real progress" overclaim in one move; guarding the dates alone would have left the second standing. |
+
+**The result is better than silencing the finding.** The same live window that
+produced *"66% faster"* off 1026.3s now reads:
+
+> *"You are answering about 17% faster than you were earlier in the last 30
+> days, across 90 kanji…"* — `27.9s → 23.1s`
+
+…and those numbers were **reproduced independently in SQL** (90 kanji, 27.9,
+23.1, 17%) rather than by re-reading the code's own output. `fluency_gain` now
+measures something real instead of measuring a pocket.
+
+⚠️ **That independent check is what caught a flaw in `--as-of` itself.** The
+first verified render disagreed with the SQL (101 kanji vs 90). Cause: the
+review and quiz windows are **half-open** — `>= windowStart`, no upper bound.
+Harmless in production, where `now` is now and nothing is in the future; but at
+a past instant the "late" half silently absorbed **every review since**, so the
+rendered numbers were not the ones the learner would have seen.
+
+`assembleSnapshot` now takes `{ historical: true }`, which closes both windows
+and time-filters placement. **Production omits it and is byte-identical** —
+confirmed by the 114 coaching API tests, which pass untouched. Those tests are
+worth knowing about: they seed rows with no explicit timestamp, so the rows land
+at *real* now, five days after their fixture's `NOW` literal. Closing the window
+unconditionally broke five of them, and it was right to.
+
+**The lesson generalises: a tool built to check truthfulness needs its own
+output checked against something outside itself.** Rendering found the defects;
+only independent arithmetic found the flaw in the renderer.
+
+### 🔴 The two defects as found (kept for the record)
+
+**All ten coaching kinds have now been read against real data.** The three that
+had reported `SILENT` on every run — `commitment_gap`, `fluency_gain`,
+`theta_delta` — were silent for **timing** reasons, not missing data. Rewinding
+the clock over real rows rendered all three. One was clean. **Two were not.**
+
+That is now **ten defects found by rendering and zero by tests** on this
+feature. The 541 shared tests passed before and after; they cannot see either of
+these.
+
+#### 🔴 `fluency_gain` praises an artifact of app backgrounding — `B-231`
+
+Rendered at `--as-of 2026-05-21`:
+
+> *"You are answering about 66% faster than you were earlier in the last 30
+> days, across 113 kanji, and your accuracy has held up on those. Speed usually
+> improves before anything else does, so this is a sign that recalling these
+> characters is becoming automatic rather than effortful."*
+
+Its own evidence gives it away — **`average seconds before = 1026.3`,
+`average seconds now = 345.7`.** That is **17 minutes** per card falling to
+**5.8 minutes** per card. Nobody answers a flashcard in 17 minutes.
+
+`review_logs.response_time_ms` is unbounded and includes backgrounded sessions:
+
+| p25 | p50 | p75 | p95 | p99 | max |
+|---|---|---|---|---|---|
+| 7.0s | 15.1s | 29.5s | 132.0s | 1359.1s | **587,133s — 163 hours** |
+
+20 stored reviews are over an hour. In the window above, **28 of the 158
+straddling cards contain a review over 2 minutes**, and one card's early mean
+alone is **21.5 hours**. `detectFluencyGain` takes a raw arithmetic mean per
+card and then a raw mean across cards, so a single 21-hour sample sets the
+claim.
+
+**The direction is arbitrary, which is the real problem.** Scanning candidate
+windows, the same learner renders as 94% faster (1437.3s → 93.0s), 78% faster,
+and — at `--as-of 2026-04-21` — 43.9s → 42.2s, which is the only sane pair in
+the set. Whether Buddy praises the learner depends on which half of the window
+caught more backgrounded reviews.
+
+⚠️ **The detector's own comment anticipates jitter and prescribes the wrong
+fix.** `fluency.ts:20-27` says *"if this finding turns out to fire on nothing
+but jitter, RAISE THE FLOOR rather than adding cleverness."* Raising
+`SPEEDUP_FLOOR` makes this **worse**: outlier-driven deltas are enormous and
+clear any floor trivially, while genuine 10–15% gains are filtered out. **The
+floor selects *for* artifacts.** The fix has to bound the input — a cap, a
+trimmed mean, or a median — and that is a design decision, so it is left open.
+
+#### 🔴 `theta_delta` says "between your placement tests on 1 August and 1 August" — `B-232`
+
+Rendered at `--as-of 2026-08-01T20:00Z`:
+
+> *"Your ability estimate has risen between your placement tests **on 1 August
+> and 1 August**, and the rise is larger than the uncertainty in both
+> measurements combined — so it is real progress rather than the test landing
+> differently on the day."*
+
+Two problems, and the second is worse than the first:
+
+1. **The dates are identical.** `copy.ts:445` renders `humanDate(thenOn)` and
+   `humanDate(nowOn)` with no equality guard, and the detector emits
+   `completedAt.slice(0, 10)` — day granularity. `b8503589` sat three placements
+   **on one day** (01:38, 17:40, 22:53 on 2026-08-01). No fixture would ever
+   produce that.
+2. **The claim is self-refuting.** *"rather than the test landing differently on
+   the day"* is asserted about two tests **16 hours apart on the same day**. The
+   noise model assumes two independent measurements; retaking a placement test
+   hours later measures practice and item familiarity at least as much as
+   ability. Guarding the date equality alone would leave this claim standing.
+
+A minimum elapsed gap in `detectThetaDelta` would fix both at once, and is
+probably the right instrument — but it is a semantics change, so it is the
+owner's call.
+
+#### ✅ `commitment_gap` is correct
+
+Rendered at `--as-of 2026-08-08`:
+
+> *"You promised 60 minutes between 1 and 7 August and studied 16."*
+
+Checked against `daily_stats` independently: 5.6 min on 08-01 + 10.4 on 08-02 =
+**16.0**. Promised is `days_committed × minutes_per_day` = 4 × 15 = **60**. The
+"1 and 7 August" correctly renders the **exclusive** `period end = 2026-08-08`
+minus a day, exactly as `commitment-gap.ts` documents. Nothing to fix.
+
+### 🔧 `--as-of` — how the silent kinds got rendered, and why not a fixture
+
+`scripts/coaching-smoke-render.mjs --as-of <iso>` assembles the snapshot a
+learner **genuinely had** at a past instant. Every number is a stored value;
+only the instant is simulated.
+
+```bash
+./scripts/with-live-db.sh node \
+  --import ./packages/db/node_modules/tsx/dist/esm/index.cjs \
+  scripts/coaching-smoke-render.mjs --as-of 2026-05-21 \
+  --user b8503589-1695-4659-b69d-b9e77d1cf655
+```
+
+The report used to end by telling you to *"construct a learner whose data makes
+them fire"* — i.e. build a fixture, **which is the exact blind spot the script
+exists to cover.** Every fixture is self-consistent by construction, so no
+fixture could have contained a 21-hour response time or two placements on one
+day. Both defects above came from real rows.
+
+**Why each kind was silent, in one line each:**
+
+| Kind | Why |
+|---|---|
+| `commitment_gap` | Only period ends **2026-08-08**; `getLastCompletedPeriod` skips a period that has not ended. Also skips `source='default'`, and 2 of the 3 live commitments are `default`. |
+| `fluency_gain` | Needs one card reviewed in **both halves** of the 30-day window. **Zero** cards qualify today — the learner's last 30 days are near-all new-card introductions and they stopped on 08-02. 158 qualified on 2026-05-21. |
+| `theta_delta` | Fires only if the θ rise clears combined SE. Latest two: rise **0.078**, noise **0.555** → magnitude 0. Working as designed. |
+
+⚠️ **`theta_delta`'s silence needed a production change to reach.** `placement()`
+is the one assembler `now` does not reach — it always reads the two most recent
+sessions. `assembleSnapshot` now takes an optional `rewindPlacementTo`,
+**omitted everywhere in production**, so behaviour is byte-identical without it.
+Confirmed: a default run still reports the same 7/10 and the same 3 silent.
+
+### ✅ `inferred_level` — APPLIED to live 2026-08-07
+
+`packages/db/supabase/migrations/0037_backfill_inferred_level.sql`, run with the
+owner's go-ahead. `UPDATE 3`, exactly the three rows the dry-run predicted.
+Verified after: the three 2026-08-01 sessions now read **N3**, the 2026-08-04
+one was already correct and was not touched, and both θ-null rows were left
+alone. The Journal renders *"puts you at N3"* with `most likely level = N3`, and
+the stored column now agrees — **the tutor/Journal split is closed.**
+
+**The diagnosis changed what the fix should be, so read this before running it.**
+This was carried as a staleness problem. It is not:
+
+- `kanji_difficulty` has `min(updated_at) = max(updated_at) = 2026-07-31`. **The
+  corpus has never moved, so the bands have never moved.**
+- The stored values were **wrong when written**, by the B146 bug that `504b1ea`
+  fixed on **2026-08-01 22:45 UTC**. Before it, `levelBands` was fed the items
+  the adaptive test happened to ask rather than the corpus; a strong learner is
+  never asked an N5 item, N5 drops out of the ladder, and the label is read one
+  slot too low.
+
+The live rows land either side of that commit exactly:
+
+| completed | θ | stored | correct | |
+|---|---|---|---|---|
+| 2026-08-01 | 0.227545 | N4 | **N3** | pre-fix |
+| 2026-08-01 | 1.06744 | N4 | **N3** | pre-fix |
+| 2026-08-01 | 1.14527 | N4 | **N3** | pre-fix |
+| 2026-08-04 | 0.48712 | N3 | N3 | post-fix, already correct |
+
+Three of four, matching the reported symptom. Dry-run first inside a rolled-back
+transaction, then applied: `UPDATE 3`.
+
+**Two things the backfill does NOT do**, both worth knowing before calling it
+finished:
+
+1. **It does not help the two θ-null sessions** (2026-04-17, 2026-07-07). There
+   is nothing to recompute from. `coaching.service.ts:272` already returns null
+   for those learners, so the Journal says nothing about their level either
+   way — including for `602a09f3`, whose only session is one of them. **They
+   need a re-test, not a backfill.**
+2. **It fixes the data, not the design** — filed as **`B-233`**. The tutor reads
+   the stored column; coaching recomputes. They agree after 0037 and diverge
+   again the moment `kanji_difficulty` is recomputed, with no bug to blame next
+   time. The durable fix is a decision — derive on read, or keep the column
+   explicitly as dated history — and it is the owner's.
+
+### ✅ Deploy — 2026-08-07, verified by SHA
+
+**The SHA marker works, and it is now proven in production** — the previous
+handoff could only say it existed.
+
+| Step | Evidence |
+|---|---|
+| Typecheck | `apps/api` `tsc --noEmit` exit 0 |
+| Build marker | `ff37ac6`, clean — no `-dirty` |
+| App Runner | op `41b63ac3e0ed411a8eff60d21b440209`, **SUCCEEDED** 12:09:23 |
+| Content | `curl …/health` → `{"ok":true,…,"sha":"ff37ac6"}` = `git rev-parse --short HEAD` |
+
+**Deploy verification is now one curl.** No learner, no waiting, no
+staleness-gated refresh, no bespoke per-feature canary:
+
+```bash
+curl -s https://73x3fcaaze.us-east-1.awsapprunner.com/health; git rev-parse --short HEAD
+```
+
+Note the ordering trap this session hit: **the new image served `sha` while
+`list-operations` still said `IN_PROGRESS`.** App Runner closes the operation
+after its own health checks settle, so content goes live first. Trust the
+content; the operation status catches up.
+
+## Previous — 2026-08-07 (the migration spike, and the copy floor verified)
+
+> ## ▶️ What that session left
+>
+> One item below is **billing-sensitive and owner-only** — read item 1. **Item 1
+> was subsequently DECIDED: the spike project stays up.** See the newer section.
 >
 > ### 📋 In priority order
 >

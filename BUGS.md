@@ -6,6 +6,21 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-233) The tutor reads a stored JLPT level while the Journal recomputes one — so they disagree** — Diagnosed 2026-08-07. This is the structural half of the `inferred_level` split; migration `0037` is the one-time data half.
+
+  `apps/api/src/services/tutor-report.service.ts:141` and `apps/api/src/services/tutor-analysis.service.ts:168` read the **stored** `placement_sessions.inferred_level`. `apps/api/src/services/buddy/coaching.service.ts:374` **recomputes** the level from `ability_theta` against today's corpus and deliberately does not trust the stored column — its comment at `:344` names the exact live row. Same learner, same session, two different levels.
+
+  Migration `0037` corrects the three rows that a known bug (B146, fixed by `504b1ea` on 2026-08-01) wrote wrong, which makes the two agree **today**. It does not make them agree **structurally**: `inferred_level` is frozen at test time, and `kanji_difficulty` is mutable (`b_observed` / `observed_n` accumulate). The moment the corpus is recomputed, the bands move and the stored labels go stale again — and the next reader sees the same symptom with no bug to blame.
+
+  Two defensible fixes, and this needs a decision rather than a patch:
+
+  1. **Derive on read** — the tutor computes the level the way coaching already does. One source of truth: θ plus today's bands. Deletes the divergence permanently.
+  2. **Keep the column but treat it as history** — it records what the learner was *told* on the day, which is legitimate. Then the tutor must present it as dated history ("on 1 August you were placed at N3"), never as the current level, and anything wanting *current* must recompute.
+
+  What is not defensible is the present state: a stored value presented as current, next to a recomputed value, with nothing marking which is which.
+
+  `[Effort: S–M]` `[Impact: Medium — the visible symptom is Buddy contradicting itself]` `[Status: 🔍 Diagnosed, fix undecided]`
+
 - [ ] **(B-230) The Progress screen states the SRS band boundaries wrong — and its own bands do not tile** — Found 2026-08-02 by the adversarial review closing B-228, which correctly refused to fold it in.
 
   `apps/mobile/app/(tabs)/progress.tsx` explains the status ladder in its info
@@ -1014,6 +1029,10 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 - [ ] **Study Time Timer Doesn't Pause When App Backgrounds** — The mobile review store records session study time as `Date.now() - studyStartMs`. If the user backgrounds the app mid-session and returns later to finish, the wall-clock difference includes all idle time. Observed a 29-review session that reported 16.8 hours of study time on one user. The mobile client should pause the timer on `AppState` change to 'background' and resume on 'active'. Fix location: `apps/mobile/src/stores/review.store.ts` — wrap the timer in a pause/resume pattern keyed off `AppState`. Also wipe the elapsed time on session restore from offline queue.
 
+  ⚠️ **Upgraded from cosmetic 2026-08-07 — and the pattern to copy now exists.** This sat as an analytics-accuracy nit. It is not: the identical unpaused-wall-clock bug one field over (`response_time_ms`) was feeding a *learner-facing praise claim*, filed and fixed as **B-231**. `apps/mobile/app/(tabs)/study.tsx` now implements exactly the accumulate-and-subtract pattern this entry asks for (`backgroundedMs` / `leftForegroundAt` refs plus an `AppState` listener) — port it to the session timer.
+
+  **This field has a live consumer too:** `daily_stats.study_time_ms` is what `commitment_gap` compares against a promise (`coaching.service.ts::commitment`). An inflated session makes Buddy say the learner studied more than they did, which is the same class of untrue statement as B-231, in the opposite direction.
+
   **Note (2026-05-30):** the server-side cap that previously protected the rollup was `30s/item × flashcard count` + a 60-min hard max. The per-item portion was **removed** (B-209) because it undercounted multi-leg Practice Loop sessions; only the 60-min hard ceiling remains as the runaway-clock guard. So this entry's client-side AppState pause is now the *primary* defense against background-idle inflation under 60 min — bumped in relevance.
 
   `[Effort: S]` `[Impact: Med]` `[Status: 🐛 Active]`
@@ -1148,6 +1167,19 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 ---
 
 ## ✅ Fixed Bugs
+
+### (B-231) `fluency_gain` praised the learner for app backgrounding (2026-08-07)
+- **Symptom:** Rendered *"You are answering about 66% faster than you were earlier… becoming automatic rather than effortful"* off evidence reading `average seconds before = 1026.3, now = 345.7` — 17 minutes per card falling to 5.8. Found by rendering against live data (`scripts/coaching-smoke-render.mjs --as-of 2026-05-21`), not by any test; 541 shared tests passed with the defect present.
+- **Root cause:** `review_logs.response_time_ms` is unbounded wall-clock and includes backgrounded sessions — live max **587,133,000 ms (163 hours)**, 20 rows over an hour. `detectFluencyGain` took a raw mean per card then a raw mean across cards, so one 21.5-hour sample set the claim. The sign was arbitrary: the same learner rendered 94% faster, 78% faster, or 43.9s → 42.2s depending on which half of the window caught more backgrounded reviews.
+- **Fix:** Two halves. (1) `MAX_PLAUSIBLE_RESPONSE_MS = 120_000` exported from `packages/shared/src/coaching/detectors/fluency.ts`; `CoachingService.reviews` discards implausible rows *before* the per-card mean (the only layer that sees individual reviews), and `hasBothHalves` excludes over-bound card means as belt-and-braces. Filtered rather than clamped — a clamped row still votes, and these rows never measured recall. (2) `apps/mobile/app/(tabs)/study.tsx` now subtracts backgrounded time from the per-card timer via an `AppState` listener, so new rows are clean.
+- **⚠️ The detector's own comment prescribed the wrong fix** — *"RAISE THE FLOOR rather than adding cleverness."* Raising `SPEEDUP_FLOOR` makes it worse: outlier deltas clear any floor trivially while genuine 10–15% gains are exactly what a higher floor discards. **A floor selects FOR artifacts.** The comment now says so explicitly, so it is not reinstated.
+- **Verified:** the same live window now renders *"about 17% faster… across 90 kanji"* from `27.9s → 23.1s` — reproduced independently in SQL (90 kanji, 27.9, 23.1, 17%) rather than by re-reading the code's own output.
+
+### (B-232) `theta_delta` rendered "between your placement tests on 1 August and 1 August" (2026-08-07)
+- **Symptom:** Two identical dates in one sentence, then *"so it is real progress rather than the test landing differently on the day"* — asserted about two tests **16 hours apart on the same day**. Found in the same live-render pass.
+- **Root cause:** `copy.ts` rendered both dates with no equality guard, and `detectThetaDelta` emits day-granularity `completedAt.slice(0, 10)`. One learner sat three placements on 2026-08-01 (01:38, 17:40, 22:53). Deeper: the noise model bounds *measurement* error only and says nothing about a learner who has just seen these very items — and item familiarity contaminates in the shape of a rise, which is what the detector rewards.
+- **Fix:** `MIN_PLACEMENT_GAP_MS = 7 days` in `detectThetaDelta`; two sittings closer than that are not two measurements. This kills both faults at once — guarding only the date equality would have left the overclaim standing. `copy.ts` keeps an identical-date guard returning `null` as the contract's backstop.
+- **Verified:** silent at the live same-day instant; still fires across a real two-month gap.
 
 ### (B-209) Session-complete minutes undercounted — excluded writing/speaking/quiz legs (2026-05-30)
 - **Symptom:** The "Time" stat on the Session Complete screen reflected only ~flashcard time, not the whole multi-leg session. Found during B138 testing.
