@@ -6,6 +6,27 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-234) `voice_attempts.distance` is documented as Levenshtein distance and is actually a string-length difference** — Found 2026-08-07 while investigating the `voice_attempts` cleanup entry, which the data then refused (see `ENHANCEMENTS.md`).
+
+  `apps/api/src/routes/review.ts:173-176`:
+
+  ```ts
+  // Compute integer Levenshtein distance for the log column
+  const distance = Math.abs(
+    result.normalizedSpoken.length - result.closestCorrect.length
+  )
+  ```
+
+  That is `|len(a) − len(b)|`, not edit distance. **Two completely unrelated strings of equal length score 0** — indistinguishable from an exact match. Live rows show it plainly: `十` expecting `とおか`, spoken transcript `10日`, **`distance = 0` alongside `passed = false`**, which reads as a contradiction and is really just a meaningless column.
+
+  **Latent, not user-facing — nothing reads it.** Verified: no reader anywhere in `apps`/`packages`, including `analytics.service.ts`, which touches `voice_attempts` but never this column. So no wrong number reaches a screen today.
+
+  **The cost is the trap.** The comment states a guarantee the code does not provide, so the first person to build speaking analytics on `distance` — near-miss detection, an "almost had it" tier, difficulty ranking — inherits a silently wrong metric. Same class as B-202 (`srsEaseFactor` carrying FSRS difficulty): typed, stored, unread, and wrong.
+
+  **Fix options:** implement real Levenshtein (historic rows stay wrong but unread), or drop the column and the comment together. **Dropping is probably right** — four months of production has established nothing needs it, and an unread column that lies is worse than no column.
+
+  `[Effort: XS]` `[Impact: Low now, Med for whoever trusts it later]` `[Status: 🔍 Confirmed, unfixed]`
+
 - [ ] **(B-230) The Progress screen states the SRS band boundaries wrong — and its own bands do not tile** — Found 2026-08-02 by the adversarial review closing B-228, which correctly refused to fold it in.
 
   `apps/mobile/app/(tabs)/progress.tsx` explains the status ladder in its info

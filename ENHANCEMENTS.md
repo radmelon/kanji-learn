@@ -433,7 +433,13 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   `[Effort: M]` `[Impact: High — closes the loop on the co-creation flow's core claim]` `[Backend: Yes — new question type, generation, and `kl_test_results` vocabulary]` `[Status: 💡 Idea — specced 2026-05-31, never implemented]`
 
-- [ ] **"How studying works" is unreachable after first dismissal — add an ⓘ to reopen it** — The study-screen explainer (grading semantics, swipe directions, what Again/Hard/Good/Easy each do) is a **first-run overlay only**. It is gated on `showOnboarding` and dismissal writes `HELP_KEY = 'kl_has_seen_study_help'` to SecureStore ([study.tsx:55,263,769](apps/mobile/app/(tabs)/study.tsx)), after which nothing in the UI can bring it back. A learner who taps past it on day one — when the content means least, because they have not studied yet — never sees it again.
+- [x] **"How studying works" is unreachable after first dismissal — add an ⓘ to reopen it** — ~~SHIPPED~~ 2026-07-30 in `a6b3e2d`, **three days after this entry was captured, and the entry was never closed.** Discovered 2026-08-07 while picking it up as work. `apps/mobile/app/(tabs)/study.tsx:924-932` has the ⓘ in the header — `information-circle-outline`, `accessibilityLabel="How studying works"`, `onPress={() => setShowOnboarding(true)}` — reusing the existing Modal verbatim exactly as this entry proposed, with dismissal still writing `HELP_KEY` so first-run behaviour is unchanged. It has been in TestFlight since **B147**.
+
+  ✅ **The audit this entry asked for is now done, and it found nothing else.** Swept `apps/mobile` for one-shot gates (`kl_*` keys, `SecureStore`/`AsyncStorage` first-run flags, `*Seen*` fields): **`kl_has_seen_study_help` was the only stranded explainer.** The one other one-shot is `hookLocationAskSeenAt` (`CoCreationSheet.tsx:122`), which is an *ask* rather than an explainer — there is nothing to re-read once answered, and its persistent re-entry point is already tracked as the `attach_location_to_hooks` privacy-switch entry below. **No second instance of this pattern exists.**
+
+  <details><summary>Original entry, kept for the diagnosis</summary>
+
+  The study-screen explainer (grading semantics, swipe directions, what Again/Hard/Good/Easy each do) is a **first-run overlay only**. It is gated on `showOnboarding` and dismissal writes `HELP_KEY = 'kl_has_seen_study_help'` to SecureStore ([study.tsx:55,263,769](apps/mobile/app/(tabs)/study.tsx)), after which nothing in the UI can bring it back. A learner who taps past it on day one — when the content means least, because they have not studied yet — never sees it again.
 
   **The app already has the pattern.** The Progress tab surfaces the same kind of explainer on demand via `information-circle-outline` buttons over `InfoSection[]` arrays (`INFO_BREAKDOWN`, `INFO_CONFIDENCE`, `INFO_VELOCITY`, "How evaluation works", …) at [progress.tsx:679](apps/mobile/app/(tabs)/progress.tsx). The onboarding copy even teaches ⓘ as the convention — *"Tap ⓘ to understand how stroke-order scoring works"* ([onboarding-content.ts:44](apps/mobile/src/config/onboarding-content.ts)). Study is the outlier: its explainer is the one that is one-shot.
 
@@ -441,7 +447,9 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   Found 2026-07-27 (owner, during the Plan 4 co-creation smoke test): *"the popup is useful and we should provide a UI mechanism for accessing it on demand — I am seeing it now while testing and had forgotten it was available."* Note the discovery path: the only reason it reappeared was a **fresh test account**, which is exactly the state a real new user is in and an existing user can never return to.
 
-  `[Effort: XS]` `[Impact: Med — grading semantics drive SRS quality; a learner who mis-grades gets a mis-tuned schedule]` `[Backend: No]` `[Status: 💡 Idea]`
+  </details>
+
+  `[Effort: XS]` `[Impact: Med — grading semantics drive SRS quality; a learner who mis-grades gets a mis-tuned schedule]` `[Backend: No]` `[Status: ✅ Shipped 2026-07-30, closed 2026-08-07]`
 
 - [ ] **A hook can be reinforce-challenged in the same session it was created — add a freshness guard** — Observed on-device in **B144** (2026-07-28): the owner built a hook mid-session, and the reinforce challenge fired on that same hook at Session Complete minutes later.
 
@@ -555,13 +563,25 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   `[Effort: S]` `[Impact: Med — power-user flexibility]` `[Backend: No]` `[Status: 💡 Staged — post Speaking refactor]`
 
-- [ ] **Clean stale `voice_attempts` rows predating the 2026-04-19 homophone fix** — Owner reports "0% speaking accuracy" on many kanji in Progress panels, driven by pre-fix `voice_attempts` rows marked `passed = false` because the old evaluator couldn't match homophone kanji transcripts. Those rows now pollute per-kanji speaking-accuracy metrics that a user cannot realistically recover from without re-drilling every affected kanji. One-shot cleanup: `DELETE FROM voice_attempts WHERE user_id = '<owner>' AND attempted_at < '2026-04-19';` (or use the homophone-fix deploy timestamp from the Bug 3-C Phase 1 release). Fold execution into the Speaking-section refactor spec as a pre-work step so the "run this once" note is captured in the same commit as the UI redesign.
+- [x] **Clean stale `voice_attempts` rows predating the 2026-04-19 homophone fix** — 🛑 **CLOSED 2026-08-07 WITHOUT RUNNING IT. Do not run the DELETE — it would destroy evidence of a live bug and fix nothing.** Picked up as work; the data refused it on three counts:
+
+  1. **There is nothing to delete.** The proposed statement is `DELETE … WHERE attempted_at < '2026-04-19'`. Live `voice_attempts` holds **610 rows across 4 users and not one predates 2026-04-19** — the earliest row in the table is `2026-04-19 19:59:41Z`, i.e. the fix day itself. The statement matches **zero rows**.
+  2. **The reported symptom is gone.** "0% speaking accuracy on many kanji" is now **3 of 189 kanji (1.6%)** for the owner and 1 of 48 for the second user. That is an ordinary tail of hard items, not a metric anyone needs rescuing from.
+  3. 🔴 **The remaining 0% rows are evidence, not noise.** They are the *reason to keep them*. `末` expects `まったん` and the learner spoke **末端** — the correct word, returned by the recogniser as kanji and scored as a miss, on **2026-04-24, five days after the "fix"**. That is the homophone/kanji-transcript failure still live, which is exactly what the open `BUGS.md` speak-evaluation entry says survives until Phase 4. Deleting these rows deletes the reproduction.
+
+  **What the investigation did find is a separate defect**, filed as **B-234**: `voice_attempts.distance` is documented as Levenshtein distance and is actually `|len(a) − len(b)|` (`apps/api/src/routes/review.ts:173-176`). Latent — nothing reads the column today.
+
+  <details><summary>Original entry, kept for the reasoning</summary>
+
+  Owner reports "0% speaking accuracy" on many kanji in Progress panels, driven by pre-fix `voice_attempts` rows marked `passed = false` because the old evaluator couldn't match homophone kanji transcripts. Those rows now pollute per-kanji speaking-accuracy metrics that a user cannot realistically recover from without re-drilling every affected kanji. One-shot cleanup: `DELETE FROM voice_attempts WHERE user_id = '<owner>' AND attempted_at < '2026-04-19';` (or use the homophone-fix deploy timestamp from the Bug 3-C Phase 1 release). Fold execution into the Speaking-section refactor spec as a pre-work step so the "run this once" note is captured in the same commit as the UI redesign.
 
   **Scope decision point:** owner-only vs. all users. TestFlight cohort is small (primarily owner + Bucky) so all-users is low-risk; a WHERE on owner's user_id is safer and sufficient if we're unsure.
 
   Found 2026-04-22 (owner note, post-B127).
 
-  `[Effort: XS]` `[Impact: Med — unblocks fair speaking metrics]` `[Backend: Yes — one SQL statement in prod]` `[Status: 💡 Idea — execute alongside Speaking refactor]`
+  </details>
+
+  `[Effort: XS]` `[Impact: None — the premise did not survive contact with the data]` `[Backend: No — do NOT run the DELETE]` `[Status: ✅ Closed 2026-08-07, not applicable]`
 
 - [ ] **Review-history list (what kanji did I see in past study sessions?)** — Owner encountered a questionable vocab example on some kanji and couldn't find it again afterwards. Need a way to browse the kanji reviewed in a given past session (or within a date range) from the Progress page's session-history list — tap a session row → see the kanji that appeared in it. Related to "report questionable example" / content-quality feedback loop.
 
