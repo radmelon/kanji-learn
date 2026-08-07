@@ -11,24 +11,26 @@
 
 > ## ▶️ What the next session does
 >
-> **Nothing is blocked and nothing is half-finished.** Seven commits landed on
-> `main` (`7bb1e22..1d7d6ce`), everything is pushed, and the working tree is
-> clean. Pick from the list; there is no carried-over obligation.
+> **Nothing is blocked and nothing is half-finished.** Ten commits landed on
+> `main` (`7bb1e22..7da83bf`), everything is pushed, and the working tree is
+> clean. One item below is **billing-sensitive and owner-only** — read item 1.
 >
 > ### 📋 In priority order
 >
-> 1. **Slice 3's content check — Monday 2026-08-10.** The one item with a date
+> 1. **💸 OWNER ACTION: delete the spike project and DOWNGRADE OFF PRO.** The
+>    2026-08-07 spike needed a third Supabase project, and the free tier is
+>    capped at 2 **per account** (not per organisation — the UI refuses a third
+>    even in an empty second org). So the org was upgraded to Pro (~$25/mo).
+>    **Deleting the project does not cancel the subscription.** Delete
+>    `kanji-learn-spike` (ref `relkhnwjhutwoglgmxyh`) *and* downgrade, in the
+>    same sitting. Then delete `packages/db/.env.spike.local`, which holds that
+>    project's live database password.
+> 2. **Slice 3's content check — Monday 2026-08-10.** The one item with a date
 >    on it. Verified 2026-08-06: the owner's latest `source='session'`
 >    commitment is `week_start = 2026-08-01`, `anchorIsNewPeriod` needs ≥7 days,
 >    and `buddy_day = 1`, so the session is not due until the 10th.
 >    `buddy_session_utterances` being empty before then is expected, not a bug.
 >    Detail in the 2026-08-03 section.
-> 2. **The Supabase migration spike** — Task 1 of
->    `docs/superpowers/plans/2026-08-06-supabase-region-migration-spike.md`.
->    **Do this in August.** The cutover waits for the owner's return (below),
->    but the spike is read-only against live plus a throwaway project — it does
->    not need the owner anywhere in particular, and it is the only thing
->    standing between here and a schedulable migration date.
 > 3. **The `inferred_level` backfill** — `[Effort: M]`, needs a migration. Three
 >    of four live sessions still show a tutor and the Journal reporting
 >    different levels. See the 2026-08-04 section and `ENHANCEMENTS.md`.
@@ -53,6 +55,53 @@
 >    database access until then, including to the table 0036 just closed.
 >    **The deferral now expires 2026-10-02** — see `docs/secrets-rotation.md`.
 
+### ✅ The migration spike is DONE — and it found a real defect in the method
+
+Ran 2026-08-07 against a real `us-east-1` project (PG 17.6, same as live). Full
+detail and the corrected runbook:
+https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/plans/2026-08-06-supabase-region-migration-spike.md
+
+**Verdict: AUTH PRESERVED.** All 5 `auth.users` and 6 `auth.identities` restore
+with matching uuids; 39/39 RLS, 22 policies, 2,294 `kanji_difficulty` rows.
+**UUIDs survive `pg_dump`/`pg_restore` intact**, so the orphaning risk the spike
+existed to test does not materialise and the 11 `auth.uid()` policies match.
+
+🔴 **But a straight `pg_restore` fails — 195 errors, `auth.identities` at 0 of
+6.** Supabase **pre-creates the `auth` schema with its foreign keys already
+active**, so `pg_restore` cannot defer them, and its TOC is alphabetical:
+`identities` (entry 4695) copies *before* the `users` it references. Every row
+is rejected. `--disable-triggers` is not the fix — it needs superuser, and
+Supabase's `postgres` role is not one (the same run logged 151 `must be owner`
+errors).
+
+**Required second pass, verified working (0 → 6, exit 0):**
+
+```bash
+pg_restore --data-only -n auth -t identities --no-owner --no-privileges \
+  -d "$TARGET_DATABASE_URL" <dump>
+```
+
+**Why this mattered enough to spend a spike on.** Discovered during the real
+cutover, this presents as total auth loss at the worst possible moment: the
+users table populated, every identity gone, OAuth users unable to sign in.
+`sessions`, `refresh_tokens` and `mfa_amr_claims` fail identically and are
+**deliberately not replayed** — a new project invalidates every session anyway.
+
+⚠️ **Connection gotcha, cost half an hour.** The direct connection
+(`db.<ref>.supabase.co:5432`) is **IPv6-only** — AAAA record, no A record — so
+on an IPv4-only network it fails with `could not translate host name`, which
+reads like a typo rather than a routing problem. Use the **session pooler on
+5432**, whose username is `postgres.<project-ref>`, not `postgres`. **Never the
+6543 transaction pooler for a restore** — no prepared statements, and it breaks
+partway through.
+
+**Still untested, and it belongs in the migration plan:** a real Google and
+Apple sign-in against the restored identities. The rows are present and linked,
+but only a live provider round-trip proves GoTrue relinks rather than creating a
+duplicate user. `6d6c500a` (google-only) and `7c707446` (apple-only) have **no
+password identity**, so a failed relink strands them. Test as each before
+cutover.
+
 ### 🗓️ The region migration is delayed to September (owner, 2026-08-07)
 
 **Cutover waits until the owner is back in the USA at the end of August.** The
@@ -62,9 +111,10 @@ many times per request, so co-location is the entire point.
 
 **Two consequences worth acting on:**
 
-- **The spike should still happen in August.** It is read-only plus a throwaway
-  project. Running it now means September is execution rather than discovery,
-  and the migration cannot be given a date until it returns.
+- ✅ **The spike is done** (2026-08-07, section above). September is now
+  execution rather than discovery — and it already paid for itself by finding
+  the `auth.identities` ordering failure before cutover rather than during it.
+  **A date can be set.**
 - **The 2026-10-02 rotation backstop gets tighter, not looser.** Cutover now
   starts in September at the earliest and needs a mobile release inside it
   (`EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are compiled
@@ -83,6 +133,9 @@ many times per request, so co-location is the entire point.
 | `34d3b29` | Handoff: record 0036, and that `service_role` walks through it |
 | `f90681e` | Live-render smoke check for coaching copy |
 | `1d7d6ce` | Migration spike plan, and a deadline on the rotation deferral |
+| `fffb765` | `scripts/auth-migration-probe.mjs` — uuid/identity preservation probe |
+| `4447d41` | Spike Step 9 must downgrade the plan, not just delete the project |
+| `7da83bf` | **Spike result — AUTH PRESERVED, but the restore needs a second pass** |
 
 **Two of those change how you work, not just what exists:**
 
