@@ -1,4 +1,4 @@
-import type { FindingKind } from './types'
+import type { Finding, FindingKind } from './types'
 
 /**
  * WHERE a finding may be said, and to WHOM (spec 2026-08-07 §3, §4).
@@ -132,4 +132,56 @@ export const ROUTING: Record<FindingKind, RoutingRule> = {
     // mechanics_explainer does not.
     audiences: LEARNER_ONLY,
   },
+}
+
+/**
+ * Replaces the global DEFAULT_FINDING_COUNT as the answer to "how many".
+ *
+ * That constant was never a content decision — it was a PLACEMENT decision made
+ * by default, because one entry in one tab was the only surface that existed. On
+ * 2026-08-07 a live render showed 7 of 10 kinds firing and 3 reaching the
+ * learner: reading_lag and retest_due had been shipped-but-unread for weeks.
+ */
+export const SURFACE_CAP: Record<Surface, number> = {
+  // The ledger. Uncapping this is what ends the silent 7-of-10 loss.
+  journal: Infinity,
+  // A record surface; a tutor wants the complete picture.
+  tutor_report: Infinity,
+  // Four kinds are eligible, but theta_delta only fires on a retest.
+  placement: 3,
+  // The learner is leaving. One sentence or none.
+  session_complete: 1,
+  // Browsing, not transiting. A guess, to be tuned against real sessions.
+  progress: 2,
+  // Eligibility-filtered, not cap-limited: the table constrains WHICH findings
+  // the weekly session may speak, and slice 3's analysis mode keeps owning how
+  // many it speaks and how it words them (spec §7.1).
+  weekly: Infinity,
+}
+
+function isRecordSurface(s: Surface): s is RecordSurface {
+  return (RECORD_SURFACES as readonly string[]).includes(s)
+}
+
+/**
+ * Findings this surface may show this audience. Order is preserved — `select()`
+ * has already ranked them and this must not reorder that.
+ *
+ * Does NOT apply SURFACE_CAP. Slicing is the caller's job, because the caller is
+ * the one that knows whether it is writing a record (uncapped) or speaking on an
+ * event surface (capped, and subject to the once-per-cycle rule).
+ */
+export function routableTo(
+  findings: readonly Finding[],
+  surface: Surface,
+  audience: Audience,
+): Finding[] {
+  return findings.filter((f) => {
+    const rule = ROUTING[f.kind]
+    if (!rule.audiences.includes(audience)) return false
+    // Every finding goes to every record surface its audience allows; the table
+    // enumerates event surfaces only.
+    if (isRecordSurface(surface)) return true
+    return (rule.events as readonly string[]).includes(surface)
+  })
 }
