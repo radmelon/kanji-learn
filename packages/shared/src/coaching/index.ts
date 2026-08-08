@@ -1,6 +1,7 @@
 export * from './types'
 export * from './magnitude'
 export * from './selection'
+export * from './routing'
 export * from './copy'
 export * from './analyze'
 export * from './persistence'

@@ -11,6 +11,7 @@ import { loadLevelBands } from '../level-bands'
 import {
   inferredLevel, MAX_PLAUSIBLE_RESPONSE_MS,
   analyze, carryForward, selectionsMatch, analysisBody,
+  DEFAULT_FINDING_COUNT, FINDING_PRIORITY,
   type JlptLevel, type LearnerSnapshot, type PlacementSnapshot,
   type PlacementItemOutcome, type PriorFinding,
   type CardSnapshot, type QuizOutcome, type ReviewSnapshot, type SrsStatus,
@@ -47,6 +48,15 @@ export interface CoachingAnalysisSource {
 export interface RefreshResult {
   written: 'inserted' | 'updated' | 'skipped'
   findings: Finding[]
+  /**
+   * The capped subset also stamped into `carryForward` (see the `spoken`
+   * local in `refresh`) -- at most `DEFAULT_FINDING_COUNT`, ranked. This is
+   * what a caller that SPEAKS the analysis (as opposed to writing the
+   * Journal's full ledger) must consume: coaching-voice.service.ts documents
+   * its own worst case as byte-identical to today's shipped session, and that
+   * guarantee only holds if it is fed this capped set, never `findings`.
+   */
+  spoken: Finding[]
 }
 
 /**
@@ -145,7 +155,7 @@ export class CoachingService {
     const sinceLastMs = analyzedAt === null ? Infinity : Date.parse(now) - Date.parse(analyzedAt)
 
     if (!opts.force && sinceLastMs < ANALYSIS_STALE_HOURS * 3_600_000) {
-      return { written: 'skipped', findings: [] }
+      return { written: 'skipped', findings: [], spoken: [] }
     }
 
     // COALESCING. Two triggers can fire minutes apart -- the first Buddy
@@ -179,12 +189,28 @@ export class CoachingService {
     const priors = (priorRow?.source as CoachingAnalysisSource | undefined)?.findings ?? []
 
     const snapshot = await this.assembleSnapshot(userId, now, priors)
-    const findings = analyze(snapshot)
+    // The Journal is the LEDGER (spec §3.1): every finding that fires is written,
+    // uncapped. Before this, analyze() took the top DEFAULT_FINDING_COUNT and the
+    // rest were computed and discarded — a live render on 2026-08-07 found 7 of
+    // 10 kinds firing and 3 reaching the learner, with reading_lag and retest_due
+    // shipped-but-unread for weeks.
+    const findings = analyze(snapshot, Object.keys(FINDING_PRIORITY).length)
+
+    // ⚠️ The SPOKEN SET (spec §8.1), and the reason it is not `findings`.
+    // `carryForward` stamps what was shown, and that decay is what lets an
+    // unshown finding rise and eventually win a slot. Stamp the whole ledger and
+    // every kind decays equally every cycle, novelty flattens to a constant, and
+    // the ranking collapses to magnitude x confidence.
+    //
+    // `analyze` has already ranked, so slicing gives exactly what the old
+    // analyze(snapshot) returned. From slice 2 this becomes "what a surface
+    // actually showed"; until then it is "what the cap would have shown".
+    const spoken = findings.slice(0, DEFAULT_FINDING_COUNT)
 
     // Nothing worth reporting: write nothing and supersede nothing. Any
     // existing entry stands until there is something better to say. (§5's
     // companion mode is slices 3-4's answer; slice 2's answer is silence.)
-    if (findings.length === 0) return { written: 'skipped', findings }
+    if (findings.length === 0) return { written: 'skipped', findings, spoken }
 
     const correction = latest?.author === 'learner'
       ? { at: latest.createdAt, kinds: (latestSource?.findings ?? []).map((f) => f.kind) }
@@ -193,7 +219,7 @@ export class CoachingService {
     const source: CoachingAnalysisSource = {
       kind: COACHING_SOURCE_KIND,
       analyzedAt: now,
-      findings: carryForward(priors, findings, now),
+      findings: carryForward(priors, spoken, now),
       ...(correction ? { correction } : {}),
     }
     const body = analysisBody(findings, now)
@@ -207,7 +233,8 @@ export class CoachingService {
     // learner-authored latest must always take that path -- it supersedes
     // their row instead of silently overwriting their words in place.
     const canUpdate = latest !== null && latest.supersededAt === null && latest.author === 'buddy'
-    const unchanged = selectionsMatch(priors, findings)
+    // Compares against the stamped set, which is what `priors` holds.
+    const unchanged = selectionsMatch(priors, spoken)
     if (canUpdate && (coalescing || unchanged)) {
       // Spread into a fresh object rather than passing `source` directly:
       // `updateEntryInPlace` takes `Record<string, unknown>`, and a named
@@ -216,7 +243,7 @@ export class CoachingService {
       // is -- the same reason `payload` below works untouched, since object
       // rest destructuring already produces a fresh, indexable object type.
       const { rowCount } = await this.notebook.updateEntryInPlace(userId, latest!.id, body, { ...source })
-      if (rowCount > 0) return { written: 'updated', findings }
+      if (rowCount > 0) return { written: 'updated', findings, spoken }
 
       // 0 rows: updateEntryInPlace's supersededAt-IS-NULL guard found the row
       // no longer live. A concurrent supersedeEntry(userId, id, null) -- the
@@ -247,11 +274,11 @@ export class CoachingService {
       // exists and it is current — that is success, not failure. Anything
       // else is a real error and belongs to the caller.
       if (isUniqueViolation(err, 'notebook_entries_coaching_unique')) {
-        return { written: 'skipped', findings }
+        return { written: 'skipped', findings, spoken }
       }
       throw err
     }
-    return { written: 'inserted', findings }
+    return { written: 'inserted', findings, spoken }
   }
 
   private async placement(userId: string, asOf?: string): Promise<PlacementSnapshot | null> {

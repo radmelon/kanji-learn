@@ -60,6 +60,10 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
+  // Cascades to placement_results (FK ON DELETE CASCADE) -- see the
+  // many-findings fixture below, which is the only test in this file that
+  // seeds a placement session.
+  await db.delete(schema.placementSessions).where(eq(schema.placementSessions.userId, USER))
   await db.delete(schema.buddyCommitments).where(eq(schema.buddyCommitments.userId, USER))
   await db.delete(schema.notebookEntries).where(eq(schema.notebookEntries.userId, USER))
   await db.delete(schema.buddySessionUtterances)
@@ -73,6 +77,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await db.delete(schema.placementSessions).where(eq(schema.placementSessions.userId, USER))
   await db.delete(schema.buddyCommitments).where(eq(schema.buddyCommitments.userId, USER))
   await db.delete(schema.notebookEntries).where(eq(schema.notebookEntries.userId, USER))
   await db.delete(schema.buddySessionUtterances)
@@ -88,6 +93,34 @@ function get() {
     url: '/v1/buddy/session',
     headers: { 'x-test-user-id': USER },
   })
+}
+
+/**
+ * A learner rich enough that MORE than DEFAULT_FINDING_COUNT (3) kinds fire.
+ * Adapted from `manyFindings()` in coaching-refresh.test.ts (same fixture
+ * shape; not imported, since this suite's convention is each integration
+ * file seeds its own fixtures against its own USER).
+ *
+ * The missed period fires commitment_gap; the placement session/result fires
+ * THREE more on their own regardless of real-world "now" -- level_estimate
+ * and hardest_cleared read straight off the stored theta/se/difficulty, and
+ * mechanics_explainer fires on any non-null placement at all
+ * (detectors/orient.ts: `if (!snapshot.placement) return null`, nothing
+ * more). Four kinds minimum, already past DEFAULT_FINDING_COUNT, with no
+ * dependency on the day this suite happens to run.
+ */
+async function manyFindings() {
+  await db.execute(sql`INSERT INTO buddy_commitments
+      (user_id, week_start, days_committed, minutes_per_day, source)
+      VALUES (${USER}, '2026-07-20', 4, 15, 'session')`)
+  const sessionRows = await db.execute(sql`INSERT INTO placement_sessions
+      (user_id, ability_theta, ability_se, inferred_level, completed_at)
+      VALUES (${USER}, 1.1, 0.5, 'N3', '2026-08-01T00:00:00Z') RETURNING id`)
+  const sessionId = (sessionRows[0] as any).id
+  const k = await db.execute(sql`SELECT id FROM kanji ORDER BY id LIMIT 1`)
+  await db.execute(sql`INSERT INTO placement_results
+      (session_id, kanji_id, jlpt_level, passed, meaning_correct, reading_correct, difficulty_at_ask)
+      VALUES (${sessionId}, ${Number((k[0] as any).id)}, 'N5', true, true, true, 0.9)`)
 }
 
 describe('GET /v1/buddy/session — voice', () => {
@@ -168,5 +201,53 @@ describe('GET /v1/buddy/session — voice', () => {
     expect(rows).toHaveLength(1)
     expect((rows[0] as any).body).not.toBe(SENTINEL)
     expect((rows[0] as any).body).toContain('promised')
+  })
+
+  // Final whole-branch review, Important 2. coaching.refresh() now returns
+  // BOTH `findings` (the full Journal ledger, up to ten) and `spoken` (capped
+  // at DEFAULT_FINDING_COUNT). buddy-session.ts destructures `spoken` under
+  // the local name `findings` specifically so this route can never hand the
+  // voice service more than the capped set -- see that destructure's own
+  // comment. Reverting it to `const { findings }` (the pre-ledger shape)
+  // typechecks cleanly and leaves every other test in this file green, because
+  // every other fixture here fires at most one finding, so the capped and
+  // uncapped sets are identical everywhere else. This test seeds enough state
+  // for more than DEFAULT_FINDING_COUNT findings to fire so the two sets
+  // actually diverge, and pins the template-tier voice text -- the one
+  // surface with no cap of its own (coaching-voice.service.ts's templateText
+  // joins `analysisBody(input.findings)` verbatim) -- to at most
+  // DEFAULT_FINDING_COUNT paragraphs.
+  it('caps the template-tier voice at DEFAULT_FINDING_COUNT findings even when more fire', async () => {
+    await manyFindings()
+
+    const res = await get()
+    expect(res.statusCode).toBe(200)
+    const data = res.json().data
+
+    expect(data.voice).toBeDefined()
+    // This file's test app always makes the LLM router throw (see the
+    // beforeAll comment), so this is always the template floor -- exactly the
+    // path that joins analysisBody(input.findings) with no cap of its own.
+    expect(data.voice.source).toBe('template')
+    expect(typeof data.reckon).toBe('string')
+
+    // The template text is [opener, reckon, analysisBody(findings)] joined by
+    // '\n\n', and analysisBody itself joins one paragraph per finding with
+    // that SAME separator -- so nothing in the string marks "reckon ends,
+    // findings begin" except the known length of the opener+reckon prefix.
+    // Both are already known exactly (asserted above and in the sibling test
+    // as the literal response fields), so stripping that prefix leaves
+    // exactly what analysisBody produced.
+    const prefix = `${data.opener.text}\n\n${data.reckon}\n\n`
+    expect(data.voice.text.startsWith(prefix)).toBe(true)
+    const findingParagraphs = data.voice.text.slice(prefix.length).split('\n\n').filter(Boolean)
+
+    // manyFindings() fires at least 4 kinds (commitment_gap, level_estimate,
+    // hardest_cleared, mechanics_explainer). The capped `spoken` set holds at
+    // most 3 (DEFAULT_FINDING_COUNT) of them, ranked -- this is the assertion
+    // a revert to `const { findings }` fails, since the uncapped ledger would
+    // put all 4+ into the template text instead.
+    expect(findingParagraphs.length).toBeGreaterThan(0)
+    expect(findingParagraphs.length).toBeLessThanOrEqual(3)
   })
 })

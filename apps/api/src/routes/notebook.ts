@@ -10,16 +10,28 @@ import { z } from 'zod'
 import { NotebookService } from '../services/notebook.service.js'
 import { CoachingService } from '../services/buddy/coaching.service.js'
 
+// Coaching entries are machine-composed from up to ten findings (the Journal
+// is now the complete ledger, not the old top-3 cut), and each finding's copy
+// can run long. 2000 was sized for the pre-ledger top-3 ceiling (~1,200 chars
+// observed live); the sum of per-kind maxima for just 7 of the 10 kinds is
+// already 1,945 chars, so a learner for whom 8+ kinds fire could exceed 2000
+// and then be unable to PATCH (edit/supersede) their own entry -- the learner
+// is `editableBy` every buddy-authored observation (assemble.ts). 8000 is
+// ~4x the measured 7-kind maximum: headroom for all ten kinds plus future
+// copy growth, while still bounding the field. Shared by both schemas so the
+// create and edit paths can never disagree on the limit.
+const MAX_ENTRY_BODY_CHARS = 8000
+
 // Every field the client sends is listed. z.object() strips what is not here
 // and still returns 200 — that is how four features shipped inert (docs/SOP.md).
 const createSchema = z.object({
   kind: z.enum(['observation', 'decision']),
-  body: z.string().min(1).max(2000),
+  body: z.string().min(1).max(MAX_ENTRY_BODY_CHARS),
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   source: z.record(z.unknown()).nullable().optional(),
 })
 
-const patchSchema = z.object({ body: z.string().min(1).max(2000) })
+const patchSchema = z.object({ body: z.string().min(1).max(MAX_ENTRY_BODY_CHARS) })
 
 // NotebookService.supersedeEntry throws NOT_FOUND for a missing/foreign entry
 // and ALREADY_SUPERSEDED for one that's already been superseded. Collapsing

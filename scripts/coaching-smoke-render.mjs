@@ -22,14 +22,17 @@
  * from the same source it asserted against.
  *
  * ─── WHY IT BYPASSES SELECTION ──────────────────────────────────────────────
- * analyze() takes the top DEFAULT_FINDING_COUNT (3). That cap is correct for a
- * learner and useless for a smoke check: on 2026-08-06 only 5 of the 10 kinds
- * had EVER reached a notebook entry, so half the shipped copy had never been
- * read against real data. Passing count = 10 renders everything that fires.
+ * analyze() takes the top DEFAULT_FINDING_COUNT (3) as the SPOKEN set — what an
+ * event surface (the weekly session, Session Complete) actually says aloud.
+ * That cap is correct for a spoken surface and useless for a smoke check: on
+ * 2026-08-06 only 5 of the 10 kinds had EVER reached the spoken cut, so half
+ * the shipped copy had never been read against real data. Passing count = 10
+ * renders everything that fires, spoken or not.
  *
- * The report separates two very different things a cap hides:
- *   SHOWN   — production would put this in front of the learner today
- *   HIDDEN  — it fires, but lost the top-3 cut, so nobody has ever read it
+ * The report separates three very different things a cap hides:
+ *   SHOWN   — in today's spoken set; an event surface says this aloud
+ *   HIDDEN  — fires and is written to the Journal ledger, but did not make
+ *             the spoken cut — on the record, but never spoken aloud
  *   SILENT  — the detector returned null; there is nothing to render
  *
  * ─── USAGE (from repo root) ─────────────────────────────────────────────────
@@ -155,7 +158,10 @@ async function main() {
       continue
     }
 
-    // Production's actual selection, and then everything that fired.
+    // The spoken set (what an event surface would say aloud), and then
+    // everything that fired -- which, after this branch, is what the Journal
+    // ledger actually holds: spec §3.1 writes every firing finding, not just
+    // the spoken cut.
     const shown = analyze(snapshot, 3)
     const all = analyze(snapshot, ALL_KINDS.length)
     const shownKinds = new Set(shown.map((f) => f.kind))
@@ -165,7 +171,7 @@ async function main() {
     console.log(`  placement: ${snapshot.placement ? 'yes' : 'none'}   ` +
       `active cards: ${snapshot.reviews?.cards?.filter((c) => c.status !== 'unseen' && c.status !== 'burned').length ?? 0}   ` +
       `commitment: ${snapshot.commitment ? 'yes' : 'none'}   priors: ${priors.length}`)
-    console.log(`  ${all.length} of ${ALL_KINDS.length} kinds fired; production shows ${shown.length}`)
+    console.log(`  ${all.length} of ${ALL_KINDS.length} kinds fired; ${shown.length} of them are spoken`)
     console.log(bar('─'))
 
     if (all.length === 0) {
@@ -206,7 +212,7 @@ async function main() {
     const total = c.shown + c.hidden
     const state = total === 0
       ? 'SILENT — never fired, never rendered, still unchecked'
-      : `rendered ${total}x (production shows it ${c.shown}x, hidden by the top-3 cut ${c.hidden}x)`
+      : `rendered ${total}x (spoken ${c.shown}x, in the ledger but not spoken ${c.hidden}x)`
     console.log(`  ${kind.padEnd(20)} ${state}`)
   }
 

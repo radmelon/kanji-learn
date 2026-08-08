@@ -7,6 +7,66 @@
 > its own address makes every reader reassemble it from a bare path. Carry it
 > forward into each new handoff section.)*
 
+## 🌿 2026-08-08 — Buddy output routing, slice 1 (BRANCH, NOT MERGED, NOT DEPLOYED)
+
+Branch `buddy-output-routing-slice-1`. Plan:
+https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/plans/2026-08-07-buddy-output-routing-slice-1.md
+
+**What it does.** `routing.ts` lands the table declaring which finding may reach
+which surface (no consumers yet, by design), and the Journal becomes the complete
+ledger — `refresh` writes every finding that fires instead of the top 3, while
+`carryForward` and `selectionsMatch` keep receiving only the capped "spoken set".
+
+### What the live render showed (read-only, 2026-08-08)
+
+Production is still `3254290` and this branch is unmerged, so **no post-slice row
+exists to inspect** — live entries read `paragraphs = 3, stamped = 3`, exactly as
+they should. The post-deploy check is therefore still owed; see below.
+
+What *could* be checked read-only: `scripts/coaching-smoke-render.mjs` already
+calls `analyze(snapshot, ALL_KINDS.length)`, which **is** the new ledger
+behaviour, so its output previews what the Journal will now carry. Three kinds
+are currently `HIDDEN` by the top-3 cut and become visible:
+
+| Kind | Checked against its own evidence |
+|---|---|
+| `retest_due` | ✅ "3 days since the last one" matches a 2026-08-04 placement. Note `current uncertainty` **equals** `uncertainty when measured` (0.59 → 0.59) — nothing has drifted — but the copy only claims retaking *would sharpen*, never that it drifted. Truthful, if eager. |
+| `mechanics_explainer` | ✅ Static by contract. Renders `shown 0x` today, meaning **no learner has ever seen it** under the current cap. |
+| `leech` (×2 learners) | ✅ 8/239 with 字=2, 出=1, 悪=1; and 23/466 with 敗=4, 語=3, 去=2. Both consistent. |
+
+**No new truthfulness defects.** The one caveat is **B-235** — `leech` nominates
+"the one to work on first" by cumulative lapses, so it can name a kanji the
+learner has already fixed. Already filed, deliberately out of scope for this
+slice, and expected to appear in these renders until fixed.
+
+⏳ **Still owed after this merges and deploys:** confirm a fresh
+`coaching_analysis` row reads `paragraphs > 3` while `stamped = 3`. A deploy
+rewrites no rows — one appears only when a learner opens the Journal and the
+newest entry is more than `ANALYSIS_STALE_HOURS = 6` old.
+
+### 🔴 Two things this slice's review caught that the spec had wrong
+
+- **Uncapping the ledger silently uncapped the WEEKLY SESSION's voice.**
+  `RefreshResult.findings` grew 3 → up to 10, and `buddy-session.ts` passed it
+  straight to `voiceService.utteranceFor`, which caps nothing —
+  `partitionForVoice` only splits off `mechanics_explainer`, and the template
+  fallback calls `analysisBody` unbounded. That contradicted
+  `coaching-voice.service.ts`'s own guarantee that the worst case is *"exactly
+  the session as it ships today."* **This was a spec gap, not an implementer
+  error:** spec §7.1 assumed slice 3's analysis mode caps its own output, and it
+  does not. Fixed by adding `spoken` to `RefreshResult` and having the route take
+  the capped set; the voice service is untouched.
+- **Nothing would have caught `selectionsMatch` being reverted** to the full
+  array, because the only >3-finding fixture always ran against a wiped notebook
+  where the update path is unreachable. A test now reaches it; deliberately
+  reverting the argument produces exactly one failure.
+
+⚠️ **Pre-existing and NOT from this branch:** `coaching-snapshot.test.ts` fails on
+real-clock drift — it fixes `NOW = '2026-08-02'` while seeding fixtures with
+`now() - interval`, and those are now ~6 days apart. Confirmed identical with and
+without this branch via `git stash`. Same class as the `--as-of` window bug found
+2026-08-07: a fictional clock and a real one in the same test.
+
 ## START HERE — 2026-08-07 (later)
 
 > ## ▶️ What the next session does

@@ -131,7 +131,16 @@ export async function buddySessionRoutes(server: FastifyInstance) {
     // guard as the notebook write below.
     let voice: CoachingVoice | null = null
     try {
-      const { findings } = await coaching.refresh(req.userId!, {
+      // `spoken`, not `findings` -- destructured under the voice service's own
+      // parameter name so nothing inside it has to change. `findings` is the
+      // Journal's full ledger (every finding that fired, up to 10); the
+      // weekly session SPEAKS a bounded subset, and coaching-voice.service.ts
+      // documents its own worst case as "exactly the session as it ships
+      // today" (top DEFAULT_FINDING_COUNT). Passing the uncapped ledger here
+      // would silently break that guarantee -- the voice service applies no
+      // cap of its own. This stays the capped set until a later slice
+      // deliberately routes more of the ledger to this surface.
+      const { spoken: findings } = await coaching.refresh(req.userId!, {
         force: true,
         now: now.toISOString(),
       })

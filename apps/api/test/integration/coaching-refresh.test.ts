@@ -19,6 +19,24 @@ async function missedPeriod() {
 }
 
 /**
+ * A learner rich enough that MORE than DEFAULT_FINDING_COUNT kinds fire.
+ * commitment_gap from the missed period; level_estimate and hardest_cleared from
+ * the placement; mechanics_explainer fires on any non-null placement at all
+ * (`detectors/orient.ts` — `if (!snapshot.placement) return null`, nothing more).
+ */
+async function manyFindings() {
+  await missedPeriod()
+  const rows = await db.execute(sql`INSERT INTO placement_sessions
+    (user_id, ability_theta, ability_se, inferred_level, completed_at)
+    VALUES (${USER}, 1.1, 0.5, 'N3', '2026-08-01T00:00:00Z') RETURNING id`)
+  const sessionId = (rows[0] as any).id
+  const k = await db.execute(sql`SELECT id FROM kanji ORDER BY id LIMIT 1`)
+  await db.execute(sql`INSERT INTO placement_results
+    (session_id, kanji_id, jlpt_level, passed, meaning_correct, reading_correct, difficulty_at_ask)
+    VALUES (${sessionId}, ${Number((k[0] as any).id)}, 'N5', true, true, true, 0.9)`)
+}
+
+/**
  * Force a row's `created_at` onto the test's own fictional timeline.
  *
  * Coalescing is now decided from `created_at` (Critical 2), and every write
@@ -52,6 +70,7 @@ describe('CoachingService.refresh', () => {
     await db.execute(sql`DELETE FROM notebook_entries WHERE user_id = ${USER}`)
     await db.execute(sql`DELETE FROM buddy_commitments WHERE user_id = ${USER}`)
     await db.execute(sql`DELETE FROM daily_stats WHERE user_id = ${USER}`)
+    await db.execute(sql`DELETE FROM placement_sessions WHERE user_id = ${USER}`)
   }
   beforeEach(wipe)
   afterAll(async () => {
@@ -552,6 +571,83 @@ describe('CoachingService.refresh', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+
+  it('writes EVERY firing finding to the body, not just the top three', async () => {
+    await manyFindings()
+
+    const { findings } = await service.refresh(USER, { force: true, now: NOW })
+    expect(findings.length).toBeGreaterThan(3)
+
+    const row = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    // The body is the ledger: analysisBody joins one paragraph per finding.
+    const paragraphs = row!.body.split('\n\n').filter(Boolean)
+    expect(paragraphs.length).toBe(findings.length)
+  })
+
+  it('still stamps novelty on only the spoken set — NOT the whole write', async () => {
+    await manyFindings()
+
+    const { findings } = await service.refresh(USER, { force: true, now: NOW })
+    const row = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+
+    // spec §8.1: the stamped set is NEVER the full Journal write, at any slice.
+    // Stamping everything flattens novelty to a constant, the ranking collapses
+    // to magnitude x confidence, and Session Complete would later show the same
+    // sentence forever.
+    // `source` is typed `Record<string, unknown>` by readLatestKeyed, so
+    // `.findings` needs the same `as any` sibling tests already use when
+    // reading typed fields off it (e.g. the `liveEntries()` casts above).
+    const stamped = (row!.source as any).findings
+    expect(stamped.length).toBe(3)
+    expect(stamped.length).toBeLessThan(findings.length)
+  })
+
+  /**
+   * Important 2 (uncapping-the-ledger review). `refresh` calls
+   * `selectionsMatch(priors, spoken)` -- not `selectionsMatch(priors,
+   * findings)` -- but neither test above proves it: both "writes EVERY firing
+   * finding" and "still stamps novelty on only the spoken set" run
+   * `manyFindings()` against a freshly-wiped notebook, where `latest` is null
+   * and `canUpdate && (coalescing || unchanged)` can never be reached at all.
+   * A revert to `selectionsMatch(priors, findings)` leaves the whole suite
+   * green without this test.
+   *
+   * `selectionsMatch` (persistence.ts) returns false the instant the two
+   * arrays' LENGTHS differ, before it ever looks at kinds. `manyFindings()`
+   * fires five kinds every time -- commitment_gap, level_estimate,
+   * hardest_cleared, mechanics_explainer, and retest_due (which clears its
+   * magnitude-nonzero guard by a hair at 1.5 days' staleness) -- while
+   * `spoken`, the stamped priors, only ever holds three. So
+   * `selectionsMatch(priors, findings)` is a 3-vs-5 length mismatch on EVERY
+   * call regardless of content, and would silently force every steady-state
+   * re-analysis of a many-findings learner onto the insert/supersede path
+   * instead of updating in place.
+   *
+   * The scenario: refresh once (inserts, stamps the top three by score), then
+   * refresh again with nothing in the underlying data changed. `later` is
+   * +24h, the same gap as "an UNCHANGED selection updates in place" above --
+   * far outside COALESCE_WINDOW_MINUTES, so `canUpdate && (coalescing ||
+   * unchanged)` depends entirely on `unchanged` rather than coalescing
+   * carrying the branch regardless of it -- while still comfortably inside
+   * the novelty half-life, so the same three kinds (commitment_gap,
+   * hardest_cleared, level_estimate) still outrank mechanics_explainer on the
+   * second pass and `spoken`'s KIND SET is unchanged from `priors`. Correct
+   * code reports `written: 'updated'`; the 3-vs-5 mismatch reports
+   * `'inserted'` instead.
+   */
+  it('an unchanged selection with MORE THAN THREE findings firing still updates in place', async () => {
+    await manyFindings()
+    const first = await service.refresh(USER, { force: true, now: NOW })
+    expect(first.findings.length).toBeGreaterThan(3)
+
+    const inserted = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    await stampCreatedAt(inserted!.id, NOW)   // pins coalescing's clock to this scenario's own
+    const later = '2026-08-03T12:00:00.000Z'  // +24h, same gap as the single-finding case above
+    const result = await service.refresh(USER, { force: true, now: later })
+
+    expect(result.written).toBe('updated')
+    expect((await allEntries()).length).toBe(1)
   })
 })
 
