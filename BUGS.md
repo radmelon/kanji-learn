@@ -6,6 +6,35 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-236) `coaching-snapshot.test.ts` seeds fixtures on the real clock and asserts against a fictional one — it armed itself on 2026-08-07 and the suite has been red since** — Found 2026-08-08 while finishing the output-routing slice-1 branch, after three separate reviewers each had to re-diagnose it as "pre-existing, not ours."
+
+  **The failing test** is `splits response time and accuracy into early and late halves` (`apps/api/test/integration/coaching-snapshot.test.ts:381`). It seeds two review rows with `reviewed_at = now() - interval '20 days'` and `now() - interval '2 days'` — the **real** Postgres clock — then asserts against `assembleSnapshot(USER_R, NOW, [])` where `NOW = '2026-08-02T12:00:00.000Z'` is a **fixed literal**. Its own comment says *"Early half: 20 days ago"*, which is true relative to real now and false relative to `NOW`.
+
+  🔴 **It is a time bomb with a computable arming date, and it has gone off.** `REVIEW_WINDOW_DAYS = 30`, so the early/late midpoint is `NOW − 15d = 2026-07-18T12:00Z`. The "early" row lands at `real_now − 20d`. That crosses the midpoint when `real_now ≥ 2026-08-07T12:00Z`, after which **both** rows fall in the late half, `responseMsEarly` is the mean of an empty array (`null`), and `expect(card.responseMsEarly).toBeCloseTo(20000)` fails.
+
+  **Witnessed crossing it mid-session.** On 2026-08-07 at 03:36 UTC, `pnpm --filter @kanji-learn/api test -- coaching` ran **114/114 green**. Later the same day, past 12:00 UTC, the identical command on the identical code failed. Nothing was committed in between that touches it — the calendar advanced. Confirmed still failing on `main` at `3361fc4` on 2026-08-08.
+
+  ✅ **The fix pattern already exists in the file next door, written for exactly this reason.** `coaching-refresh.test.ts:55` has `stampCreatedAt(id, at)`, and its docstring is a precise diagnosis of this class:
+
+  > *"…`created_at` and the `now` arguments passed to `service.refresh()` are two unrelated clocks, and whether a scenario reads as '10 minutes later' or '10 minutes ago' … depends on the real time of day the suite happens to run — not on anything the test describes."*
+
+  Someone diagnosed this, fixed it in one file, and the neighbour still has **8** `now() - interval` seedings. Apply the same treatment: seed `reviewed_at` relative to the fixture's own `NOW` rather than the database's clock.
+
+  **Scope of the pattern across the API integration suite** — the others are not currently red, but carry the same latent shape:
+
+  | File | `now() ± interval` seedings |
+  |---|---|
+  | `coaching-snapshot.test.ts` | **8** |
+  | `backfill.test.ts` | 3 |
+  | `queue-quiz-due.test.ts` | 2 |
+  | `coaching-notebook-store.test.ts` | 1 |
+
+  ⚠️ **The real cost is not the red test — it is the noise it generates.** A permanently-failing suite trains readers to skip a failure line, and this one has already cost three independent re-diagnoses in a single day, each ending in the same "confirmed unrelated". The next genuine regression in that file arrives looking exactly like this one.
+
+  **Third instance of this class this week**, which is why it is worth fixing rather than annotating: the `--as-of` half-open window bug (2026-08-07, a snapshot at a past instant absorbed every later review), `stampCreatedAt`'s own origin, and now this. The general rule the codebase keeps rediscovering: **a test that fixes a fictional `now` must seed every row against that same `now`, never against the database's.**
+
+  `[Effort: S]` `[Impact: Med — a permanently red suite hides the next real regression]` `[Status: 🔍 Confirmed, unfixed, currently failing on main]`
+
 - [ ] **(B-235) `leech` ranks by a lifetime counter, so it keeps nominating a kanji the learner has already fixed** — Found 2026-08-07 by the owner, reviewing the Buddy output-routing spec: *"a kanji that was repeatedly missed or marked as hard might, by the time it rises to the top of the novelty list, be out-of-date — the student might have found a way of making it stick."*
 
   `packages/shared/src/coaching/detectors/leech.ts:37-39`:
