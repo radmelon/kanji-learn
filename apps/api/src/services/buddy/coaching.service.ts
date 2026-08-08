@@ -48,6 +48,15 @@ export interface CoachingAnalysisSource {
 export interface RefreshResult {
   written: 'inserted' | 'updated' | 'skipped'
   findings: Finding[]
+  /**
+   * The capped subset also stamped into `carryForward` (see the `spoken`
+   * local in `refresh`) -- at most `DEFAULT_FINDING_COUNT`, ranked. This is
+   * what a caller that SPEAKS the analysis (as opposed to writing the
+   * Journal's full ledger) must consume: coaching-voice.service.ts documents
+   * its own worst case as byte-identical to today's shipped session, and that
+   * guarantee only holds if it is fed this capped set, never `findings`.
+   */
+  spoken: Finding[]
 }
 
 /**
@@ -146,7 +155,7 @@ export class CoachingService {
     const sinceLastMs = analyzedAt === null ? Infinity : Date.parse(now) - Date.parse(analyzedAt)
 
     if (!opts.force && sinceLastMs < ANALYSIS_STALE_HOURS * 3_600_000) {
-      return { written: 'skipped', findings: [] }
+      return { written: 'skipped', findings: [], spoken: [] }
     }
 
     // COALESCING. Two triggers can fire minutes apart -- the first Buddy
@@ -201,7 +210,7 @@ export class CoachingService {
     // Nothing worth reporting: write nothing and supersede nothing. Any
     // existing entry stands until there is something better to say. (§5's
     // companion mode is slices 3-4's answer; slice 2's answer is silence.)
-    if (findings.length === 0) return { written: 'skipped', findings }
+    if (findings.length === 0) return { written: 'skipped', findings, spoken }
 
     const correction = latest?.author === 'learner'
       ? { at: latest.createdAt, kinds: (latestSource?.findings ?? []).map((f) => f.kind) }
@@ -234,7 +243,7 @@ export class CoachingService {
       // is -- the same reason `payload` below works untouched, since object
       // rest destructuring already produces a fresh, indexable object type.
       const { rowCount } = await this.notebook.updateEntryInPlace(userId, latest!.id, body, { ...source })
-      if (rowCount > 0) return { written: 'updated', findings }
+      if (rowCount > 0) return { written: 'updated', findings, spoken }
 
       // 0 rows: updateEntryInPlace's supersededAt-IS-NULL guard found the row
       // no longer live. A concurrent supersedeEntry(userId, id, null) -- the
@@ -265,11 +274,11 @@ export class CoachingService {
       // exists and it is current — that is success, not failure. Anything
       // else is a real error and belongs to the caller.
       if (isUniqueViolation(err, 'notebook_entries_coaching_unique')) {
-        return { written: 'skipped', findings }
+        return { written: 'skipped', findings, spoken }
       }
       throw err
     }
-    return { written: 'inserted', findings }
+    return { written: 'inserted', findings, spoken }
   }
 
   private async placement(userId: string, asOf?: string): Promise<PlacementSnapshot | null> {

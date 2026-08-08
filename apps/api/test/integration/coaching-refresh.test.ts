@@ -602,6 +602,53 @@ describe('CoachingService.refresh', () => {
     expect(stamped.length).toBe(3)
     expect(stamped.length).toBeLessThan(findings.length)
   })
+
+  /**
+   * Important 2 (uncapping-the-ledger review). `refresh` calls
+   * `selectionsMatch(priors, spoken)` -- not `selectionsMatch(priors,
+   * findings)` -- but neither test above proves it: both "writes EVERY firing
+   * finding" and "still stamps novelty on only the spoken set" run
+   * `manyFindings()` against a freshly-wiped notebook, where `latest` is null
+   * and `canUpdate && (coalescing || unchanged)` can never be reached at all.
+   * A revert to `selectionsMatch(priors, findings)` leaves the whole suite
+   * green without this test.
+   *
+   * `selectionsMatch` (persistence.ts) returns false the instant the two
+   * arrays' LENGTHS differ, before it ever looks at kinds. `manyFindings()`
+   * fires five kinds every time -- commitment_gap, level_estimate,
+   * hardest_cleared, mechanics_explainer, and retest_due (which clears its
+   * magnitude-nonzero guard by a hair at 1.5 days' staleness) -- while
+   * `spoken`, the stamped priors, only ever holds three. So
+   * `selectionsMatch(priors, findings)` is a 3-vs-5 length mismatch on EVERY
+   * call regardless of content, and would silently force every steady-state
+   * re-analysis of a many-findings learner onto the insert/supersede path
+   * instead of updating in place.
+   *
+   * The scenario: refresh once (inserts, stamps the top three by score), then
+   * refresh again with nothing in the underlying data changed. `later` is
+   * +24h, the same gap as "an UNCHANGED selection updates in place" above --
+   * far outside COALESCE_WINDOW_MINUTES, so `canUpdate && (coalescing ||
+   * unchanged)` depends entirely on `unchanged` rather than coalescing
+   * carrying the branch regardless of it -- while still comfortably inside
+   * the novelty half-life, so the same three kinds (commitment_gap,
+   * hardest_cleared, level_estimate) still outrank mechanics_explainer on the
+   * second pass and `spoken`'s KIND SET is unchanged from `priors`. Correct
+   * code reports `written: 'updated'`; the 3-vs-5 mismatch reports
+   * `'inserted'` instead.
+   */
+  it('an unchanged selection with MORE THAN THREE findings firing still updates in place', async () => {
+    await manyFindings()
+    const first = await service.refresh(USER, { force: true, now: NOW })
+    expect(first.findings.length).toBeGreaterThan(3)
+
+    const inserted = await notebook.readLatestKeyed(USER, 'coaching_analysis')
+    await stampCreatedAt(inserted!.id, NOW)   // pins coalescing's clock to this scenario's own
+    const later = '2026-08-03T12:00:00.000Z'  // +24h, same gap as the single-finding case above
+    const result = await service.refresh(USER, { force: true, now: later })
+
+    expect(result.written).toBe('updated')
+    expect((await allEntries()).length).toBe(1)
+  })
 })
 
 /**
