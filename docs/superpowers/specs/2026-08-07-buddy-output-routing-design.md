@@ -213,17 +213,49 @@ surfaces are uncapped, so a burned finding is **delayed, never lost** — it is
 still in the Journal, and it becomes eligible again next cycle. Under an
 exclusive-routing model this same choice would have been a data-loss bug.
 
-### 5.2 Placement completion bypasses the staleness gate
+### 5.2 An event that mutates the inputs must refresh before it surfaces
 
-A learner finishing a placement test needs an analysis that **includes that test**.
-`ANALYSIS_STALE_HOURS = 6` would hand them the pre-test analysis.
+**The rule:** if the event a surface is anchored to *changes the data the
+detectors read*, that surface forces a refresh rather than honouring
+`ANALYSIS_STALE_HOURS = 6`.
 
-This is the same class of error as the deploy-verification trap in
-`docs/SOP.md`: **a signal that predates the event cannot describe the event.** The
-placement route therefore forces a refresh rather than honouring the gate. This is
-the one surface that does so, and it needs a regression test (§9).
+| Surface | Refreshes first? | Why |
+|---|---|---|
+| Placement completion | **yes** | The test just written is the subject of `level_estimate`, `hardest_cleared` and `theta_delta`. |
+| Session Complete | **yes** | A study session rewrites `lapses`, `recentQualities` and response times — precisely what `leech`, `hook_coverage` and `fluency_gain` read. |
+| Progress card stack | no | Browsing. A six-hour-old read is honest there. |
+| Weekly session | no | Period-anchored; the period did not just end because a screen opened. |
 
-### 5.3 Rejected: applying the table client-side
+This is the same class of error as the deploy-verification trap in `docs/SOP.md`:
+**a signal that predates the event cannot describe the event.**
+
+⚠️ **Session Complete is the sharper of the two, and an earlier draft of this spec
+missed it** by treating placement as a special case rather than deriving the rule.
+Without the refresh, `leech` can name a kanji at Session Complete that the learner
+got right three times *in the session that just ended* — advice that is not merely
+stale but visibly contradicted by what the learner just did.
+
+### 5.3 Findings are recomputed, never cached — there is nothing to revalidate
+
+Worth stating because its absence invited the question during review.
+
+`priors` carry `{ kind, since, lastRaisedAt }` and **nothing else** — no content, no
+evidence. Every cycle re-runs the detectors against a fresh snapshot, so a finding
+that has stopped being true does not fire, and one that is still true is rebuilt
+from current data. A finding cannot go stale in storage because it is not stored.
+
+**So no revalidation pass is specified, deliberately.** Revalidating would mean
+re-running the detectors, which is what a refresh already does — a second code path
+computing the same answer, free to disagree with the first.
+
+⚠️ **This does NOT mean findings cannot be out of date.** It relocates the risk:
+staleness lives in the detectors' *inputs*, not in a finding cache. §5.2 closes the
+timing half. The other half is a detector reading a lifetime counter with no
+recency weighting — see **B-235**, where `leech` ranks by cumulative `lapses` and
+will keep nominating a kanji the learner has already fixed. That is a detector
+defect, not a routing question, and is fixed separately.
+
+### 5.4 Rejected: applying the table client-side
 
 `packages/shared` is imported by mobile, so the table would be reachable. But the
 once-per-cycle rule needs cross-surface state, and putting that in the client means
@@ -350,9 +382,17 @@ rule, per-surface caps, audience filtering, and one test asserting no kind maps 
 an empty event-surface list without an explicit annotation.
 
 **Integration tests** (`apps/api`): the endpoint per surface; marking-on-read;
-and specifically that **placement completion bypasses `ANALYSIS_STALE_HOURS`**
-(§5.2) — a regression test for a trap this project has hit twice in different
-forms.
+and **the §5.2 refresh rule in both directions** — placement completion *and*
+Session Complete force a refresh, Progress and the weekly session do *not*. Assert
+the negative cases too: a rule that only ever refreshes is indistinguishable from
+no rule, and the six-hour gate exists for a reason.
+
+The Session Complete case deserves a named test rather than a shared one, because
+it is the one most likely to regress into the pre-review behaviour: **a finding
+must not name a kanji the learner answered correctly in the session that just
+ended.** That is a trap this project has now hit in three different forms — status
+codes, a SQL query, and now a coaching surface — each time by trusting a signal
+that predates the event it claims to describe.
 
 **Tutor-specific assertions**, because this is exactly the class that ships wrong
 and is only noticed by a human reading real output:
@@ -387,7 +427,7 @@ verifiable:
 |---|---|---|
 | **1** | `routing.ts`, audience filter, per-surface caps, the §8 novelty invariant, and the Journal going uncapped | The silent 7-of-10 loss ends. **No new surface.** Verifiable entirely by the existing smoke render. |
 | **2** | The endpoint + placement completion, including the §5.2 staleness bypass | Closes the New Learner Experience placement entry — the highest-value single route. |
-| **3** | Session Complete + Progress card stack | The two study-loop surfaces, which share a shape. |
+| **3** | Session Complete + Progress card stack, **including Session Complete's §5.2 refresh** | The two study-loop surfaces, which share a shape but not their staleness behaviour — Session Complete refreshes, Progress does not. |
 | **4** | Tutor report — the `=== WHAT BUDDY HAS NOTICED ===` prompt section | Different audience, different code path, no mobile work. Genuinely independent. |
 
 ⚠️ **Slice 1 is the one that must not be skipped or merged.** It carries the
@@ -402,10 +442,12 @@ available at any time regardless of the build cycle.
 
 ## 12. Open items
 
-1. **Whether `level_estimate` belongs on the Progress card stack at all**, or
-   should be Placement-only. It is the one row where the anchor is genuinely
-   ambiguous — the level is event-anchored to the test but stays true until the
-   next one. Left on both; tune against a real render.
+1. ✅ **RESOLVED in review — `level_estimate` stays on Progress.** The owner's
+   argument: Progress already carries the **Velocity** panel, which projects
+   trajectory and ETA to milestones, so a current level estimate is
+   progress-adjacent if not progress proper. A learner asking "where am I and how
+   long until X" is asking one question, and the answer currently sits on two
+   screens. See §12.1.
 2. **The Progress card stack cap of 2 is a guess.** Like the notebook spec's §14.1,
    it is "a number to tune against real sessions, not to guess once."
 3. **What happens on a surface with no eligible findings.** Render nothing, or a
@@ -413,6 +455,38 @@ available at any time regardless of the build cycle.
    explicit precedent that a formatter which cannot build its sentence returns
    `null` rather than emitting a broken one. Needs confirming against a real
    placement completion with a thin analysis.
+4. ✅ **RESOLVED in review — an FSRS explainer does NOT become a finding.** Asked
+   during review: `mechanics_explainer` explains IRT, so should a sibling explain
+   FSRS? **No — it belongs to the explanatory-content work, not the taxonomy.**
+   `mechanics_explainer` is already the only kind whose subject is the *app*
+   rather than the *learner* (§4.1); a sibling would turn an acknowledged
+   exception into a pattern, and "a finding is something observed about the
+   learner" would stop being true of the taxonomy. The need is real — grading
+   semantics drive schedule quality — but its home is progressive disclosure,
+   where the "How studying works" overlay already lives and has been reopenable
+   via ⓘ since 2026-07-30.
+
+   *If that is ever reversed*, the model absorbs it without redesign:
+   `Record<FindingKind, RoutingRule>` will refuse to compile until the new kind is
+   routed. That is the guarantee in §4 doing its job.
+
+### 12.1 Velocity wants its own brainstorm — and this spec should not pre-empt it
+
+Raised by the owner during review, and recorded here because item 1 above leans on
+it.
+
+The Velocity panel projects trajectory and ETA, and the owner's stated ambition is
+broader: **a set of tools a learner can consult to estimate the time and effort
+required to satisfy a learning ambition.** That is the same failure this spec
+addresses at the other end of the journey — a number computed and presented
+without the framing that makes it useful — and `ENHANCEMENTS.md` already carries a
+`[Effort: M]` *"Rework Velocity estimate: near-term milestones + goal calculator"*
+entry that such a session would supersede.
+
+**Routing `level_estimate` to Progress is the extent of this spec's involvement.**
+It puts the level next to the trajectory, which is the cheap half. The goal
+calculator, the milestone framing and the pace-vs-ambition tooling are a separate
+design, and deciding them here would be guessing ahead of that session.
 
 ---
 

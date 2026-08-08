@@ -6,6 +6,26 @@ A living log of confirmed bugs in the 漢字 Buddy app. Each entry includes a sy
 
 ## 🐛 Active Bugs
 
+- [ ] **(B-235) `leech` ranks by a lifetime counter, so it keeps nominating a kanji the learner has already fixed** — Found 2026-08-07 by the owner, reviewing the Buddy output-routing spec: *"a kanji that was repeatedly missed or marked as hard might, by the time it rises to the top of the novelty list, be out-of-date — the student might have found a way of making it stick."*
+
+  `packages/shared/src/coaching/detectors/leech.ts:37-39`:
+
+  ```ts
+  function troubleScore(c: CardSnapshot): number {
+    return c.lapses + c.regressions
+  }
+  ```
+
+  `userKanjiProgress.lapses` is `integer NOT NULL DEFAULT 0` — **a cumulative counter that never decreases.** So a kanji that lapsed 4 times in April and has been answered correctly on every appearance since still holds the top `troubleScore`, and the copy still says *"The one to work on first is 敗. Look it up and build a hook for it."* The advice is not just stale; it is contradicted by the learner's own recent record, and it stays that way until some other card out-lapses it.
+
+  🔴 **Its sibling detector already solved this, which is what makes it a defect rather than a design gap.** `detectors/hook-coverage.ts:53` measures struggle from `c.recentQualities.filter((q) => q <= STRUGGLE_QUALITY)` — the last 10 grades, carried on every `CardSnapshot` by `coaching.service.ts:484`. Two detectors in the same module measure "this kanji is giving you trouble"; one is recency-aware and one is not. `leech` has the recency signal available on the object it is already reading and ignores it.
+
+  **Not fixable by routing or by refreshing.** The analysis is recomputed from a live snapshot every cycle, so this is not staleness in storage — the detector faithfully reports a lifetime total that is no longer descriptive.
+
+  **Fix direction:** weight `troubleScore` by recent performance rather than replacing it — a card with many historic lapses AND recent misses is genuinely the worst, and should stay top. Something like decaying the lapse contribution when `recentQualities` shows a clean run. **Do not simply switch to `recentQualities` alone:** the detector's own header records that it was already rewritten once (2026-08-02) after an absolute-threshold version proved unfirable against live data, and any replacement needs checking against real rows before it ships.
+
+  `[Effort: S–M]` `[Impact: Med — the finding names a specific kanji and tells the learner to act on it]` `[Status: 🔍 Confirmed, unfixed]`
+
 - [ ] **(B-234) `voice_attempts.distance` is documented as Levenshtein distance and is actually a string-length difference** — Found 2026-08-07 while investigating the `voice_attempts` cleanup entry, which the data then refused (see `ENHANCEMENTS.md`).
 
   `apps/api/src/routes/review.ts:173-176`:
