@@ -67,7 +67,13 @@ describe('the routing table', () => {
     const shared = Object.entries(ROUTING)
       .filter(([kind]) => kind !== 'mechanics_explainer' && kind !== 'commitment_gap')
     for (const [kind, rule] of shared) {
-      expect(rule.audiences, `${kind} should be tutor-visible`).toContain('tutor')
+      // toEqual(['learner', 'tutor']), not toContain('tutor'): a `toContain`
+      // check is blind to `audiences` silently losing 'learner' as long as
+      // 'tutor' survives -- which would hide a learner-facing finding from
+      // the learner themselves. Verified by mutation: dropping 'learner' from
+      // fluency_gain (or theta_delta, or reading_lag) while keeping 'tutor'
+      // passed every shared test under the old assertion.
+      expect(rule.audiences, `${kind} should be tutor-visible`).toEqual(['learner', 'tutor'])
     }
   })
 
