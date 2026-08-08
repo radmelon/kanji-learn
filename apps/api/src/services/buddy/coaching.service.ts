@@ -11,6 +11,7 @@ import { loadLevelBands } from '../level-bands'
 import {
   inferredLevel, MAX_PLAUSIBLE_RESPONSE_MS,
   analyze, carryForward, selectionsMatch, analysisBody,
+  DEFAULT_FINDING_COUNT, FINDING_PRIORITY,
   type JlptLevel, type LearnerSnapshot, type PlacementSnapshot,
   type PlacementItemOutcome, type PriorFinding,
   type CardSnapshot, type QuizOutcome, type ReviewSnapshot, type SrsStatus,
@@ -179,7 +180,23 @@ export class CoachingService {
     const priors = (priorRow?.source as CoachingAnalysisSource | undefined)?.findings ?? []
 
     const snapshot = await this.assembleSnapshot(userId, now, priors)
-    const findings = analyze(snapshot)
+    // The Journal is the LEDGER (spec §3.1): every finding that fires is written,
+    // uncapped. Before this, analyze() took the top DEFAULT_FINDING_COUNT and the
+    // rest were computed and discarded — a live render on 2026-08-07 found 7 of
+    // 10 kinds firing and 3 reaching the learner, with reading_lag and retest_due
+    // shipped-but-unread for weeks.
+    const findings = analyze(snapshot, Object.keys(FINDING_PRIORITY).length)
+
+    // ⚠️ The SPOKEN SET (spec §8.1), and the reason it is not `findings`.
+    // `carryForward` stamps what was shown, and that decay is what lets an
+    // unshown finding rise and eventually win a slot. Stamp the whole ledger and
+    // every kind decays equally every cycle, novelty flattens to a constant, and
+    // the ranking collapses to magnitude x confidence.
+    //
+    // `analyze` has already ranked, so slicing gives exactly what the old
+    // analyze(snapshot) returned. From slice 2 this becomes "what a surface
+    // actually showed"; until then it is "what the cap would have shown".
+    const spoken = findings.slice(0, DEFAULT_FINDING_COUNT)
 
     // Nothing worth reporting: write nothing and supersede nothing. Any
     // existing entry stands until there is something better to say. (§5's
@@ -193,7 +210,7 @@ export class CoachingService {
     const source: CoachingAnalysisSource = {
       kind: COACHING_SOURCE_KIND,
       analyzedAt: now,
-      findings: carryForward(priors, findings, now),
+      findings: carryForward(priors, spoken, now),
       ...(correction ? { correction } : {}),
     }
     const body = analysisBody(findings, now)
@@ -207,7 +224,8 @@ export class CoachingService {
     // learner-authored latest must always take that path -- it supersedes
     // their row instead of silently overwriting their words in place.
     const canUpdate = latest !== null && latest.supersededAt === null && latest.author === 'buddy'
-    const unchanged = selectionsMatch(priors, findings)
+    // Compares against the stamped set, which is what `priors` holds.
+    const unchanged = selectionsMatch(priors, spoken)
     if (canUpdate && (coalescing || unchanged)) {
       // Spread into a fresh object rather than passing `source` directly:
       // `updateEntryInPlace` takes `Record<string, unknown>`, and a named
