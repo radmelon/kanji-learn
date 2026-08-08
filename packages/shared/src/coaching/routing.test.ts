@@ -117,8 +117,8 @@ describe('routableTo', () => {
   })
 
   it('preserves input order — selection already ranked these', () => {
-    const out = routableTo([f('leech'), f('reading_lag')], 'progress', 'learner')
-    expect(out.map((x) => x.kind)).toEqual(['leech', 'reading_lag'])
+    const out = routableTo([f('retest_due'), f('level_estimate')], 'progress', 'learner')
+    expect(out.map((x) => x.kind)).toEqual(['retest_due', 'level_estimate'])
   })
 
   it('does not apply the cap — that is the caller\'s decision', () => {

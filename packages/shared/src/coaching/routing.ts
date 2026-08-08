@@ -141,6 +141,9 @@ export const ROUTING: Record<FindingKind, RoutingRule> = {
  * by default, because one entry in one tab was the only surface that existed. On
  * 2026-08-07 a live render showed 7 of 10 kinds firing and 3 reaching the
  * learner: reading_lag and retest_due had been shipped-but-unread for weeks.
+ *
+ * Consume via `array.slice(0, cap)` — this map must not be serialized to JSON
+ * and must not be used to allocate an array or bound a counting loop.
  */
 export const SURFACE_CAP: Record<Surface, number> = {
   // The ledger. Uncapping this is what ends the silent 7-of-10 loss.
