@@ -343,6 +343,30 @@ Restated as an invariant for the implementer:
 
 > **Writing to a record surface must never call `carryForward`.**
 
+### 8.1 ⚠️ What stamps novelty before any event surface exists
+
+Found while planning slice 1. An implementer reading §8 literally would conclude
+that slice 1 stamps *nothing* — it uncaps the Journal and no event surface exists
+yet — and novelty would sit at 1.0 for every kind forever. **That is the same
+flattening §8 exists to prevent, reached from the other direction.**
+
+**Slice 1 does not change novelty semantics at all.** It changes only what the
+Journal *body* contains:
+
+| | Before slice 1 | After slice 1 | After slice 2+ |
+|---|---|---|---|
+| Journal body | top `DEFAULT_FINDING_COUNT` | **all firing findings** | all firing findings |
+| `carryForward` stamps | top `DEFAULT_FINDING_COUNT` | top `DEFAULT_FINDING_COUNT` | **what was spoken on an event surface** |
+| `selectionsMatch` compares | top `DEFAULT_FINDING_COUNT` | top `DEFAULT_FINDING_COUNT` | the spoken set |
+
+So the "spoken set" is a concept that exists from slice 1 onward. It is simply
+*defined differently* once real surfaces exist: today it is "what the cap would
+have shown", later it is "what a surface actually showed". Both are a subset of
+the findings written to the Journal, and both are what `carryForward` receives.
+
+The stamped set is therefore **never** the full Journal write, at any slice. That
+is the invariant, stated in a way slice 1 can satisfy.
+
 ---
 
 ## 9. Tutor report
