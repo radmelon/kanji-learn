@@ -355,6 +355,12 @@ A prioritized backlog of potential improvements for the 漢字 Buddy app. Each i
 
   ✅ **The trigger has fired.** The Journal UI/UX entry said to revisit *"once the copy floor ships"*. It shipped 2026-08-06 and its output was rendered against live data on 2026-08-07 — so this group is no longer waiting on anything, and can be specced from observed output rather than guesses.
 
+  ✅ **SETTLED 2026-08-07 — spec written:** https://github.com/radmelon/kanji-learn/blob/main/docs/superpowers/specs/2026-08-07-buddy-output-routing-design.md
+
+  The decision produced two dimensions the design did not previously have — **surface *type*** (record: uncapped, no rotation, no novelty burn; event: capped, rotating, once-per-cycle) and **audience** (learner / tutor) — plus a ten-row routing table with its rationale carried on each row. The tutor report joins the Journal as the second record surface, with `commitment_gap` and `mechanics_explainer` withheld from it for two different reasons that must not be collapsed.
+
+  ⚠️ **Slice 1 of that spec must ship before any event surface.** It carries the novelty invariant: uncapping the Journal without it flattens novelty to a constant, and Session Complete would then show the same sentence forever.
+
   **This is a decision, not a task.** It produces a routing table — which finding, to which surface, at which moment — that the four entries below then implement. Do not implement it directly.
 
   `[Effort: S to decide, and it unblocks four entries]` `[Impact: High — the reason four separate "why doesn't the learner see this?" items keep arriving]` `[Backend: No, for the decision]` `[Status: ❓ Open question — settle before speccing any child]`
